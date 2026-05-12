@@ -1,0 +1,226 @@
+import { type ClientSchema, a, defineData } from "@aws-amplify/backend";
+
+const schema = a.schema({
+  Expert: a
+    .model({
+      name: a.string().required(),
+      role: a.string().required(),
+      email: a.email(),
+      phone: a.string(),
+      category: a.string(),
+      norma: a.integer().default(8),
+      saCodes: a.string().array(),
+      hasPmAccess: a.boolean().default(false),
+      isActive: a.boolean().default(true),
+      activities: a.hasMany("Activity", "expertId"),
+      grupTintaEntries: a.hasMany("GrupTintaEntry", "expertId"),
+    })
+    .authorization((allow) => [
+      allow.authenticated().to(["read"]),
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
+  Activity: a
+    .model({
+      owner: a.string(),
+      expertId: a.id().required(),
+      expert: a.belongsTo("Expert", "expertId"),
+      expertName: a.string(),
+      date: a.date().required(),
+      year: a.integer().required(),
+      month: a.integer().required(),
+      hours: a.float().required(),
+      activityType: a.string().required(),
+      saCode: a.string(),
+      catalogActivityId: a.id(),
+      title: a.string().required(),
+      description: a.string(),
+      location: a.string(),
+      dayType: a.string(),
+      workingGroupId: a.id(),
+      status: a.string().default("draft"),
+      pmNotes: a.string(),
+      deliverables: a.hasMany("Deliverable", "activityId"),
+      grupTinta: a.hasMany("GrupTintaEntry", "activityId"),
+    })
+    .secondaryIndexes((index) => [
+      index("expertId").sortKeys(["date"]),
+      index("year").sortKeys(["month"]),
+    ])
+    .authorization((allow) => [
+      allow.ownerDefinedIn("owner"),
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
+  Deliverable: a
+    .model({
+      owner: a.string(),
+      activityId: a.id().required(),
+      activity: a.belongsTo("Activity", "activityId"),
+      fileName: a.string().required(),
+      fileType: a.string().required(),
+      fileSize: a.integer().required(),
+      filePath: a.string(),
+      uploadedAt: a.datetime(),
+      declaredTitle: a.string(),
+      docTitle: a.string(),
+      titleMatch: a.boolean(),
+      aiStatus: a.string(),
+      aiReason: a.string(),
+    })
+    .secondaryIndexes((index) => [index("activityId")])
+    .authorization((allow) => [
+      allow.ownerDefinedIn("owner"),
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
+  GrupTintaEntry: a
+    .model({
+      owner: a.string(),
+      expertId: a.id().required(),
+      expert: a.belongsTo("Expert", "expertId"),
+      activityId: a.id(),
+      activity: a.belongsTo("Activity", "activityId"),
+      date: a.date().required(),
+      year: a.integer().required(),
+      month: a.integer().required(),
+      activityType: a.string().required(),
+      organizations: a.string().array(),
+      participantsCount: a.integer().default(0),
+      notes: a.string(),
+    })
+    .secondaryIndexes((index) => [
+      index("expertId").sortKeys(["date"]),
+      index("year").sortKeys(["month"]),
+    ])
+    .authorization((allow) => [
+      allow.ownerDefinedIn("owner"),
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
+  ActivityCatalog: a
+    .model({
+      category: a.string().required(),
+      saCode: a.string().required(),
+      serviceCategory: a.string(),
+      activityNumber: a.integer(),
+      activityName: a.string().required(),
+      description: a.string(),
+      objectives: a.string(),
+      serviceComponent: a.string(),
+      beneficiaries: a.string(),
+      expectedResults: a.string(),
+      deliverables: a.string(),
+      indicators: a.string(),
+    })
+    .secondaryIndexes((index) => [index("saCode")])
+    .authorization((allow) => [
+      allow.authenticated().to(["read"]),
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
+  WorkingGroup: a
+    .model({
+      name: a.string().required(),
+      type: a.string().required(),
+      email: a.email(),
+      isActive: a.boolean().default(true),
+      saCode: a.string(),
+      notes: a.string(),
+    })
+    .authorization((allow) => [
+      allow.authenticated().to(["read"]),
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
+  ReportStatus: a
+    .model({
+      expertId: a.id().required(),
+      year: a.integer().required(),
+      month: a.integer().required(),
+      status: a.string().default("draft"),
+      sentDate: a.datetime(),
+      approvalDate: a.datetime(),
+      pmNotes: a.string(),
+    })
+    .secondaryIndexes((index) => [index("expertId").sortKeys(["year", "month"])])
+    .authorization((allow) => [
+      allow.groups(["expert"]).to(["create", "read", "update"]),
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
+  Verification: a
+    .model({
+      expertId: a.id().required(),
+      expertName: a.string(),
+      month: a.string().required(),
+      year: a.string().required(),
+      status: a.string().default("pending"),
+      notes: a.string(),
+      neconformitati: a.hasMany("Neconformitate", "verificationId"),
+      verificationNotes: a.hasMany("VerificationNote", "verificationId"),
+    })
+    .secondaryIndexes((index) => [index("expertId").sortKeys(["year", "month"])])
+    .authorization((allow) => [
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
+  Neconformitate: a
+    .model({
+      verificationId: a.id(),
+      verification: a.belongsTo("Verification", "verificationId"),
+      type: a.string().required(),
+      severity: a.string().required(),
+      description: a.string().required(),
+      affectedDate: a.date(),
+      affectedExpertId: a.id(),
+      resolved: a.boolean().default(false),
+      resolution: a.string(),
+      resolvedAt: a.datetime(),
+    })
+    .secondaryIndexes((index) => [index("verificationId")])
+    .authorization((allow) => [
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
+  VerificationNote: a
+    .model({
+      verificationId: a.id(),
+      verification: a.belongsTo("Verification", "verificationId"),
+      content: a.string().required(),
+      category: a.string(),
+      authorId: a.id(),
+      authorName: a.string(),
+    })
+    .secondaryIndexes((index) => [index("verificationId")])
+    .authorization((allow) => [
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
+  ConcurrentProject: a
+    .model({
+      expertId: a.id().required(),
+      projectName: a.string().required(),
+      projectCode: a.string(),
+      fundingSource: a.string(),
+      dailyHours: a.float().required(),
+      startDate: a.date().required(),
+      endDate: a.date(),
+      isActive: a.boolean().default(true),
+      notes: a.string(),
+    })
+    .secondaryIndexes((index) => [index("expertId")])
+    .authorization((allow) => [
+      allow.groups(["expert"]).to(["create", "read", "update"]),
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+});
+
+export type Schema = ClientSchema<typeof schema>;
+
+export const data = defineData({
+  schema,
+  authorizationModes: {
+    defaultAuthorizationMode: "userPool",
+  },
+});

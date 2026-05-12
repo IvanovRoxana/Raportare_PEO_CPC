@@ -1,0 +1,19 @@
+import { defineStorage } from "@aws-amplify/backend";
+
+export const storage = defineStorage({
+  name: "peoRaportareFiles",
+  access: (allow) => ({
+    "deliverables/{entity_id}/*": [
+      allow.entity("identity").to(["read", "write", "delete"]),
+      allow.groups(["pm", "admin"]).to(["read", "write", "delete"]),
+    ],
+    "reports/{entity_id}/*": [
+      allow.entity("identity").to(["read", "write", "delete"]),
+      allow.groups(["pm", "admin"]).to(["read", "write", "delete"]),
+    ],
+    "project-assets/*": [
+      allow.authenticated.to(["read"]),
+      allow.groups(["pm", "admin"]).to(["read", "write", "delete"]),
+    ],
+  }),
+});
