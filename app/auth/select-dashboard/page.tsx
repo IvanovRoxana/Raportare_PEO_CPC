@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { BriefcaseBusiness, FileText, LayoutDashboard, Loader2 } from 'lucide-react';
+import { BriefcaseBusiness, CircleDollarSign, FileText, LayoutDashboard, Loader2 } from 'lucide-react';
 import { getDashboardPathForRoles, getSignedInUser } from '@/lib/aws/auth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -37,7 +37,7 @@ export default function SelectDashboardPage() {
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      <div className="w-full max-w-2xl">
+      <div className="w-full max-w-3xl">
         <div className="flex items-center justify-center gap-3 mb-8">
           <div className="p-2 bg-primary/10 rounded-lg">
             <FileText className="h-8 w-8 text-primary" />
@@ -61,7 +61,7 @@ export default function SelectDashboardPage() {
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
               </div>
             ) : (
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-4 sm:grid-cols-3">
                 {canUseExpert && (
                   <Button asChild size="lg" className="h-24 flex-col gap-2">
                     <Link href="/expert">
@@ -76,6 +76,15 @@ export default function SelectDashboardPage() {
                     <Link href="/pm">
                       <BriefcaseBusiness className="h-6 w-6" />
                       Dashboard PM
+                    </Link>
+                  </Button>
+                )}
+
+                {canUsePm && (
+                  <Button asChild size="lg" variant="secondary" className="h-24 flex-col gap-2">
+                    <Link href="/financiar">
+                      <CircleDollarSign className="h-6 w-6" />
+                      Dashboard financiar
                     </Link>
                   </Button>
                 )}

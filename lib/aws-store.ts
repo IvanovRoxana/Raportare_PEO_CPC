@@ -15,15 +15,19 @@ import type {
   AuditLog,
   ConcurrentProject,
   Deliverable,
+  DocumentMetadata,
   Expert,
   GrupTintaEntry,
   Neconformitate,
   ReportStatus,
+  SharedDeliverable,
   VerificationData,
   VerificationNote,
   WorkingGroup,
 } from './types';
 import { createAuditLog, prepareAdminActivityOverride } from './audit-trail';
+import { buildSharedDeliverables, findDuplicateCandidates, markSharedDeliverableRegistered } from './document-sharing';
+import { normalizeTitleForMatch } from './title-suggestion';
 
 export { isAwsAvailable };
 export {
@@ -100,6 +104,45 @@ function withSupportedExpertFields(payload: Record<string, unknown>, expert: Par
   return payload;
 }
 
+function withSupportedDeliverableFields(payload: Record<string, unknown>, deliverable: Partial<Deliverable>) {
+  const extendedFields: Record<string, unknown> = {
+    docText: deliverable.docText,
+    suggestedTitle: deliverable.suggestedTitle,
+    firstPageText: deliverable.firstPageText,
+    titleSource: deliverable.titleSource,
+    titleConfirmed: deliverable.titleConfirmed,
+    titleCheckStatus: deliverable.titleCheckStatus,
+    titleCheckMessage: deliverable.titleCheckMessage,
+    documentId: deliverable.documentId,
+    s3Bucket: deliverable.s3Bucket,
+    s3Key: deliverable.s3Key,
+    originalFileName: deliverable.originalFileName,
+    fileHash: deliverable.fileHash,
+    firstPageTextHash: deliverable.firstPageTextHash,
+    contentFingerprint: deliverable.contentFingerprint,
+    uploadedByExpertId: deliverable.uploadedByExpertId,
+    uploadedByExpertName: deliverable.uploadedByExpertName,
+    projectId: deliverable.projectId,
+    projectName: deliverable.projectName,
+    sourceActivityId: deliverable.sourceActivityId,
+    activityDate: deliverable.activityDate,
+    saCode: deliverable.saCode,
+    deliverableType: deliverable.deliverableType,
+    isCommonDeliverable: deliverable.isCommonDeliverable,
+    sharedWithExpertIds: deliverable.sharedWithExpertIds,
+    possibleDuplicateOfDocumentId: deliverable.possibleDuplicateOfDocumentId,
+    duplicateStatus: deliverable.duplicateStatus,
+  };
+
+  Object.entries(extendedFields).forEach(([field, value]) => {
+    if (modelHasField('Deliverable', field)) {
+      payload[field] = value;
+    }
+  });
+
+  return payload;
+}
+
 function mapExpert(item: any): Expert {
   return {
     id: item.id,
@@ -154,12 +197,91 @@ function mapDeliverable(item: any): Deliverable {
     fileType: item.fileType,
     fileSize: item.fileSize,
     filePath: item.filePath ?? undefined,
+    documentId: item.documentId ?? undefined,
+    s3Bucket: item.s3Bucket ?? undefined,
+    s3Key: item.s3Key ?? item.filePath ?? undefined,
+    originalFileName: item.originalFileName ?? item.fileName ?? undefined,
+    fileHash: item.fileHash ?? undefined,
+    firstPageTextHash: item.firstPageTextHash ?? undefined,
+    contentFingerprint: item.contentFingerprint ?? undefined,
+    uploadedByExpertId: item.uploadedByExpertId ?? undefined,
+    uploadedByExpertName: item.uploadedByExpertName ?? undefined,
+    projectId: item.projectId ?? undefined,
+    projectName: item.projectName ?? undefined,
+    sourceActivityId: item.sourceActivityId ?? undefined,
+    activityDate: item.activityDate ?? undefined,
+    saCode: item.saCode ?? undefined,
+    deliverableType: item.deliverableType ?? undefined,
+    isCommonDeliverable: item.isCommonDeliverable ?? false,
+    sharedWithExpertIds: item.sharedWithExpertIds ?? [],
+    possibleDuplicateOfDocumentId: item.possibleDuplicateOfDocumentId ?? undefined,
+    duplicateStatus: item.duplicateStatus ?? undefined,
     uploadedAt: item.uploadedAt ?? undefined,
     declaredTitle: item.declaredTitle ?? undefined,
     docTitle: item.docTitle ?? undefined,
+    docText: item.docText ?? undefined,
+    suggestedTitle: item.suggestedTitle ?? undefined,
+    firstPageText: item.firstPageText ?? undefined,
+    titleSource: item.titleSource ?? undefined,
     titleMatch: item.titleMatch ?? null,
+    titleConfirmed: item.titleConfirmed ?? undefined,
+    titleCheckStatus: item.titleCheckStatus ?? undefined,
+    titleCheckMessage: item.titleCheckMessage ?? undefined,
     aiStatus: item.aiStatus ?? undefined,
     aiReason: item.aiReason ?? undefined,
+  };
+}
+
+function mapDocument(item: any): DocumentMetadata {
+  return {
+    id: item.id,
+    s3Bucket: item.s3Bucket ?? undefined,
+    s3Key: item.s3Key,
+    originalFileName: item.originalFileName,
+    mimeType: item.mimeType,
+    fileSize: item.fileSize,
+    fileHash: item.fileHash ?? undefined,
+    firstPageTextHash: item.firstPageTextHash ?? undefined,
+    contentFingerprint: item.contentFingerprint ?? undefined,
+    uploadedByExpertId: item.uploadedByExpertId,
+    uploadedByExpertName: item.uploadedByExpertName ?? undefined,
+    uploadDate: item.uploadDate,
+    projectId: item.projectId ?? undefined,
+    projectName: item.projectName ?? undefined,
+    sourceActivityId: item.sourceActivityId ?? undefined,
+    activityDate: item.activityDate ?? undefined,
+    saCode: item.saCode ?? undefined,
+    deliverableType: item.deliverableType ?? undefined,
+    declaredTitle: item.declaredTitle ?? undefined,
+    suggestedTitle: item.suggestedTitle ?? undefined,
+    extractedTitle: item.extractedTitle ?? undefined,
+    extractedTitleNormalized: item.extractedTitleNormalized ?? undefined,
+    titleMatch: item.titleMatch ?? null,
+    titleCheckStatus: item.titleCheckStatus ?? undefined,
+    isCommonDeliverable: item.isCommonDeliverable ?? false,
+    possibleDuplicateOfDocumentId: item.possibleDuplicateOfDocumentId ?? undefined,
+    duplicateStatus: item.duplicateStatus ?? undefined,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+  };
+}
+
+function mapSharedDeliverable(item: any): SharedDeliverable {
+  return {
+    id: item.id,
+    documentId: item.documentId,
+    sourceExpertId: item.sourceExpertId,
+    targetExpertId: item.targetExpertId,
+    projectId: item.projectId ?? undefined,
+    sourceActivityId: item.sourceActivityId ?? undefined,
+    targetActivityId: item.targetActivityId ?? undefined,
+    status: item.status,
+    notifiedAt: item.notifiedAt ?? undefined,
+    registeredAt: item.registeredAt ?? undefined,
+    ignoredAt: item.ignoredAt ?? undefined,
+    removedAt: item.removedAt ?? undefined,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
   };
 }
 
@@ -177,6 +299,130 @@ function mapGrupTinta(item: any): GrupTintaEntry {
     notes: item.notes ?? undefined,
     createdAt: item.createdAt,
   };
+}
+
+async function findExistingDocumentDuplicates(client: any, deliverable: Deliverable) {
+  if (!client.models.Document) return [];
+  const filters: Record<string, unknown>[] = [];
+  if (deliverable.fileHash) filters.push({ fileHash: { eq: deliverable.fileHash } });
+  if (deliverable.firstPageTextHash) filters.push({ firstPageTextHash: { eq: deliverable.firstPageTextHash } });
+
+  const candidates: DocumentMetadata[] = [];
+  for (const filter of filters) {
+    const items = await listModel<any>(client.models.Document, filter);
+    candidates.push(...items.map(mapDocument));
+  }
+
+  const unique = new Map(candidates.map((document) => [document.id, document]));
+  return findDuplicateCandidates([...unique.values()], {
+    id: deliverable.documentId || '',
+    fileHash: deliverable.fileHash,
+    firstPageTextHash: deliverable.firstPageTextHash,
+    extractedTitleNormalized: normalizeTitleForMatch(deliverable.suggestedTitle || deliverable.docTitle || deliverable.declaredTitle || ''),
+    contentFingerprint: deliverable.contentFingerprint,
+    fileSize: deliverable.fileSize,
+    mimeType: deliverable.fileType,
+  });
+}
+
+async function createDocumentMetadataForDeliverable(
+  client: any,
+  activity: Partial<Activity>,
+  activityId: string,
+  deliverable: Deliverable,
+) {
+  if (!client.models.Document || !deliverable.documentId || !(deliverable.s3Key || deliverable.filePath)) return;
+
+  const duplicateMatches = await findExistingDocumentDuplicates(client, deliverable);
+  const duplicate = duplicateMatches[0];
+  const duplicateStatus = duplicate
+    ? duplicate.issues.includes('same_file_hash')
+      ? 'same_file_hash'
+      : duplicate.issues.includes('same_first_page_hash')
+        ? 'same_first_page_hash'
+        : 'possible_common_unmarked'
+    : deliverable.duplicateStatus;
+
+  const payload = {
+    id: deliverable.documentId,
+    s3Bucket: deliverable.s3Bucket,
+    s3Key: deliverable.s3Key || deliverable.filePath || '',
+    originalFileName: deliverable.originalFileName || deliverable.fileName,
+    mimeType: deliverable.fileType,
+    fileSize: deliverable.fileSize,
+    fileHash: deliverable.fileHash,
+    firstPageTextHash: deliverable.firstPageTextHash,
+    contentFingerprint: deliverable.contentFingerprint,
+    uploadedByExpertId: deliverable.uploadedByExpertId || activity.expertId || '',
+    uploadedByExpertName: deliverable.uploadedByExpertName || activity.expertName,
+    uploadDate: deliverable.uploadedAt || new Date().toISOString(),
+    projectId: deliverable.projectId || activity.projectCode,
+    projectName: deliverable.projectName,
+    sourceActivityId: activityId,
+    activityDate: deliverable.activityDate || activity.date,
+    saCode: deliverable.saCode || activity.saCode,
+    deliverableType: deliverable.deliverableType,
+    declaredTitle: deliverable.declaredTitle,
+    suggestedTitle: deliverable.suggestedTitle,
+    extractedTitle: deliverable.docTitle,
+    extractedTitleNormalized: normalizeTitleForMatch(deliverable.suggestedTitle || deliverable.docTitle || deliverable.declaredTitle || ''),
+    titleMatch: deliverable.titleMatch ?? undefined,
+    titleCheckStatus: deliverable.titleCheckStatus,
+    isCommonDeliverable: deliverable.isCommonDeliverable ?? false,
+    possibleDuplicateOfDocumentId: duplicate?.document.id || deliverable.possibleDuplicateOfDocumentId,
+    duplicateStatus,
+  };
+
+  const result = await client.models.Document.create(payload);
+  assertNoErrors(result, 'AWS create document metadata');
+
+  if (duplicate && client.models.AuditLog) {
+    await auditLogsService.create({
+      actionType: 'document_duplicate_detected',
+      actorId: payload.uploadedByExpertId,
+      actorName: payload.uploadedByExpertName,
+      actorRole: 'admin',
+      affectedExpertId: payload.uploadedByExpertId,
+      affectedExpertName: payload.uploadedByExpertName,
+      projectCode: payload.projectId,
+      month: activity.date ? monthFromDate(activity.date) : undefined,
+      year: activity.date ? yearFromDate(activity.date) : undefined,
+      fieldName: 'document',
+      oldValue: duplicate.document.id,
+      newValue: deliverable.documentId,
+      justification: 'Audit automat: document identic sau posibil comun detectat la upload.',
+      source: 'automatic',
+    });
+  }
+}
+
+async function createSharedDeliverablesForDocument(
+  client: any,
+  activity: Partial<Activity>,
+  activityId: string,
+  deliverable: Deliverable,
+) {
+  if (!client.models.SharedDeliverable || !deliverable.documentId || !deliverable.isCommonDeliverable) return;
+
+  const relations = buildSharedDeliverables({
+    documentId: deliverable.documentId,
+    sourceExpertId: deliverable.uploadedByExpertId || activity.expertId || '',
+    targetExpertIds: deliverable.sharedWithExpertIds || [],
+    projectId: deliverable.projectId || activity.projectCode,
+    sourceActivityId: activityId,
+  });
+
+  await Promise.all(relations.map((relation) =>
+    client.models.SharedDeliverable.create({
+      id: relation.id,
+      documentId: relation.documentId,
+      sourceExpertId: relation.sourceExpertId,
+      targetExpertId: relation.targetExpertId,
+      projectId: relation.projectId,
+      sourceActivityId: relation.sourceActivityId,
+      status: relation.status,
+    }),
+  ));
 }
 
 async function attachActivityChildren(activity: any): Promise<Activity> {
@@ -304,8 +550,10 @@ async function createActivityUnchecked(
 
   const activityId = created.data.id;
   await Promise.all([
-    ...(activity.deliverables ?? []).map((deliverable) =>
-      client.models.Deliverable.create({
+    ...(activity.deliverables ?? []).map(async (deliverable) => {
+      await createDocumentMetadataForDeliverable(client, activity, activityId, deliverable);
+      await createSharedDeliverablesForDocument(client, activity, activityId, deliverable);
+      return client.models.Deliverable.create(withSupportedDeliverableFields({
         activityId,
         fileName: deliverable.fileName,
         fileType: deliverable.fileType,
@@ -317,8 +565,11 @@ async function createActivityUnchecked(
         titleMatch: deliverable.titleMatch ?? undefined,
         aiStatus: deliverable.aiStatus,
         aiReason: deliverable.aiReason,
-      }),
-    ),
+      }, {
+        ...deliverable,
+        sourceActivityId: activityId,
+      }));
+    }),
     ...(activity.grupTinta ?? []).map((entry) =>
       client.models.GrupTintaEntry.create({
         expertId: activity.expertId,
@@ -446,6 +697,79 @@ export const auditLogsService = {
   },
 };
 
+export const documentsService = {
+  async getAll(): Promise<DocumentMetadata[]> {
+    const client = getAwsDataClient() as any;
+    if (!client.models.Document) return [];
+    const data = await listModel<any>(client.models.Document);
+    return data.map(mapDocument).sort((a, b) => b.uploadDate.localeCompare(a.uploadDate));
+  },
+
+  async getById(id: string): Promise<DocumentMetadata | null> {
+    const client = getAwsDataClient() as any;
+    if (!client.models.Document) return null;
+    const result = await client.models.Document.get({ id });
+    assertNoErrors(result, 'AWS get document');
+    return result.data ? mapDocument(result.data) : null;
+  },
+
+  async getByProject(projectId: string): Promise<DocumentMetadata[]> {
+    const client = getAwsDataClient() as any;
+    if (!client.models.Document) return [];
+    const data = await listModel<any>(client.models.Document, { projectId: { eq: projectId } });
+    return data.map(mapDocument);
+  },
+
+  async findByHash(fileHash: string): Promise<DocumentMetadata[]> {
+    const client = getAwsDataClient() as any;
+    if (!client.models.Document) return [];
+    const data = await listModel<any>(client.models.Document, { fileHash: { eq: fileHash } });
+    return data.map(mapDocument);
+  },
+};
+
+export const sharedDeliverablesService = {
+  async getAll(): Promise<SharedDeliverable[]> {
+    const client = getAwsDataClient() as any;
+    if (!client.models.SharedDeliverable) return [];
+    const data = await listModel<any>(client.models.SharedDeliverable);
+    return data.map(mapSharedDeliverable);
+  },
+
+  async getPendingForExpert(expertId: string): Promise<SharedDeliverable[]> {
+    const client = getAwsDataClient() as any;
+    if (!client.models.SharedDeliverable) return [];
+    const data = await listModel<any>(client.models.SharedDeliverable, {
+      targetExpertId: { eq: expertId },
+      status: { eq: 'pending_registration' },
+    });
+    return data.map(mapSharedDeliverable);
+  },
+
+  async registerForActivity(relationId: string, targetActivityId: string): Promise<SharedDeliverable | null> {
+    const client = getAwsDataClient() as any;
+    if (!client.models.SharedDeliverable) return null;
+    const existing = await client.models.SharedDeliverable.get({ id: relationId });
+    assertNoErrors(existing, 'AWS get shared deliverable');
+    if (!existing.data) return null;
+    if (existing.data.status !== 'pending_registration') {
+      throw new Error('Livrabilul comun poate fi asociat doar din status pending_registration.');
+    }
+    const registered = markSharedDeliverableRegistered({
+      relation: mapSharedDeliverable(existing.data),
+      targetActivityId,
+    });
+    const result = await client.models.SharedDeliverable.update({
+      id: relationId,
+      status: registered.status,
+      targetActivityId: registered.targetActivityId,
+      registeredAt: registered.registeredAt,
+    });
+    assertNoErrors(result, 'AWS register shared deliverable');
+    return result.data ? mapSharedDeliverable(result.data) : null;
+  },
+};
+
 export const activitiesService = {
   async getAll(): Promise<Activity[]> {
     const client = getAwsDataClient() as any;
@@ -557,8 +881,10 @@ export const activitiesService = {
       const existingDeliverables = await listModel<any>(client.models.Deliverable, { activityId: { eq: id } });
       await Promise.all(existingDeliverables.map((deliverable) => client.models.Deliverable.delete({ id: deliverable.id })));
       await Promise.all(
-        updates.deliverables.map((deliverable) =>
-          client.models.Deliverable.create({
+        updates.deliverables.map(async (deliverable) => {
+          await createDocumentMetadataForDeliverable(client, updates, id, deliverable);
+          await createSharedDeliverablesForDocument(client, updates, id, deliverable);
+          return client.models.Deliverable.create(withSupportedDeliverableFields({
             activityId: id,
             fileName: deliverable.fileName,
             fileType: deliverable.fileType,
@@ -570,8 +896,11 @@ export const activitiesService = {
             titleMatch: deliverable.titleMatch ?? undefined,
             aiStatus: deliverable.aiStatus,
             aiReason: deliverable.aiReason,
-          }),
-        ),
+          }, {
+            ...deliverable,
+            sourceActivityId: id,
+          }));
+        }),
       );
     }
 

@@ -41,6 +41,8 @@ import {
   useReportStatus,
   useActivitiesByMonth,
   useAuditLogs,
+  useDocuments,
+  useSharedDeliverables,
 } from '@/hooks/use-backend-data';
 import { buildDashboardComplianceRows } from '@/lib/reporting-dashboard';
 import type {
@@ -94,6 +96,8 @@ export default function PMDashboard() {
   } = useReportStatus(selectedExpertId, selectedMonth, selectedYear);
   const { activities: monthActivities } = useActivitiesByMonth(selectedMonth, selectedYear);
   const { auditLogs } = useAuditLogs(null, selectedMonth, selectedYear);
+  const { documents } = useDocuments();
+  const { sharedDeliverables } = useSharedDeliverables();
 
   // Set default expert when experts load
   useEffect(() => {
@@ -251,6 +255,16 @@ export default function PMDashboard() {
 
     return { totalHours, totalRemaining, missingDays, blockedDays, issues };
   }, [dashboardRows]);
+  const pendingSharedDeliverables = useMemo(() => {
+    return sharedDeliverables
+      .filter((relation) => relation.status === 'pending_registration')
+      .map((relation) => ({
+        relation,
+        document: documents.find((document) => document.id === relation.documentId),
+        sourceExpert: experts.find((expert) => expert.id === relation.sourceExpertId),
+        targetExpert: experts.find((expert) => expert.id === relation.targetExpertId),
+      }));
+  }, [documents, experts, sharedDeliverables]);
 
   const months = Array.from({ length: 12 }, (_, i) => ({
     value: i,
@@ -499,6 +513,33 @@ export default function PMDashboard() {
             <p className="mt-1 text-2xl font-bold">{dashboardTotals.issues}</p>
           </div>
         </section>
+
+        {pendingSharedDeliverables.length > 0 && (
+          <section className="mb-6 rounded-lg border border-amber-300 bg-amber-50 p-4">
+            <div className="flex items-center gap-2 font-semibold text-amber-950">
+              <AlertCircle className="h-4 w-4" />
+              Livrabile comune in asteptarea inregistrarii ({pendingSharedDeliverables.length})
+            </div>
+            <div className="mt-3 grid gap-2 md:grid-cols-2">
+              {pendingSharedDeliverables.map(({ relation, document, sourceExpert, targetExpert }) => (
+                <div key={relation.id} className="rounded-md border border-amber-200 bg-white/70 p-3 text-sm">
+                  <div className="font-medium">
+                    {document?.declaredTitle || document?.suggestedTitle || document?.originalFileName || relation.documentId}
+                  </div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    Incarcat de {sourceExpert?.name || relation.sourceExpertId} pentru {targetExpert?.name || relation.targetExpertId}
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                    {document?.projectId && <Badge variant="outline">{document.projectId}</Badge>}
+                    {document?.saCode && <Badge variant="outline">{document.saCode}</Badge>}
+                    {document?.activityDate && <Badge variant="outline">{document.activityDate}</Badge>}
+                    <Badge variant="secondary">{relation.status}</Badge>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         <Tabs defaultValue="pontaj" className="space-y-6">
           <TabsList className="grid w-full grid-cols-6">

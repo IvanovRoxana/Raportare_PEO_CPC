@@ -15,6 +15,8 @@ import {
   reportStatusService,
   grupTintaService,
   auditLogsService,
+  documentsService,
+  sharedDeliverablesService,
 } from '@/lib/backend-store';
 import type { Activity, Expert, VerificationData, Neconformitate, VerificationNote, AppSettings, ActivityCatalog, WorkingGroup, ConcurrentProject, ReportStatus, GrupTintaEntry, AuditLog, AdminInterventionRequest } from '@/lib/types';
 
@@ -159,6 +161,48 @@ export function useActivityMutations() {
   };
 
   return { create, createBatch, update, remove, removeByDates };
+}
+
+export function useDocuments() {
+  const { data, error, isLoading } = useSWR(
+    isBackendAvailable() ? 'documents' : null,
+    safeFetcher(documentsService.getAll)
+  );
+
+  return {
+    documents: data || [],
+    isLoading,
+    error,
+    mutate: () => mutate('documents'),
+  };
+}
+
+export function useSharedDeliverables(expertId?: string) {
+  const key = expertId ? `shared-deliverables-${expertId}` : 'shared-deliverables';
+  const fetcher = expertId
+    ? () => sharedDeliverablesService.getPendingForExpert(expertId)
+    : sharedDeliverablesService.getAll;
+  const { data, error, isLoading } = useSWR(
+    isBackendAvailable() ? key : null,
+    safeFetcher(fetcher)
+  );
+
+  return {
+    sharedDeliverables: data || [],
+    isLoading,
+    error,
+    mutate: () => mutate(key),
+  };
+}
+
+export function useSharedDeliverableMutations() {
+  const registerForActivity = async (relationId: string, targetActivityId: string) => {
+    const updated = await sharedDeliverablesService.registerForActivity(relationId, targetActivityId);
+    mutate((key: string) => typeof key === 'string' && key.startsWith('shared-deliverables'), undefined, { revalidate: true });
+    return updated;
+  };
+
+  return { registerForActivity };
 }
 
 // ============================================

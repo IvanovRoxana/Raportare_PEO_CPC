@@ -34,6 +34,7 @@ import {
 import { useActivityCatalog } from '@/hooks/use-backend-data';
 import type { Activity, Deliverable, GrupTintaEntry, Expert, ActivityCatalog } from '@/lib/types';
 import { isGtExpertCategory, normalizePeoCategory } from '@/lib/peo-category';
+import { buildDocumentS3Key, hashFirstPageText, normalizeDocumentTextForFingerprint, sha256Hex } from '@/lib/document-sharing';
 
 interface ActivityFormProps {
   selectedDates: string[];
@@ -174,6 +175,24 @@ export function ActivityForm({
       fileType: d.fileType,
       fileSize: d.fileSize,
       filePath: d.filePath,
+      documentId: d.documentId,
+      s3Bucket: d.s3Bucket,
+      s3Key: d.s3Key,
+      fileHash: d.fileHash,
+      firstPageTextHash: d.firstPageTextHash,
+      contentFingerprint: d.contentFingerprint,
+      uploadedByExpertId: d.uploadedByExpertId,
+      uploadedByExpertName: d.uploadedByExpertName,
+      projectId: d.projectId,
+      projectName: d.projectName,
+      sourceActivityId: d.sourceActivityId,
+      activityDate: d.activityDate,
+      saCode: d.saCode,
+      deliverableType: d.deliverableType,
+      isCommonDeliverable: d.isCommonDeliverable,
+      sharedWithExpertIds: d.sharedWithExpertIds,
+      possibleDuplicateOfDocumentId: d.possibleDuplicateOfDocumentId,
+      duplicateStatus: d.duplicateStatus,
       fileData: d.fileData,
       uploadedAt: d.uploadedAt,
       uploaded: true,
@@ -189,8 +208,13 @@ export function ActivityForm({
           }
         : null,
       docTitle: d.docTitle || null,
-      docText: null,
+      docText: d.docText || null,
+      suggestedTitle: d.suggestedTitle || null,
+      firstPageText: d.firstPageText || null,
+      titleSource: d.titleSource as DeliverableSlot['titleSource'],
       titleMatch: d.titleMatch ?? null,
+      titleCheckStatus: d.titleCheckStatus as DeliverableSlot['titleCheckStatus'],
+      titleCheckMessage: d.titleCheckMessage,
       isPendingConfirm: false,
     })) || []
   );
@@ -280,7 +304,15 @@ export function ActivityForm({
           aiCheck: null,
           docTitle: null,
           docText: null,
+          documentId: `doc_${generateId()}`,
+          isCommonDeliverable: false,
+          sharedWithExpertIds: [],
+          suggestedTitle: null,
+          firstPageText: null,
+          titleSource: undefined,
           titleMatch: null,
+          titleCheckStatus: undefined,
+          titleCheckMessage: undefined,
           isPendingConfirm: false,
         };
         setDeliverables(prev => [...prev, newDeliverable]);
@@ -388,11 +420,22 @@ export function ActivityForm({
       return deliverable;
     }
 
+    const documentId = deliverable.documentId || `doc_${deliverable.id}`;
     const fileName = deliverable.filename || deliverable.name || `livrabil-${deliverable.id}`;
     const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
     const blob = dataUrlToBlob(deliverable.fileData, deliverable.fileType || 'application/octet-stream');
+    const fileHash = await sha256Hex(await blob.arrayBuffer());
+    const firstPageTextHash = await hashFirstPageText(deliverable.firstPageText || deliverable.docText);
+    const contentFingerprint = normalizeDocumentTextForFingerprint(deliverable.firstPageText || deliverable.docText).slice(0, 500);
+    const projectId = expert?.projectCode || '302151';
+    const projectName = expert?.projectTitle || 'Consolidarea capacitatii Concordia pentru dialog social';
+    const s3Key = buildDocumentS3Key({
+      projectId,
+      documentId,
+      originalFileName: safeName,
+    });
     const result = await uploadData({
-      path: ({ identityId }) => `deliverables/${identityId}/${expertId}/${Date.now()}-${safeName}`,
+      path: s3Key,
       data: blob,
       options: {
         contentType: deliverable.fileType || blob.type || 'application/octet-stream',
@@ -401,11 +444,45 @@ export function ActivityForm({
 
     return {
       ...deliverable,
+      documentId,
       filePath: result.path,
+      s3Key: result.path,
+      fileHash,
+      firstPageTextHash,
+      contentFingerprint,
+      uploadedByExpertId: expertId,
+      uploadedByExpertName: expertName,
+      projectId,
+      projectName,
+      activityDate: selectedDates[0],
+      saCode,
+      deliverableType: deliverable.type || deliverable.slotType,
+      isCommonDeliverable: Boolean(deliverable.common),
+      sharedWithExpertIds: deliverable.common ? collaborators : [],
+      duplicateStatus: firstPageTextHash ? 'fingerprinted' : undefined,
     };
   };
 
   const handleSave = async () => {
+    const invalidTitleDeliverable = deliverables.find((d) => (
+      d.uploaded
+      && !d.isPhoto
+      && (
+        !d.titleConfirmed
+        || d.titleCheckStatus === 'mismatch'
+        || d.titleCheckStatus === 'extraction_failed'
+        || d.titleMatch === false
+      )
+    ));
+
+    if (invalidTitleDeliverable) {
+      alert(
+        invalidTitleDeliverable.titleCheckMessage
+        || 'Titlul livrabilului trebuie confirmat si trebuie sa se regaseasca in prima pagina.',
+      );
+      return;
+    }
+
     const uploadedDeliverables = await Promise.all(
       deliverables
         .filter(d => d.uploaded && (d.filename || d.name))
@@ -435,10 +512,36 @@ export function ActivityForm({
             fileType: d.fileType || '',
             fileSize: d.fileSize || 0,
             filePath: d.filePath,
+            documentId: d.documentId,
+            s3Bucket: d.s3Bucket,
+            s3Key: d.s3Key || d.filePath,
+            originalFileName: d.filename || d.name || '',
+            fileHash: d.fileHash,
+            firstPageTextHash: d.firstPageTextHash,
+            contentFingerprint: d.contentFingerprint,
+            uploadedByExpertId: d.uploadedByExpertId,
+            uploadedByExpertName: d.uploadedByExpertName,
+            projectId: d.projectId,
+            projectName: d.projectName,
+            sourceActivityId: d.sourceActivityId,
+            activityDate: date,
+            saCode,
+            deliverableType: d.deliverableType || d.type || d.slotType,
+            isCommonDeliverable: Boolean(d.common || d.isCommonDeliverable),
+            sharedWithExpertIds: d.common ? collaborators : (d.sharedWithExpertIds || []),
+            possibleDuplicateOfDocumentId: d.possibleDuplicateOfDocumentId,
+            duplicateStatus: d.duplicateStatus,
             uploadedAt: d.uploadedAt,
             declaredTitle: d.declaredTitle,
             docTitle: d.docTitle || undefined,
+            docText: d.docText || undefined,
+            suggestedTitle: d.suggestedTitle || undefined,
+            firstPageText: d.firstPageText || undefined,
+            titleSource: d.titleSource,
             titleMatch: d.titleMatch,
+            titleConfirmed: d.titleConfirmed,
+            titleCheckStatus: d.titleCheckStatus,
+            titleCheckMessage: d.titleCheckMessage,
             aiStatus: d.aiCheck?.eligible === true
               ? 'eligible'
               : d.aiCheck?.eligible === false

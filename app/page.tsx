@@ -1,6 +1,6 @@
 import { Suspense } from 'react';
 import Link from 'next/link';
-import { ArrowRight, Building2, CalendarDays, CheckCircle2, FileText } from 'lucide-react';
+import { ArrowRight, Building2, CalendarDays, CheckCircle2, CircleDollarSign, FileText } from 'lucide-react';
 import { LoginCard, LoginCardFallback } from '@/components/auth/login-card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -48,6 +48,12 @@ export default function HomePage() {
               </Button>
               <Button asChild variant="outline">
                 <Link href="/auth/sign-up">Creează cont</Link>
+              </Button>
+              <Button asChild variant="secondary">
+                <Link href="/financiar">
+                  <CircleDollarSign className="h-4 w-4" />
+                  Dashboard financiar
+                </Link>
               </Button>
             </div>
           </div>

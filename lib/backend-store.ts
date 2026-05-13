@@ -18,6 +18,8 @@ export const concurrentProjectsService = awsStore.concurrentProjectsService;
 export const reportStatusService = awsStore.reportStatusService;
 export const grupTintaService = awsStore.grupTintaService;
 export const auditLogsService = awsStore.auditLogsService;
+export const documentsService = awsStore.documentsService;
+export const sharedDeliverablesService = awsStore.sharedDeliverablesService;
 
 export const activeBackendProvider = 'aws';
 

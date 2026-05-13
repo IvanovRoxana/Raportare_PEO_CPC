@@ -1,22 +1,49 @@
 'use client';
 
+import { detectSuggestedTitleFromText } from './title-suggestion';
+
+type PdfTextItem = {
+  str: string;
+  transform?: number[];
+};
+
+function pdfTextItemsToLines(items: PdfTextItem[]) {
+  const rows = new Map<number, string[]>();
+
+  items.forEach((item) => {
+    const y = Math.round(item.transform?.[5] ?? 0);
+    const value = (item.str || '').trim();
+    if (!value) return;
+    rows.set(y, [...(rows.get(y) ?? []), value]);
+  });
+
+  return [...rows.entries()]
+    .sort(([a], [b]) => b - a)
+    .map(([, values]) => values.join(' ').replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .join('\n');
+}
+
 // Extract title from DOCX file (first line or heading)
 export async function extractDocxTitle(file: File): Promise<string | null> {
+  try {
+    const text = await extractDocxFirstPageText(file);
+    return detectSuggestedTitleFromText(text);
+  } catch (error) {
+    console.error('Error extracting DOCX title:', error);
+    return null;
+  }
+}
+
+// Extract the technical first page / beginning from DOCX.
+export async function extractDocxFirstPageText(file: File): Promise<string | null> {
   try {
     const mammoth = await import('mammoth');
     const arrayBuffer = await file.arrayBuffer();
     const result = await mammoth.extractRawText({ arrayBuffer });
-    const text = result.value;
-    
-    // Get first non-empty line as title
-    const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-    if (lines.length > 0) {
-      // Take first line, max 200 chars
-      return lines[0].substring(0, 200);
-    }
-    return null;
+    return result.value.slice(0, 5000);
   } catch (error) {
-    console.error('Error extracting DOCX title:', error);
+    console.error('Error extracting DOCX first page text:', error);
     return null;
   }
 }
@@ -37,37 +64,27 @@ export async function extractDocxText(file: File): Promise<string | null> {
 // Extract title from PDF file
 export async function extractPdfTitle(file: File): Promise<string | null> {
   try {
-    const pdfjsLib = await import('pdfjs-dist');
-    
-    // Set worker path
-    pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
-    
-    const arrayBuffer = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-    
-    // Try to get title from metadata
-    const metadata = await pdf.getMetadata();
-    if (metadata.info && (metadata.info as Record<string, unknown>).Title) {
-      return String((metadata.info as Record<string, unknown>).Title);
-    }
-    
-    // Otherwise get first page text
-    const page = await pdf.getPage(1);
-    const textContent = await page.getTextContent();
-    const text = textContent.items
-      .map((item: unknown) => (item as { str: string }).str)
-      .join(' ')
-      .trim();
-    
-    // Get first line
-    const firstLine = text.split('\n')[0]?.trim();
-    if (firstLine && firstLine.length > 5) {
-      return firstLine.substring(0, 200);
-    }
-    
-    return null;
+    const text = await extractPdfFirstPageText(file);
+    return detectSuggestedTitleFromText(text);
   } catch (error) {
     console.error('Error extracting PDF title:', error);
+    return null;
+  }
+}
+
+// Extract text from the first PDF page only.
+export async function extractPdfFirstPageText(file: File): Promise<string | null> {
+  try {
+    const pdfjsLib = await import('pdfjs-dist');
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    const page = await pdf.getPage(1);
+    const textContent = await page.getTextContent();
+    return pdfTextItemsToLines(textContent.items as PdfTextItem[]);
+  } catch (error) {
+    console.error('Error extracting PDF first page text:', error);
     return null;
   }
 }
@@ -85,9 +102,7 @@ export async function extractPdfText(file: File): Promise<string | null> {
     for (let i = 1; i <= pdf.numPages; i++) {
       const page = await pdf.getPage(i);
       const textContent = await page.getTextContent();
-      const pageText = textContent.items
-        .map((item: unknown) => (item as { str: string }).str)
-        .join(' ');
+      const pageText = pdfTextItemsToLines(textContent.items as PdfTextItem[]);
       fullText += pageText + '\n';
     }
     

@@ -62,7 +62,13 @@ export type AuditActionType =
   | 'expert_deactivated'
   | 'expert_reactivated'
   | 'expert_role_updated'
-  | 'expert_norm_type_updated';
+  | 'expert_norm_type_updated'
+  | 'document_uploaded'
+  | 'document_metadata_saved'
+  | 'document_duplicate_detected'
+  | 'shared_deliverable_created'
+  | 'shared_deliverable_registered'
+  | 'shared_deliverable_status_changed';
 
 export interface AuditLog {
   id: string;
@@ -139,13 +145,88 @@ export interface Deliverable {
   fileType: string;
   fileSize: number;
   filePath?: string;
+  documentId?: string;
+  s3Bucket?: string;
+  s3Key?: string;
+  originalFileName?: string;
+  fileHash?: string;
+  firstPageTextHash?: string;
+  contentFingerprint?: string;
+  uploadedByExpertId?: string;
+  uploadedByExpertName?: string;
+  projectId?: string;
+  projectName?: string;
+  sourceActivityId?: string;
+  activityDate?: string;
+  saCode?: string;
+  deliverableType?: string;
+  isCommonDeliverable?: boolean;
+  sharedWithExpertIds?: string[];
+  possibleDuplicateOfDocumentId?: string;
+  duplicateStatus?: string;
   uploadedAt?: string;
   declaredTitle?: string;
   docTitle?: string;
+  docText?: string;
+  suggestedTitle?: string;
+  firstPageText?: string;
+  titleSource?: 'auto_detected' | 'manual' | 'edited_by_expert' | 'admin_override' | string;
   titleMatch?: boolean | null;
+  titleConfirmed?: boolean;
+  titleCheckStatus?: 'matched' | 'mismatch' | 'extraction_failed' | 'admin_overridden' | string;
+  titleCheckMessage?: string;
   aiStatus?: string;
   aiReason?: string;
   fileData?: string; // Base64 encoded for localStorage fallback
+}
+
+export interface DocumentMetadata {
+  id: string;
+  s3Bucket?: string;
+  s3Key: string;
+  originalFileName: string;
+  mimeType: string;
+  fileSize: number;
+  fileHash?: string;
+  firstPageTextHash?: string;
+  contentFingerprint?: string;
+  uploadedByExpertId: string;
+  uploadedByExpertName?: string;
+  uploadDate: string;
+  projectId?: string;
+  projectName?: string;
+  sourceActivityId?: string;
+  activityDate?: string;
+  saCode?: string;
+  deliverableType?: string;
+  declaredTitle?: string;
+  suggestedTitle?: string;
+  extractedTitle?: string;
+  extractedTitleNormalized?: string;
+  titleMatch?: boolean | null;
+  titleCheckStatus?: string;
+  isCommonDeliverable?: boolean;
+  possibleDuplicateOfDocumentId?: string;
+  duplicateStatus?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface SharedDeliverable {
+  id: string;
+  documentId: string;
+  sourceExpertId: string;
+  targetExpertId: string;
+  projectId?: string;
+  sourceActivityId?: string;
+  targetActivityId?: string;
+  status: 'pending_registration' | 'registered' | 'ignored_by_admin' | 'removed' | 'confirmed_not_relevant' | string;
+  notifiedAt?: string;
+  registeredAt?: string;
+  ignoredAt?: string;
+  removedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface GrupTintaEntry {

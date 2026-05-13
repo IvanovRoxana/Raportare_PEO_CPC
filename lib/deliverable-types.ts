@@ -1,5 +1,8 @@
 'use client';
 
+import type { TitleCheckStatus, TitleSource } from './title-suggestion';
+import { titleExistsInFirstPage } from './title-suggestion';
+
 // All deliverable types available in the system
 export const ALL_DELIVERABLE_TYPES = [
   'Studiu / Analiză / Raport de cercetare',
@@ -93,23 +96,7 @@ export function extractEventDate(text: string): string | null {
 
 // Helper to check if title is contained in document
 export function titleContains(docTitle: string, declaredTitle: string): boolean {
-  if (!docTitle || !declaredTitle) return false;
-  
-  const normalize = (s: string) => s.toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  
-  const docNorm = normalize(docTitle);
-  const declNorm = normalize(declaredTitle);
-  
-  // Check if declared title words appear in doc title
-  const declWords = declNorm.split(' ').filter(w => w.length > 3);
-  const matchCount = declWords.filter(w => docNorm.includes(w)).length;
-  
-  return matchCount >= Math.ceil(declWords.length * 0.6);
+  return titleExistsInFirstPage(docTitle, declaredTitle);
 }
 
 // Deliverable slot types for structured organization
@@ -132,14 +119,37 @@ export interface DeliverableSlot {
   fileSize?: number;
   filePath?: string;
   fileData?: string; // Base64
+  documentId?: string;
+  s3Bucket?: string;
+  s3Key?: string;
+  fileHash?: string;
+  firstPageTextHash?: string;
+  contentFingerprint?: string;
+  uploadedByExpertId?: string;
+  uploadedByExpertName?: string;
+  projectId?: string;
+  projectName?: string;
+  sourceActivityId?: string;
+  activityDate?: string;
+  saCode?: string;
+  deliverableType?: string;
+  isCommonDeliverable?: boolean;
+  sharedWithExpertIds?: string[];
+  possibleDuplicateOfDocumentId?: string;
+  duplicateStatus?: string;
   uploadedAt?: string;
   uploaded: boolean;
   isPhoto: boolean;
   docTitle: string | null;
   docText: string | null;
   declaredTitle: string;
+  suggestedTitle?: string | null;
+  firstPageText?: string | null;
+  titleSource?: TitleSource;
   titleMatch: boolean | null;
   titleConfirmed: boolean;
+  titleCheckStatus?: TitleCheckStatus;
+  titleCheckMessage?: string;
   stadiu: string;
   aiCheck: {
     eligible: boolean | null;
@@ -163,14 +173,37 @@ export function createDeliverableSlot(slotType: DeliverableSlotType, name: strin
     fileSize: 0,
     filePath: undefined,
     fileData: undefined,
+    documentId: undefined,
+    s3Bucket: undefined,
+    s3Key: undefined,
+    fileHash: undefined,
+    firstPageTextHash: undefined,
+    contentFingerprint: undefined,
+    uploadedByExpertId: undefined,
+    uploadedByExpertName: undefined,
+    projectId: undefined,
+    projectName: undefined,
+    sourceActivityId: undefined,
+    activityDate: undefined,
+    saCode: undefined,
+    deliverableType: undefined,
+    isCommonDeliverable: false,
+    sharedWithExpertIds: [],
+    possibleDuplicateOfDocumentId: undefined,
+    duplicateStatus: undefined,
     uploadedAt: undefined,
     uploaded: false,
     isPhoto: false,
     docTitle: null,
     docText: null,
     declaredTitle: '',
+    suggestedTitle: null,
+    firstPageText: null,
+    titleSource: undefined,
     titleMatch: null,
     titleConfirmed: false,
+    titleCheckStatus: undefined,
+    titleCheckMessage: undefined,
     stadiu: '',
     aiCheck: null,
     common: false,

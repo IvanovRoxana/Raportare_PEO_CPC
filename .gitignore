@@ -17,6 +17,10 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+server.*.log
+
+# Amplify local deploy artifacts
+.amplify/
 
 # system files
 .DS_Store

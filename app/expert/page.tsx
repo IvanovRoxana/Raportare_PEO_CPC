@@ -17,9 +17,10 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { UserMenu } from '@/components/user-menu';
-import { useActivitiesByMonth, useExperts } from '@/hooks/use-backend-data';
+import { useActivitiesByMonth, useDocuments, useExperts, useSharedDeliverables } from '@/hooks/use-backend-data';
 import { getSignedInUser } from '@/lib/aws/auth';
 import { getMonthName } from '@/lib/backend-store';
+import { buildPendingSharedDeliverableAlerts } from '@/lib/document-sharing';
 import type { Activity } from '@/lib/types';
 import { getRomanianHolidays } from '@/lib/working-hours';
 import { cn } from '@/lib/utils';
@@ -188,6 +189,7 @@ export default function ExpertHomeDashboard() {
 
   const { experts } = useExperts();
   const { activities: monthActivities } = useActivitiesByMonth(currentMonth, currentYear);
+  const { documents } = useDocuments();
 
   useEffect(() => {
     getSignedInUser().then((user) => {
@@ -202,6 +204,15 @@ export default function ExpertHomeDashboard() {
   }, [experts, signedInEmail]);
 
   const expertName = currentExpert?.name ?? signedInName;
+  const { sharedDeliverables } = useSharedDeliverables(currentExpert?.id);
+  const pendingSharedAlerts = useMemo(() => {
+    if (!currentExpert) return [];
+    return buildPendingSharedDeliverableAlerts({
+      expert: currentExpert,
+      documents,
+      sharedDeliverables,
+    });
+  }, [currentExpert, documents, sharedDeliverables]);
 
   const peoActivities = useMemo(() => {
     if (!currentExpert) return [];
@@ -239,6 +250,34 @@ export default function ExpertHomeDashboard() {
       </header>
 
       <main className="mx-auto max-w-screen-2xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+        {pendingSharedAlerts.length > 0 && (
+          <section className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-950">
+            <div className="flex items-center gap-2 font-semibold">
+              <AlertTriangle className="h-4 w-4" />
+              Livrabile comune neinregistrate
+            </div>
+            <div className="mt-3 space-y-2">
+              {pendingSharedAlerts.map((alert) => (
+                <div key={alert.relationId} className="rounded-md border border-amber-200 bg-white/70 p-3 text-sm">
+                  <div className="font-medium">{alert.title || alert.fileName}</div>
+                  <div className="mt-1 text-xs text-amber-800">
+                    {alert.message}
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                    {alert.projectId && <Badge variant="outline">{alert.projectId}</Badge>}
+                    {alert.saCode && <Badge variant="outline">{alert.saCode}</Badge>}
+                    {alert.activityDate && <Badge variant="outline">{alert.activityDate}</Badge>}
+                    <Badge variant="secondary">{alert.status}</Badge>
+                  </div>
+                  <Button asChild size="sm" className="mt-3 h-8 rounded-md">
+                    <Link href="/expert/peo">Asociaza in pontajul meu</Link>
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
         <section className="grid gap-3 rounded-lg border bg-card p-3 md:grid-cols-4">
           {WORK_TABS.map((tab) => {
             const Icon = tab.icon;

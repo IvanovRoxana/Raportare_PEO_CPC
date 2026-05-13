@@ -1,13 +1,14 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useRef, useState } from 'react';
+import { AlertTriangle, Check, FileText, Image, Loader2, Sparkles, Upload, X } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
-import { Upload, X, FileText, Image, Check, AlertTriangle, Loader2, Sparkles } from 'lucide-react';
-import { ALL_DELIVERABLE_TYPES, DOCUMENT_STADIU_OPTIONS, type DeliverableSlot, titleContains } from '@/lib/deliverable-types';
-import { extractDocxTitle, extractDocxText, extractPdfTitle, isImageFile } from '@/lib/document-utils';
+import { ALL_DELIVERABLE_TYPES, DOCUMENT_STADIU_OPTIONS, type DeliverableSlot } from '@/lib/deliverable-types';
+import { extractDocxFirstPageText, extractDocxText, extractPdfFirstPageText, isImageFile } from '@/lib/document-utils';
+import { applyAutomaticTitleSuggestion, detectSuggestedTitleFromText, validateDeclaredTitleOnFirstPage } from '@/lib/title-suggestion';
 
 interface DeliverableItemProps {
   deliverable: DeliverableSlot;
@@ -36,7 +37,6 @@ export function DeliverableItem({
   hint,
   deliverableOptions,
 }: DeliverableItemProps) {
-  // Use provided options or fall back to default
   const typeOptions = deliverableOptions || ALL_DELIVERABLE_TYPES;
   const fileRef = useRef<HTMLInputElement>(null);
   const [aiLoading, setAiLoading] = useState(false);
@@ -60,17 +60,29 @@ export function DeliverableItem({
 
     let docTitle: string | null = null;
     let docText: string | null = null;
+    let firstPageText: string | null = null;
 
     if (!isPhoto && isDocx) {
-      docTitle = await extractDocxTitle(file);
+      firstPageText = await extractDocxFirstPageText(file);
+      docTitle = detectSuggestedTitleFromText(firstPageText);
       docText = await extractDocxText(file);
     } else if (!isPhoto && isPdf) {
-      docTitle = await extractPdfTitle(file);
+      firstPageText = await extractPdfFirstPageText(file);
+      docTitle = detectSuggestedTitleFromText(firstPageText);
+      docText = firstPageText;
     }
 
-    const existingTitle = deliverable.declaredTitle || '';
-    const suggestedTitle = docTitle && !existingTitle ? docTitle : existingTitle;
-    const tm = isPhoto ? null : (docTitle && suggestedTitle ? titleContains(docTitle, suggestedTitle) : null);
+    const suggestion = applyAutomaticTitleSuggestion({
+      currentDeclaredTitle: deliverable.declaredTitle,
+      suggestedTitle: docTitle,
+    });
+    const validation = isPhoto || !suggestion.declaredTitle
+      ? null
+      : validateDeclaredTitleOnFirstPage({
+          firstPageText,
+          declaredTitle: suggestion.declaredTitle,
+          titleSource: suggestion.titleSource,
+        });
     const fileData = await readFileAsDataUrl(file);
 
     onUpdate({
@@ -84,16 +96,21 @@ export function DeliverableItem({
       isPhoto,
       docTitle,
       docText,
-      titleMatch: tm,
+      firstPageText,
+      suggestedTitle: docTitle,
+      titleSource: suggestion.titleSource,
+      titleMatch: validation?.titleMatch ?? null,
+      titleCheckStatus: validation?.titleCheckStatus,
+      titleCheckMessage: validation?.titleCheckMessage,
       aiCheck: null,
       titleConfirmed: false,
-      declaredTitle: suggestedTitle,
+      declaredTitle: suggestion.declaredTitle,
     });
   };
 
   const handleAiCheck = async () => {
     if (!apiKey) {
-      alert('Configurează cheia API Claude (butonul Setări din header)');
+      alert('Configureaza cheia API Claude din setari.');
       return;
     }
 
@@ -128,13 +145,57 @@ export function DeliverableItem({
     }
   };
 
+  const validateTitle = (title: string, source: DeliverableSlot['titleSource']) =>
+    validateDeclaredTitleOnFirstPage({
+      firstPageText: deliverable.firstPageText || deliverable.docText || deliverable.docTitle,
+      declaredTitle: title,
+      titleSource: source,
+    });
+
   const handleTitleChange = (title: string) => {
-    const tm = deliverable.docTitle ? titleContains(deliverable.docTitle, title) : null;
-    onUpdate({ declaredTitle: title, titleMatch: tm });
+    const validation = validateTitle(title, 'edited_by_expert');
+    onUpdate({
+      declaredTitle: title,
+      titleSource: 'edited_by_expert',
+      titleMatch: validation.titleMatch,
+      titleCheckStatus: validation.titleCheckStatus,
+      titleCheckMessage: validation.titleCheckMessage,
+      titleConfirmed: false,
+    });
+  };
+
+  const handleUseSuggestedTitle = () => {
+    if (!deliverable.suggestedTitle) return;
+    const validation = validateTitle(deliverable.suggestedTitle, 'auto_detected');
+    onUpdate({
+      declaredTitle: deliverable.suggestedTitle,
+      titleSource: 'auto_detected',
+      titleMatch: validation.titleMatch,
+      titleCheckStatus: validation.titleCheckStatus,
+      titleCheckMessage: validation.titleCheckMessage,
+      titleConfirmed: false,
+    });
   };
 
   const handleConfirmTitle = () => {
-    onUpdate({ titleConfirmed: true });
+    const validation = validateTitle(deliverable.declaredTitle, deliverable.titleSource);
+    if (validation.titleCheckStatus === 'mismatch' || validation.titleCheckStatus === 'extraction_failed') {
+      onUpdate({
+        titleMatch: validation.titleMatch,
+        titleCheckStatus: validation.titleCheckStatus,
+        titleCheckMessage: validation.titleCheckMessage,
+        titleConfirmed: false,
+      });
+      alert(validation.titleCheckMessage);
+      return;
+    }
+
+    onUpdate({
+      titleConfirmed: true,
+      titleMatch: validation.titleMatch,
+      titleCheckStatus: validation.titleCheckStatus,
+      titleCheckMessage: validation.titleCheckMessage,
+    });
   };
 
   const handleRemoveFile = () => {
@@ -148,46 +209,47 @@ export function DeliverableItem({
       fileData: undefined,
       docTitle: null,
       docText: null,
+      firstPageText: null,
+      suggestedTitle: null,
+      titleSource: undefined,
       titleMatch: null,
+      titleCheckStatus: undefined,
+      titleCheckMessage: undefined,
       aiCheck: null,
       titleConfirmed: false,
     });
     if (fileRef.current) fileRef.current.value = '';
   };
 
-  // Step completion status
   const step1ok = deliverable.uploaded;
   const step2ok = deliverable.isPhoto || (deliverable.uploaded && deliverable.titleConfirmed);
   const step3ok = deliverable.isPhoto || (deliverable.uploaded && !!deliverable.stadiu);
   const step4ok = deliverable.isPhoto || (deliverable.uploaded && !!deliverable.aiCheck);
   const allOk = step1ok && step2ok && step3ok && step4ok;
 
-  // Border and background colors based on status
-  const borderColor = !step1ok 
+  const borderColor = !step1ok
     ? (required ? 'border-red-300' : 'border-slate-300')
-    : !allOk 
-    ? 'border-amber-400' 
-    : 'border-green-400';
-  
-  const bgColor = !step1ok 
+    : !allOk
+      ? 'border-amber-400'
+      : 'border-green-400';
+
+  const bgColor = !step1ok
     ? (required ? 'bg-red-50' : 'bg-white')
-    : !allOk 
-    ? 'bg-amber-50' 
-    : 'bg-green-50';
+    : !allOk
+      ? 'bg-amber-50'
+      : 'bg-green-50';
 
   return (
     <div className={`border rounded-lg p-3 ${borderColor} ${bgColor} flex flex-col gap-2`}>
-      {/* Progress Steps */}
       {showSteps && !deliverable.isPhoto && (
         <div className="flex gap-3 flex-wrap p-2 rounded-md bg-white/50 mb-1">
-          <StepBadge ok={step1ok} n={1} label="Fișier încărcat" />
+          <StepBadge ok={step1ok} n={1} label="Fisier incarcat" />
           <StepBadge ok={step2ok} n={2} label="Titlu confirmat" />
           <StepBadge ok={step3ok} n={3} label="Stadiu selectat" />
-          <StepBadge ok={step4ok} n={4} label="Eligibilitate verificată" />
+          <StepBadge ok={step4ok} n={4} label="Eligibilitate verificata" />
         </div>
       )}
 
-      {/* Type selector + Remove button */}
       <div className="flex gap-2 items-center">
         {label ? (
           <div className="flex-1">
@@ -200,21 +262,21 @@ export function DeliverableItem({
         ) : (
           <Select
             value={deliverable.type}
-            onValueChange={(value) => onUpdate({ type: value, aiCheck: null })}
+            onValueChange={(value: string) => onUpdate({ type: value, aiCheck: null })}
           >
             <SelectTrigger className="flex-1 text-xs">
-              <SelectValue placeholder="— Tip livrabil —" />
+              <SelectValue placeholder="Tip livrabil" />
             </SelectTrigger>
             <SelectContent>
-            {typeOptions.map((type) => (
-              <SelectItem key={type} value={type} className="text-xs">
-                {type}
-              </SelectItem>
-            ))}
+              {typeOptions.map((type) => (
+                <SelectItem key={type} value={type} className="text-xs">
+                  {type}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         )}
-        
+
         {onRemove && (
           <Button
             variant="outline"
@@ -227,7 +289,6 @@ export function DeliverableItem({
         )}
       </div>
 
-      {/* File Upload */}
       <div>
         <input
           type="file"
@@ -236,7 +297,7 @@ export function DeliverableItem({
           onChange={handleFile}
           className="hidden"
         />
-        
+
         {!deliverable.uploaded ? (
           <Button
             variant="outline"
@@ -245,7 +306,7 @@ export function DeliverableItem({
             className="w-full text-xs border-dashed"
           >
             <Upload className="h-3 w-3 mr-2" />
-            Alege fișier
+            Alege fisier
           </Button>
         ) : (
           <div className="flex gap-2 items-center p-2 rounded-md bg-white/60 border border-slate-200/50">
@@ -269,52 +330,80 @@ export function DeliverableItem({
         )}
       </div>
 
-      {/* Title Input (for documents, not photos) */}
       {!deliverable.isPhoto && (
-        <div className="relative">
-          <Input
-            value={deliverable.declaredTitle}
-            onChange={(e) => handleTitleChange(e.target.value)}
-            placeholder={deliverable.uploaded 
-              ? "Titlul extras automat — poți modifica..." 
-              : "Titlul documentului (se completează automat după upload)..."
-            }
-            className="text-xs pr-16"
-          />
-          {deliverable.docTitle && deliverable.declaredTitle && (
-            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-green-700 font-medium pointer-events-none">
-              ↑ extras
-            </span>
+        <div className="space-y-1.5">
+          {deliverable.suggestedTitle && (
+            <div className="rounded border border-blue-200 bg-blue-50 p-2 text-[10px] text-blue-900">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <div className="font-medium">Titlu sugerat automat</div>
+                  <div className="mt-0.5">{deliverable.suggestedTitle}</div>
+                </div>
+                {deliverable.suggestedTitle !== deliverable.declaredTitle && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleUseSuggestedTitle}
+                    className="h-7 shrink-0 border-blue-300 px-2 text-[10px] text-blue-800 hover:bg-blue-100"
+                  >
+                    Foloseste titlul sugerat
+                  </Button>
+                )}
+              </div>
+            </div>
           )}
+
+          <div className="relative">
+            <Input
+              value={deliverable.declaredTitle}
+              onChange={(event) => handleTitleChange(event.target.value)}
+              placeholder={deliverable.uploaded ? 'Titlul livrabilului - se poate edita manual' : 'Titlul documentului se completeaza dupa upload'}
+              className="text-xs pr-24"
+            />
+            {deliverable.titleSource && (
+              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-600 font-medium pointer-events-none">
+                {deliverable.titleSource === 'auto_detected'
+                  ? 'detectat'
+                  : deliverable.titleSource === 'edited_by_expert'
+                    ? 'editat'
+                    : deliverable.titleSource === 'admin_override'
+                      ? 'admin'
+                      : 'manual'}
+              </span>
+            )}
+          </div>
         </div>
       )}
 
-      {/* Title Match Status */}
-      {deliverable.uploaded && !deliverable.isPhoto && deliverable.declaredTitle && deliverable.docTitle && (
+      {deliverable.uploaded && !deliverable.isPhoto && deliverable.declaredTitle && (
         <div className={`text-[10px] p-1.5 rounded ${
-          deliverable.titleMatch === true 
-            ? 'bg-green-100 text-green-700' 
-            : deliverable.titleMatch === false 
-            ? 'bg-amber-100 text-amber-700' 
-            : 'bg-slate-100 text-slate-600'
+          deliverable.titleMatch === true
+            ? 'bg-green-100 text-green-700'
+            : deliverable.titleMatch === false
+              ? 'bg-amber-100 text-amber-700'
+              : 'bg-slate-100 text-slate-600'
         }`}>
-          {deliverable.titleMatch === true 
-            ? '✓ Titlul găsit pe prima pagină' 
-            : `⚠ Titlul NU găsit: "${deliverable.docTitle?.slice(0, 60)}"`
-          }
+          {deliverable.titleMatch === true
+            ? (deliverable.titleCheckMessage || 'Titlul se regaseste in prima pagina.')
+            : (deliverable.titleCheckMessage || 'Titlul nu a fost gasit in prima pagina.')}
         </div>
       )}
 
-      {/* Confirm Title Button */}
       {deliverable.uploaded && !deliverable.isPhoto && deliverable.declaredTitle && !deliverable.titleConfirmed && (
         <Button
           variant="outline"
           size="sm"
           onClick={handleConfirmTitle}
-          className="text-xs border-green-400 text-green-700 hover:bg-green-50"
+          disabled={deliverable.titleCheckStatus === 'mismatch' || deliverable.titleCheckStatus === 'extraction_failed'}
+          className="text-xs border-green-400 text-green-700 hover:bg-green-50 disabled:border-amber-300 disabled:text-amber-700"
         >
-          <Check className="h-3 w-3 mr-1" />
-          Confirmă titlul
+          {deliverable.titleCheckStatus === 'mismatch' || deliverable.titleCheckStatus === 'extraction_failed' ? (
+            <AlertTriangle className="h-3 w-3 mr-1" />
+          ) : (
+            <Check className="h-3 w-3 mr-1" />
+          )}
+          Confirma titlul
         </Button>
       )}
 
@@ -325,14 +414,13 @@ export function DeliverableItem({
         </Badge>
       )}
 
-      {/* Stadiu Selector */}
       {deliverable.uploaded && !deliverable.isPhoto && (
         <Select
           value={deliverable.stadiu}
-          onValueChange={(value) => onUpdate({ stadiu: value })}
+          onValueChange={(value: string) => onUpdate({ stadiu: value })}
         >
           <SelectTrigger className="text-xs">
-            <SelectValue placeholder="— Stadiu document —" />
+            <SelectValue placeholder="Stadiu document" />
           </SelectTrigger>
           <SelectContent>
             {DOCUMENT_STADIU_OPTIONS.map((opt) => (
@@ -344,7 +432,6 @@ export function DeliverableItem({
         </Select>
       )}
 
-      {/* AI Check Button */}
       {deliverable.uploaded && apiKey && (
         <div className="flex gap-2 items-center">
           <Button
@@ -359,23 +446,22 @@ export function DeliverableItem({
             ) : (
               <Sparkles className="h-3 w-3 mr-1" />
             )}
-            {aiLoading ? 'Verific...' : 'Verifică eligibilitate AI'}
+            {aiLoading ? 'Verific...' : 'Verifica eligibilitate AI'}
           </Button>
-          
+
           {deliverable.aiCheck && (
             <div className={`flex-1 text-[10px] p-1.5 rounded ${
-              deliverable.aiCheck.eligible === true 
-                ? 'bg-green-100 text-green-700' 
-                : deliverable.aiCheck.eligible === false 
-                ? 'bg-red-100 text-red-700' 
-                : 'bg-slate-100 text-slate-600'
+              deliverable.aiCheck.eligible === true
+                ? 'bg-green-100 text-green-700'
+                : deliverable.aiCheck.eligible === false
+                  ? 'bg-red-100 text-red-700'
+                  : 'bg-slate-100 text-slate-600'
             }`}>
-              {deliverable.aiCheck.eligible === true 
-                ? '✓ Eligibil' 
-                : deliverable.aiCheck.eligible === false 
-                ? '✗ Neeligibil' 
-                : '?'
-              } — {deliverable.aiCheck.reason}
+              {deliverable.aiCheck.eligible === true
+                ? 'Eligibil'
+                : deliverable.aiCheck.eligible === false
+                  ? 'Neeligibil'
+                  : '?'} - {deliverable.aiCheck.reason}
             </div>
           )}
         </div>
@@ -390,7 +476,7 @@ function StepBadge({ ok, n, label }: { ok: boolean; n: number; label: string }) 
       <div className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-semibold text-white ${
         ok ? 'bg-green-600' : 'bg-amber-500'
       }`}>
-        {ok ? '✓' : n}
+        {ok ? <Check className="h-3 w-3" /> : n}
       </div>
       {label}
     </div>

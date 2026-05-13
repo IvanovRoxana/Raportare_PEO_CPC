@@ -1,0 +1,116 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {
+  applyAutomaticTitleSuggestion,
+  detectSuggestedTitleFromText,
+  titleExistsInFirstPage,
+  validateDeclaredTitleOnFirstPage,
+} from '../lib/title-suggestion.ts';
+
+test('PDF upload text extracts the first relevant title and skips generic headers', () => {
+  const firstPage = [
+    'PEO 2021-2027',
+    'Program Educatie si Ocupare',
+    'Cod SMIS 302151',
+    'Consolidarea capacitatii Concordia pentru dialog social',
+    'Analiza cadrului de politici publice',
+    'Pagina 1',
+  ].join('\n');
+
+  assert.equal(
+    detectSuggestedTitleFromText(firstPage),
+    'Consolidarea capacitatii Concordia pentru dialog social Analiza cadrului de politici publice',
+  );
+});
+
+test('DOCX upload text extracts the first relevant title from the document beginning', () => {
+  const firstPage = [
+    'Confederatia Patronala Concordia',
+    'Cod proiect 302151',
+    'Metodologie pentru recrutarea grupului tinta',
+    'Versiunea de lucru',
+  ].join('\n');
+
+  assert.equal(
+    detectSuggestedTitleFromText(firstPage),
+    'Metodologie pentru recrutarea grupului tinta Versiunea de lucru',
+  );
+});
+
+test('auto fills declaredTitle when it is empty', () => {
+  assert.deepEqual(
+    applyAutomaticTitleSuggestion({
+      currentDeclaredTitle: '',
+      suggestedTitle: 'Ghid de lucru pentru experti',
+    }),
+    {
+      declaredTitle: 'Ghid de lucru pentru experti',
+      titleSource: 'auto_detected',
+      autoFilled: true,
+    },
+  );
+});
+
+test('does not overwrite an existing declaredTitle', () => {
+  assert.deepEqual(
+    applyAutomaticTitleSuggestion({
+      currentDeclaredTitle: 'Titlu introdus manual',
+      suggestedTitle: 'Titlu detectat automat',
+    }),
+    {
+      declaredTitle: 'Titlu introdus manual',
+      titleSource: 'manual',
+      autoFilled: false,
+    },
+  );
+});
+
+test('accepts suggested title and validates when it exists on the first page', () => {
+  const firstPage = 'Ghid de lucru pentru experti\nCapitolul 1';
+  assert.equal(titleExistsInFirstPage(firstPage, 'Ghid de lucru pentru experti'), true);
+
+  assert.deepEqual(validateDeclaredTitleOnFirstPage({
+    firstPageText: firstPage,
+    declaredTitle: 'Ghid de lucru pentru experti',
+    titleSource: 'auto_detected',
+  }), {
+    titleMatch: true,
+    titleCheckStatus: 'matched',
+    titleCheckMessage: 'Titlul se regaseste in prima pagina.',
+  });
+});
+
+test('blocks validation when edited title is not present on the first page', () => {
+  const result = validateDeclaredTitleOnFirstPage({
+    firstPageText: 'Raport privind activitatile de informare',
+    declaredTitle: 'Alt titlu ales de expert',
+    titleSource: 'edited_by_expert',
+  });
+
+  assert.equal(result.titleMatch, false);
+  assert.equal(result.titleCheckStatus, 'mismatch');
+});
+
+test('ignores very short lines, page numbers, dates and generic labels', () => {
+  const firstPage = [
+    'A',
+    'Pagina 1',
+    '12.03.2026',
+    'Raport',
+    'Plan de interventie pentru dialog social',
+  ].join('\n');
+
+  assert.equal(detectSuggestedTitleFromText(firstPage), 'Plan de interventie pentru dialog social');
+});
+
+test('keeps source admin_override matched for administrator exception', () => {
+  assert.deepEqual(validateDeclaredTitleOnFirstPage({
+    firstPageText: null,
+    declaredTitle: 'Titlu administrativ',
+    titleSource: 'admin_override',
+  }), {
+    titleMatch: true,
+    titleCheckStatus: 'admin_overridden',
+    titleCheckMessage: 'Titlul a fost suprascris de administrator cu justificare.',
+  });
+});
