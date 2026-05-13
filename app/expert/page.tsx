@@ -277,7 +277,7 @@ export default function ExpertHomeDashboard() {
         <div className="container mx-auto flex flex-wrap items-center justify-between gap-4 px-4 py-5">
           <div>
             <p className="text-sm font-medium text-primary">Dashboard expert</p>
-            <h1 className="text-2xl font-bold text-foreground">Bine ai venit - {expertName}!</h1>
+            <h1 className="text-2xl font-bold text-foreground">Bine ai venit - {expertName} -!</h1>
           </div>
           <UserMenu />
         </div>
@@ -285,6 +285,12 @@ export default function ExpertHomeDashboard() {
 
       <main className="container mx-auto space-y-6 px-4 py-6">
         <section className="rounded-lg border bg-card p-4">
+          <div className="mb-4">
+            <h2 className="text-lg font-semibold text-foreground">Ferestre de lucru</h2>
+            <p className="text-sm text-muted-foreground">
+              Alege zona în care vrei să lucrezi. Raportarea PEO este activă, iar celelalte ferestre vor fi conectate ulterior.
+            </p>
+          </div>
           <Tabs defaultValue="raportare" className="w-full">
             <TabsList className="grid h-auto w-full grid-cols-1 gap-2 bg-muted/50 p-1 md:grid-cols-4">
               {dashboardTabs.map((tab) => {
@@ -301,9 +307,9 @@ export default function ExpertHomeDashboard() {
               const isAvailable = tab.value === 'raportare';
               return (
                 <TabsContent key={tab.value} value={tab.value} className="mt-4">
-                  <div className="flex flex-wrap items-center justify-between gap-4 rounded-md border bg-background p-4">
-                    <div>
-                      <h2 className="text-lg font-semibold">{tab.label}</h2>
+              <div className="flex flex-wrap items-center justify-between gap-4 rounded-md border bg-background p-4">
+                <div>
+                  <h2 className="text-lg font-semibold">{tab.label}</h2>
                       <p className="text-sm text-muted-foreground">{tab.description}</p>
                     </div>
                     {isAvailable ? (
@@ -323,15 +329,15 @@ export default function ExpertHomeDashboard() {
           </Tabs>
         </section>
 
-        <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
           <DashboardCalendar month={currentMonth} year={currentYear} projects={projects} />
 
           <Card className="h-fit">
             <CardContent className="p-4">
               <Tabs defaultValue="proiecte" orientation="vertical" className="w-full">
-                <TabsList className="grid w-full grid-cols-2">
+                <TabsList className="grid h-auto w-full grid-cols-1 gap-2 bg-muted/50 p-1">
                   <TabsTrigger value="proiecte">Selectează Proiect</TabsTrigger>
-                  <TabsTrigger value="ore">Ore lună</TabsTrigger>
+                  <TabsTrigger value="ore">Ore luna curentă</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="proiecte" className="mt-4 space-y-3">
