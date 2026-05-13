@@ -33,6 +33,7 @@ import {
 } from '@/lib/peo-constants';
 import { useActivityCatalog } from '@/hooks/use-backend-data';
 import type { Activity, Deliverable, GrupTintaEntry, Expert, ActivityCatalog } from '@/lib/types';
+import { isGtExpertCategory, normalizePeoCategory } from '@/lib/peo-category';
 
 interface ActivityFormProps {
   selectedDates: string[];
@@ -47,18 +48,6 @@ interface ActivityFormProps {
   initialActivity?: Activity;
   isSaving?: boolean;
   apiKey?: string | null;
-}
-
-function normalizeExpertCategory(category?: string) {
-  const value = (category || '').trim().toLowerCase();
-  if (!value) return '';
-  if (value === 'pa' || value === 'ap') return 'ap';
-  if (value === 'resch' || value === 'research' || value === 'cercetare') return 'cercetare';
-  if (value === 'business hub') return 'bh';
-  if (value === 'comunicare') return 'com';
-  if (value === 'centre regionale') return 'cr';
-  if (value === 'grup tinta' || value === 'grup țintă') return 'gt';
-  return value;
 }
 
 export function ActivityForm({
@@ -98,13 +87,14 @@ export function ActivityForm({
   
   // Get expert's assigned SA codes (based on their role)
   const expertSaCodes = expert?.saCodes || [];
-  const expertCategory = normalizeExpertCategory(expert?.category);
+  const expertCategory = normalizePeoCategory(expert?.category);
+  const isGtExpert = isGtExpertCategory(expert?.category);
   
   // Filter catalog by expert category from PEO_Experti and then by assigned SA codes.
   const filteredCatalog = useMemo(() => {
     if (!effectiveCatalog || effectiveCatalog.length === 0) return [];
     return effectiveCatalog.filter((item) => {
-      const itemCategory = normalizeExpertCategory(item.category);
+      const itemCategory = normalizePeoCategory(item.category);
       const matchesCategory = !expertCategory || itemCategory === expertCategory;
       const matchesSaCode = expertSaCodes.length === 0 || expertSaCodes.includes(item.saCode);
       return matchesCategory && matchesSaCode;
@@ -988,8 +978,8 @@ export function ActivityForm({
               </div>
             )}
 
-            {/* Grup Tinta Section (for SA1.1) */}
-            {saCode === 'SA1.1' && (
+            {/* Grup Tinta Section (only for Expert Recrutare si Selectie GT) */}
+            {isGtExpert && saCode === 'SA1.1' && (
               <div className="space-y-3 bg-teal-50 rounded-lg p-4 border border-teal-200">
                 <div className="flex items-center justify-between">
                   <div className="text-sm font-medium text-teal-800">Grup Tinta</div>

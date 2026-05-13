@@ -34,6 +34,7 @@ import { useExperts, useActivitiesByMonth, useActivityMutations, useApiKey, useR
 import type { Activity, Expert, ReportStatus } from '@/lib/types';
 import { UserMenu } from '@/components/user-menu';
 import { getSignedInUser } from '@/lib/aws/auth';
+import { isGtExpertCategory } from '@/lib/peo-category';
 
 export default function ExpertDashboard() {
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
@@ -86,6 +87,7 @@ export default function ExpertDashboard() {
     const expert = experts.find((e) => e.id === selectedExpertId) || experts[0];
     return expert || { id: '', name: 'Expert', role: '', norma: 8, saCodes: [] };
   }, [experts, selectedExpertId]);
+  const isGtExpert = isGtExpertCategory(selectedExpert.category);
 
   // Filter activities by expert
   const activities = useMemo(() => {
@@ -336,10 +338,10 @@ export default function ExpertDashboard() {
         </div>
 
         <Tabs defaultValue="activitati" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className={`grid w-full ${isGtExpert ? 'grid-cols-4' : 'grid-cols-3'}`}>
             <TabsTrigger value="activitati">Activitati</TabsTrigger>
             <TabsTrigger value="calendar">Calendar</TabsTrigger>
-            <TabsTrigger value="gt">Grup Tinta</TabsTrigger>
+            {isGtExpert && <TabsTrigger value="gt">Grup Tinta</TabsTrigger>}
             <TabsTrigger value="export">Export RA</TabsTrigger>
           </TabsList>
 
@@ -349,7 +351,7 @@ export default function ExpertDashboard() {
               <div>
                 <h2 className="text-lg font-semibold text-foreground">Activități PEO</h2>
                 <p className="text-sm text-muted-foreground">
-                  Adaugă activități, livrabile, documente justificative și intrări pentru grupul țintă.
+                  Adaugă activități, livrabile și documente justificative{isGtExpert ? ' și intrări pentru grupul țintă' : ''}.
                 </p>
               </div>
               <Button onClick={handleAddActivity} disabled={!selectedExpert.id || isApproved}>
@@ -465,22 +467,24 @@ export default function ExpertDashboard() {
             />
           </TabsContent>
 
-          {/* Tab: Grup Tinta - pentru evidenta GT */}
-          <TabsContent value="gt">
-            <Card>
-              <CardHeader>
-                <CardTitle>Grup Tinta - {getMonthName(currentMonth)} {currentYear}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-center py-8 text-muted-foreground">
-                  <p>Nicio activitate cu Grup Tinta inregistrata in {getMonthName(currentMonth)} {currentYear}.</p>
-                  <p className="text-sm mt-2">
-                    Expertii pot marca implicarea GT direct in formularul de activitate.
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
+          {/* Tab: Grup Tinta - doar pentru Expert Recrutare si Selectie GT */}
+          {isGtExpert && (
+            <TabsContent value="gt">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Grup Tinta - {getMonthName(currentMonth)} {currentYear}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-center py-8 text-muted-foreground">
+                    <p>Nicio activitate cu Grup Tinta inregistrata in {getMonthName(currentMonth)} {currentYear}.</p>
+                    <p className="text-sm mt-2">
+                      Expertul GT poate marca implicarea GT direct in formularul de activitate.
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          )}
 
           {/* Tab: Export RA - generare raport si export */}
           <TabsContent value="export">
