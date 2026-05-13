@@ -225,6 +225,48 @@ const schema = a.schema({
       allow.groups(["expert"]).to(["create", "read", "update"]),
       allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
     ]),
+
+  AuditLog: a
+    .model({
+      actionType: a.string().required(),
+      actorId: a.string().required(),
+      actorName: a.string(),
+      actorRole: a.string().required(),
+      affectedExpertId: a.id(),
+      affectedExpertName: a.string(),
+      projectCode: a.string(),
+      month: a.integer(),
+      year: a.integer(),
+      fieldName: a.string(),
+      oldValue: a.string(),
+      newValue: a.string(),
+      justification: a.string(),
+      source: a.string().required(),
+    })
+    .secondaryIndexes((index) => [
+      index("affectedExpertId").sortKeys(["year", "month"]),
+      index("actionType"),
+    ])
+    .authorization((allow) => [
+      allow.groups(["pm", "admin"]).to(["read"]),
+      allow.groups(["admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
+  NotificationLog: a
+    .model({
+      kind: a.string().required(),
+      recipientEmail: a.email().required(),
+      subject: a.string().required(),
+      body: a.string().required(),
+      status: a.string().default("pending"),
+      metadata: a.json(),
+      sentAt: a.datetime(),
+      errorMessage: a.string(),
+    })
+    .secondaryIndexes((index) => [index("kind"), index("recipientEmail")])
+    .authorization((allow) => [
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
 });
 
 export type Schema = ClientSchema<typeof schema>;

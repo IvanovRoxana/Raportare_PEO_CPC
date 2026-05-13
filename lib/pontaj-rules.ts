@@ -46,11 +46,11 @@ function normalize(value?: string) {
 export function normalizeNormType(value?: string): NormType {
   const normalized = normalize(value);
 
-  if (normalized.includes('manual') || normalized.includes('ajustata')) {
+  if (normalized === 'manual_adjusted' || normalized.includes('manual') || normalized.includes('ajustata')) {
     return 'manual_adjusted';
   }
 
-  if (normalized.includes('proiect')) {
+  if (normalized === 'project' || normalized.includes('proiect')) {
     return 'project';
   }
 

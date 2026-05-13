@@ -14,8 +14,9 @@ import {
   concurrentProjectsService,
   reportStatusService,
   grupTintaService,
+  auditLogsService,
 } from '@/lib/backend-store';
-import type { Activity, Expert, VerificationData, Neconformitate, VerificationNote, AppSettings, ActivityCatalog, WorkingGroup, ConcurrentProject, ReportStatus, GrupTintaEntry } from '@/lib/types';
+import type { Activity, Expert, VerificationData, Neconformitate, VerificationNote, AppSettings, ActivityCatalog, WorkingGroup, ConcurrentProject, ReportStatus, GrupTintaEntry, AuditLog, AdminInterventionRequest } from '@/lib/types';
 
 // Safe fetcher that returns null if the configured backend is not available
 const safeFetcher = <T>(fetcher: () => Promise<T>) => async (): Promise<T | null> => {
@@ -520,4 +521,41 @@ export function useGrupTintaStats(month: number, year: number) {
     isLoading,
     error,
   };
+}
+
+// ============================================
+// AUDIT TRAIL HOOKS
+// ============================================
+
+export function useAuditLogs(expertId?: string | null, month?: number, year?: number) {
+  const key =
+    expertId && month !== undefined && year !== undefined
+      ? `audit-${expertId}-${month}-${year}`
+      : 'audit-all';
+  const fetcher =
+    expertId && month !== undefined && year !== undefined
+      ? () => auditLogsService.getByExpertAndMonth(expertId, month, year)
+      : auditLogsService.getAll;
+
+  const { data, error, isLoading } = useSWR(
+    isBackendAvailable() ? key : null,
+    safeFetcher(fetcher)
+  );
+
+  return {
+    auditLogs: data || [],
+    isLoading,
+    error,
+    mutate: () => mutate(key),
+  };
+}
+
+export function useAuditLogMutations() {
+  const create = async (input: AdminInterventionRequest | AuditLog) => {
+    const created = await auditLogsService.create(input);
+    mutate((key: string) => typeof key === 'string' && key.startsWith('audit'), undefined, { revalidate: true });
+    return created;
+  };
+
+  return { create };
 }

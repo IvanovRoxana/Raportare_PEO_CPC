@@ -10,7 +10,9 @@ import {
 import type {
   Activity,
   ActivityCatalog,
+  AdminInterventionRequest,
   AppSettings,
+  AuditLog,
   ConcurrentProject,
   Deliverable,
   Expert,
@@ -21,6 +23,7 @@ import type {
   VerificationNote,
   WorkingGroup,
 } from './types';
+import { createAuditLog, prepareAdminActivityOverride } from './audit-trail';
 
 export { isAwsAvailable };
 export {
@@ -119,6 +122,27 @@ function mapExpert(item: any): Expert {
     isActive: item.isActive ?? true,
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
+  };
+}
+
+function mapAuditLog(item: any): AuditLog {
+  return {
+    id: item.id,
+    actionType: item.actionType,
+    actorId: item.actorId,
+    actorName: item.actorName ?? undefined,
+    actorRole: item.actorRole,
+    createdAt: item.createdAt,
+    affectedExpertId: item.affectedExpertId ?? undefined,
+    affectedExpertName: item.affectedExpertName ?? undefined,
+    projectCode: item.projectCode ?? undefined,
+    month: item.month ?? undefined,
+    year: item.year ?? undefined,
+    fieldName: item.fieldName ?? undefined,
+    oldValue: item.oldValue ?? undefined,
+    newValue: item.newValue ?? undefined,
+    justification: item.justification ?? undefined,
+    source: item.source,
   };
 }
 
@@ -374,6 +398,54 @@ export const expertsService = {
   },
 };
 
+export const auditLogsService = {
+  async getAll(): Promise<AuditLog[]> {
+    const client = getAwsDataClient() as any;
+    if (!client.models.AuditLog) return [];
+    const data = await listModel<any>(client.models.AuditLog);
+    return data.map(mapAuditLog).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  },
+
+  async getByExpertAndMonth(expertId: string, month: number, year: number): Promise<AuditLog[]> {
+    const client = getAwsDataClient() as any;
+    if (!client.models.AuditLog) return [];
+    const data = await listModel<any>(client.models.AuditLog, {
+      affectedExpertId: { eq: expertId },
+      month: { eq: month },
+      year: { eq: year },
+    });
+    return data.map(mapAuditLog).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  },
+
+  async create(input: AdminInterventionRequest | AuditLog): Promise<AuditLog> {
+    const client = getAwsDataClient() as any;
+    const audit = 'createdAt' in input ? input : createAuditLog(input);
+
+    if (!client.models.AuditLog) {
+      return audit;
+    }
+
+    const result = await client.models.AuditLog.create({
+      actionType: audit.actionType,
+      actorId: audit.actorId,
+      actorName: audit.actorName,
+      actorRole: audit.actorRole,
+      affectedExpertId: audit.affectedExpertId,
+      affectedExpertName: audit.affectedExpertName,
+      projectCode: audit.projectCode,
+      month: audit.month,
+      year: audit.year,
+      fieldName: audit.fieldName,
+      oldValue: audit.oldValue,
+      newValue: audit.newValue,
+      justification: audit.justification,
+      source: audit.source,
+    });
+    assertNoErrors(result, 'AWS create audit log');
+    return mapAuditLog(result.data);
+  },
+};
+
 export const activitiesService = {
   async getAll(): Promise<Activity[]> {
     const client = getAwsDataClient() as any;
@@ -423,6 +495,28 @@ export const activitiesService = {
     for (const activity of activities) {
       created.push(await createActivityUnchecked(client, activity));
     }
+    return created;
+  },
+
+  async createWithAdminOverride(
+    activity: Omit<Activity, 'id' | 'createdAt' | 'updatedAt'>,
+    admin: {
+      actorId: string;
+      actorName?: string;
+      actorRole: string;
+      justification: string;
+    },
+  ): Promise<Activity> {
+    const client = getAwsDataClient() as any;
+    const prepared = prepareAdminActivityOverride({
+      activity,
+      actorId: admin.actorId,
+      actorName: admin.actorName,
+      actorRole: admin.actorRole,
+      justification: admin.justification,
+    });
+    const created = await createActivityUnchecked(client, prepared.activity);
+    await auditLogsService.create(prepared.audit);
     return created;
   },
 

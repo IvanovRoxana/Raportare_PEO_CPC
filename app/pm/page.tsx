@@ -39,7 +39,10 @@ import {
   useNoteMutations,
   useApiKey,
   useReportStatus,
+  useActivitiesByMonth,
+  useAuditLogs,
 } from '@/hooks/use-backend-data';
+import { buildDashboardComplianceRows } from '@/lib/reporting-dashboard';
 import type {
   PontajRow,
   RaportRow,
@@ -89,6 +92,8 @@ export default function PMDashboard() {
     updateStatus: updateReportStatus,
     isLoading: reportStatusLoading,
   } = useReportStatus(selectedExpertId, selectedMonth, selectedYear);
+  const { activities: monthActivities } = useActivitiesByMonth(selectedMonth, selectedYear);
+  const { auditLogs } = useAuditLogs(null, selectedMonth, selectedYear);
 
   // Set default expert when experts load
   useEffect(() => {
@@ -224,6 +229,28 @@ export default function PMDashboard() {
   const raportVerified = raportData.filter((r) => r.verified).length;
   const livrabileMatched = livrabileData.filter((l) => l.titleMatch).length;
   const unresolvedIssues = localNeconformitati.filter((n) => !n.resolved).length;
+  const dashboardRows = useMemo(
+    () =>
+      buildDashboardComplianceRows({
+        experts,
+        activities: monthActivities,
+        auditLogs,
+        month: selectedMonth,
+        year: selectedYear,
+      }),
+    [experts, monthActivities, auditLogs, selectedMonth, selectedYear]
+  );
+  const dashboardTotals = useMemo(() => {
+    const totalHours = dashboardRows.reduce((sum, row) => sum + row.totalHours, 0);
+    const totalRemaining = dashboardRows.reduce((sum, row) => sum + row.remainingHours, 0);
+    const missingDays = dashboardRows.reduce((sum, row) => sum + row.missingActivityDays.length, 0);
+    const blockedDays = dashboardRows.reduce((sum, row) => sum + row.blockedDays.length, 0);
+    const issues = dashboardRows.filter(
+      (row) => row.hasDailyLimitIssue || row.hasMonthlyNormIssue || row.hasProjectNormIssue
+    ).length;
+
+    return { totalHours, totalRemaining, missingDays, blockedDays, issues };
+  }, [dashboardRows]);
 
   const months = Array.from({ length: 12 }, (_, i) => ({
     value: i,
@@ -450,6 +477,29 @@ export default function PMDashboard() {
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-6">
+        <section className="mb-6 grid gap-3 md:grid-cols-5">
+          <div className="rounded-lg border bg-card p-4">
+            <p className="text-xs font-medium text-muted-foreground">Ore pontate</p>
+            <p className="mt-1 text-2xl font-bold">{dashboardTotals.totalHours}h</p>
+          </div>
+          <div className="rounded-lg border bg-card p-4">
+            <p className="text-xs font-medium text-muted-foreground">Ore ramase</p>
+            <p className="mt-1 text-2xl font-bold">{dashboardTotals.totalRemaining}h</p>
+          </div>
+          <div className="rounded-lg border bg-card p-4">
+            <p className="text-xs font-medium text-muted-foreground">Zile fara activitate</p>
+            <p className="mt-1 text-2xl font-bold">{dashboardTotals.missingDays}</p>
+          </div>
+          <div className="rounded-lg border bg-card p-4">
+            <p className="text-xs font-medium text-muted-foreground">Zile blocate</p>
+            <p className="mt-1 text-2xl font-bold">{dashboardTotals.blockedDays}</p>
+          </div>
+          <div className="rounded-lg border bg-card p-4">
+            <p className="text-xs font-medium text-muted-foreground">Alarme norma</p>
+            <p className="mt-1 text-2xl font-bold">{dashboardTotals.issues}</p>
+          </div>
+        </section>
+
         <Tabs defaultValue="pontaj" className="space-y-6">
           <TabsList className="grid w-full grid-cols-6">
             <TabsTrigger value="pontaj">Pontaj Excel</TabsTrigger>

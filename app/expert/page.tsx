@@ -90,7 +90,7 @@ function DashboardCalendar({
   month: number;
   year: number;
 }) {
-  const holidays = useMemo(() => getRomanianHolidays(year), [year]);
+  const holidays = useMemo(() => new Set(getRomanianHolidays(year).map((date) => toIsoDate(date.getFullYear(), date.getMonth(), date.getDate()))), [year]);
   const dayTotals = useMemo(() => getDayTotals(projects), [projects]);
   const calendarDays = useMemo(() => getCalendarDays(year, month), [year, month]);
 
@@ -129,7 +129,7 @@ function DashboardCalendar({
             const dayTotal = dayTotals.get(day.dateStr);
             const totalHours = dayTotal?.total ?? 0;
             const isWeekend = [0, 6].includes(day.date.getDay());
-            const isHoliday = holidays.includes(day.dateStr);
+            const isHoliday = holidays.has(day.dateStr);
             const hasHours = totalHours > 0;
             const exceedsLimit = totalHours > 8;
 
