@@ -93,8 +93,8 @@ export function getDashboardPathForRoles(roles: AppRole[]) {
   const canUseExpert = roles.includes('expert');
   const canUsePm = roles.includes('pm') || roles.includes('admin');
 
-  if (canUseExpert && canUsePm) {
-    return '/auth/select-dashboard';
+  if (canUseExpert) {
+    return '/expert';
   }
 
   if (canUsePm) {
