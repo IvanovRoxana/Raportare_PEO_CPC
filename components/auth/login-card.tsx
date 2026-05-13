@@ -111,7 +111,7 @@ export function LoginCard({
         <CardDescription>{description}</CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleLogin} className="space-y-4">
+        <form onSubmit={handleLogin} className="space-y-4" noValidate>
           {error && (
             <Alert variant="destructive">
               <AlertDescription>{error}</AlertDescription>
