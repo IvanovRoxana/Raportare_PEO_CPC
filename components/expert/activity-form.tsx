@@ -49,6 +49,18 @@ interface ActivityFormProps {
   apiKey?: string | null;
 }
 
+function normalizeExpertCategory(category?: string) {
+  const value = (category || '').trim().toLowerCase();
+  if (!value) return '';
+  if (value === 'pa' || value === 'ap') return 'ap';
+  if (value === 'resch' || value === 'research' || value === 'cercetare') return 'cercetare';
+  if (value === 'business hub') return 'bh';
+  if (value === 'comunicare') return 'com';
+  if (value === 'centre regionale') return 'cr';
+  if (value === 'grup tinta' || value === 'grup țintă') return 'gt';
+  return value;
+}
+
 export function ActivityForm({
   selectedDates,
   selectedHours,
@@ -86,13 +98,18 @@ export function ActivityForm({
   
   // Get expert's assigned SA codes (based on their role)
   const expertSaCodes = expert?.saCodes || [];
+  const expertCategory = normalizeExpertCategory(expert?.category);
   
-  // Filter catalog by expert's SA codes only (SA codes are role-based, not category-based)
+  // Filter catalog by expert category from PEO_Experti and then by assigned SA codes.
   const filteredCatalog = useMemo(() => {
     if (!effectiveCatalog || effectiveCatalog.length === 0) return [];
-    if (expertSaCodes.length === 0) return [];
-    return effectiveCatalog.filter(item => expertSaCodes.includes(item.saCode));
-  }, [effectiveCatalog, expertSaCodes]);
+    return effectiveCatalog.filter((item) => {
+      const itemCategory = normalizeExpertCategory(item.category);
+      const matchesCategory = !expertCategory || itemCategory === expertCategory;
+      const matchesSaCode = expertSaCodes.length === 0 || expertSaCodes.includes(item.saCode);
+      return matchesCategory && matchesSaCode;
+    });
+  }, [effectiveCatalog, expertCategory, expertSaCodes]);
   
   // Get unique SA codes available for this expert from the catalog
   const availableSaCodes = useMemo(() => {
@@ -118,9 +135,14 @@ export function ActivityForm({
   const [hours, setHours] = useState(initialActivity?.hours?.toString() || defaultHours.toString());
   const [saCode, setSaCode] = useState(initialActivity?.saCode || '');
   
-  // Set default SA code when available SA codes load
+  // Set or reset default SA code when available SA codes load after category filtering.
   useEffect(() => {
-    if (!saCode && availableSaCodes.length > 0) {
+    if (availableSaCodes.length === 0) {
+      if (saCode) setSaCode('');
+      return;
+    }
+
+    if (!saCode || !availableSaCodes.includes(saCode)) {
       setSaCode(availableSaCodes[0]);
     }
   }, [saCode, availableSaCodes]);
@@ -216,10 +238,8 @@ export function ActivityForm({
     ) || null;
   }, [activityTitle, saCode, filteredCatalog]);
   
-  // Get deliverable options for expert category
-  const expertCategory = expert?.category || 'ap';
   const deliverableOptions = useMemo(() => {
-    return getDeliverableOptions(expertCategory);
+    return getDeliverableOptions(expertCategory || 'ap');
   }, [expertCategory]);
   
   // Check if current activity is exception (no deliverable required)
@@ -414,6 +434,7 @@ export function ActivityForm({
         hours: dateHours,
         activityType: activityTitle,
         saCode,
+        catalogActivityId: selectedCatalogItem?.id,
         title: activityTitle,
         description,
         deliverables: uploadedDeliverables
