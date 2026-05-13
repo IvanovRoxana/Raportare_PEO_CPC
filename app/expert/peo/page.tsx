@@ -36,6 +36,7 @@ import { getSignedInUser } from '@/lib/aws/auth';
 
 export default function ExpertDashboard() {
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
+  const [selectedHours, setSelectedHours] = useState<Record<string, string>>({});
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
   const [showForm, setShowForm] = useState(false);
@@ -94,6 +95,7 @@ export default function ExpertDashboard() {
     setCurrentMonth(month);
     setCurrentYear(year);
     setSelectedDates([]);
+    setSelectedHours({});
   };
 
   const handleSaveActivities = async (newActivities: Activity[]) => {
@@ -115,6 +117,7 @@ export default function ExpertDashboard() {
       setShowForm(false);
       setEditingActivity(null);
       setSelectedDates([]);
+      setSelectedHours({});
     } catch (error) {
       console.error('Error saving activities:', error);
     } finally {
@@ -125,6 +128,7 @@ export default function ExpertDashboard() {
   const handleEditActivity = (activity: Activity) => {
     setEditingActivity(activity);
     setSelectedDates([activity.date]);
+    setSelectedHours({ [activity.date]: activity.hours.toString() });
     setShowForm(true);
   };
 
@@ -154,9 +158,21 @@ export default function ExpertDashboard() {
     return `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-01`;
   };
 
+  const getDefaultHours = () => Math.min(selectedExpert.norma || 8, 8).toString();
+
+  const syncSelectedDates = (dates: string[], baseHours = selectedHours) => {
+    const uniqueDates = [...new Set(dates)].sort();
+    const nextHours: Record<string, string> = {};
+    uniqueDates.forEach((date) => {
+      nextHours[date] = baseHours[date] || getDefaultHours();
+    });
+    setSelectedDates(uniqueDates);
+    setSelectedHours(nextHours);
+  };
+
   const handleAddActivity = () => {
     if (selectedDates.length === 0) {
-      setSelectedDates([getDefaultActivityDate()]);
+      syncSelectedDates([getDefaultActivityDate()]);
     }
     setEditingActivity(null);
     setShowForm(true);
@@ -164,7 +180,7 @@ export default function ExpertDashboard() {
 
   // Auto-open form when dates are selected
   const handleSelectDates = (dates: string[]) => {
-    setSelectedDates(dates);
+    syncSelectedDates(dates);
     if (dates.length > 0) {
       setEditingActivity(null);
       setShowForm(true);
@@ -291,6 +307,8 @@ export default function ExpertDashboard() {
                 <MultiSelectCalendar
                   selectedDates={selectedDates}
                   onSelectDates={handleSelectDates}
+                  selectedHours={selectedHours}
+                  onSelectedHoursChange={setSelectedHours}
                   activities={activities}
                   onMonthChange={handleMonthChange}
                   expertNorma={selectedExpert.norma || 8}
@@ -304,6 +322,8 @@ export default function ExpertDashboard() {
                 {showForm ? (
                   <ActivityForm
                     selectedDates={selectedDates}
+                    selectedHours={selectedHours}
+                    onSelectedHoursChange={setSelectedHours}
                     expertId={selectedExpertId || ''}
                     expertName={selectedExpert.name}
                     expert={selectedExpert as import('@/lib/types').Expert}
@@ -314,6 +334,7 @@ export default function ExpertDashboard() {
                       setShowForm(false);
                       setEditingActivity(null);
                       setSelectedDates([]);
+                      setSelectedHours({});
                     }}
                     initialActivity={editingActivity || undefined}
                     isSaving={isSaving}
@@ -379,7 +400,7 @@ export default function ExpertDashboard() {
               month={currentMonth}
               year={currentYear}
               onAddForDay={(date) => {
-                setSelectedDates([date]);
+                syncSelectedDates([date]);
                 setShowForm(true);
               }}
               onEditActivity={handleEditActivity}

@@ -1,24 +1,28 @@
 'use client';
 
-import { useState, useMemo } from 'react';
-import { ChevronLeft, ChevronRight, AlertTriangle, Check } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { AlertTriangle, Check, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { getMonthName, formatDate } from '@/lib/app-utils';
+import { formatDate, getMonthName } from '@/lib/app-utils';
 import { getWorkingHoursInfo } from '@/lib/working-hours';
 import type { Activity } from '@/lib/types';
 
 interface MultiSelectCalendarProps {
   selectedDates: string[];
   onSelectDates: (dates: string[]) => void;
+  selectedHours?: Record<string, string>;
+  onSelectedHoursChange?: (hours: Record<string, string>) => void;
   activities: Activity[];
   onMonthChange?: (month: number, year: number) => void;
-  expertNorma?: number; // hours per day (4, 6, or 8)
+  expertNorma?: number;
 }
 
 export function MultiSelectCalendar({
   selectedDates,
   onSelectDates,
+  selectedHours = {},
+  onSelectedHoursChange,
   activities,
   onMonthChange,
   expertNorma = 8,
@@ -26,40 +30,35 @@ export function MultiSelectCalendar({
   const [currentDate, setCurrentDate] = useState(new Date());
   const [isSelecting, setIsSelecting] = useState(false);
   const [selectionStart, setSelectionStart] = useState<string | null>(null);
+  const [defaultHours, setDefaultHours] = useState(Math.min(expertNorma, 8));
 
   const month = currentDate.getMonth();
   const year = currentDate.getFullYear();
-  
-  // Get working hours info (holidays, max hours, remaining)
-  const workingInfo = useMemo(() => {
-    return getWorkingHoursInfo(month, year, expertNorma, activities);
-  }, [month, year, expertNorma, activities]);
-  
-  const totalHoursMonth = workingInfo.totalHours;
-  const remainingHours = workingInfo.remaining;
+  const sortedSelectedDates = useMemo(() => [...selectedDates].sort(), [selectedDates]);
+
+  const workingInfo = useMemo(
+    () => getWorkingHoursInfo(month, year, expertNorma, activities),
+    [month, year, expertNorma, activities],
+  );
 
   const daysInMonth = useMemo(() => {
     const firstDay = new Date(year, month, 1);
     const lastDay = new Date(year, month + 1, 0);
     const days: { date: Date; isCurrentMonth: boolean }[] = [];
 
-    // Add days from previous month to fill the first week
     const firstDayOfWeek = firstDay.getDay();
     const prevMonthStart = firstDayOfWeek === 0 ? 6 : firstDayOfWeek - 1;
-    for (let i = prevMonthStart - 1; i >= 0; i--) {
-      const date = new Date(year, month, -i);
-      days.push({ date, isCurrentMonth: false });
+    for (let i = prevMonthStart - 1; i >= 0; i -= 1) {
+      days.push({ date: new Date(year, month, -i), isCurrentMonth: false });
     }
 
-    // Add days of current month
-    for (let i = 1; i <= lastDay.getDate(); i++) {
-      days.push({ date: new Date(year, month, i), isCurrentMonth: true });
+    for (let day = 1; day <= lastDay.getDate(); day += 1) {
+      days.push({ date: new Date(year, month, day), isCurrentMonth: true });
     }
 
-    // Add days from next month to complete the grid
     const remainingDays = 42 - days.length;
-    for (let i = 1; i <= remainingDays; i++) {
-      days.push({ date: new Date(year, month + 1, i), isCurrentMonth: false });
+    for (let day = 1; day <= remainingDays; day += 1) {
+      days.push({ date: new Date(year, month + 1, day), isCurrentMonth: false });
     }
 
     return days;
@@ -68,14 +67,41 @@ export function MultiSelectCalendar({
   const activityMap = useMemo(() => {
     const map: Record<string, Activity[]> = {};
     activities.forEach((activity) => {
-      const dateKey = activity.date;
-      if (!map[dateKey]) {
-        map[dateKey] = [];
+      if (!map[activity.date]) {
+        map[activity.date] = [];
       }
-      map[dateKey].push(activity);
+      map[activity.date].push(activity);
     });
     return map;
   }, [activities]);
+
+  const syncSelectedDates = (dates: string[], baseHours = selectedHours) => {
+    const uniqueDates = [...new Set(dates)].sort();
+    const nextHours: Record<string, string> = {};
+
+    uniqueDates.forEach((date) => {
+      nextHours[date] = baseHours[date] || defaultHours.toString();
+    });
+
+    onSelectedHoursChange?.(nextHours);
+    onSelectDates(uniqueDates);
+  };
+
+  const updateSelectedHour = (date: string, value: string | number) => {
+    const numericValue = Math.min(8, Math.max(0, Number(value) || 0));
+    onSelectedHoursChange?.({
+      ...selectedHours,
+      [date]: numericValue.toString(),
+    });
+  };
+
+  const applyHoursToAll = (value: string | number) => {
+    const numericValue = Math.min(8, Math.max(1, Number(value) || 1));
+    setDefaultHours(numericValue);
+    onSelectedHoursChange?.(
+      Object.fromEntries(sortedSelectedDates.map((date) => [date, numericValue.toString()])),
+    );
+  };
 
   const goToPrevMonth = () => {
     const newDate = new Date(year, month - 1, 1);
@@ -89,27 +115,24 @@ export function MultiSelectCalendar({
     onMonthChange?.(newDate.getMonth(), newDate.getFullYear());
   };
 
+  const isWeekend = (date: Date) => {
+    const day = date.getDay();
+    return day === 0 || day === 6;
+  };
+
   const handleDateClick = (date: Date, isCurrentMonth: boolean) => {
-    if (!isCurrentMonth) return;
+    if (!isCurrentMonth || isWeekend(date)) return;
 
     const dateStr = formatDate(date);
-    const dayOfWeek = date.getDay();
-
-    // Skip weekends
-    if (dayOfWeek === 0 || dayOfWeek === 6) return;
-
     if (selectedDates.includes(dateStr)) {
-      onSelectDates(selectedDates.filter((d) => d !== dateStr));
+      syncSelectedDates(selectedDates.filter((selectedDate) => selectedDate !== dateStr));
     } else {
-      onSelectDates([...selectedDates, dateStr]);
+      syncSelectedDates([...selectedDates, dateStr]);
     }
   };
 
   const handleMouseDown = (date: Date, isCurrentMonth: boolean) => {
-    if (!isCurrentMonth) return;
-    const dayOfWeek = date.getDay();
-    if (dayOfWeek === 0 || dayOfWeek === 6) return;
-
+    if (!isCurrentMonth || isWeekend(date)) return;
     setIsSelecting(true);
     setSelectionStart(formatDate(date));
   };
@@ -120,52 +143,37 @@ export function MultiSelectCalendar({
   };
 
   const handleMouseEnter = (date: Date, isCurrentMonth: boolean) => {
-    if (!isSelecting || !selectionStart || !isCurrentMonth) return;
+    if (!isSelecting || !selectionStart || !isCurrentMonth || isWeekend(date)) return;
 
-    const dayOfWeek = date.getDay();
-    if (dayOfWeek === 0 || dayOfWeek === 6) return;
-
-    const startDate = new Date(selectionStart);
+    const startDate = new Date(`${selectionStart}T00:00:00`);
     const endDate = date;
     const [start, end] = startDate <= endDate ? [startDate, endDate] : [endDate, startDate];
-
     const newDates: string[] = [];
     const current = new Date(start);
+
     while (current <= end) {
-      const dow = current.getDay();
-      if (dow !== 0 && dow !== 6) {
+      if (!isWeekend(current)) {
         newDates.push(formatDate(current));
       }
       current.setDate(current.getDate() + 1);
     }
 
-    // Merge with existing selected dates
-    const uniqueDates = [...new Set([...selectedDates, ...newDates])];
-    onSelectDates(uniqueDates);
+    syncSelectedDates([...selectedDates, ...newDates]);
   };
 
-  const isWeekend = (date: Date) => {
-    const day = date.getDay();
-    return day === 0 || day === 6;
-  };
+  const getDateActivities = (date: Date) => activityMap[formatDate(date)] || [];
+  const getTotalHours = (date: Date) =>
+    getDateActivities(date).reduce((sum, activity) => sum + activity.hours, 0);
 
-  const getDateActivities = (date: Date) => {
-    return activityMap[formatDate(date)] || [];
-  };
-
-  const getTotalHours = (date: Date) => {
-    const dateActivities = getDateActivities(date);
-    return dateActivities.reduce((sum, a) => sum + a.hours, 0);
-  };
+  const remainingHours = workingInfo.remaining;
 
   return (
     <div
-      className="bg-card border border-border rounded-lg p-4"
+      className="rounded-lg border border-border bg-card p-4"
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
     >
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="mb-4 flex items-center justify-between">
         <Button variant="ghost" size="icon" onClick={goToPrevMonth}>
           <ChevronLeft className="h-5 w-5" />
         </Button>
@@ -177,25 +185,23 @@ export function MultiSelectCalendar({
         </Button>
       </div>
 
-      {/* Weekday headers */}
-      <div className="grid grid-cols-7 gap-1 mb-2">
-        {['Lu', 'Ma', 'Mi', 'Jo', 'Vi', 'Sâ', 'Du'].map((day) => (
-          <div key={day} className="text-center text-sm font-medium text-muted-foreground py-2">
+      <div className="mb-2 grid grid-cols-7 gap-1">
+        {['Lu', 'Ma', 'Mi', 'Jo', 'Vi', 'Sa', 'Du'].map((day) => (
+          <div key={day} className="py-2 text-center text-sm font-medium text-muted-foreground">
             {day}
           </div>
         ))}
       </div>
 
-      {/* Calendar grid */}
       <div className="grid grid-cols-7 gap-1">
         {daysInMonth.map(({ date, isCurrentMonth }, index) => {
           const dateStr = formatDate(date);
           const isSelected = selectedDates.includes(dateStr);
           const isWeekendDay = isWeekend(date);
-          const dateActivities = getDateActivities(date);
-          const hasActivities = dateActivities.length > 0;
+          const hasActivities = getDateActivities(date).length > 0;
           const totalHours = getTotalHours(date);
           const isToday = formatDate(new Date()) === dateStr;
+          const selectedHour = selectedHours[dateStr] || defaultHours.toString();
 
           return (
             <div
@@ -204,32 +210,39 @@ export function MultiSelectCalendar({
               onMouseDown={() => handleMouseDown(date, isCurrentMonth)}
               onMouseEnter={() => handleMouseEnter(date, isCurrentMonth)}
               className={cn(
-                'relative min-h-[60px] p-1 rounded-md border transition-all cursor-pointer select-none',
-                !isCurrentMonth && 'opacity-30 cursor-default',
-                isWeekendDay && 'bg-muted/50 cursor-default',
+                'relative min-h-[60px] cursor-pointer select-none rounded-md border p-1 transition-all',
+                !isCurrentMonth && 'cursor-default opacity-30',
+                isWeekendDay && 'cursor-default bg-muted/50',
                 isCurrentMonth && !isWeekendDay && 'hover:bg-accent',
-                isSelected && 'bg-primary/20 border-primary',
+                isSelected && 'border-primary bg-primary/20',
                 isToday && 'ring-2 ring-primary',
-                hasActivities && !isSelected && 'bg-green-50 dark:bg-green-950/30'
+                hasActivities && !isSelected && 'bg-green-50 dark:bg-green-950/30',
               )}
             >
-              <div className="flex flex-col h-full">
+              <div className="flex h-full flex-col">
                 <span
                   className={cn(
                     'text-sm font-medium',
                     !isCurrentMonth && 'text-muted-foreground',
                     isWeekendDay && 'text-muted-foreground',
-                    isToday && 'text-primary font-bold'
+                    isToday && 'font-bold text-primary',
                   )}
                 >
                   {date.getDate()}
                 </span>
-                {hasActivities && isCurrentMonth && (
+                {isSelected && isCurrentMonth ? (
                   <div className="mt-auto">
-                    <span className="text-xs font-medium text-green-600 dark:text-green-400">
-                      {totalHours}h
-                    </span>
+                    <span className="text-xs font-semibold text-primary">{selectedHour}h</span>
                   </div>
+                ) : (
+                  hasActivities &&
+                  isCurrentMonth && (
+                    <div className="mt-auto">
+                      <span className="text-xs font-medium text-green-600 dark:text-green-400">
+                        {totalHours}h
+                      </span>
+                    </div>
+                  )
                 )}
               </div>
             </div>
@@ -237,38 +250,97 @@ export function MultiSelectCalendar({
         })}
       </div>
 
-      {/* Monthly summary */}
       <div className="mt-4 space-y-2">
-        {/* Hours progress */}
-        <div className={cn(
-          'p-2 rounded-md text-xs flex items-center gap-2',
-          remainingHours > 0 ? 'bg-blue-50 text-blue-800' :
-          remainingHours < 0 ? 'bg-amber-50 text-amber-800' :
-          'bg-green-50 text-green-800'
-        )}>
+        <div
+          className={cn(
+            'flex items-center gap-2 rounded-md p-2 text-xs',
+            remainingHours > 0
+              ? 'bg-blue-50 text-blue-800'
+              : remainingHours < 0
+                ? 'bg-amber-50 text-amber-800'
+                : 'bg-green-50 text-green-800',
+          )}
+        >
           {remainingHours === 0 && <Check className="h-4 w-4" />}
           {remainingHours < 0 && <AlertTriangle className="h-4 w-4" />}
           <span>
-            {totalHoursMonth}h / {workingInfo.maxHoursWithNorma}h
-            {remainingHours > 0 && ` — ${remainingHours}h ramase`}
-            {remainingHours < 0 && ` — depășire ${Math.abs(remainingHours)}h`}
+            {workingInfo.totalHours}h / {workingInfo.maxHoursWithNorma}h
+            {remainingHours > 0 && ` - ${remainingHours}h ramase`}
+            {remainingHours < 0 && ` - depasire ${Math.abs(remainingHours)}h`}
           </span>
         </div>
 
-        {/* Selected dates summary */}
         {selectedDates.length > 0 && (
-          <div className="p-3 bg-primary/10 rounded-md">
-            <p className="text-sm font-medium text-foreground">
-              {selectedDates.length} {selectedDates.length === 1 ? 'zi selectată' : 'zile selectate'}
+          <div className="space-y-3 rounded-md bg-primary/10 p-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm font-medium text-foreground">
+                {selectedDates.length} {selectedDates.length === 1 ? 'zi selectata' : 'zile selectate'}
+              </p>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => syncSelectedDates([])}
+              >
+                Sterge selectia
+              </Button>
+            </div>
+
+            {selectedDates.length > 1 && (
+              <div className="flex items-center gap-2">
+                <span className="flex-1 text-xs text-muted-foreground">Aplica la toate:</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={8}
+                  value={defaultHours}
+                  onChange={(event) => applyHoursToAll(event.target.value)}
+                  className="h-8 w-16 rounded-md border border-input bg-background px-2 text-center text-xs"
+                />
+                <span className="text-xs text-muted-foreground">h</span>
+              </div>
+            )}
+
+            <div className="max-h-44 space-y-1 overflow-y-auto pr-1">
+              {sortedSelectedDates.map((date) => (
+                <div key={date} className="flex items-center gap-2 rounded-md bg-background/80 px-2 py-1.5">
+                  <span className="flex-1 text-xs font-medium text-foreground">
+                    {new Date(`${date}T00:00:00`).toLocaleDateString('ro-RO', {
+                      weekday: 'short',
+                      day: '2-digit',
+                      month: '2-digit',
+                    })}
+                  </span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={8}
+                    step={0.5}
+                    value={selectedHours[date] || defaultHours.toString()}
+                    onChange={(event) => updateSelectedHour(date, event.target.value)}
+                    className="h-8 w-16 rounded-md border border-input bg-background px-2 text-center text-xs"
+                  />
+                  <span className="text-xs text-muted-foreground">h</span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-muted-foreground"
+                    onClick={() => syncSelectedDates(selectedDates.filter((selectedDate) => selectedDate !== date))}
+                  >
+                    x
+                  </Button>
+                </div>
+              ))}
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              Total selectie:{' '}
+              {sortedSelectedDates.reduce(
+                (sum, date) => sum + Number(selectedHours[date] || defaultHours),
+                0,
+              )}
+              h
             </p>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="mt-1 text-xs"
-              onClick={() => onSelectDates([])}
-            >
-              Deselectează toate
-            </Button>
           </div>
         )}
       </div>

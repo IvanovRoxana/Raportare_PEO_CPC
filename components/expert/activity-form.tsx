@@ -36,6 +36,8 @@ import type { Activity, Deliverable, GrupTintaEntry, Expert, ActivityCatalog } f
 
 interface ActivityFormProps {
   selectedDates: string[];
+  selectedHours?: Record<string, string>;
+  onSelectedHoursChange?: (hours: Record<string, string>) => void;
   expertId: string;
   expertName: string;
   expert?: Expert;
@@ -49,6 +51,8 @@ interface ActivityFormProps {
 
 export function ActivityForm({
   selectedDates,
+  selectedHours,
+  onSelectedHoursChange,
   expertId,
   expertName,
   expert,
@@ -105,7 +109,7 @@ export function ActivityForm({
     // Initialize with default hours for each selected date
     const initial: Record<string, string> = {};
     selectedDates.forEach(date => {
-      initial[date] = initialActivity?.hours?.toString() || defaultHours.toString();
+      initial[date] = selectedHours?.[date] || initialActivity?.hours?.toString() || defaultHours.toString();
     });
     return initial;
   });
@@ -127,12 +131,20 @@ export function ActivityForm({
       const updated = { ...prev };
       selectedDates.forEach(date => {
         if (!updated[date]) {
-          updated[date] = defaultHours.toString();
+          updated[date] = selectedHours?.[date] || defaultHours.toString();
         }
       });
       return updated;
     });
-  }, [selectedDates, defaultHours]);
+  }, [selectedDates, defaultHours, selectedHours]);
+
+  const updateHoursForDate = (date: string, value: string) => {
+    setHoursPerDay(prev => {
+      const next = { ...prev, [date]: value };
+      onSelectedHoursChange?.(next);
+      return next;
+    });
+  };
   const [activityTitle, setActivityTitle] = useState(initialActivity?.activityType || '');
   const [dayType, setDayType] = useState<'lucratoare' | 'CO' | 'CM'>(
     (initialActivity?.dayType as 'lucratoare' | 'CO' | 'CM') || 'lucratoare'
@@ -484,7 +496,7 @@ export function ActivityForm({
               <FieldLabel htmlFor="hours">Ore lucrate (max 8h/zi, norma {expertNorma}h)</FieldLabel>
               <Select 
                 value={hoursPerDay[selectedDates[0]] || defaultHours.toString()} 
-                onValueChange={(v) => setHoursPerDay(prev => ({ ...prev, [selectedDates[0]]: v }))}
+                onValueChange={(v) => updateHoursForDate(selectedDates[0], v)}
               >
                 <SelectTrigger id="hours">
                   <SelectValue placeholder="Selecteaza orele" />
@@ -516,7 +528,7 @@ export function ActivityForm({
                   </span>
                   <Select 
                     value={hoursPerDay[date] || defaultHours.toString()} 
-                    onValueChange={(v) => setHoursPerDay(prev => ({ ...prev, [date]: v }))}
+                    onValueChange={(v) => updateHoursForDate(date, v)}
                   >
                     <SelectTrigger className="h-8 w-[70px]">
                       <SelectValue />
