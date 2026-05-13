@@ -37,13 +37,20 @@ export function LoginCard({
   const searchParams = useSearchParams();
   const nextPath = redirectTo || searchParams.get('redirectTo') || '/expert';
 
+  const redirectToDashboard = (userRoles?: Parameters<typeof getDashboardPathForRoles>[0]) => {
+    const path = userRoles ? getDashboardPathForRoles(userRoles) : nextPath;
+    window.location.assign(path);
+  };
+
   useEffect(() => {
     let isMounted = true;
 
-    getSignedInUser().then((user) => {
-      if (!isMounted || !user) return;
-      window.location.href = getDashboardPathForRoles(user.roles);
-    });
+    getSignedInUser()
+      .then((user) => {
+        if (!isMounted || !user) return;
+        redirectToDashboard(user.roles);
+      })
+      .catch(() => undefined);
 
     return () => {
       isMounted = false;
@@ -56,6 +63,18 @@ export function LoginCard({
     setError(null);
 
     try {
+      const existingUser = await getSignedInUser();
+      if (existingUser) {
+        redirectToDashboard(existingUser.roles);
+        return;
+      }
+
+      if (!email.trim() || !password) {
+        setError('Completează emailul și parola pentru autentificare.');
+        setIsLoading(false);
+        return;
+      }
+
       const result = await signInWithEmail(email, password);
 
       if (result.nextStep.signInStep !== 'DONE') {
@@ -65,12 +84,14 @@ export function LoginCard({
       }
 
       const user = await getSignedInUser();
-      window.location.href = user ? getDashboardPathForRoles(user.roles) : nextPath;
+      redirectToDashboard(user?.roles);
     } catch (loginError) {
       const message = loginError instanceof Error ? loginError.message : '';
-      if (message.includes('already a signed in user')) {
+      const normalizedMessage = message.toLowerCase();
+
+      if (normalizedMessage.includes('already') && normalizedMessage.includes('signed in')) {
         const user = await getSignedInUser();
-        window.location.href = user ? getDashboardPathForRoles(user.roles) : nextPath;
+        redirectToDashboard(user?.roles);
         return;
       }
 
