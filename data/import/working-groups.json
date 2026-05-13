@@ -1,0 +1,107 @@
+[
+  {
+    "id": "wg_4790daca46770b9d",
+    "name": "TF Competitivitate și Creștere Economică",
+    "type": "Task Force",
+    "isActive": true,
+    "saCode": "SA3.4"
+  },
+  {
+    "id": "wg_3d2dc8ac1d5ee037",
+    "name": "TF Munca și Dialog Social",
+    "type": "Task Force",
+    "isActive": true,
+    "saCode": "SA3.4"
+  },
+  {
+    "id": "wg_6e05bf69d1df014f",
+    "name": "TF Economie Circulară",
+    "type": "Task Force",
+    "isActive": true,
+    "saCode": "SA3.4"
+  },
+  {
+    "id": "wg_49362c3d4f8e53c8",
+    "name": "TF Consumer (Protecția Consumatorilor)",
+    "type": "Task Force",
+    "isActive": true,
+    "saCode": "SA3.4"
+  },
+  {
+    "id": "wg_766d223bcb9fa963",
+    "name": "TF Educație",
+    "type": "Task Force",
+    "isActive": true,
+    "saCode": "SA3.4"
+  },
+  {
+    "id": "wg_d256cd1c67db0618",
+    "name": "TF Proiecte Finanțate din Fonduri Europene",
+    "type": "Task Force",
+    "isActive": true,
+    "saCode": "SA3.4"
+  },
+  {
+    "id": "wg_1c0dd1616fbf2234",
+    "name": "TF Guvernanță",
+    "type": "Task Force",
+    "isActive": true,
+    "saCode": "SA3.4"
+  },
+  {
+    "id": "wg_65b7e836c08a195f",
+    "name": "TF Viitorul Transportului �n Rom�nia",
+    "type": "Task Force",
+    "isActive": true,
+    "saCode": "SA3.4"
+  },
+  {
+    "id": "wg_38d306179b79eba9",
+    "name": "TF Digitalizarea Rom�niei",
+    "type": "Task Force",
+    "isActive": true,
+    "saCode": "SA3.4"
+  },
+  {
+    "id": "wg_072067c80c9c12ff",
+    "name": "TF Politică Fiscală",
+    "type": "Task Force",
+    "isActive": true,
+    "saCode": "SA3.4"
+  },
+  {
+    "id": "wg_bcc21601a0522b1a",
+    "name": "Club Tranziție Energetică",
+    "type": "Club",
+    "isActive": true,
+    "saCode": "SA3.4"
+  },
+  {
+    "id": "wg_b3e93e44e24418bc",
+    "name": "TF PEO Concordia",
+    "type": "Task Force",
+    "isActive": true,
+    "saCode": "SA3.4"
+  },
+  {
+    "id": "wg_35d05f7cbdb807a7",
+    "name": "TF ORDA — Drepturi de Autor",
+    "type": "Task Force",
+    "isActive": true,
+    "saCode": "SA3.4"
+  },
+  {
+    "id": "wg_bf65401b8a59a10e",
+    "name": "Adunarea Generală CPC",
+    "type": "Structura",
+    "isActive": true,
+    "saCode": "SA3.4"
+  },
+  {
+    "id": "wg_7d21f47c227ff0bd",
+    "name": "Consiliul Director CPC",
+    "type": "Structura",
+    "isActive": true,
+    "saCode": "SA3.4"
+  }
+]
