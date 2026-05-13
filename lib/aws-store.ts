@@ -1,6 +1,7 @@
 'use client';
 
 import { getAwsDataClient, isAwsAvailable } from '@/lib/aws/client';
+import outputs from '@/amplify_outputs.json';
 import { peoUsersAsExperts } from '@/lib/peo-users';
 import {
   validateActivitiesBeforeCreate,
@@ -69,6 +70,31 @@ function monthFromDate(date: string) {
 
 function yearFromDate(date: string) {
   return new Date(`${date}T00:00:00`).getFullYear();
+}
+
+function modelHasField(modelName: string, fieldName: string) {
+  const fields = (outputs as any)?.data?.model_introspection?.models?.[modelName]?.fields;
+  return Boolean(fields?.[fieldName]);
+}
+
+function withSupportedExpertFields(payload: Record<string, unknown>, expert: Partial<Expert>) {
+  const extendedFields: Record<string, unknown> = {
+    normType: expert.normType,
+    oreZi: expert.oreZi ?? expert.dailyHours ?? expert.norma,
+    manualMonthlyNorm: expert.manualMonthlyNorm,
+    projectMonthlyNorm: expert.projectMonthlyNorm,
+    positionInProject: expert.positionInProject,
+    projectCode: expert.projectCode,
+    projectTitle: expert.projectTitle,
+  };
+
+  Object.entries(extendedFields).forEach(([field, value]) => {
+    if (modelHasField('Expert', field)) {
+      payload[field] = value;
+    }
+  });
+
+  return payload;
 }
 
 function mapExpert(item: any): Expert {
@@ -311,7 +337,7 @@ export const expertsService = {
 
   async create(expert: Omit<Expert, 'id'>): Promise<Expert> {
     const client = getAwsDataClient() as any;
-    const result = await client.models.Expert.create({
+    const result = await client.models.Expert.create(withSupportedExpertFields({
       name: expert.name,
       role: expert.role,
       email: expert.email,
@@ -321,14 +347,14 @@ export const expertsService = {
       saCodes: expert.saCodes ?? [],
       hasPmAccess: expert.hasPmAccess ?? false,
       isActive: expert.isActive ?? true,
-    });
+    }, expert));
     assertNoErrors(result, 'AWS create expert');
     return mapExpert(result.data);
   },
 
   async update(id: string, updates: Partial<Expert>): Promise<void> {
     const client = getAwsDataClient() as any;
-    const result = await client.models.Expert.update({
+    const result = await client.models.Expert.update(withSupportedExpertFields({
       id,
       name: updates.name,
       role: updates.role,
@@ -339,7 +365,7 @@ export const expertsService = {
       saCodes: updates.saCodes,
       hasPmAccess: updates.hasPmAccess,
       isActive: updates.isActive,
-    });
+    }, updates));
     assertNoErrors(result, 'AWS update expert');
   },
 

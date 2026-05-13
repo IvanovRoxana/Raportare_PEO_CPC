@@ -1,14 +1,16 @@
 {
-  "generatedAt": "2026-05-13T16:51:29.101Z",
+  "generatedAt": "2026-05-13T18:55:20.428Z",
   "sourceFiles": {
     "catalog": "C:\\Users\\RoxanaIvanov\\Confederatia Concordia\\PEO 2024-2028 - Documents\\General\\RAPORTARE_TEHNICA\\SA1.1_Grup Tinta\\IVANOV ROXANA\\Robotei\\Etapa 2\\PEO_Catalog_Activitati v2.xlsx",
     "timesheet": "C:\\Users\\RoxanaIvanov\\Confederatia Concordia\\PEO 2024-2028 - Documents\\General\\RAPORTARE_TEHNICA\\SA1.1_Grup Tinta\\IVANOV ROXANA\\Robotei\\Etapa 2\\Pontaj.xlsx",
     "activities": "C:\\Users\\RoxanaIvanov\\Confederatia Concordia\\PEO 2024-2028 - Documents\\General\\RAPORTARE_TEHNICA\\SA1.1_Grup Tinta\\IVANOV ROXANA\\Robotei\\Etapa 1\\PEO_Formular_Activitate_noua.csv",
     "workingGroups": "C:\\Users\\RoxanaIvanov\\Confederatia Concordia\\PEO 2024-2028 - Documents\\General\\RAPORTARE_TEHNICA\\SA1.1_Grup Tinta\\IVANOV ROXANA\\Robotei\\Etapa 1\\PEO_Grupuri_Lucru (1).csv",
     "targetGroups": "C:\\Users\\RoxanaIvanov\\Confederatia Concordia\\PEO 2024-2028 - Documents\\General\\RAPORTARE_TEHNICA\\SA1.1_Grup Tinta\\IVANOV ROXANA\\Robotei\\Etapa 1\\PEO_GT.csv",
-    "reportStatus": "C:\\Users\\RoxanaIvanov\\Confederatia Concordia\\PEO 2024-2028 - Documents\\General\\RAPORTARE_TEHNICA\\SA1.1_Grup Tinta\\IVANOV ROXANA\\Robotei\\Etapa 1\\PEO_Status_RA.csv"
+    "reportStatus": "C:\\Users\\RoxanaIvanov\\Confederatia Concordia\\PEO 2024-2028 - Documents\\General\\RAPORTARE_TEHNICA\\SA1.1_Grup Tinta\\IVANOV ROXANA\\Robotei\\Etapa 1\\PEO_Status_RA.csv",
+    "experts": "C:\\Users\\RoxanaIvanov\\Confederatia Concordia\\PEO 2024-2028 - Documents\\General\\RAPORTARE_TEHNICA\\SA1.1_Grup Tinta\\IVANOV ROXANA\\Robotei\\Etapa 2\\PEO_Experti_v2.xlsx"
   },
   "counts": {
+    "experts": 17,
     "activityCatalog": 116,
     "workingGroups": 15,
     "sampleActivities": 1,
@@ -17,6 +19,7 @@
   },
   "notes": [
     "activityCatalog si workingGroups pot fi importate direct in DynamoDB.",
+    "experts.json este generat din PEO_Experti_v2.xlsx si nu include parola de logare din sursa.",
     "sampleActivities, targetGroups si reportStatuses trebuie legate de Expert.id inainte de importul final."
   ]
 }

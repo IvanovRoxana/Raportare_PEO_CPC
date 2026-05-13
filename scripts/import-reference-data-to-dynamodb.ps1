@@ -139,17 +139,23 @@ function Write-DdbItems {
 $awsExe = Get-AwsExe
 $tableResponse = & $awsExe dynamodb list-tables --profile $Profile --region $Region --output json | ConvertFrom-Json
 $activityCatalogTable = Find-TableName -TableNames $tableResponse.TableNames -ModelName "ActivityCatalog"
+$expertTable = Find-TableName -TableNames $tableResponse.TableNames -ModelName "Expert"
 $workingGroupTable = Find-TableName -TableNames $tableResponse.TableNames -ModelName "WorkingGroup"
 
 $catalogPath = Join-Path $DataDir "activity-catalog.json"
+$expertsPath = Join-Path $DataDir "experts.json"
 $workingGroupsPath = Join-Path $DataDir "working-groups.json"
 
-if (!(Test-Path $catalogPath) -or !(Test-Path $workingGroupsPath)) {
+if (!(Test-Path $catalogPath) -or !(Test-Path $expertsPath) -or !(Test-Path $workingGroupsPath)) {
   throw "Ruleaza mai intai: npm run prepare:reference-data"
 }
 
 $catalog = Read-JsonUtf8 -Path $catalogPath
+$experts = Read-JsonUtf8 -Path $expertsPath
 $workingGroups = Read-JsonUtf8 -Path $workingGroupsPath
+
+Write-Host "Import Expert -> $expertTable"
+Write-DdbItems -TableName $expertTable -Items @($experts)
 
 Write-Host "Import ActivityCatalog -> $activityCatalogTable"
 Write-DdbItems -TableName $activityCatalogTable -Items @($catalog)

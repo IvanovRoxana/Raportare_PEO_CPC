@@ -155,7 +155,7 @@ export function peoUsersAsExperts(): Expert[] {
   return peoExpertUsers.map((user) => ({
     id: user.id,
     name: user.name,
-    role: user.projectRole,
+    role: user.roles.includes('expert') && user.roles.includes('pm') ? 'Expert/PM' : user.roles.includes('pm') ? 'PM' : 'Expert',
     email: user.email,
     category: user.category,
     norma: user.norma,

@@ -1,0 +1,408 @@
+[
+  {
+    "id": "expert_583ff32b3538e3cc",
+    "name": "Cojocaru Andreea",
+    "role": "Expert",
+    "email": "andreea.cojocaru@confederatia-concordia.ro",
+    "category": "ap",
+    "norma": 6,
+    "normType": "calculated",
+    "oreZi": 6,
+    "dailyHours": 6,
+    "positionInProject": "Expert Afaceri Publice",
+    "projectCode": "302141",
+    "projectTitle": "Consolidarea capacității Concordia pentru dialog social",
+    "beneficiary": "CONFEDERATIA PATRONALA CONCORDIA",
+    "saCodes": [
+      "SA3.2",
+      "SA3.4",
+      "SA3.5"
+    ],
+    "hasPmAccess": false,
+    "cognitoGroups": [
+      "expert"
+    ],
+    "isActive": true
+  },
+  {
+    "id": "expert_2808b45e2e679a37",
+    "name": "Colceru Alexandra",
+    "role": "Expert",
+    "email": "alexandra.colceru@confederatia-concordia.ro",
+    "category": "com",
+    "norma": 8,
+    "normType": "calculated",
+    "oreZi": 8,
+    "dailyHours": 8,
+    "positionInProject": "Responsabil Informare si Comunicare",
+    "projectCode": "302141",
+    "projectTitle": "Consolidarea capacității Concordia pentru dialog social",
+    "beneficiary": "CONFEDERATIA PATRONALA CONCORDIA",
+    "saCodes": [
+      "SA3.2",
+      "SA3.3",
+      "SA3.4"
+    ],
+    "hasPmAccess": false,
+    "cognitoGroups": [
+      "expert"
+    ],
+    "isActive": true
+  },
+  {
+    "id": "expert_206bb158c99c7a89",
+    "name": "Enache Alexandru",
+    "role": "Expert",
+    "email": "alexandru.enache@confederatia-concordia.ro",
+    "category": "bh",
+    "norma": 8,
+    "normType": "calculated",
+    "oreZi": 8,
+    "dailyHours": 8,
+    "positionInProject": "Coordonator Business Hub",
+    "projectCode": "302141",
+    "projectTitle": "Consolidarea capacității Concordia pentru dialog social",
+    "beneficiary": "CONFEDERATIA PATRONALA CONCORDIA",
+    "saCodes": [
+      "SA3.2"
+    ],
+    "hasPmAccess": false,
+    "cognitoGroups": [
+      "expert"
+    ],
+    "isActive": true
+  },
+  {
+    "id": "expert_f792967ac8861911",
+    "name": "Halit Nida",
+    "role": "Expert",
+    "email": "nida.halit@confederatia-concordia.ro",
+    "category": "com",
+    "norma": 8,
+    "normType": "calculated",
+    "oreZi": 8,
+    "dailyHours": 8,
+    "positionInProject": "Expert Informare si Comunicare",
+    "projectCode": "302141",
+    "projectTitle": "Consolidarea capacității Concordia pentru dialog social",
+    "beneficiary": "CONFEDERATIA PATRONALA CONCORDIA",
+    "saCodes": [
+      "SA3.2",
+      "SA3.3",
+      "SA3.4"
+    ],
+    "hasPmAccess": false,
+    "cognitoGroups": [
+      "expert"
+    ],
+    "isActive": true
+  },
+  {
+    "id": "expert_c73224a7e007447a",
+    "name": "Ianos Radu",
+    "role": "Expert",
+    "email": "radu.ianos@confederatia-concordia.ro",
+    "category": "ap",
+    "norma": 6,
+    "normType": "calculated",
+    "oreZi": 6,
+    "dailyHours": 6,
+    "positionInProject": "Expert Afaceri Publice",
+    "projectCode": "302141",
+    "projectTitle": "Consolidarea capacității Concordia pentru dialog social",
+    "beneficiary": "CONFEDERATIA PATRONALA CONCORDIA",
+    "saCodes": [
+      "SA3.2",
+      "SA3.4",
+      "SA3.5"
+    ],
+    "hasPmAccess": false,
+    "cognitoGroups": [
+      "expert"
+    ],
+    "isActive": true
+  },
+  {
+    "id": "expert_443d1944a236791d",
+    "name": "Ivanov Roxana",
+    "role": "Expert/PM",
+    "email": "roxana.ivanov@confederatia-concordia.ro",
+    "category": "gt",
+    "norma": 8,
+    "normType": "calculated",
+    "oreZi": 8,
+    "dailyHours": 8,
+    "positionInProject": "Expert Recrutare si Selectie GT",
+    "projectCode": "302141",
+    "projectTitle": "Consolidarea capacității Concordia pentru dialog social",
+    "beneficiary": "CONFEDERATIA PATRONALA CONCORDIA",
+    "saCodes": [
+      "SA1.1"
+    ],
+    "hasPmAccess": true,
+    "cognitoGroups": [
+      "expert",
+      "pm"
+    ],
+    "isActive": true
+  },
+  {
+    "id": "expert_fab8861d4c149d74",
+    "name": "Khamissi Simona",
+    "role": "Expert",
+    "email": "simona.khamissi@confederatia-concordia.ro",
+    "category": "gdpr",
+    "norma": 4,
+    "normType": "calculated",
+    "oreZi": 4,
+    "dailyHours": 4,
+    "positionInProject": "Expert Protectia Datelor",
+    "projectCode": "302141",
+    "projectTitle": "Consolidarea capacității Concordia pentru dialog social",
+    "beneficiary": "CONFEDERATIA PATRONALA CONCORDIA",
+    "saCodes": [
+      "SA1.1"
+    ],
+    "hasPmAccess": false,
+    "cognitoGroups": [
+      "expert"
+    ],
+    "isActive": true
+  },
+  {
+    "id": "expert_8aa47ba8c440086a",
+    "name": "Malvina ciuciula",
+    "role": "PM",
+    "email": "malvina.ciuciula@confederatia-concordia.ro",
+    "category": "pm",
+    "norma": 8,
+    "normType": "calculated",
+    "oreZi": 8,
+    "dailyHours": 8,
+    "positionInProject": "Manager Proiect",
+    "projectCode": "302141",
+    "projectTitle": "Consolidarea capacității Concordia pentru dialog social",
+    "beneficiary": "CONFEDERATIA PATRONALA CONCORDIA",
+    "saCodes": [
+      "SA6.1"
+    ],
+    "hasPmAccess": true,
+    "cognitoGroups": [
+      "pm"
+    ],
+    "isActive": true
+  },
+  {
+    "id": "expert_9e22b880da7b5d35",
+    "name": "Mihaela Grigoras",
+    "role": "PM",
+    "email": "mihaela.grigoras@confederatia-concordia.ro",
+    "category": "pm",
+    "norma": 8,
+    "normType": "calculated",
+    "oreZi": 8,
+    "dailyHours": 8,
+    "positionInProject": "Manager Proiect",
+    "projectCode": "302141",
+    "projectTitle": "Consolidarea capacității Concordia pentru dialog social",
+    "beneficiary": "CONFEDERATIA PATRONALA CONCORDIA",
+    "saCodes": [
+      "SA6.1"
+    ],
+    "hasPmAccess": true,
+    "cognitoGroups": [
+      "pm"
+    ],
+    "isActive": true
+  },
+  {
+    "id": "expert_23429f55d79cc561",
+    "name": "Neagu Liviu",
+    "role": "Expert",
+    "email": "liviu.neagu@confederatia-concordia.ro",
+    "category": "cercetare",
+    "norma": 8,
+    "normType": "calculated",
+    "oreZi": 8,
+    "dailyHours": 8,
+    "positionInProject": "Expert Cercetare si Analize",
+    "projectCode": "302141",
+    "projectTitle": "Consolidarea capacității Concordia pentru dialog social",
+    "beneficiary": "CONFEDERATIA PATRONALA CONCORDIA",
+    "saCodes": [
+      "SA2.1",
+      "SA2.2"
+    ],
+    "hasPmAccess": false,
+    "cognitoGroups": [
+      "expert"
+    ],
+    "isActive": true
+  },
+  {
+    "id": "expert_8cbc496da7681289",
+    "name": "Neghina Alexandru",
+    "role": "PM",
+    "email": "alexandru.neghina@confederatia-concordia.ro",
+    "category": "pm",
+    "norma": 8,
+    "normType": "project",
+    "projectMonthlyNorm": 126,
+    "positionInProject": "Manager Proiect",
+    "projectCode": "302141",
+    "projectTitle": "Consolidarea capacității Concordia pentru dialog social",
+    "beneficiary": "CONFEDERATIA PATRONALA CONCORDIA",
+    "saCodes": [
+      "SA6.1"
+    ],
+    "hasPmAccess": true,
+    "cognitoGroups": [
+      "pm"
+    ],
+    "isActive": true
+  },
+  {
+    "id": "expert_44e7df32a3b4f9ca",
+    "name": "Nicolae Irina",
+    "role": "Expert",
+    "email": "irina.nicolae@confederatia-concordia.ro",
+    "category": "cr",
+    "norma": 8,
+    "normType": "calculated",
+    "oreZi": 8,
+    "dailyHours": 8,
+    "positionInProject": "Coordonator Centre Regionale",
+    "projectCode": "302141",
+    "projectTitle": "Consolidarea capacității Concordia pentru dialog social",
+    "beneficiary": "CONFEDERATIA PATRONALA CONCORDIA",
+    "saCodes": [
+      "SA3.2",
+      "SA3.3",
+      "SA3.4"
+    ],
+    "hasPmAccess": false,
+    "cognitoGroups": [
+      "expert"
+    ],
+    "isActive": true
+  },
+  {
+    "id": "expert_cae1ca9be25cd006",
+    "name": "Popa Corina",
+    "role": "PM",
+    "email": "corina.popa@confederatia-concordia.ro",
+    "category": "pm",
+    "norma": 8,
+    "normType": "calculated",
+    "oreZi": 8,
+    "dailyHours": 8,
+    "positionInProject": "Manager Proiect",
+    "projectCode": "302141",
+    "projectTitle": "Consolidarea capacității Concordia pentru dialog social",
+    "beneficiary": "CONFEDERATIA PATRONALA CONCORDIA",
+    "saCodes": [
+      "SA6.1"
+    ],
+    "hasPmAccess": true,
+    "cognitoGroups": [
+      "pm"
+    ],
+    "isActive": true
+  },
+  {
+    "id": "expert_b79824beee116096",
+    "name": "Toma Bianca",
+    "role": "Expert",
+    "email": "bianca.toma@confederatia-concordia.ro",
+    "category": "ap",
+    "norma": 4,
+    "normType": "calculated",
+    "oreZi": 4,
+    "dailyHours": 4,
+    "positionInProject": "Expert Afaceri Publice",
+    "projectCode": "302141",
+    "projectTitle": "Consolidarea capacității Concordia pentru dialog social",
+    "beneficiary": "CONFEDERATIA PATRONALA CONCORDIA",
+    "saCodes": [
+      "SA3.2",
+      "SA3.4",
+      "SA3.5"
+    ],
+    "hasPmAccess": false,
+    "cognitoGroups": [
+      "expert"
+    ],
+    "isActive": true
+  },
+  {
+    "id": "expert_20401bd5727511e4",
+    "name": "Ungureanu Diana",
+    "role": "PM",
+    "email": "diana.ungureanu@confederatia-concordia.ro",
+    "category": "pm",
+    "norma": 4,
+    "normType": "calculated",
+    "oreZi": 4,
+    "dailyHours": 4,
+    "positionInProject": "Manager Proiect",
+    "projectCode": "302141",
+    "projectTitle": "Consolidarea capacității Concordia pentru dialog social",
+    "beneficiary": "CONFEDERATIA PATRONALA CONCORDIA",
+    "saCodes": [
+      "SA6.1"
+    ],
+    "hasPmAccess": true,
+    "cognitoGroups": [
+      "pm"
+    ],
+    "isActive": true
+  },
+  {
+    "id": "expert_04edd2c848a9a9cb",
+    "name": "Zaharia Dan",
+    "role": "Expert",
+    "email": "dan.zaharia@confederatia-concordia.ro",
+    "category": "cr",
+    "norma": 0,
+    "normType": "manual_adjusted",
+    "positionInProject": "Responsabil Centre Regionale",
+    "projectCode": "302141",
+    "projectTitle": "Consolidarea capacității Concordia pentru dialog social",
+    "beneficiary": "CONFEDERATIA PATRONALA CONCORDIA",
+    "saCodes": [
+      "SA3.2",
+      "SA3.3",
+      "SA3.4"
+    ],
+    "hasPmAccess": false,
+    "cognitoGroups": [
+      "expert"
+    ],
+    "isActive": true
+  },
+  {
+    "id": "expert_d0990ae2317fc161",
+    "name": "Zvinca Gabriel",
+    "role": "Expert",
+    "email": "gabriel.zvinca@confederatia-concordia.ro",
+    "category": "ap",
+    "norma": 4,
+    "normType": "calculated",
+    "oreZi": 4,
+    "dailyHours": 4,
+    "positionInProject": "Responsabil Afaceri Publice",
+    "projectCode": "302141",
+    "projectTitle": "Consolidarea capacității Concordia pentru dialog social",
+    "beneficiary": "CONFEDERATIA PATRONALA CONCORDIA",
+    "saCodes": [
+      "SA3.2",
+      "SA3.4",
+      "SA3.5"
+    ],
+    "hasPmAccess": false,
+    "cognitoGroups": [
+      "expert"
+    ],
+    "isActive": true
+  }
+]

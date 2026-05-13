@@ -37,6 +37,10 @@ const cp1252SpecialBytes = new Map([
   ["Ÿ", 0x9f],
 ]);
 
+cp1252SpecialBytes.set("\u0192", 0x83);
+cp1252SpecialBytes.set("\u2122", 0x99);
+cp1252SpecialBytes.set("\u203a", 0x9b);
+
 const sourceFiles = {
   catalog:
     process.env.PEO_CATALOG_FILE ||
@@ -56,6 +60,9 @@ const sourceFiles = {
   reportStatus:
     process.env.PEO_REPORT_STATUS_FILE ||
     "C:\\Users\\RoxanaIvanov\\Confederatia Concordia\\PEO 2024-2028 - Documents\\General\\RAPORTARE_TEHNICA\\SA1.1_Grup Tinta\\IVANOV ROXANA\\Robotei\\Etapa 1\\PEO_Status_RA.csv",
+  experts:
+    process.env.PEO_EXPERTS_FILE ||
+    "C:\\Users\\RoxanaIvanov\\Confederatia Concordia\\PEO 2024-2028 - Documents\\General\\RAPORTARE_TEHNICA\\SA1.1_Grup Tinta\\IVANOV ROXANA\\Robotei\\Etapa 2\\PEO_Experti_v2.xlsx",
 };
 
 function clean(value) {
@@ -136,7 +143,49 @@ function normalizeCategory(value) {
   if (text.includes("grup") || text === "gt") return "gt";
   if (text.includes("gdpr")) return "gdpr";
   if (text.includes("recrut") || text === "cr") return "cr";
+  if (text.includes("resch") || text.includes("research") || text.includes("cercetare")) return "cercetare";
+  if (text === "pm") return "pm";
   return text;
+}
+
+function normalizeNormType(value) {
+  const text = clean(value)
+    ?.normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
+  if (!text) return "calculated";
+  if (text.includes("ajustata") || text.includes("manual")) return "manual_adjusted";
+  if (text.includes("proiect")) return "project";
+  return "calculated";
+}
+
+function roleGroups(value) {
+  const text = clean(value)?.toLowerCase() || "expert";
+  const roles = new Set();
+  if (text.includes("expert")) roles.add("expert");
+  if (text.includes("pm")) roles.add("pm");
+  return Array.from(roles);
+}
+
+function splitSaCodes(value) {
+  return (
+    clean(value)
+      ?.split(/[;,]/)
+      .map((item) => extractSaCode(item) || clean(item))
+      .filter(Boolean) || []
+  );
+}
+
+function extractProjectCode(value) {
+  const text = clean(value);
+  return text?.match(/\b\d{6}\b/)?.[0];
+}
+
+function extractProjectTitle(value) {
+  const text = clean(value);
+  if (!text) return undefined;
+  return clean(text.replace(/\s*-\s*Cod Proiect:\s*\d+\s*$/i, ""));
 }
 
 function extractSaCode(...values) {
@@ -306,12 +355,55 @@ function prepareReportStatuses() {
     .filter(Boolean);
 }
 
+function prepareExperts() {
+  const rows = rowsFromWorkbook(sourceFiles.experts, "PEO_Experti (2)");
+  const byEmail = new Map();
+
+  rows.forEach((row) => {
+    const email = clean(row["email"])?.toLowerCase();
+    const name = clean(row["Numele şi prenumele expertului"]);
+    if (!email || !name) return;
+
+    const role = clean(row["Rol"]) || "Expert";
+    const normType = normalizeNormType(row["Tip Norma"]);
+    const rawHours = numberValue(row["Ore zi"]);
+    const projectInfo = clean(row["Cod / titlu proiect 1:"]);
+    const oreZi = normType === "project" ? undefined : rawHours;
+    const projectMonthlyNorm = normType === "project" ? rawHours : undefined;
+    const norma = normType === "manual_adjusted" && rawHours === undefined ? 0 : oreZi ?? 8;
+
+    byEmail.set(email, {
+      id: idFor("expert", [email]),
+      name,
+      role,
+      email,
+      category: normalizeCategory(row["Categorie"]),
+      norma,
+      normType,
+      oreZi,
+      dailyHours: oreZi,
+      projectMonthlyNorm,
+      positionInProject: clean(row["Poziția în proiect"]),
+      projectCode: extractProjectCode(projectInfo),
+      projectTitle: extractProjectTitle(projectInfo),
+      beneficiary: clean(row["Denumire Beneficiar (Lider de parteneriat)/Partener"]),
+      saCodes: splitSaCodes(row["Sauri"]),
+      hasPmAccess: roleGroups(role).includes("pm"),
+      cognitoGroups: roleGroups(role),
+      isActive: true,
+    });
+  });
+
+  return Array.from(byEmail.values()).sort((a, b) => a.name.localeCompare(b.name));
+}
+
 function writeJson(fileName, data) {
   fs.mkdirSync(outDir, { recursive: true });
   fs.writeFileSync(path.join(outDir, fileName), `${JSON.stringify(data, null, 2)}\n`, "utf8");
 }
 
 const datasets = {
+  experts: prepareExperts(),
   activityCatalog: prepareCatalog(),
   workingGroups: prepareWorkingGroups(),
   sampleActivities: prepareActivities(),
@@ -320,6 +412,7 @@ const datasets = {
 };
 
 writeJson("activity-catalog.json", datasets.activityCatalog);
+writeJson("experts.json", datasets.experts);
 writeJson("working-groups.json", datasets.workingGroups);
 writeJson("sample-activities.json", datasets.sampleActivities);
 writeJson("target-groups.json", datasets.targetGroups);
@@ -335,6 +428,7 @@ writeJson("import-summary.json", {
   counts: summary,
   notes: [
     "activityCatalog si workingGroups pot fi importate direct in DynamoDB.",
+    "experts.json este generat din PEO_Experti_v2.xlsx si nu include parola de logare din sursa.",
     "sampleActivities, targetGroups si reportStatuses trebuie legate de Expert.id inainte de importul final.",
   ],
 });

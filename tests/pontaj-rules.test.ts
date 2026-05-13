@@ -37,6 +37,17 @@ test('recunoaște normă ajustată manual de administrator', () => {
   assert.equal(norm.source, 'manual');
 });
 
+test('blochează norma ajustată manual până când administratorul setează valoarea', () => {
+  const norm = calculateMonthlyNormInfo(
+    { ...expert, normType: 'normă ajustată manual de administrator', manualMonthlyNorm: undefined },
+    0,
+    2026,
+  );
+
+  assert.equal(norm.monthlyNorm, 0);
+  assert.equal(norm.source, 'manual');
+});
+
 test('nu permite depășirea limitei cumulate de 8 ore pe zi', () => {
   const result = validateActivitiesBeforeCreate({
     expert,

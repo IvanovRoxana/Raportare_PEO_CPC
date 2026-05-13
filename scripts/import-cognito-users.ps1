@@ -2,7 +2,8 @@ param(
   [string]$Profile = "raportarepeo",
   [string]$Region = "eu-north-1",
   [string]$Aws = "C:\Program Files\Amazon\AWSCLIV2\aws.exe",
-  [string]$OutputsPath = "$PSScriptRoot\..\amplify_outputs.json"
+  [string]$OutputsPath = "$PSScriptRoot\..\amplify_outputs.json",
+  [string]$ExpertsPath = "$PSScriptRoot\..\data\import\experts.json"
 )
 
 $ErrorActionPreference = "Continue"
@@ -22,21 +23,17 @@ if (-not $userPoolId) {
   throw "Nu gasesc user_pool_id in amplify_outputs.json"
 }
 
-$users = @(
-  @{ Name = "Andreea Cojocaru"; Email = "andreea.cojocaru@confederatia-concordia.ro"; Roles = @("expert") },
-  @{ Name = "Bianca Toma"; Email = "bianca.toma@confederatia-concordia.ro"; Roles = @("expert") },
-  @{ Name = "Alexandru Enache"; Email = "alexandru.enache@confederatia-concordia.ro"; Roles = @("expert") },
-  @{ Name = "Alexandra Colceru"; Email = "alexandra.colceru@confederatia-concordia.ro"; Roles = @("expert") },
-  @{ Name = "Gabriel Zvinca"; Email = "gabriel.zvinca@confederatia-concordia.ro"; Roles = @("expert") },
-  @{ Name = "Irina Nicolae"; Email = "irina.nicolae@confederatia-concordia.ro"; Roles = @("expert") },
-  @{ Name = "Liviu Neagu"; Email = "liviu.neagu@confederatia-concordia.ro"; Roles = @("expert") },
-  @{ Name = "Radu Ianos"; Email = "radu.ianos@confederatia-concordia.ro"; Roles = @("expert") },
-  @{ Name = "Roxana Ivanov"; Email = "roxana.ivanov@confederatia-concordia.ro"; Roles = @("expert", "pm") },
-  @{ Name = "Dan Zaharia"; Email = "dan.zaharia@confederatia-concordia.ro"; Roles = @("expert") },
-  @{ Name = "Simona Khamissi"; Email = "simona.khamissi@confederatia-concordia.ro"; Roles = @("expert") },
-  @{ Name = "Nida Halit"; Email = "nida.halit@confederatia-concordia.ro"; Roles = @("expert") },
-  @{ Name = "Mihaela Grigoras"; Email = "mihaela.grigoras@confederatia-concordia.ro"; Roles = @("pm") }
-)
+if (-not (Test-Path -LiteralPath $ExpertsPath)) {
+  throw "Nu gasesc experts.json la: $ExpertsPath. Ruleaza mai intai: npm run prepare:reference-data"
+}
+
+$users = Get-Content -Raw -LiteralPath $ExpertsPath | ConvertFrom-Json | ForEach-Object {
+  @{
+    Name = $_.name
+    Email = $_.email
+    Roles = @($_.cognitoGroups)
+  }
+}
 
 function New-TemporaryPassword {
   $letters = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ"

@@ -102,6 +102,16 @@ export function calculateMonthlyNormInfo(expert: Partial<Expert>, month: number,
     };
   }
 
+  if (normType === 'manual_adjusted') {
+    return {
+      normType,
+      dailyHours,
+      workingDays,
+      monthlyNorm: 0,
+      source: 'manual',
+    };
+  }
+
   if (normType === 'project' && projectMonthlyNorm !== undefined) {
     return {
       normType,
