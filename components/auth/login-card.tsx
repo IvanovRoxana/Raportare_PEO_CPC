@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
@@ -37,6 +37,19 @@ export function LoginCard({
   const searchParams = useSearchParams();
   const nextPath = redirectTo || searchParams.get('redirectTo') || '/expert';
 
+  useEffect(() => {
+    let isMounted = true;
+
+    getSignedInUser().then((user) => {
+      if (!isMounted || !user) return;
+      window.location.href = getDashboardPathForRoles(user.roles);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const handleLogin = async (event: FormEvent) => {
     event.preventDefault();
     setIsLoading(true);
@@ -55,6 +68,12 @@ export function LoginCard({
       window.location.href = user ? getDashboardPathForRoles(user.roles) : nextPath;
     } catch (loginError) {
       const message = loginError instanceof Error ? loginError.message : '';
+      if (message.includes('already a signed in user')) {
+        const user = await getSignedInUser();
+        window.location.href = user ? getDashboardPathForRoles(user.roles) : nextPath;
+        return;
+      }
+
       setError(
         message.includes('Incorrect username or password') || message.includes('User does not exist')
           ? 'Email sau parolă incorecte.'
