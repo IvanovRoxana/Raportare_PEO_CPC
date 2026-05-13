@@ -101,7 +101,7 @@ export interface ReportStatus {
   expertId: string;
   year: number;
   month: number;
-  status: 'draft' | 'sent' | 'approved' | 'rejected';
+  status: 'draft' | 'sent' | 'in_review' | 'approved' | 'rejected' | 'clarifications';
   sentDate?: string;
   approvalDate?: string;
   pmNotes?: string;

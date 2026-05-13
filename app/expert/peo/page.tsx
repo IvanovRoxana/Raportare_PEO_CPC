@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { Settings, ArrowLeft, Loader2, Plus } from 'lucide-react';
+import { Settings, ArrowLeft, Loader2, Plus, Send, Lock } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -22,6 +22,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Badge } from '@/components/ui/badge';
 import { MultiSelectCalendar } from '@/components/expert/multi-select-calendar';
 import { CalendarView } from '@/components/expert/calendar-view';
 import { ActivityForm } from '@/components/expert/activity-form';
@@ -29,8 +30,8 @@ import { ActivitiesTable } from '@/components/expert/activities-table';
 import { ReportGenerator } from '@/components/expert/report-generator';
 import { MonthlyReportExport } from '@/components/expert/monthly-report-export';
 import { getMonthName } from '@/lib/backend-store';
-import { useExperts, useActivitiesByMonth, useActivityMutations, useApiKey } from '@/hooks/use-backend-data';
-import type { Activity, Expert } from '@/lib/types';
+import { useExperts, useActivitiesByMonth, useActivityMutations, useApiKey, useReportStatus } from '@/hooks/use-backend-data';
+import type { Activity, Expert, ReportStatus } from '@/lib/types';
 import { UserMenu } from '@/components/user-menu';
 import { getSignedInUser } from '@/lib/aws/auth';
 
@@ -52,6 +53,7 @@ export default function ExpertDashboard() {
   const { activities: allMonthActivities, isLoading: activitiesLoading, mutate: refreshActivities } = useActivitiesByMonth(currentMonth, currentYear);
   const { create: createActivity, createBatch, update: updateActivity, remove: removeActivity } = useActivityMutations();
   const { apiKey, setApiKey, isLoading: apiKeyLoading } = useApiKey();
+  const { status: reportStatus, updateStatus: updateReportStatus, isLoading: reportStatusLoading } = useReportStatus(selectedExpertId, currentMonth, currentYear);
 
   // Get logged in user email
   useEffect(() => {
@@ -99,6 +101,8 @@ export default function ExpertDashboard() {
   };
 
   const handleSaveActivities = async (newActivities: Activity[]) => {
+    if (reportStatus?.status === 'approved') return;
+
     setIsSaving(true);
     try {
       if (editingActivity) {
@@ -126,6 +130,8 @@ export default function ExpertDashboard() {
   };
 
   const handleEditActivity = (activity: Activity) => {
+    if (reportStatus?.status === 'approved') return;
+
     setEditingActivity(activity);
     setSelectedDates([activity.date]);
     setSelectedHours({ [activity.date]: activity.hours.toString() });
@@ -133,12 +139,40 @@ export default function ExpertDashboard() {
   };
 
   const handleDeleteActivity = async (activityId: string) => {
+    if (reportStatus?.status === 'approved') return;
+
     try {
       await removeActivity(activityId);
       await refreshActivities();
     } catch (error) {
       console.error('Error deleting activity:', error);
     }
+  };
+
+  const statusLabels: Record<ReportStatus['status'], { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
+    draft: { label: 'Draft', variant: 'secondary' },
+    sent: { label: 'Trimis către PM', variant: 'outline' },
+    in_review: { label: 'În verificare PM', variant: 'outline' },
+    approved: { label: 'Aprobat', variant: 'default' },
+    rejected: { label: 'Respins', variant: 'destructive' },
+    clarifications: { label: 'Clarificări solicitate', variant: 'destructive' },
+  };
+
+  const currentStatus = reportStatus?.status || 'draft';
+  const isApproved = currentStatus === 'approved';
+  const statusMeta = statusLabels[currentStatus];
+
+  const handleSubmitMonth = async () => {
+    if (!selectedExpertId || activities.length === 0 || isApproved) return;
+
+    await updateReportStatus({
+      expertId: selectedExpertId,
+      year: currentYear,
+      month: currentMonth,
+      status: 'sent',
+      sentDate: new Date().toISOString(),
+      pmNotes: reportStatus?.pmNotes,
+    });
   };
 
   const handleSaveSettings = async () => {
@@ -278,6 +312,29 @@ export default function ExpertDashboard() {
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-6">
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-4">
+          <div className="space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-lg font-semibold text-foreground">
+                Status raportare - {getMonthName(currentMonth)} {currentYear}
+              </h2>
+              <Badge variant={statusMeta.variant}>{statusMeta.label}</Badge>
+              {reportStatusLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+            </div>
+            {reportStatus?.pmNotes ? (
+              <p className="text-sm text-muted-foreground">Observații PM: {reportStatus.pmNotes}</p>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Completează pontajul și trimite luna către PM când pachetul este pregătit.
+              </p>
+            )}
+          </div>
+          <Button onClick={handleSubmitMonth} disabled={activities.length === 0 || isApproved || currentStatus === 'sent' || currentStatus === 'in_review'}>
+            {isApproved ? <Lock className="h-4 w-4" /> : <Send className="h-4 w-4" />}
+            {isApproved ? 'Lună aprobată' : 'Trimite luna către PM'}
+          </Button>
+        </div>
+
         <Tabs defaultValue="activitati" className="space-y-6">
           <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="activitati">Activitati</TabsTrigger>
@@ -295,7 +352,7 @@ export default function ExpertDashboard() {
                   Adaugă activități, livrabile, documente justificative și intrări pentru grupul țintă.
                 </p>
               </div>
-              <Button onClick={handleAddActivity} disabled={!selectedExpert.id}>
+              <Button onClick={handleAddActivity} disabled={!selectedExpert.id || isApproved}>
                 <Plus className="h-4 w-4" />
                 Adaugă activitate
               </Button>

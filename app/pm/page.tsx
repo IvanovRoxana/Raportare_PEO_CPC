@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, Suspense } from 'react';
-import { Settings, ArrowLeft, Save, Loader2, AlertCircle } from 'lucide-react';
+import { Settings, ArrowLeft, Save, Loader2, AlertCircle, CheckCircle, XCircle, MessageSquare, Eye } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -38,6 +38,7 @@ import {
   useNotes,
   useNoteMutations,
   useApiKey,
+  useReportStatus,
 } from '@/hooks/use-backend-data';
 import type {
   PontajRow,
@@ -46,6 +47,7 @@ import type {
   CrossExpertRow,
   Neconformitate,
   VerificationNote,
+  ReportStatus,
 } from '@/lib/types';
 import { UserMenu } from '@/components/user-menu';
 
@@ -82,6 +84,11 @@ export default function PMDashboard() {
   const { create: createNeconformitate, resolve: resolveNeconformitate, remove: removeNeconformitate } = useNeconformitateMutations();
   const { notes, isLoading: notesLoading } = useNotes(verification?.id || null);
   const { create: createNote, update: updateNote, remove: removeNote } = useNoteMutations();
+  const {
+    status: reportStatus,
+    updateStatus: updateReportStatus,
+    isLoading: reportStatusLoading,
+  } = useReportStatus(selectedExpertId, selectedMonth, selectedYear);
 
   // Set default expert when experts load
   useEffect(() => {
@@ -153,6 +160,44 @@ export default function PMDashboard() {
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const statusLabels: Record<ReportStatus['status'], { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
+    draft: { label: 'Draft', variant: 'secondary' },
+    sent: { label: 'Trimis către PM', variant: 'outline' },
+    in_review: { label: 'În verificare', variant: 'outline' },
+    approved: { label: 'Aprobat', variant: 'default' },
+    rejected: { label: 'Respins', variant: 'destructive' },
+    clarifications: { label: 'Clarificări', variant: 'destructive' },
+  };
+
+  const currentReportStatus = reportStatus?.status || 'draft';
+  const currentReportStatusMeta = statusLabels[currentReportStatus];
+
+  const setMonthlyStatus = async (status: ReportStatus['status'], pmNotes?: string) => {
+    if (!selectedExpertId) return;
+
+    await updateReportStatus({
+      expertId: selectedExpertId,
+      year: selectedYear,
+      month: selectedMonth,
+      status,
+      sentDate: reportStatus?.sentDate,
+      approvalDate: status === 'approved' ? new Date().toISOString() : reportStatus?.approvalDate,
+      pmNotes,
+    });
+  };
+
+  const requestClarifications = async () => {
+    const note = window.prompt('Ce clarificări solicitați expertului?');
+    if (note === null) return;
+    await setMonthlyStatus('clarifications', note.trim() || 'Clarificări solicitate de PM.');
+  };
+
+  const rejectMonth = async () => {
+    const note = window.prompt('Motiv respingere:');
+    if (note === null) return;
+    await setMonthlyStatus('rejected', note.trim() || 'Respins de PM.');
   };
 
   const handleSaveSettings = async () => {
@@ -345,7 +390,12 @@ export default function PMDashboard() {
       {/* Statistics Bar */}
       <div className="border-b bg-muted/30">
         <div className="container mx-auto px-4 py-3">
-          <div className="flex items-center gap-6 text-sm">
+          <div className="flex flex-wrap items-center gap-3 text-sm">
+            <div className="flex items-center gap-2">
+              <span className="text-muted-foreground">Status lună:</span>
+              <Badge variant={currentReportStatusMeta.variant}>{currentReportStatusMeta.label}</Badge>
+              {reportStatusLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+            </div>
             <div className="flex items-center gap-2">
               <span className="text-muted-foreground">Pontaj:</span>
               <Badge variant={pontajVerified === pontajData.length && pontajData.length > 0 ? 'default' : 'secondary'}>
@@ -373,6 +423,27 @@ export default function PMDashboard() {
             {verificationLoading && (
               <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
             )}
+          </div>
+          {reportStatus?.pmNotes && (
+            <p className="mt-2 text-xs text-muted-foreground">Observații status: {reportStatus.pmNotes}</p>
+          )}
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={() => setMonthlyStatus('in_review')}>
+              <Eye className="h-4 w-4" />
+              În verificare
+            </Button>
+            <Button variant="outline" size="sm" onClick={requestClarifications}>
+              <MessageSquare className="h-4 w-4" />
+              Cere clarificări
+            </Button>
+            <Button variant="outline" size="sm" onClick={rejectMonth}>
+              <XCircle className="h-4 w-4" />
+              Respinge
+            </Button>
+            <Button size="sm" onClick={() => setMonthlyStatus('approved', reportStatus?.pmNotes)}>
+              <CheckCircle className="h-4 w-4" />
+              Aprobă luna
+            </Button>
           </div>
         </div>
       </div>
