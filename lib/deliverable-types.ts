@@ -130,6 +130,7 @@ export interface DeliverableSlot {
   rawFilename?: string;
   fileType?: string;
   fileSize?: number;
+  filePath?: string;
   fileData?: string; // Base64
   uploadedAt?: string;
   uploaded: boolean;
@@ -160,6 +161,7 @@ export function createDeliverableSlot(slotType: DeliverableSlotType, name: strin
     rawFilename: '',
     fileType: '',
     fileSize: 0,
+    filePath: undefined,
     fileData: undefined,
     uploadedAt: undefined,
     uploaded: false,

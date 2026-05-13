@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { Settings, ArrowLeft, Loader2 } from 'lucide-react';
+import { Settings, ArrowLeft, Loader2, Plus } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -63,16 +63,12 @@ export default function ExpertDashboard() {
 
   // Set expert based on logged in user's email
   useEffect(() => {
-    if (experts.length > 0 && userEmail && !selectedExpertId) {
-      // Find expert by email
-      const matchingExpert = experts.find(e => e.email?.toLowerCase() === userEmail.toLowerCase());
-      if (matchingExpert) {
-        setSelectedExpertId(matchingExpert.id);
-      } else {
-        // Fallback to first expert if no match found
-        setSelectedExpertId(experts[0].id);
-      }
-    }
+    if (experts.length === 0 || selectedExpertId) return;
+
+    const matchingExpert = userEmail
+      ? experts.find(e => e.email?.toLowerCase() === userEmail.toLowerCase())
+      : null;
+    setSelectedExpertId((matchingExpert ?? experts[0]).id);
   }, [experts, userEmail, selectedExpertId]);
 
   // Load API key when it changes
@@ -150,8 +146,18 @@ export default function ExpertDashboard() {
     }
   };
 
+  const getDefaultActivityDate = () => {
+    const today = new Date();
+    if (today.getMonth() === currentMonth && today.getFullYear() === currentYear) {
+      return today.toISOString().split('T')[0];
+    }
+    return `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-01`;
+  };
+
   const handleAddActivity = () => {
-    if (selectedDates.length === 0) return;
+    if (selectedDates.length === 0) {
+      setSelectedDates([getDefaultActivityDate()]);
+    }
     setEditingActivity(null);
     setShowForm(true);
   };
@@ -266,6 +272,19 @@ export default function ExpertDashboard() {
 
           {/* Tab: Activitati - pentru adaugare/editare activitati */}
           <TabsContent value="activitati" className="space-y-6">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-4">
+              <div>
+                <h2 className="text-lg font-semibold text-foreground">Activități PEO</h2>
+                <p className="text-sm text-muted-foreground">
+                  Adaugă activități, livrabile, documente justificative și intrări pentru grupul țintă.
+                </p>
+              </div>
+              <Button onClick={handleAddActivity} disabled={!selectedExpert.id}>
+                <Plus className="h-4 w-4" />
+                Adaugă activitate
+              </Button>
+            </div>
+
             <div className="grid lg:grid-cols-3 gap-6">
               {/* Calendar Section */}
               <div className="lg:col-span-1">

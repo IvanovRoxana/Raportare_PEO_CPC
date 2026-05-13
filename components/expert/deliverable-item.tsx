@@ -41,6 +41,14 @@ export function DeliverableItem({
   const fileRef = useRef<HTMLInputElement>(null);
   const [aiLoading, setAiLoading] = useState(false);
 
+  const readFileAsDataUrl = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+
   const handleFile = async (ev: React.ChangeEvent<HTMLInputElement>) => {
     const file = ev.target.files?.[0];
     if (!file) return;
@@ -63,10 +71,15 @@ export function DeliverableItem({
     const existingTitle = deliverable.declaredTitle || '';
     const suggestedTitle = docTitle && !existingTitle ? docTitle : existingTitle;
     const tm = isPhoto ? null : (docTitle && suggestedTitle ? titleContains(docTitle, suggestedTitle) : null);
+    const fileData = await readFileAsDataUrl(file);
 
     onUpdate({
       filename: file.name,
       rawFilename: raw,
+      fileType: file.type || 'application/octet-stream',
+      fileSize: file.size,
+      fileData,
+      uploadedAt: new Date().toISOString(),
       uploaded: true,
       isPhoto,
       docTitle,
@@ -129,6 +142,10 @@ export function DeliverableItem({
       uploaded: false,
       filename: '',
       rawFilename: '',
+      fileType: '',
+      fileSize: 0,
+      filePath: undefined,
+      fileData: undefined,
       docTitle: null,
       docText: null,
       titleMatch: null,

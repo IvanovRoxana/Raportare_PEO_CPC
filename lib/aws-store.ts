@@ -93,6 +93,11 @@ function mapDeliverable(item: any): Deliverable {
     fileSize: item.fileSize,
     filePath: item.filePath ?? undefined,
     uploadedAt: item.uploadedAt ?? undefined,
+    declaredTitle: item.declaredTitle ?? undefined,
+    docTitle: item.docTitle ?? undefined,
+    titleMatch: item.titleMatch ?? null,
+    aiStatus: item.aiStatus ?? undefined,
+    aiReason: item.aiReason ?? undefined,
   };
 }
 
@@ -269,6 +274,11 @@ export const activitiesService = {
           fileSize: deliverable.fileSize,
           filePath: deliverable.filePath,
           uploadedAt: deliverable.uploadedAt ?? new Date().toISOString(),
+          declaredTitle: deliverable.declaredTitle,
+          docTitle: deliverable.docTitle,
+          titleMatch: deliverable.titleMatch ?? undefined,
+          aiStatus: deliverable.aiStatus,
+          aiReason: deliverable.aiReason,
         }),
       ),
       ...(activity.grupTinta ?? []).map((entry) =>
@@ -312,6 +322,48 @@ export const activitiesService = {
       pmNotes: updates.pmNotes,
     });
     assertNoErrors(result, 'AWS update activity');
+
+    if (updates.deliverables) {
+      const existingDeliverables = await listModel<any>(client.models.Deliverable, { activityId: { eq: id } });
+      await Promise.all(existingDeliverables.map((deliverable) => client.models.Deliverable.delete({ id: deliverable.id })));
+      await Promise.all(
+        updates.deliverables.map((deliverable) =>
+          client.models.Deliverable.create({
+            activityId: id,
+            fileName: deliverable.fileName,
+            fileType: deliverable.fileType,
+            fileSize: deliverable.fileSize,
+            filePath: deliverable.filePath,
+            uploadedAt: deliverable.uploadedAt ?? new Date().toISOString(),
+            declaredTitle: deliverable.declaredTitle,
+            docTitle: deliverable.docTitle,
+            titleMatch: deliverable.titleMatch ?? undefined,
+            aiStatus: deliverable.aiStatus,
+            aiReason: deliverable.aiReason,
+          }),
+        ),
+      );
+    }
+
+    if (updates.grupTinta) {
+      const existingEntries = await listModel<any>(client.models.GrupTintaEntry, { activityId: { eq: id } });
+      await Promise.all(existingEntries.map((entry) => client.models.GrupTintaEntry.delete({ id: entry.id })));
+      await Promise.all(
+        updates.grupTinta.map((entry) =>
+          client.models.GrupTintaEntry.create({
+            expertId: updates.expertId ?? result.data?.expertId,
+            activityId: id,
+            date: entry.date,
+            year: entry.year,
+            month: entry.month,
+            activityType: entry.activityType,
+            organizations: entry.organizations ?? [],
+            participantsCount: entry.participantsCount ?? 0,
+            notes: entry.notes,
+          }),
+        ),
+      );
+    }
   },
 
   async delete(id: string): Promise<void> {

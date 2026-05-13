@@ -46,6 +46,11 @@ export interface Deliverable {
   fileSize: number;
   filePath?: string;
   uploadedAt?: string;
+  declaredTitle?: string;
+  docTitle?: string;
+  titleMatch?: boolean | null;
+  aiStatus?: string;
+  aiReason?: string;
   fileData?: string; // Base64 encoded for localStorage fallback
 }
 

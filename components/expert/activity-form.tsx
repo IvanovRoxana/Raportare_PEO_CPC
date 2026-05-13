@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { Upload, X, FileText, Loader2, Users, Plus, AlertTriangle, CheckCircle } from 'lucide-react';
+import { uploadData } from 'aws-amplify/storage';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -60,16 +61,34 @@ export function ActivityForm({
 }: ActivityFormProps) {
   // Fetch activity catalog from database
   const { catalog, isLoading: catalogLoading } = useActivityCatalog();
+
+  const fallbackCatalog = useMemo<ActivityCatalog[]>(() => {
+    return Object.entries(ACTS).flatMap(([saCode, activityNames]) =>
+      activityNames.map((activityName, index) => ({
+        id: `fallback-${saCode}-${index}`,
+        category: expert?.category || 'peo',
+        saCode,
+        serviceCategory: saCode,
+        activityNumber: index + 1,
+        activityName,
+        deliverables: getActivityOptions(saCode).includes(activityName)
+          ? getDeliverableOptions(expert?.category || 'ap').join('\n')
+          : undefined,
+      }))
+    );
+  }, [expert?.category]);
+
+  const effectiveCatalog = catalog.length > 0 ? catalog : fallbackCatalog;
   
   // Get expert's assigned SA codes (based on their role)
   const expertSaCodes = expert?.saCodes || [];
   
   // Filter catalog by expert's SA codes only (SA codes are role-based, not category-based)
   const filteredCatalog = useMemo(() => {
-    if (!catalog || catalog.length === 0) return [];
+    if (!effectiveCatalog || effectiveCatalog.length === 0) return [];
     if (expertSaCodes.length === 0) return [];
-    return catalog.filter(item => expertSaCodes.includes(item.saCode));
-  }, [catalog, expertSaCodes]);
+    return effectiveCatalog.filter(item => expertSaCodes.includes(item.saCode));
+  }, [effectiveCatalog, expertSaCodes]);
   
   // Get unique SA codes available for this expert from the catalog
   const availableSaCodes = useMemo(() => {
@@ -130,17 +149,24 @@ export function ActivityForm({
       filename: d.fileName,
       fileType: d.fileType,
       fileSize: d.fileSize,
+      filePath: d.filePath,
       fileData: d.fileData,
       uploadedAt: d.uploadedAt,
       uploaded: true,
       isPhoto: d.fileType?.startsWith('image/') || false,
-      declaredTitle: '',
+      declaredTitle: d.declaredTitle || '',
       titleConfirmed: false,
       stadiu: '',
-      aiCheck: null,
-      docTitle: null,
+      aiCheck: d.aiStatus || d.aiReason
+        ? {
+            eligible: d.aiStatus === 'eligible' ? true : d.aiStatus === 'ineligible' ? false : null,
+            reason: d.aiReason || '',
+            issues: [],
+          }
+        : null,
+      docTitle: d.docTitle || null,
       docText: null,
-      titleMatch: null,
+      titleMatch: d.titleMatch ?? null,
       isPendingConfirm: false,
     })) || []
   );
@@ -322,7 +348,48 @@ export function ActivityForm({
     }
   };
 
-  const handleSave = () => {
+  const dataUrlToBlob = (dataUrl: string, fallbackType: string) => {
+    const [header, data] = dataUrl.split(',');
+    const contentType = header.match(/data:(.*?);base64/)?.[1] || fallbackType || 'application/octet-stream';
+    const binary = atob(data);
+    const bytes = new Uint8Array(binary.length);
+
+    for (let i = 0; i < binary.length; i += 1) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+
+    return new Blob([bytes], { type: contentType });
+  };
+
+  const uploadDeliverableFile = async (deliverable: DeliverableSlot): Promise<DeliverableSlot> => {
+    if (!deliverable.fileData || deliverable.filePath) {
+      return deliverable;
+    }
+
+    const fileName = deliverable.filename || deliverable.name || `livrabil-${deliverable.id}`;
+    const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const blob = dataUrlToBlob(deliverable.fileData, deliverable.fileType || 'application/octet-stream');
+    const result = await uploadData({
+      path: ({ identityId }) => `deliverables/${identityId}/${expertId}/${Date.now()}-${safeName}`,
+      data: blob,
+      options: {
+        contentType: deliverable.fileType || blob.type || 'application/octet-stream',
+      },
+    }).result;
+
+    return {
+      ...deliverable,
+      filePath: result.path,
+    };
+  };
+
+  const handleSave = async () => {
+    const uploadedDeliverables = await Promise.all(
+      deliverables
+        .filter(d => d.uploaded && (d.filename || d.name))
+        .map(uploadDeliverableFile)
+    );
+
     const activities: Activity[] = selectedDates.map((date) => {
       // Get hours for this specific date, fallback to default
       const dateHours = isLeave ? 0 : (parseFloat(hoursPerDay[date] || defaultHours.toString()) || defaultHours);
@@ -337,15 +404,28 @@ export function ActivityForm({
         saCode,
         title: activityTitle,
         description,
-        deliverables: deliverables.map(d => ({
-          id: d.id,
-          activityId: initialActivity?.id || '',
-          fileName: d.filename || d.name,
-          fileType: d.fileType || '',
-          fileSize: d.fileSize || 0,
-          uploadedAt: d.uploadedAt,
-          fileData: d.fileData,
-        })),
+        deliverables: uploadedDeliverables
+          .map(d => ({
+            id: d.id,
+            activityId: initialActivity?.id || '',
+            fileName: d.filename || d.name || '',
+            fileType: d.fileType || '',
+            fileSize: d.fileSize || 0,
+            filePath: d.filePath,
+            uploadedAt: d.uploadedAt,
+            declaredTitle: d.declaredTitle,
+            docTitle: d.docTitle || undefined,
+            titleMatch: d.titleMatch,
+            aiStatus: d.aiCheck?.eligible === true
+              ? 'eligible'
+              : d.aiCheck?.eligible === false
+                ? 'ineligible'
+                : d.aiCheck
+                  ? 'review'
+                  : undefined,
+            aiReason: d.aiCheck?.reason,
+            fileData: d.fileData,
+          })),
         location,
         dayType,
         grupTinta,
@@ -467,9 +547,9 @@ export function ActivityForm({
             <div className="grid grid-cols-2 gap-4">
               <Field>
                 <FieldLabel htmlFor="saCode">Subactivitate (Rol: {expert?.role})</FieldLabel>
-                <Select value={saCode} onValueChange={setSaCode} disabled={catalogLoading}>
+                <Select value={saCode} onValueChange={setSaCode} disabled={catalogLoading && catalog.length === 0}>
                   <SelectTrigger id="saCode">
-                    <SelectValue placeholder={catalogLoading ? "Se incarca..." : "Selecteaza SA"} />
+                    <SelectValue placeholder={catalogLoading && catalog.length === 0 ? "Se incarca..." : "Selecteaza SA"} />
                   </SelectTrigger>
                   <SelectContent>
                     {availableSaCodes.length === 0 ? (
