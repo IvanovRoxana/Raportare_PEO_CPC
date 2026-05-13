@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build --webpack",
+    "test": "node --test --experimental-strip-types tests/*.test.ts",
     "start": "next start",
     "lint": "eslint .",
     "prepare:reference-data": "node scripts/prepare-reference-data.mjs",

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { Settings, ArrowLeft, Loader2, Plus, Send, Lock } from 'lucide-react';
+import { Settings, ArrowLeft, Loader2, Plus, Send, Lock, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -35,6 +35,7 @@ import type { Activity, Expert, ReportStatus } from '@/lib/types';
 import { UserMenu } from '@/components/user-menu';
 import { getSignedInUser } from '@/lib/aws/auth';
 import { isGtExpertCategory } from '@/lib/peo-category';
+import { getMonthlyBlockingState } from '@/lib/pontaj-rules';
 
 export default function ExpertDashboard() {
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
@@ -48,6 +49,7 @@ export default function ExpertDashboard() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Data hooks
   const { experts, isLoading: expertsLoading } = useExperts();
@@ -95,6 +97,17 @@ export default function ExpertDashboard() {
     return allMonthActivities.filter((a) => a.expertId === selectedExpertId);
   }, [allMonthActivities, selectedExpertId]);
 
+  const monthlyBlocking = useMemo(
+    () =>
+      getMonthlyBlockingState({
+        expert: selectedExpert,
+        activities,
+        month: currentMonth,
+        year: currentYear,
+      }),
+    [selectedExpert, activities, currentMonth, currentYear],
+  );
+
   const handleMonthChange = (month: number, year: number) => {
     setCurrentMonth(month);
     setCurrentYear(year);
@@ -105,6 +118,7 @@ export default function ExpertDashboard() {
   const handleSaveActivities = async (newActivities: Activity[]) => {
     if (reportStatus?.status === 'approved') return;
 
+    setSaveError(null);
     setIsSaving(true);
     try {
       if (editingActivity) {
@@ -126,6 +140,11 @@ export default function ExpertDashboard() {
       setSelectedHours({});
     } catch (error) {
       console.error('Error saving activities:', error);
+      setSaveError(
+        error instanceof Error
+          ? error.message
+          : 'Activitatea nu a fost creată. Verifică norma disponibilă sau contactează administratorul.',
+      );
     } finally {
       setIsSaving(false);
     }
@@ -207,6 +226,12 @@ export default function ExpertDashboard() {
   };
 
   const handleAddActivity = () => {
+    if (monthlyBlocking.isBlocked) {
+      setSaveError(monthlyBlocking.reason);
+      return;
+    }
+
+    setSaveError(null);
     if (selectedDates.length === 0) {
       syncSelectedDates([getDefaultActivityDate()]);
     }
@@ -216,6 +241,12 @@ export default function ExpertDashboard() {
 
   // Auto-open form when dates are selected
   const handleSelectDates = (dates: string[]) => {
+    if (monthlyBlocking.isBlocked && dates.length > 0) {
+      setSaveError(monthlyBlocking.reason);
+      return;
+    }
+
+    setSaveError(null);
     syncSelectedDates(dates);
     if (dates.length > 0) {
       setEditingActivity(null);
@@ -330,6 +361,15 @@ export default function ExpertDashboard() {
                 Completează pontajul și trimite luna către PM când pachetul este pregătit.
               </p>
             )}
+            <p className="text-sm text-muted-foreground">
+              Normă lunară: {monthlyBlocking.totalHours}h / {monthlyBlocking.monthlyNorm}h, {monthlyBlocking.remainingHours}h disponibile.
+            </p>
+            {monthlyBlocking.isBlocked && (
+              <p className="flex items-center gap-2 text-sm font-medium text-amber-700">
+                <AlertTriangle className="h-4 w-4" />
+                {monthlyBlocking.reason}
+              </p>
+            )}
           </div>
           <Button onClick={handleSubmitMonth} disabled={activities.length === 0 || isApproved || currentStatus === 'sent' || currentStatus === 'in_review'}>
             {isApproved ? <Lock className="h-4 w-4" /> : <Send className="h-4 w-4" />}
@@ -347,6 +387,13 @@ export default function ExpertDashboard() {
 
           {/* Tab: Activitati - pentru adaugare/editare activitati */}
           <TabsContent value="activitati" className="space-y-6">
+            {saveError && (
+              <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                <p>{saveError}</p>
+              </div>
+            )}
+
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-4">
               <div>
                 <h2 className="text-lg font-semibold text-foreground">Activități PEO</h2>
@@ -354,7 +401,7 @@ export default function ExpertDashboard() {
                   Adaugă activități, livrabile și documente justificative{isGtExpert ? ' și intrări pentru grupul țintă' : ''}.
                 </p>
               </div>
-              <Button onClick={handleAddActivity} disabled={!selectedExpert.id || isApproved}>
+              <Button onClick={handleAddActivity} disabled={!selectedExpert.id || isApproved || monthlyBlocking.isBlocked}>
                 <Plus className="h-4 w-4" />
                 Adaugă activitate
               </Button>
@@ -459,6 +506,11 @@ export default function ExpertDashboard() {
               month={currentMonth}
               year={currentYear}
               onAddForDay={(date) => {
+                if (monthlyBlocking.isBlocked) {
+                  setSaveError(monthlyBlocking.reason);
+                  return;
+                }
+                setSaveError(null);
                 syncSelectedDates([date]);
                 setShowForm(true);
               }}

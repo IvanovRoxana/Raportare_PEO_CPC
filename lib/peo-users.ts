@@ -9,6 +9,7 @@ export type PeoUser = {
   email: string;
   category: string;
   norma: number;
+  normType?: string;
   saCodes: string[];
   roles: PeoUserRole[];
 };
@@ -158,6 +159,12 @@ export function peoUsersAsExperts(): Expert[] {
     email: user.email,
     category: user.category,
     norma: user.norma,
+    normType: user.normType ?? 'normă calculată din zile lucrătoare × ore/zi',
+    oreZi: user.norma,
+    dailyHours: user.norma,
+    positionInProject: user.projectRole,
+    projectCode: '302141',
+    projectTitle: 'Consolidarea capacității Concordia pentru dialog social',
     saCodes: user.saCodes,
     hasPmAccess: user.roles.includes('pm'),
     isActive: true,
