@@ -10,7 +10,6 @@ import {
   CheckCircle2,
   ClipboardList,
   Globe2,
-  Loader2,
   Users,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -18,174 +17,156 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { UserMenu } from '@/components/user-menu';
+import { useActivitiesByMonth, useExperts } from '@/hooks/use-backend-data';
 import { getSignedInUser } from '@/lib/aws/auth';
 import { getMonthName } from '@/lib/backend-store';
+import type { Activity } from '@/lib/types';
 import { getRomanianHolidays } from '@/lib/working-hours';
-import { useActivitiesByMonth, useExperts } from '@/hooks/use-backend-data';
-import type { Activity, Expert } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
-type ProjectDashboardItem = {
+type ProjectItem = {
   id: string;
   name: string;
-  description: string;
   href: string;
-  isAvailable: boolean;
   activities: Activity[];
 };
 
-const dashboardTabs = [
-  {
-    value: 'raportare',
-    label: 'Raportare',
-    href: '/expert/peo',
-    icon: ClipboardList,
-    description: 'Acces direct la raportarea PEO construită până acum.',
-  },
-  {
-    value: 'grupuri',
-    label: 'Grupuri de lucru',
-    href: '#',
-    icon: Users,
-    description: 'Spațiu rezervat pentru paginile grupurilor de lucru.',
-  },
-  {
-    value: 'colegi',
-    label: 'Activități Colegi',
-    href: '#',
-    icon: BriefcaseBusiness,
-    description: 'Spațiu rezervat pentru vizualizarea activităților colegilor.',
-  },
-  {
-    value: 'eu-affairs',
-    label: 'EU Affairs',
-    href: '#',
-    icon: Globe2,
-    description: 'Spațiu rezervat pentru raportarea EU Affairs.',
-  },
+const WORK_TABS = [
+  { label: 'Raportare', href: '/expert/peo', icon: ClipboardList, active: true },
+  { label: 'Grupuri de lucru', href: '#', icon: Users, active: false },
+  { label: 'Activități Colegi', href: '#', icon: BriefcaseBusiness, active: false },
+  { label: 'EU Affairs', href: '#', icon: Globe2, active: false },
 ];
 
-const dayNames = ['Lu', 'Ma', 'Mi', 'Jo', 'Vi', 'Sa', 'Du'];
+const DAY_NAMES = ['Lu', 'Ma', 'Mi', 'Jo', 'Vi', 'Sa', 'Du'];
 
-function getMonthRange(month: number, year: number) {
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  return Array.from({ length: daysInMonth }, (_, index) => {
-    const day = index + 1;
-    return {
-      day,
-      date: new Date(year, month, day),
-      dateStr: `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
-    };
-  });
+function toIsoDate(year: number, month: number, day: number) {
+  return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
-function getActivitiesByDay(projects: ProjectDashboardItem[]) {
-  const dayMap = new Map<string, { totalHours: number; projectHours: Record<string, number> }>();
+function getCalendarDays(year: number, month: number) {
+  const firstDay = new Date(year, month, 1);
+  const offset = (firstDay.getDay() + 6) % 7;
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  return [
+    ...Array.from({ length: offset }, () => null),
+    ...Array.from({ length: daysInMonth }, (_, index) => {
+      const day = index + 1;
+      return {
+        day,
+        date: new Date(year, month, day),
+        dateStr: toIsoDate(year, month, day),
+      };
+    }),
+  ];
+}
+
+function getDayTotals(projects: ProjectItem[]) {
+  const totals = new Map<string, { total: number; byProject: Record<string, number> }>();
 
   projects.forEach((project) => {
     project.activities.forEach((activity) => {
-      const entry = dayMap.get(activity.date) ?? { totalHours: 0, projectHours: {} };
       const hours = Number(activity.hours) || 0;
-      entry.totalHours += hours;
-      entry.projectHours[project.id] = (entry.projectHours[project.id] || 0) + hours;
-      dayMap.set(activity.date, entry);
+      const day = totals.get(activity.date) ?? { total: 0, byProject: {} };
+      day.total += hours;
+      day.byProject[project.id] = (day.byProject[project.id] || 0) + hours;
+      totals.set(activity.date, day);
     });
   });
 
-  return dayMap;
+  return totals;
+}
+
+function getProjectTotal(project: ProjectItem) {
+  return project.activities.reduce((sum, activity) => sum + (Number(activity.hours) || 0), 0);
 }
 
 function DashboardCalendar({
+  projects,
   month,
   year,
-  projects,
 }: {
+  projects: ProjectItem[];
   month: number;
   year: number;
-  projects: ProjectDashboardItem[];
 }) {
   const holidays = useMemo(() => getRomanianHolidays(year), [year]);
-  const activitiesByDay = useMemo(() => getActivitiesByDay(projects), [projects]);
-  const calendarDays = useMemo(() => {
-    const firstDay = new Date(year, month, 1);
-    const startDow = (firstDay.getDay() + 6) % 7;
-    return [...Array(startDow).fill(null), ...getMonthRange(month, year)];
-  }, [month, year]);
+  const dayTotals = useMemo(() => getDayTotals(projects), [projects]);
+  const calendarDays = useMemo(() => getCalendarDays(year, month), [year, month]);
 
   return (
-    <Card className="h-full">
-      <CardHeader className="border-b">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <CalendarDays className="h-5 w-5 text-primary" />
-              Calendar ore proiecte
-            </CardTitle>
-            <p className="text-sm text-muted-foreground">
-              {getMonthName(month)} {year}. Totalul zilnic nu trebuie să depășească 8 ore.
-            </p>
-          </div>
-          <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-800">
-            Limită zilnică: 8h
-          </Badge>
+    <section className="rounded-lg border bg-card">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
+        <div>
+          <h2 className="flex items-center gap-2 text-lg font-semibold">
+            <CalendarDays className="h-5 w-5 text-primary" />
+            Calendar ore
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            {getMonthName(month)} {year}
+          </p>
         </div>
-      </CardHeader>
-      <CardContent className="p-3">
-        <div className="grid grid-cols-7 border-b text-center text-xs font-medium text-muted-foreground">
-          {dayNames.map((day, index) => (
-            <div key={day} className={cn('p-2', index >= 5 && 'text-red-600')}>
+        <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-800">
+          Limită 8 ore/zi
+        </Badge>
+      </div>
+
+      <div className="p-3">
+        <div className="grid grid-cols-7 border-b pb-2 text-center text-xs font-semibold text-muted-foreground">
+          {DAY_NAMES.map((day, index) => (
+            <div key={day} className={cn(index >= 5 && 'text-red-600')}>
               {day}
             </div>
           ))}
         </div>
+
         <div className="grid grid-cols-7 gap-1 pt-2">
-          {calendarDays.map((item, index) => {
-            if (!item) {
-              return <div key={`empty-${index}`} className="min-h-[82px]" />;
+          {calendarDays.map((day, index) => {
+            if (!day) {
+              return <div key={`empty-${index}`} className="min-h-24 rounded-md" />;
             }
 
-            const dow = item.date.getDay();
-            const isWeekend = dow === 0 || dow === 6;
-            const isHoliday = holidays.includes(item.dateStr);
-            const dayEntry = activitiesByDay.get(item.dateStr);
-            const totalHours = dayEntry?.totalHours ?? 0;
-            const exceedsLimit = totalHours > 8;
+            const dayTotal = dayTotals.get(day.dateStr);
+            const totalHours = dayTotal?.total ?? 0;
+            const isWeekend = [0, 6].includes(day.date.getDay());
+            const isHoliday = holidays.includes(day.dateStr);
             const hasHours = totalHours > 0;
+            const exceedsLimit = totalHours > 8;
 
             return (
               <div
-                key={item.dateStr}
+                key={day.dateStr}
                 className={cn(
-                  'min-h-[82px] rounded-md border p-2 text-sm transition-colors',
-                  isWeekend || isHoliday
-                    ? 'border-muted bg-muted/40 text-muted-foreground'
-                    : 'border-border bg-background',
-                  hasHours && !exceedsLimit && 'border-green-300 bg-green-50 text-green-900',
-                  exceedsLimit && 'border-red-300 bg-red-50 text-red-900'
+                  'min-h-24 rounded-md border p-2 text-sm',
+                  isWeekend || isHoliday ? 'border-muted bg-muted/40 text-muted-foreground' : 'bg-background',
+                  hasHours && !exceedsLimit && 'border-green-300 bg-green-50 text-green-950',
+                  exceedsLimit && 'border-red-300 bg-red-50 text-red-950'
                 )}
               >
-                <div className="flex items-start justify-between gap-1">
-                  <span className="font-semibold">{item.day}</span>
-                  {isHoliday && <span className="text-[10px]">SL</span>}
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold">{day.day}</span>
+                  {isHoliday && <span className="text-[10px] font-semibold">SL</span>}
                 </div>
+
                 {hasHours ? (
-                  <div className="mt-2">
+                  <div className="mt-2 space-y-1">
                     <div className="text-2xl font-bold leading-none">{totalHours}h</div>
-                    <div className="mt-1 space-y-0.5 text-[10px]">
-                      {projects
-                        .filter((project) => (dayEntry?.projectHours[project.id] ?? 0) > 0)
-                        .map((project) => (
-                          <div key={project.id} className="truncate">
-                            {project.name}: {dayEntry?.projectHours[project.id]}h
-                          </div>
-                        ))}
-                    </div>
+                    {projects.map((project) => {
+                      const projectHours = dayTotal?.byProject[project.id] ?? 0;
+                      if (!projectHours) return null;
+                      return (
+                        <div key={project.id} className="truncate text-[11px]">
+                          {project.name}: {projectHours}h
+                        </div>
+                      );
+                    })}
                   </div>
                 ) : (
-                  <div className="mt-3 text-xs text-muted-foreground">-</div>
+                  <div className="mt-3 text-xs text-muted-foreground">0h</div>
                 )}
+
                 {exceedsLimit && (
-                  <div className="mt-1 flex items-center gap-1 text-[10px] font-semibold">
+                  <div className="mt-2 flex items-center gap-1 text-[11px] font-semibold">
                     <AlertTriangle className="h-3 w-3" />
                     peste 8h
                   </div>
@@ -194,147 +175,108 @@ function DashboardCalendar({
             );
           })}
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
-}
-
-function getProjectTotals(projects: ProjectDashboardItem[]) {
-  return projects.map((project) => ({
-    ...project,
-    totalHours: project.activities.reduce((sum, activity) => sum + (Number(activity.hours) || 0), 0),
-  }));
 }
 
 export default function ExpertHomeDashboard() {
   const [currentMonth] = useState(new Date().getMonth());
   const [currentYear] = useState(new Date().getFullYear());
-  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [signedInEmail, setSignedInEmail] = useState<string | null>(null);
+  const [signedInName, setSignedInName] = useState('expert');
 
-  const { experts, isLoading: expertsLoading } = useExperts();
-  const { activities: allMonthActivities, isLoading: activitiesLoading } = useActivitiesByMonth(
-    currentMonth,
-    currentYear
-  );
+  const { experts } = useExperts();
+  const { activities: monthActivities } = useActivitiesByMonth(currentMonth, currentYear);
 
   useEffect(() => {
     getSignedInUser().then((user) => {
-      if (user?.email) {
-        setUserEmail(user.email);
-      }
+      if (user?.email) setSignedInEmail(user.email);
+      if (user?.displayName) setSignedInName(user.displayName);
     });
   }, []);
 
-  const selectedExpert = useMemo<Expert | null>(() => {
-    if (experts.length === 0) return null;
-    if (!userEmail) return experts[0];
-    return experts.find((expert) => expert.email?.toLowerCase() === userEmail.toLowerCase()) ?? experts[0];
-  }, [experts, userEmail]);
+  const currentExpert = useMemo(() => {
+    if (!signedInEmail) return null;
+    return experts.find((expert) => expert.email?.toLowerCase() === signedInEmail.toLowerCase()) ?? null;
+  }, [experts, signedInEmail]);
+
+  const expertName = currentExpert?.name ?? signedInName;
 
   const peoActivities = useMemo(() => {
-    if (!selectedExpert) return [];
-    return allMonthActivities.filter((activity) => activity.expertId === selectedExpert.id);
-  }, [allMonthActivities, selectedExpert]);
+    if (!currentExpert) return [];
+    return monthActivities.filter((activity) => activity.expertId === currentExpert.id);
+  }, [currentExpert, monthActivities]);
 
-  const projects = useMemo<ProjectDashboardItem[]>(
+  const projects = useMemo<ProjectItem[]>(
     () => [
       {
         id: 'peo',
         name: 'PEO',
-        description: 'Programul PEO - raportarea construită deja.',
         href: '/expert/peo',
-        isAvailable: true,
         activities: peoActivities,
       },
     ],
     [peoActivities]
   );
 
-  const projectTotals = useMemo(() => getProjectTotals(projects), [projects]);
-  const totalMonthHours = projectTotals.reduce((sum, project) => sum + project.totalHours, 0);
-  const exceededDays = useMemo(() => {
-    const activitiesByDay = getActivitiesByDay(projects);
-    return Array.from(activitiesByDay.values()).filter((entry) => entry.totalHours > 8).length;
-  }, [projects]);
-
-  const isLoading = expertsLoading || activitiesLoading;
-  const expertName = selectedExpert?.name ?? 'Expert';
-
-  if (isLoading && !selectedExpert) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <p className="text-muted-foreground">Se încarcă dashboardul...</p>
-        </div>
-      </div>
-    );
-  }
+  const dayTotals = useMemo(() => getDayTotals(projects), [projects]);
+  const exceededDays = Array.from(dayTotals.values()).filter((day) => day.total > 8).length;
+  const totalMonthHours = projects.reduce((sum, project) => sum + getProjectTotal(project), 0);
 
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b bg-card">
-        <div className="container mx-auto flex flex-wrap items-center justify-between gap-4 px-4 py-5">
+        <div className="mx-auto flex max-w-screen-2xl flex-wrap items-center justify-between gap-4 px-4 py-5 sm:px-6 lg:px-8">
           <div>
             <p className="text-sm font-medium text-primary">Dashboard expert</p>
-            <h1 className="text-2xl font-bold text-foreground">Bine ai venit - {expertName} -!</h1>
+            <h1 className="text-2xl font-bold text-foreground sm:text-3xl">
+              Bine ai venit - {expertName} -!
+            </h1>
           </div>
           <UserMenu />
         </div>
       </header>
 
-      <main className="container mx-auto space-y-6 px-4 py-6">
-        <section className="rounded-lg border bg-card p-4">
-          <div className="mb-4">
-            <h2 className="text-lg font-semibold text-foreground">Ferestre de lucru</h2>
-            <p className="text-sm text-muted-foreground">
-              Alege zona în care vrei să lucrezi. Raportarea PEO este activă, iar celelalte ferestre vor fi conectate ulterior.
-            </p>
-          </div>
-          <Tabs defaultValue="raportare" className="w-full">
-            <TabsList className="grid h-auto w-full grid-cols-1 gap-2 bg-muted/50 p-1 md:grid-cols-4">
-              {dashboardTabs.map((tab) => {
-                const Icon = tab.icon;
-                return (
-                  <TabsTrigger key={tab.value} value={tab.value} className="justify-start gap-2 py-3">
-                    <Icon className="h-4 w-4" />
-                    {tab.label}
-                  </TabsTrigger>
-                );
-              })}
-            </TabsList>
-            {dashboardTabs.map((tab) => {
-              const isAvailable = tab.value === 'raportare';
+      <main className="mx-auto max-w-screen-2xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+        <section className="grid gap-3 rounded-lg border bg-card p-3 md:grid-cols-4">
+          {WORK_TABS.map((tab) => {
+            const Icon = tab.icon;
+            const content = (
+              <>
+                <span className="flex items-center gap-2">
+                  <Icon className="h-4 w-4" />
+                  {tab.label}
+                </span>
+                {tab.active && <ArrowRight className="h-4 w-4" />}
+              </>
+            );
+
+            if (tab.active) {
               return (
-                <TabsContent key={tab.value} value={tab.value} className="mt-4">
-              <div className="flex flex-wrap items-center justify-between gap-4 rounded-md border bg-background p-4">
-                <div>
-                  <h2 className="text-lg font-semibold">{tab.label}</h2>
-                      <p className="text-sm text-muted-foreground">{tab.description}</p>
-                    </div>
-                    {isAvailable ? (
-                      <Button asChild>
-                        <Link href={tab.href}>
-                          Deschide PEO
-                          <ArrowRight className="h-4 w-4" />
-                        </Link>
-                      </Button>
-                    ) : (
-                      <Badge variant="outline">Se va configura ulterior</Badge>
-                    )}
-                  </div>
-                </TabsContent>
+                <Button key={tab.label} asChild className="h-12 justify-between rounded-md">
+                  <Link href={tab.href}>{content}</Link>
+                </Button>
               );
-            })}
-          </Tabs>
+            }
+
+            return (
+              <Button key={tab.label} variant="outline" className="h-12 justify-start rounded-md" disabled>
+                {content}
+              </Button>
+            );
+          })}
         </section>
 
-        <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-          <DashboardCalendar month={currentMonth} year={currentYear} projects={projects} />
+        <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
+          <DashboardCalendar projects={projects} month={currentMonth} year={currentYear} />
 
-          <Card className="h-fit">
+          <Card className="h-fit rounded-lg">
+            <CardHeader className="border-b">
+              <CardTitle className="text-lg">Panou proiecte</CardTitle>
+            </CardHeader>
             <CardContent className="p-4">
-              <Tabs defaultValue="proiecte" orientation="vertical" className="w-full">
+              <Tabs defaultValue="proiecte" className="w-full">
                 <TabsList className="grid h-auto w-full grid-cols-1 gap-2 bg-muted/50 p-1">
                   <TabsTrigger value="proiecte">Selectează Proiect</TabsTrigger>
                   <TabsTrigger value="ore">Ore luna curentă</TabsTrigger>
@@ -342,60 +284,41 @@ export default function ExpertHomeDashboard() {
 
                 <TabsContent value="proiecte" className="mt-4 space-y-3">
                   {projects.map((project) => (
-                    <Button
-                      key={project.id}
-                      asChild={project.isAvailable}
-                      variant={project.isAvailable ? 'default' : 'outline'}
-                      className="h-auto w-full justify-between py-3"
-                      disabled={!project.isAvailable}
-                    >
-                      {project.isAvailable ? (
-                        <Link href={project.href}>
-                          <span className="text-left">
-                            <span className="block font-semibold">{project.name}</span>
-                            <span className="block text-xs opacity-80">{project.description}</span>
-                          </span>
-                          <ArrowRight className="h-4 w-4" />
-                        </Link>
-                      ) : (
-                        <span className="text-left">
-                          <span className="block font-semibold">{project.name}</span>
-                          <span className="block text-xs opacity-80">{project.description}</span>
-                        </span>
-                      )}
+                    <Button key={project.id} asChild className="h-12 w-full justify-between rounded-md">
+                      <Link href={project.href}>
+                        {project.name}
+                        <ArrowRight className="h-4 w-4" />
+                      </Link>
                     </Button>
                   ))}
                 </TabsContent>
 
                 <TabsContent value="ore" className="mt-4 space-y-4">
                   <div className="rounded-md border bg-muted/30 p-4">
-                    <div className="text-sm text-muted-foreground">
-                      Total ore {getMonthName(currentMonth)} {currentYear}
-                    </div>
-                    <div className="mt-1 text-3xl font-bold">{totalMonthHours}h</div>
+                    <p className="text-sm text-muted-foreground">
+                      {getMonthName(currentMonth)} {currentYear}
+                    </p>
+                    <p className="mt-1 text-3xl font-bold">{totalMonthHours}h</p>
                     <div className="mt-3 flex items-center gap-2 text-sm">
                       {exceededDays > 0 ? (
                         <>
                           <AlertTriangle className="h-4 w-4 text-red-600" />
-                          <span className="text-red-700">{exceededDays} zile depășesc 8 ore.</span>
+                          <span className="text-red-700">{exceededDays} zile peste 8 ore.</span>
                         </>
                       ) : (
                         <>
                           <CheckCircle2 className="h-4 w-4 text-green-600" />
-                          <span className="text-green-700">Nu există depășiri de 8 ore/zi.</span>
+                          <span className="text-green-700">0 zile peste 8 ore.</span>
                         </>
                       )}
                     </div>
                   </div>
 
                   <div className="space-y-2">
-                    {projectTotals.map((project) => (
+                    {projects.map((project) => (
                       <div key={project.id} className="flex items-center justify-between rounded-md border p-3">
-                        <div>
-                          <div className="font-medium">{project.name}</div>
-                          <div className="text-xs text-muted-foreground">{project.description}</div>
-                        </div>
-                        <Badge variant="secondary">{project.totalHours}h</Badge>
+                        <span className="font-medium">{project.name}</span>
+                        <Badge variant="secondary">{getProjectTotal(project)}h</Badge>
                       </div>
                     ))}
                   </div>
