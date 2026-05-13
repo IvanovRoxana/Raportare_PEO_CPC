@@ -6,6 +6,12 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+$proxyVariables = @("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy", "ALL_PROXY", "all_proxy")
+foreach ($variable in $proxyVariables) {
+  Remove-Item "Env:\$variable" -ErrorAction SilentlyContinue
+}
+$env:NO_PROXY = "*"
+
 function Get-AwsExe {
   $aws = "C:\Program Files\Amazon\AWSCLIV2\aws.exe"
   if (Test-Path $aws) {
@@ -80,6 +86,12 @@ function ConvertTo-DdbItem {
   return $item
 }
 
+function Read-JsonUtf8 {
+  param([string]$Path)
+
+  return [System.IO.File]::ReadAllText((Resolve-Path -LiteralPath $Path), [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+}
+
 function Write-DdbItems {
   param(
     [string]$TableName,
@@ -106,13 +118,17 @@ function Write-DdbItems {
     }
 
     $tempFile = Join-Path $env:TEMP "peo-dynamodb-batch-$([Guid]::NewGuid().ToString()).json"
-    $requestItems | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $tempFile -Encoding UTF8
+    $json = $requestItems | ConvertTo-Json -Depth 20
+    [System.IO.File]::WriteAllText($tempFile, $json, [System.Text.UTF8Encoding]::new($false))
 
     & $aws dynamodb batch-write-item `
       --request-items "file://$tempFile" `
       --profile $Profile `
       --region $Region `
       --output json | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+      throw "AWS DynamoDB batch-write-item a esuat pentru $TableName."
+    }
 
     Remove-Item -LiteralPath $tempFile -Force
     $index += 25
@@ -132,8 +148,8 @@ if (!(Test-Path $catalogPath) -or !(Test-Path $workingGroupsPath)) {
   throw "Ruleaza mai intai: npm run prepare:reference-data"
 }
 
-$catalog = Get-Content -Raw -LiteralPath $catalogPath | ConvertFrom-Json
-$workingGroups = Get-Content -Raw -LiteralPath $workingGroupsPath | ConvertFrom-Json
+$catalog = Read-JsonUtf8 -Path $catalogPath
+$workingGroups = Read-JsonUtf8 -Path $workingGroupsPath
 
 Write-Host "Import ActivityCatalog -> $activityCatalogTable"
 Write-DdbItems -TableName $activityCatalogTable -Items @($catalog)
