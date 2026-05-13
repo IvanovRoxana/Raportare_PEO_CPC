@@ -482,6 +482,19 @@ export function useConcurrentProjects(expertId: string | null) {
   };
 }
 
+export function useAllConcurrentProjects() {
+  const { data, error, isLoading } = useSWR(
+    isBackendAvailable() ? 'concurrent-projects-all' : null,
+    safeFetcher(concurrentProjectsService.getAll)
+  );
+
+  return {
+    projects: data || [],
+    isLoading,
+    error,
+  };
+}
+
 // ============================================
 // REPORT STATUS HOOKS
 // ============================================
@@ -562,6 +575,20 @@ export function useGrupTintaStats(month: number, year: number) {
   
   return {
     stats: data || [],
+    isLoading,
+    error,
+  };
+}
+
+export function useGrupTintaByMonth(month: number, year: number) {
+  const key = `grup-tinta-month-${month}-${year}`;
+  const { data, error, isLoading } = useSWR(
+    isBackendAvailable() ? key : null,
+    safeFetcher(() => grupTintaService.getAllByMonth(month, year))
+  );
+
+  return {
+    entries: data || [],
     isLoading,
     error,
   };

@@ -1,10 +1,12 @@
-import { generateText, Output } from 'ai';
+import { Output } from 'ai';
+import { governedGenerateText, aiErrorResponse } from '@/lib/ai-governance';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
 export async function POST(req: Request) {
   try {
-    const { raportData, pontajData } = await req.json();
+    const body = await req.json();
+    const { raportData, pontajData } = body;
 
     if (!raportData || !pontajData) {
       return NextResponse.json(
@@ -13,7 +15,10 @@ export async function POST(req: Request) {
       );
     }
 
-    const result = await generateText({
+    const result = await governedGenerateText({
+      endpoint: '/api/ai/compare-documents',
+      operation: 'compare-documents',
+      request: body,
       model: 'openai/gpt-4o-mini',
       system: `Ești un expert în verificarea conformității documentelor pentru proiecte cu finanțare europeană.
 Compară datele din pontajul Excel cu cele din raportul de activitate și identifică:
@@ -70,12 +75,10 @@ Returnează datele actualizate în format JSON:
     return NextResponse.json({
       comparedData: output?.comparedData || raportData,
       summary: output?.summary || '',
+      auditId: result.auditId,
     });
   } catch (error) {
     console.error('Error comparing documents:', error);
-    return NextResponse.json(
-      { error: 'Eroare la compararea documentelor' },
-      { status: 500 }
-    );
+    return aiErrorResponse(error, 'Eroare la compararea documentelor');
   }
 }

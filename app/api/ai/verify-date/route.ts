@@ -1,4 +1,5 @@
-import { generateText, Output } from 'ai';
+import { Output } from 'ai';
+import { governedGenerateText, aiErrorResponse } from '@/lib/ai-governance';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
@@ -16,13 +17,17 @@ const DateVerificationSchema = z.object({
 
 export async function POST(req: Request) {
   try {
-    const { documentText, documentTitle, pontajDate, activityTitle } = await req.json();
+    const body = await req.json();
+    const { documentText, documentTitle, pontajDate, activityTitle } = body;
 
     if (!documentText && !documentTitle) {
       return NextResponse.json({ error: 'Textul sau titlul documentului este obligatoriu' }, { status: 400 });
     }
 
-    const result = await generateText({
+    const result = await governedGenerateText({
+      endpoint: '/api/ai/verify-date',
+      operation: 'verify-date',
+      request: body,
       model: 'openai/gpt-4o-mini',
       system: `Ești un asistent specializat în verificarea documentelor pentru proiecte cu finanțare europeană.
 Sarcina ta este să extragi datele din documente și să verifici dacă corespund cu data pontată.
@@ -51,12 +56,9 @@ Returnează în format JSON:
       }),
     });
 
-    return NextResponse.json({ verification: result.output });
+    return NextResponse.json({ verification: result.output, auditId: result.auditId });
   } catch (error) {
     console.error('Error verifying date:', error);
-    return NextResponse.json(
-      { error: 'Eroare la verificarea datei documentului' },
-      { status: 500 }
-    );
+    return aiErrorResponse(error, 'Eroare la verificarea datei documentului');
   }
 }

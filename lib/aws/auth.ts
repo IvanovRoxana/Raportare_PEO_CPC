@@ -11,6 +11,8 @@ import {
   signUp,
 } from 'aws-amplify/auth';
 import { configureAmplify } from './client';
+import { peoUsersAsExperts } from '@/lib/peo-users';
+import { mergeRolesWithExpertProfile } from '@/lib/pm-dashboard';
 
 export type AppRole = 'expert' | 'pm' | 'admin';
 
@@ -60,11 +62,15 @@ export async function getSignedInUser(): Promise<AppUser | null> {
   try {
     const user = await getCurrentUser();
     const attrs = await fetchUserAttributes();
-    const roles = await getCurrentUserRoles();
+    const email = attrs.email ?? user.signInDetails?.loginId;
+    const expertProfile = peoUsersAsExperts().find(
+      (expert) => expert.email.toLowerCase() === String(email || '').toLowerCase()
+    );
+    const roles = mergeRolesWithExpertProfile(await getCurrentUserRoles(), expertProfile);
 
     return {
       id: user.userId,
-      email: attrs.email ?? user.signInDetails?.loginId,
+      email,
       displayName: attrs.name ?? attrs.email ?? user.username,
       roles,
     };

@@ -1,4 +1,5 @@
-import { generateText, Output } from 'ai';
+import { Output } from 'ai';
+import { governedGenerateText, aiErrorResponse } from '@/lib/ai-governance';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
@@ -13,7 +14,13 @@ export async function POST(req: Request) {
         `- ${a.expertName} | ${a.date} | ${a.activityType || 'N/A'} | ${a.title || 'Fără titlu'} | ${a.hours}h`
       ).join('\n');
 
-      const result = await generateText({
+      const result = await governedGenerateText({
+        endpoint: '/api/ai/cross-expert',
+        operation: 'cross-expert-activities',
+        request: body,
+        month,
+        year,
+        projectCode: '302141',
         model: 'openai/gpt-4o-mini',
         system: `Ești un expert în analiza și verificarea rapoartelor de activitate pentru proiecte cu finanțare europeană (PEO).
 Analizează activitățile mai multor experți și identifică:
@@ -31,7 +38,7 @@ ${activitiesText}
 Identifică potențiale probleme de suprapunere sau dublare între experți.`,
       });
 
-      return NextResponse.json({ analysis: result.text });
+      return NextResponse.json({ analysis: result.text, auditId: result.auditId });
     }
 
     // Legacy format: file-based comparison
@@ -42,7 +49,11 @@ Identifică potențiale probleme de suprapunere sau dublare între experți.`,
       );
     }
 
-    const result = await generateText({
+    const result = await governedGenerateText({
+      endpoint: '/api/ai/cross-expert',
+      operation: 'cross-expert-files',
+      request: body,
+      projectCode: '302141',
       model: 'openai/gpt-4o-mini',
       system: `Ești un expert în detectarea suprapunerilor suspecte între activitățile raportate de diferiți experți 
 în proiecte cu finanțare europeană. Analizezi rapoartele pentru a identifica:
@@ -96,11 +107,14 @@ isPotentialIssue este true dacă similarity > 70%.`,
     });
 
     const output = result.output;
-    return NextResponse.json({ comparisons: output?.comparisons || [] });
+    return NextResponse.json({ comparisons: output?.comparisons || [], auditId: result.auditId });
   } catch (error) {
     console.error('Error in cross-expert analysis:', error);
+    const response = aiErrorResponse(error, 'Eroare la analiza cross-expert');
+    if (response.status !== 500) return response;
+
     return NextResponse.json(
-      { 
+      {
         error: 'Eroare la analiza cross-expert',
         analysis: 'Eroare la analiza cross-expert: ' + (error instanceof Error ? error.message : 'Unknown error'),
       },

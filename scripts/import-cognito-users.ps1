@@ -27,11 +27,12 @@ if (-not (Test-Path -LiteralPath $ExpertsPath)) {
   throw "Nu gasesc experts.json la: $ExpertsPath. Ruleaza mai intai: npm run prepare:reference-data"
 }
 
-$users = Get-Content -Raw -LiteralPath $ExpertsPath | ConvertFrom-Json | ForEach-Object {
-  @{
-    Name = $_.name
-    Email = $_.email
-    Roles = @($_.cognitoGroups)
+$experts = Get-Content -Raw -LiteralPath $ExpertsPath | ConvertFrom-Json
+$users = foreach ($expert in $experts) {
+  [pscustomobject]@{
+    Name = $expert.name
+    Email = $expert.email
+    Roles = @($expert.cognitoGroups)
   }
 }
 

@@ -1,4 +1,4 @@
-import { generateText } from 'ai';
+import { governedGenerateText, aiErrorResponse } from '@/lib/ai-governance';
 import { NextResponse } from 'next/server';
 
 interface ChatMessage {
@@ -8,7 +8,8 @@ interface ChatMessage {
 
 export async function POST(req: Request) {
   try {
-    const { messages, context } = await req.json();
+    const body = await req.json();
+    const { messages, context } = body;
 
     if (!messages || messages.length === 0) {
       return NextResponse.json({ error: 'Mesajele sunt obligatorii' }, { status: 400 });
@@ -18,7 +19,10 @@ export async function POST(req: Request) {
       ? `\n\nNote existente în verificare:\n${context.notes.map((n: { content: string }) => `- ${n.content}`).join('\n')}`
       : '';
 
-    const result = await generateText({
+    const result = await governedGenerateText({
+      endpoint: '/api/ai/chat',
+      operation: 'chat',
+      request: body,
       model: 'openai/gpt-4o-mini',
       system: `Ești Ramona, un asistent AI specializat în verificarea documentelor pentru proiecte cu finanțare europeană (PEO).
 Ești expertă în:
@@ -35,12 +39,9 @@ Oferi sfaturi practice și actionabile.${contextInfo}`,
       })),
     });
 
-    return NextResponse.json({ message: result.text });
+    return NextResponse.json({ message: result.text, auditId: result.auditId });
   } catch (error) {
     console.error('Error in chat:', error);
-    return NextResponse.json(
-      { error: 'Eroare la comunicarea cu asistentul AI' },
-      { status: 500 }
-    );
+    return aiErrorResponse(error, 'Eroare la comunicarea cu asistentul AI');
   }
 }

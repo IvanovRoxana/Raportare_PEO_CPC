@@ -1,13 +1,17 @@
-import { generateText } from 'ai';
+import { governedGenerateText, aiErrorResponse } from '@/lib/ai-governance';
 import { NextResponse } from 'next/server';
 
 export async function POST(req: Request) {
   try {
-    const { title, activityType, description, apiKey, subActivity, activityTitle, deliverableType, declaredTitle, docText } = await req.json();
+    const body = await req.json();
+    const { title, activityType, description, apiKey, subActivity, activityTitle, deliverableType, declaredTitle, docText } = body;
 
     // Handle legacy format (simple title check)
     if (title && !declaredTitle) {
-      const result = await generateText({
+      const result = await governedGenerateText({
+        endpoint: '/api/ai/verify-title',
+        operation: 'verify-title-legacy',
+        request: body,
         model: 'openai/gpt-4o-mini',
         system: `Ești un expert în verificarea conformității titlurilor de activități pentru proiecte cu finanțare europeană (PEO).
 Verifică dacă titlul activității este:
@@ -26,7 +30,7 @@ Descriere: ${description || 'Fără descriere'}
 Oferă o evaluare scurtă (2-3 propoziții) și sugestii de îmbunătățire dacă este cazul.`,
       });
 
-      return NextResponse.json({ result: result.text });
+      return NextResponse.json({ result: result.text, auditId: result.auditId });
     }
 
     // Handle new format (eligibility check)
@@ -58,7 +62,10 @@ ${docText ? `\nConținut document (primele 2000 caractere):\n${docText.substring
 
 Răspunde doar cu JSON valid.`;
 
-      const result = await generateText({
+      const result = await governedGenerateText({
+        endpoint: '/api/ai/verify-title',
+        operation: 'verify-title-deliverable',
+        request: body,
         model: 'openai/gpt-4o-mini',
         system: systemPrompt,
         prompt: userPrompt,
@@ -70,7 +77,7 @@ Răspunde doar cu JSON valid.`;
       if (jsonMatch) {
         try {
           const parsed = JSON.parse(jsonMatch[0]);
-          return NextResponse.json(parsed);
+          return NextResponse.json({ ...parsed, auditId: result.auditId });
         } catch {
           // Fall through to default response
         }
@@ -80,18 +87,22 @@ Răspunde doar cu JSON valid.`;
         eligible: null,
         reason: 'Nu am putut analiza răspunsul AI',
         issues: [],
+        auditId: result.auditId,
       });
     }
 
     return NextResponse.json({ error: 'Parametri lipsă' }, { status: 400 });
   } catch (error) {
     console.error('Error verifying title:', error);
+    const response = aiErrorResponse(error, 'Eroare la verificarea titlului');
+    if (response.status !== 500) return response;
+
     return NextResponse.json(
-      { 
-        eligible: null, 
+      {
+        eligible: null,
         reason: error instanceof Error ? error.message : 'Eroare necunoscută',
         issues: [],
-        error: 'Eroare la verificarea titlului' 
+        error: 'Eroare la verificarea titlului',
       },
       { status: 500 }
     );

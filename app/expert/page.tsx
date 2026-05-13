@@ -18,9 +18,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { UserMenu } from '@/components/user-menu';
 import { useActivitiesByMonth, useDocuments, useExperts, useSharedDeliverables } from '@/hooks/use-backend-data';
+import type { AppRole } from '@/lib/aws/auth';
 import { getSignedInUser } from '@/lib/aws/auth';
 import { getMonthName } from '@/lib/backend-store';
 import { buildPendingSharedDeliverableAlerts } from '@/lib/document-sharing';
+import { canAccessPmDashboard } from '@/lib/pm-dashboard';
 import type { Activity } from '@/lib/types';
 import { getRomanianHolidays } from '@/lib/working-hours';
 import { cn } from '@/lib/utils';
@@ -186,6 +188,7 @@ export default function ExpertHomeDashboard() {
   const [currentYear] = useState(new Date().getFullYear());
   const [signedInEmail, setSignedInEmail] = useState<string | null>(null);
   const [signedInName, setSignedInName] = useState('expert');
+  const [signedInRoles, setSignedInRoles] = useState<AppRole[]>([]);
 
   const { experts } = useExperts();
   const { activities: monthActivities } = useActivitiesByMonth(currentMonth, currentYear);
@@ -195,6 +198,7 @@ export default function ExpertHomeDashboard() {
     getSignedInUser().then((user) => {
       if (user?.email) setSignedInEmail(user.email);
       if (user?.displayName) setSignedInName(user.displayName);
+      if (user?.roles) setSignedInRoles(user.roles);
     });
   }, []);
 
@@ -234,6 +238,11 @@ export default function ExpertHomeDashboard() {
   const dayTotals = useMemo(() => getDayTotals(projects), [projects]);
   const exceededDays = Array.from(dayTotals.values()).filter((day) => day.total > 8).length;
   const totalMonthHours = projects.reduce((sum, project) => sum + getProjectTotal(project), 0);
+  const canOpenPmDashboard = canAccessPmDashboard({
+    roles: signedInRoles,
+    projectRole: currentExpert?.role,
+    hasPmAccess: currentExpert?.hasPmAccess,
+  });
 
   return (
     <div className="min-h-screen bg-background">
@@ -245,7 +254,14 @@ export default function ExpertHomeDashboard() {
               Bine ai venit - {expertName} -!
             </h1>
           </div>
-          <UserMenu />
+          <div className="flex flex-wrap items-center gap-2">
+            {canOpenPmDashboard && (
+              <Button asChild className="h-10 rounded-md">
+                <Link href="/pm">Dashboard PM</Link>
+              </Button>
+            )}
+            <UserMenu />
+          </div>
         </div>
       </header>
 

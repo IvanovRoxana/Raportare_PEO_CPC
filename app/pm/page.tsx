@@ -1,7 +1,20 @@
 'use client';
 
-import { useState, useEffect, useMemo, Suspense } from 'react';
-import { Settings, ArrowLeft, Save, Loader2, AlertCircle, CheckCircle, XCircle, MessageSquare, Eye } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
+import {
+  Settings,
+  ArrowLeft,
+  Save,
+  Loader2,
+  AlertCircle,
+  CheckCircle,
+  XCircle,
+  MessageSquare,
+  Eye,
+  FileWarning,
+  FolderOpen,
+} from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -39,12 +52,18 @@ import {
   useNoteMutations,
   useApiKey,
   useReportStatus,
+  useReportStatusByMonth,
   useActivitiesByMonth,
   useAuditLogs,
   useDocuments,
   useSharedDeliverables,
+  useGrupTintaByMonth,
+  useAllConcurrentProjects,
 } from '@/hooks/use-backend-data';
 import { buildDashboardComplianceRows } from '@/lib/reporting-dashboard';
+import { getSignedInUser } from '@/lib/aws/auth';
+import { buildPmDashboardSummary, canAccessPmDashboard } from '@/lib/pm-dashboard';
+import { isEventActivity } from '@/lib/deliverable-types';
 import type {
   PontajRow,
   RaportRow,
@@ -53,16 +72,25 @@ import type {
   Neconformitate,
   VerificationNote,
   ReportStatus,
+  Expert,
 } from '@/lib/types';
 import { UserMenu } from '@/components/user-menu';
+import { ProgressReportTab } from '@/components/pm/progress-report-tab';
+import { GTProgressTab } from '@/components/pm/gt-progress-tab';
+import { DosarExpertModal } from '@/components/pm/dosar-expert-modal';
+import { DoubleFundingTab } from '@/components/pm/double-funding-tab';
 
 export default function PMDashboard() {
+  const router = useRouter();
+  const [accessState, setAccessState] = useState<'checking' | 'allowed' | 'denied'>('checking');
   const [selectedExpertId, setSelectedExpertId] = useState<string | null>(null);
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [localApiKey, setLocalApiKey] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [dossierExpert, setDossierExpert] = useState<Expert | null>(null);
+  const [dossierOpen, setDossierOpen] = useState(false);
 
   // Local data states for editing before save
   const [pontajData, setPontajData] = useState<PontajRow[]>([]);
@@ -94,10 +122,29 @@ export default function PMDashboard() {
     updateStatus: updateReportStatus,
     isLoading: reportStatusLoading,
   } = useReportStatus(selectedExpertId, selectedMonth, selectedYear);
+  const { statuses: monthlyReportStatuses } = useReportStatusByMonth(selectedMonth, selectedYear);
   const { activities: monthActivities } = useActivitiesByMonth(selectedMonth, selectedYear);
   const { auditLogs } = useAuditLogs(null, selectedMonth, selectedYear);
   const { documents } = useDocuments();
   const { sharedDeliverables } = useSharedDeliverables();
+  const { entries: grupTintaEntries } = useGrupTintaByMonth(selectedMonth, selectedYear);
+  const { projects: concurrentProjects } = useAllConcurrentProjects();
+
+  useEffect(() => {
+    getSignedInUser().then((user) => {
+      if (!user) {
+        router.replace('/auth/login');
+        return;
+      }
+
+      if (!canAccessPmDashboard({ roles: user.roles })) {
+        setAccessState('denied');
+        return;
+      }
+
+      setAccessState('allowed');
+    });
+  }, [router]);
 
   // Set default expert when experts load
   useEffect(() => {
@@ -265,6 +312,43 @@ export default function PMDashboard() {
         targetExpert: experts.find((expert) => expert.id === relation.targetExpertId),
       }));
   }, [documents, experts, sharedDeliverables]);
+  const pmSummary = useMemo(
+    () =>
+      buildPmDashboardSummary({
+        experts,
+        activities: monthActivities,
+        reportStatuses: monthlyReportStatuses,
+        documents,
+        sharedDeliverables,
+      }),
+    [documents, experts, monthActivities, monthlyReportStatuses, sharedDeliverables]
+  );
+  const reportStatusByExpertId = useMemo(
+    () => new Map(monthlyReportStatuses.map((status) => [status.expertId, status])),
+    [monthlyReportStatuses]
+  );
+  const eventDocumentIssues = useMemo(() => {
+    return monthActivities.filter((activity) => {
+      if (!isEventActivity(activity.activityType || activity.title || '')) return false;
+      const deliverables = activity.deliverables || [];
+      const hasMom = deliverables.some((deliverable) => deliverable.category === 'event_mom' && deliverable.uploaded);
+      const hasProof = deliverables.some((deliverable) => deliverable.category === 'event_proof' && deliverable.uploaded);
+      return !(hasMom || hasProof);
+    });
+  }, [monthActivities]);
+  const titleIssues = useMemo(
+    () => documents.filter((document) => document.titleMatch === false || document.titleCheckStatus === 'mismatch'),
+    [documents]
+  );
+  const selectedExpertActivities = useMemo(
+    () => monthActivities.filter((activity) => activity.expertId === selectedExpertId),
+    [monthActivities, selectedExpertId]
+  );
+
+  const openDossier = (expert: Expert) => {
+    setDossierExpert(expert);
+    setDossierOpen(true);
+  };
 
   const months = Array.from({ length: 12 }, (_, i) => ({
     value: i,
@@ -276,7 +360,7 @@ export default function PMDashboard() {
     label: (new Date().getFullYear() - 2 + i).toString(),
   }));
 
-  const isLoading = expertsLoading || apiKeyLoading;
+  const isLoading = accessState === 'checking' || expertsLoading || apiKeyLoading;
   const hasError = !isLoading && experts.length === 0;
 
   if (isLoading) {
@@ -302,6 +386,23 @@ export default function PMDashboard() {
           </p>
           <Button onClick={() => window.location.reload()}>
             Reincarca pagina
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (accessState === 'denied') {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="flex max-w-md flex-col items-center gap-4 text-center p-8">
+          <AlertCircle className="h-12 w-12 text-destructive" />
+          <h2 className="text-xl font-semibold">Nu ai acces la Dashboard PM</h2>
+          <p className="text-muted-foreground">
+            Modulul PM este disponibil doar pentru utilizatori cu rol PM, Expert/PM sau hasPmAccess activ.
+          </p>
+          <Button asChild>
+            <Link href="/expert">Mergi la Modul Expert</Link>
           </Button>
         </div>
       </div>
@@ -493,12 +594,14 @@ export default function PMDashboard() {
       <main className="container mx-auto px-4 py-6">
         <section className="mb-6 grid gap-3 md:grid-cols-5">
           <div className="rounded-lg border bg-card p-4">
-            <p className="text-xs font-medium text-muted-foreground">Ore pontate</p>
-            <p className="mt-1 text-2xl font-bold">{dashboardTotals.totalHours}h</p>
+            <p className="text-xs font-medium text-muted-foreground">Experți monitorizați</p>
+            <p className="mt-1 text-2xl font-bold">{pmSummary.totalExperts}</p>
+            <p className="mt-1 text-xs text-muted-foreground">Draft {pmSummary.statusCounts.draft} / Trimis {pmSummary.statusCounts.sent} / Aprobat {pmSummary.statusCounts.approved}</p>
           </div>
           <div className="rounded-lg border bg-card p-4">
-            <p className="text-xs font-medium text-muted-foreground">Ore ramase</p>
-            <p className="mt-1 text-2xl font-bold">{dashboardTotals.totalRemaining}h</p>
+            <p className="text-xs font-medium text-muted-foreground">Ore pontate</p>
+            <p className="mt-1 text-2xl font-bold">{dashboardTotals.totalHours}h</p>
+            <p className="mt-1 text-xs text-muted-foreground">Rămase {dashboardTotals.totalRemaining}h</p>
           </div>
           <div className="rounded-lg border bg-card p-4">
             <p className="text-xs font-medium text-muted-foreground">Zile fara activitate</p>
@@ -509,10 +612,116 @@ export default function PMDashboard() {
             <p className="mt-1 text-2xl font-bold">{dashboardTotals.blockedDays}</p>
           </div>
           <div className="rounded-lg border bg-card p-4">
-            <p className="text-xs font-medium text-muted-foreground">Alarme norma</p>
-            <p className="mt-1 text-2xl font-bold">{dashboardTotals.issues}</p>
+            <p className="text-xs font-medium text-muted-foreground">Alerte documente</p>
+            <p className="mt-1 text-2xl font-bold">{pmSummary.titleIssues + pmSummary.pendingSharedDeliverables}</p>
+            <p className="mt-1 text-xs text-muted-foreground">Titlu {pmSummary.titleIssues} / comune {pmSummary.pendingSharedDeliverables}</p>
           </div>
         </section>
+
+        <section className="mb-6 rounded-lg border bg-card">
+          <div className="border-b p-4">
+            <h2 className="text-base font-semibold">Status lunar pentru toți experții</h2>
+            <p className="text-sm text-muted-foreground">
+              Centralizează rolul, categoria, norma, orele pontate, statusul raportării și problemele lunii selectate.
+            </p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[920px] text-sm">
+              <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
+                <tr>
+                  <th className="px-4 py-3 font-medium">Expert</th>
+                  <th className="px-4 py-3 font-medium">Categorie</th>
+                  <th className="px-4 py-3 font-medium">Rol</th>
+                  <th className="px-4 py-3 font-medium">Status</th>
+                  <th className="px-4 py-3 font-medium">Ore / normă</th>
+                  <th className="px-4 py-3 font-medium">Completare</th>
+                  <th className="px-4 py-3 font-medium">Probleme</th>
+                  <th className="px-4 py-3 font-medium">Acțiuni</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dashboardRows.map((row) => {
+                  const expert = experts.find((item) => item.id === row.expertId);
+                  const monthlyStatus = reportStatusByExpertId.get(row.expertId)?.status || 'draft';
+                  const statusMeta = statusLabels[monthlyStatus] || statusLabels.draft;
+                  const issues = [
+                    row.hasDailyLimitIssue ? '8h/zi' : null,
+                    row.hasMonthlyNormIssue ? 'normă lunară' : null,
+                    row.hasProjectNormIssue ? 'normă proiect' : null,
+                    row.missingActivityDays.length > 0 ? `${row.missingActivityDays.length} zile lipsă` : null,
+                    row.blockedDays.length > 0 ? `${row.blockedDays.length} zile blocate` : null,
+                    row.adminInterventions > 0 ? `${row.adminInterventions} intervenții admin` : null,
+                  ].filter(Boolean);
+
+                  return (
+                    <tr key={row.expertId} className="border-t">
+                      <td className="px-4 py-3 font-medium">{row.expertName}</td>
+                      <td className="px-4 py-3">{row.category || '-'}</td>
+                      <td className="px-4 py-3">{row.role || '-'}</td>
+                      <td className="px-4 py-3">
+                        <Badge variant={statusMeta.variant}>{statusMeta.label}</Badge>
+                      </td>
+                      <td className="px-4 py-3">{row.totalHours}h / {row.monthlyNorm}h</td>
+                      <td className="px-4 py-3">{row.utilizationPercent}%</td>
+                      <td className="px-4 py-3">
+                        {issues.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {issues.map((issue) => (
+                              <Badge key={issue} variant="outline" className="border-amber-300 bg-amber-50 text-amber-900">
+                                {issue}
+                              </Badge>
+                            ))}
+                          </div>
+                        ) : (
+                          <Badge variant="secondary">OK</Badge>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {expert && (
+                          <Button variant="outline" size="sm" onClick={() => openDossier(expert)}>
+                            <FolderOpen className="h-4 w-4" />
+                            Dosar
+                          </Button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        {(eventDocumentIssues.length > 0 || titleIssues.length > 0) && (
+          <section className="mb-6 grid gap-3 md:grid-cols-2">
+            {eventDocumentIssues.length > 0 && (
+              <div className="rounded-lg border border-amber-300 bg-amber-50 p-4">
+                <div className="flex items-center gap-2 font-semibold text-amber-950">
+                  <FileWarning className="h-4 w-4" />
+                  Evenimente fără MOM sau dovadă eveniment ({eventDocumentIssues.length})
+                </div>
+                <div className="mt-2 space-y-1 text-sm text-amber-950">
+                  {eventDocumentIssues.slice(0, 4).map((activity) => (
+                    <div key={activity.id}>{activity.date} - {activity.expertName}: {activity.title || activity.activityType}</div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {titleIssues.length > 0 && (
+              <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-4">
+                <div className="flex items-center gap-2 font-semibold text-destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  Documente cu title_mismatch ({titleIssues.length})
+                </div>
+                <div className="mt-2 space-y-1 text-sm">
+                  {titleIssues.slice(0, 4).map((document) => (
+                    <div key={document.id}>{document.declaredTitle || document.originalFileName}</div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </section>
+        )}
 
         {pendingSharedDeliverables.length > 0 && (
           <section className="mb-6 rounded-lg border border-amber-300 bg-amber-50 p-4">
@@ -542,11 +751,14 @@ export default function PMDashboard() {
         )}
 
         <Tabs defaultValue="pontaj" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-6">
+          <TabsList className="flex h-auto flex-wrap">
             <TabsTrigger value="pontaj">Pontaj Excel</TabsTrigger>
             <TabsTrigger value="raport">Raport Activitate</TabsTrigger>
             <TabsTrigger value="livrabile">Livrabile</TabsTrigger>
             <TabsTrigger value="cross-expert">Cross-Expert</TabsTrigger>
+            <TabsTrigger value="double-funding">Dublă finanțare</TabsTrigger>
+            <TabsTrigger value="progres">Raport Progres</TabsTrigger>
+            <TabsTrigger value="gt">Progres GT</TabsTrigger>
             <TabsTrigger value="neconformitati">
               Neconformitati
               {unresolvedIssues > 0 && (
@@ -582,6 +794,36 @@ export default function PMDashboard() {
             <CrossExpertTab data={crossExpertData} onDataChange={setCrossExpertData} />
           </TabsContent>
 
+          <TabsContent value="double-funding">
+            <DoubleFundingTab
+              experts={experts}
+              activities={monthActivities}
+              concurrentProjects={concurrentProjects}
+              reportStatuses={monthlyReportStatuses}
+              month={selectedMonth}
+              year={selectedYear}
+            />
+          </TabsContent>
+
+          <TabsContent value="progres">
+            <ProgressReportTab
+              experts={experts}
+              activities={monthActivities}
+              month={selectedMonth}
+              year={selectedYear}
+            />
+          </TabsContent>
+
+          <TabsContent value="gt">
+            <GTProgressTab
+              experts={experts}
+              activities={monthActivities}
+              grupTintaEntries={grupTintaEntries}
+              month={selectedMonth}
+              year={selectedYear}
+            />
+          </TabsContent>
+
           <TabsContent value="neconformitati">
             <NeconformitatiTab data={localNeconformitati} onDataChange={handleNeconformitatiChange} />
           </TabsContent>
@@ -591,6 +833,18 @@ export default function PMDashboard() {
           </TabsContent>
         </Tabs>
       </main>
+      <DosarExpertModal
+        open={dossierOpen}
+        onOpenChange={setDossierOpen}
+        expert={dossierExpert}
+        activities={dossierExpert ? monthActivities.filter((activity) => activity.expertId === dossierExpert.id) : selectedExpertActivities}
+        verification={verification || null}
+        neconformitati={localNeconformitati}
+        month={selectedMonth}
+        year={selectedYear}
+        projectCode="302141"
+        projectTitle="Consolidarea capacității Concordia pentru dialog social"
+      />
     </div>
   );
 }

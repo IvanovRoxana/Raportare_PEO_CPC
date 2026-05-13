@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { BriefcaseBusiness, CircleDollarSign, FileText, LayoutDashboard, Loader2 } from 'lucide-react';
 import { getDashboardPathForRoles, getSignedInUser } from '@/lib/aws/auth';
+import { resolveDashboardAccess } from '@/lib/pm-dashboard';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
@@ -21,8 +22,7 @@ export default function SelectDashboardPage() {
         return;
       }
 
-      const expertAccess = user.roles.includes('expert');
-      const pmAccess = user.roles.includes('pm') || user.roles.includes('admin');
+      const { canUseExpert: expertAccess, canUsePm: pmAccess } = resolveDashboardAccess({ roles: user.roles });
 
       if (!(expertAccess && pmAccess)) {
         router.replace(getDashboardPathForRoles(user.roles));

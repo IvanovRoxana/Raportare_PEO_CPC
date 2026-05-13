@@ -1,10 +1,12 @@
-import { generateText, Output } from 'ai';
+import { Output } from 'ai';
+import { governedGenerateText, aiErrorResponse } from '@/lib/ai-governance';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
 export async function POST(req: Request) {
   try {
-    const { livrabile, raportData, files } = await req.json();
+    const body = await req.json();
+    const { livrabile, raportData, files } = body;
 
     if (!livrabile || !raportData) {
       return NextResponse.json(
@@ -13,7 +15,10 @@ export async function POST(req: Request) {
       );
     }
 
-    const result = await generateText({
+    const result = await governedGenerateText({
+      endpoint: '/api/ai/verify-livrabile',
+      operation: 'verify-livrabile',
+      request: body,
       model: 'openai/gpt-4o-mini',
       system: `Ești un expert în verificarea conformității numelor de fișiere livrabile pentru proiecte cu finanțare europeană.
 Verifică dacă numele fișierelor încărcate corespund cu titlurile activităților din raportul de activitate.
@@ -64,12 +69,9 @@ Returnează rezultatul în format JSON:
     });
 
     const output = result.output;
-    return NextResponse.json({ verifiedData: output?.verifiedData || livrabile });
+    return NextResponse.json({ verifiedData: output?.verifiedData || livrabile, auditId: result.auditId });
   } catch (error) {
     console.error('Error verifying livrabile:', error);
-    return NextResponse.json(
-      { error: 'Eroare la verificarea livrabilelor' },
-      { status: 500 }
-    );
+    return aiErrorResponse(error, 'Eroare la verificarea livrabilelor');
   }
 }
