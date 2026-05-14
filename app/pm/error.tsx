@@ -27,10 +27,12 @@ export default function PMError({
             Nu s-a putut incarca pagina PM Dashboard. 
             Te rugam sa incerci din nou sau sa revii mai tarziu.
           </p>
-          {process.env.NODE_ENV === 'development' && (
-            <p className="text-sm text-destructive bg-destructive/10 p-2 rounded mt-4 font-mono">
-              {error.message}
-            </p>
+          {(error.message || error.digest) && (
+            <div className="mt-4 rounded border border-destructive/30 bg-destructive/10 p-3 text-left text-xs text-destructive">
+              <p className="font-semibold">Detalii tehnice temporare:</p>
+              {error.message && <p className="mt-1 font-mono break-words">{error.message}</p>}
+              {error.digest && <p className="mt-1 font-mono break-words">digest: {error.digest}</p>}
+            </div>
           )}
         </div>
         <div className="flex gap-3">
