@@ -467,6 +467,7 @@ export default function ExpertDashboard() {
                     expertName={selectedExpert.name}
                     expert={selectedExpert as import('@/lib/types').Expert}
                     allExperts={experts}
+                    allActivities={allMonthActivities}
                     apiKey={localApiKey || null}
                     onSave={handleSaveActivities}
                     onCancel={() => {

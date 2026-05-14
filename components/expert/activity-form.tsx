@@ -44,6 +44,7 @@ interface ActivityFormProps {
   expertName: string;
   expert?: Expert;
   allExperts?: Expert[];
+  allActivities?: Activity[];
   onSave: (activities: Activity[]) => void;
   onCancel: () => void;
   initialActivity?: Activity;
@@ -59,6 +60,7 @@ export function ActivityForm({
   expertName,
   expert,
   allExperts = [],
+  allActivities = [],
   onSave,
   onCancel,
   initialActivity,
@@ -219,9 +221,25 @@ export function ActivityForm({
     })) || []
   );
   
+  const initialCollaborators = useMemo(() => {
+    const ids = new Set<string>(initialActivity?.takenByExperts || []);
+    initialActivity?.deliverables?.forEach((deliverable) => {
+      deliverable.sharedWithExpertIds?.forEach((id) => ids.add(id));
+    });
+    ids.delete(expertId);
+    return Array.from(ids);
+  }, [initialActivity, expertId]);
+
   // Common activity / collaboration
-  const [activityCommon, setActivityCommon] = useState(false);
-  const [collaborators, setCollaborators] = useState<string[]>([]);
+  const [activityCommon, setActivityCommon] = useState(
+    () => initialActivity?.shareStatus === 'shared' || initialCollaborators.length > 0
+  );
+  const [collaborators, setCollaborators] = useState<string[]>(() => initialCollaborators);
+
+  useEffect(() => {
+    setActivityCommon(initialActivity?.shareStatus === 'shared' || initialCollaborators.length > 0);
+    setCollaborators(initialCollaborators);
+  }, [initialActivity?.id, initialActivity?.shareStatus, initialCollaborators]);
   
   // Event specific fields
   const [eventDuration, setEventDuration] = useState<string>('');
@@ -251,6 +269,61 @@ export function ActivityForm({
       item.saCode === saCode && item.activityName === activityTitle
     ) || null;
   }, [activityTitle, saCode, filteredCatalog]);
+
+  const collaboratorSuggestions = useMemo(() => {
+    const suggestionScores = new Map<string, { score: number; reasons: Set<string> }>();
+    const selectedDateSet = new Set(selectedDates);
+
+    const addSuggestion = (id: string | undefined, score: number, reason: string) => {
+      if (!id || id === expertId) return;
+      if (!allExperts.some((candidate) => candidate.id === id)) return;
+      const current = suggestionScores.get(id) || { score: 0, reasons: new Set<string>() };
+      current.score += score;
+      current.reasons.add(reason);
+      suggestionScores.set(id, current);
+    };
+
+    initialCollaborators.forEach((id) => addSuggestion(id, 5, 'deja selectat anterior'));
+
+    allActivities.forEach((activity) => {
+      const activityCollaborators = new Set<string>(activity.takenByExperts || []);
+      activity.deliverables?.forEach((deliverable) => {
+        deliverable.sharedWithExpertIds?.forEach((id) => activityCollaborators.add(id));
+      });
+
+      if (activity.expertId === expertId) {
+        activityCollaborators.forEach((id) => addSuggestion(id, 4, 'colaborare anterioara'));
+        return;
+      }
+
+      const sameDate = selectedDateSet.has(activity.date);
+      const sameSa = Boolean(saCode && activity.saCode === saCode);
+      const sameActivity = Boolean(activityTitle && activity.activityType === activityTitle);
+      const linkedToCurrentExpert = activityCollaborators.has(expertId);
+
+      if (linkedToCurrentExpert) {
+        addSuggestion(activity.expertId, 5, 'te-a marcat intr-o activitate comuna');
+      } else if (sameDate && sameSa && sameActivity) {
+        addSuggestion(activity.expertId, 4, 'aceeasi data, SA si activitate');
+      } else if (sameDate && (sameSa || sameActivity)) {
+        addSuggestion(activity.expertId, 2, 'activitate similara in aceeasi zi');
+      }
+    });
+
+    return Array.from(suggestionScores.entries())
+      .map(([id, info]) => {
+        const expertOption = allExperts.find((candidate) => candidate.id === id);
+        return expertOption
+          ? {
+              expert: expertOption,
+              score: info.score,
+              reason: Array.from(info.reasons).join(', '),
+            }
+          : null;
+      })
+      .filter((item): item is { expert: Expert; score: number; reason: string } => Boolean(item))
+      .sort((a, b) => b.score - a.score || a.expert.name.localeCompare(b.expert.name));
+  }, [allActivities, allExperts, activityTitle, expertId, initialCollaborators, saCode, selectedDates]);
   
   const deliverableOptions = useMemo(() => {
     return getDeliverableOptions(expertCategory || 'ap');
@@ -554,6 +627,8 @@ export function ActivityForm({
           })),
         location,
         dayType,
+        shareStatus: activityCommon ? 'shared' : 'private',
+        takenByExperts: activityCommon ? collaborators : [],
         grupTinta,
         createdAt: initialActivity?.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -567,6 +642,22 @@ export function ActivityForm({
     if (bytes < 1024) return bytes + ' B';
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  };
+
+  const setCollaboratorChecked = (id: string, checked: boolean) => {
+    setCollaborators((prev) => {
+      if (checked) {
+        return Array.from(new Set([...prev, id]));
+      }
+      return prev.filter((collaboratorId) => collaboratorId !== id);
+    });
+  };
+
+  const addAllSuggestedCollaborators = () => {
+    setCollaborators((prev) => Array.from(new Set([
+      ...prev,
+      ...collaboratorSuggestions.map((suggestion) => suggestion.expert.id),
+    ])));
   };
 
   // Filter deliverables by type
@@ -906,7 +997,14 @@ export function ActivityForm({
                       <Checkbox
                         id="activityCommon"
                         checked={activityCommon}
-                        onCheckedChange={(checked) => setActivityCommon(checked as boolean)}
+                        onCheckedChange={(checked) => {
+                          const isChecked = checked === true;
+                          setActivityCommon(isChecked);
+                          if (!isChecked) {
+                            setCollaborators([]);
+                            setDeliverables((prev) => prev.map((deliverable) => ({ ...deliverable, common: false })));
+                          }
+                        }}
                       />
                       <label
                         htmlFor="activityCommon"
@@ -917,7 +1015,47 @@ export function ActivityForm({
                     </div>
 
                     {activityCommon && (
-                      <div>
+                      <div className="space-y-3">
+                        {collaboratorSuggestions.length > 0 && (
+                          <div className="rounded-md border border-blue-200 bg-white/70 p-3">
+                            <div className="flex items-center justify-between gap-2">
+                              <Label className="text-xs text-blue-700">Sugestii experti</Label>
+                              {collaboratorSuggestions.some(({ expert: suggestedExpert }) => !collaborators.includes(suggestedExpert.id)) && (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={addAllSuggestedCollaborators}
+                                  className="h-7 border-blue-300 px-2 text-[10px] text-blue-800 hover:bg-blue-100"
+                                >
+                                  Adauga toate
+                                </Button>
+                              )}
+                            </div>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {collaboratorSuggestions.map(({ expert: suggestedExpert, reason }) => {
+                                const selected = collaborators.includes(suggestedExpert.id);
+                                return (
+                                  <button
+                                    key={suggestedExpert.id}
+                                    type="button"
+                                    onClick={() => setCollaboratorChecked(suggestedExpert.id, !selected)}
+                                    className={`rounded-md border px-3 py-1.5 text-left text-xs transition-colors ${
+                                      selected
+                                        ? 'border-blue-500 bg-blue-100 text-blue-900'
+                                        : 'border-blue-200 bg-white text-blue-800 hover:bg-blue-50'
+                                    }`}
+                                    title={reason}
+                                  >
+                                    <span className="font-medium">{suggestedExpert.name}</span>
+                                    <span className="ml-1 text-blue-600">({reason})</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
                         <Label className="text-xs text-blue-700">Experti implicati in aceasta activitate</Label>
                         <div className="flex flex-wrap gap-2 mt-2">
                           {allExperts.filter(ex => ex.id !== expertId).map(ex => (
@@ -931,19 +1069,18 @@ export function ActivityForm({
                             >
                               <Checkbox
                                 checked={collaborators.includes(ex.id)}
-                                onCheckedChange={(checked) => {
-                                  if (checked) {
-                                    setCollaborators([...collaborators, ex.id]);
-                                  } else {
-                                    setCollaborators(collaborators.filter(id => id !== ex.id));
-                                  }
-                                }}
+                                onCheckedChange={(checked) => setCollaboratorChecked(ex.id, checked === true)}
                                 className="h-3 w-3"
                               />
-                              {ex.name.split(' ')[0]}
+                              {ex.name}
                             </label>
                           ))}
                         </div>
+                        {allExperts.filter(ex => ex.id !== expertId).length === 0 && (
+                          <div className="text-xs text-blue-600">
+                            Nu exista alti experti disponibili pentru selectie.
+                          </div>
+                        )}
                       </div>
                     )}
 
