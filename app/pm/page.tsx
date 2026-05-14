@@ -61,8 +61,9 @@ import {
   useAllConcurrentProjects,
 } from '@/hooks/use-backend-data';
 import { buildDashboardComplianceRows } from '@/lib/reporting-dashboard';
-import { getSignedInUser } from '@/lib/aws/auth';
-import { buildPmDashboardSummary, canAccessPmDashboard } from '@/lib/pm-dashboard';
+import { getSignedInUser, type AppUser } from '@/lib/aws/auth';
+import { buildPmDashboardSummary } from '@/lib/pm-dashboard';
+import { canAccessExpertId, resolveDataAccessScope } from '@/lib/access-control';
 import { isEventActivity } from '@/lib/deliverable-types';
 import type {
   PontajRow,
@@ -82,7 +83,8 @@ import { DoubleFundingTab } from '@/components/pm/double-funding-tab';
 
 export default function PMDashboard() {
   const router = useRouter();
-  const [accessState, setAccessState] = useState<'checking' | 'allowed' | 'denied'>('checking');
+  const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [selectedExpertId, setSelectedExpertId] = useState<string | null>(null);
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
@@ -103,6 +105,12 @@ export default function PMDashboard() {
   // Data hooks
   const { experts, isLoading: expertsLoading } = useExperts();
   const { apiKey, setApiKey, isLoading: apiKeyLoading } = useApiKey();
+  const dataAccessScope = useMemo(
+    () => resolveDataAccessScope({ user: currentUser, experts }),
+    [currentUser, experts]
+  );
+  const hasExtendedExpertAccess = dataAccessScope.canAccessAllExperts;
+  const canManagePmReview = hasExtendedExpertAccess;
   const { 
     verification, 
     isLoading: verificationLoading,
@@ -124,31 +132,30 @@ export default function PMDashboard() {
   } = useReportStatus(selectedExpertId, selectedMonth, selectedYear);
   const { statuses: monthlyReportStatuses } = useReportStatusByMonth(selectedMonth, selectedYear);
   const { activities: monthActivities } = useActivitiesByMonth(selectedMonth, selectedYear);
-  const { auditLogs } = useAuditLogs(null, selectedMonth, selectedYear);
+  const { auditLogs } = useAuditLogs(hasExtendedExpertAccess ? null : selectedExpertId, selectedMonth, selectedYear);
   const { documents } = useDocuments();
-  const { sharedDeliverables } = useSharedDeliverables();
+  const { sharedDeliverables } = useSharedDeliverables(hasExtendedExpertAccess ? undefined : selectedExpertId ?? undefined);
   const { entries: grupTintaEntries } = useGrupTintaByMonth(selectedMonth, selectedYear);
   const { projects: concurrentProjects } = useAllConcurrentProjects();
 
   useEffect(() => {
     getSignedInUser().then((user) => {
       if (!user) {
+        setIsAuthLoading(false);
         router.replace('/auth/login');
         return;
       }
 
-      if (!canAccessPmDashboard({ roles: user.roles })) {
-        setAccessState('denied');
-        return;
-      }
-
-      setAccessState('allowed');
+      setCurrentUser(user);
+      setIsAuthLoading(false);
+    }).catch(() => {
+      setIsAuthLoading(false);
     });
   }, [router]);
 
   // Set default expert when experts load
   useEffect(() => {
-    if (experts.length > 0 && !selectedExpertId) {
+    if (experts.length > 0 && (!selectedExpertId || !experts.some((expert) => expert.id === selectedExpertId))) {
       setSelectedExpertId(experts[0].id);
     }
   }, [experts, selectedExpertId]);
@@ -190,7 +197,7 @@ export default function PMDashboard() {
   }, [experts, selectedExpertId]);
 
   const saveVerificationData = async () => {
-    if (!selectedExpertId) return;
+    if (!selectedExpertId || !canManagePmReview) return;
     
     setIsSaving(true);
     try {
@@ -228,10 +235,10 @@ export default function PMDashboard() {
   };
 
   const currentReportStatus = reportStatus?.status || 'draft';
-  const currentReportStatusMeta = statusLabels[currentReportStatus];
+  const currentReportStatusMeta = statusLabels[currentReportStatus as ReportStatus['status']] || statusLabels.draft;
 
   const setMonthlyStatus = async (status: ReportStatus['status'], pmNotes?: string) => {
-    if (!selectedExpertId) return;
+    if (!selectedExpertId || !canManagePmReview) return;
 
     await updateReportStatus({
       expertId: selectedExpertId,
@@ -346,6 +353,7 @@ export default function PMDashboard() {
   );
 
   const openDossier = (expert: Expert) => {
+    if (!canAccessExpertId(dataAccessScope, expert.id)) return;
     setDossierExpert(expert);
     setDossierOpen(true);
   };
@@ -360,7 +368,8 @@ export default function PMDashboard() {
     label: (new Date().getFullYear() - 2 + i).toString(),
   }));
 
-  const isLoading = accessState === 'checking' || expertsLoading || apiKeyLoading;
+  const isAccessDenied = !isAuthLoading && !expertsLoading && !dataAccessScope.canUsePmDashboard;
+  const isLoading = isAuthLoading || expertsLoading || apiKeyLoading;
   const hasError = !isLoading && experts.length === 0;
 
   if (isLoading) {
@@ -392,14 +401,14 @@ export default function PMDashboard() {
     );
   }
 
-  if (accessState === 'denied') {
+  if (isAccessDenied) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="flex max-w-md flex-col items-center gap-4 text-center p-8">
           <AlertCircle className="h-12 w-12 text-destructive" />
           <h2 className="text-xl font-semibold">Nu ai acces la Dashboard PM</h2>
           <p className="text-muted-foreground">
-            Modulul PM este disponibil doar pentru utilizatori cu rol PM, Expert/PM sau hasPmAccess activ.
+            Modulul PM este disponibil doar pentru utilizatori cu rol PM, Administrator sau Expert/PM configurat in profil.
           </p>
           <Button asChild>
             <Link href="/expert">Mergi la Modul Expert</Link>
@@ -422,7 +431,9 @@ export default function PMDashboard() {
                 </Button>
               </Link>
               <div>
-                <h1 className="text-xl font-bold text-foreground">PM Dashboard - Verificare</h1>
+                <h1 className="text-xl font-bold text-foreground">
+                  {hasExtendedExpertAccess ? 'PM Dashboard - Verificare' : 'Raportarea mea - Verificare'}
+                </h1>
                 <p className="text-sm text-muted-foreground">
                   Cod Proiect: 302141
                 </p>
@@ -434,6 +445,7 @@ export default function PMDashboard() {
               <Select
                 value={selectedExpertId || ''}
                 onValueChange={(id) => setSelectedExpertId(id)}
+                disabled={!hasExtendedExpertAccess}
               >
                 <SelectTrigger className="w-[160px]">
                   <SelectValue placeholder="Expert" />
@@ -481,47 +493,49 @@ export default function PMDashboard() {
                 </SelectContent>
               </Select>
 
-              {/* Save Button */}
-              <Button variant="outline" onClick={saveVerificationData} disabled={isSaving}>
-                {isSaving ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                ) : (
-                  <Save className="h-4 w-4 mr-2" />
-                )}
-                Salveaza
-              </Button>
+              {canManagePmReview && (
+                <Button variant="outline" onClick={saveVerificationData} disabled={isSaving}>
+                  {isSaving ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Save className="h-4 w-4 mr-2" />
+                  )}
+                  Salveaza
+                </Button>
+              )}
 
-              {/* Settings */}
-              <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
-                <DialogTrigger asChild>
-                  <Button variant="outline" size="icon">
-                    <Settings className="h-5 w-5" />
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Setari</DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-4 py-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="apiKey">Claude API Key</Label>
-                      <Input
-                        id="apiKey"
-                        type="password"
-                        value={localApiKey}
-                        onChange={(e) => setLocalApiKey(e.target.value)}
-                        placeholder="sk-ant-..."
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        Necesar pentru functiile AI (comparare documente, asistent Ramona)
-                      </p>
-                    </div>
-                    <Button onClick={handleSaveSettings} className="w-full">
-                      Salveaza
+              {canManagePmReview && (
+                <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" size="icon">
+                      <Settings className="h-5 w-5" />
                     </Button>
-                  </div>
-                </DialogContent>
-              </Dialog>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Setari</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="apiKey">Claude API Key</Label>
+                        <Input
+                          id="apiKey"
+                          type="password"
+                          value={localApiKey}
+                          onChange={(e) => setLocalApiKey(e.target.value)}
+                          placeholder="sk-ant-..."
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Necesar pentru functiile AI (comparare documente, asistent Ramona)
+                        </p>
+                      </div>
+                      <Button onClick={handleSaveSettings} className="w-full">
+                        Salveaza
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              )}
 
               <UserMenu />
             </div>
@@ -569,24 +583,26 @@ export default function PMDashboard() {
           {reportStatus?.pmNotes && (
             <p className="mt-2 text-xs text-muted-foreground">Observații status: {reportStatus.pmNotes}</p>
           )}
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" onClick={() => setMonthlyStatus('in_review')}>
-              <Eye className="h-4 w-4" />
-              În verificare
-            </Button>
-            <Button variant="outline" size="sm" onClick={requestClarifications}>
-              <MessageSquare className="h-4 w-4" />
-              Cere clarificări
-            </Button>
-            <Button variant="outline" size="sm" onClick={rejectMonth}>
-              <XCircle className="h-4 w-4" />
-              Respinge
-            </Button>
-            <Button size="sm" onClick={() => setMonthlyStatus('approved', reportStatus?.pmNotes)}>
-              <CheckCircle className="h-4 w-4" />
-              Aprobă luna
-            </Button>
-          </div>
+          {canManagePmReview && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" onClick={() => setMonthlyStatus('in_review')}>
+                <Eye className="h-4 w-4" />
+                În verificare
+              </Button>
+              <Button variant="outline" size="sm" onClick={requestClarifications}>
+                <MessageSquare className="h-4 w-4" />
+                Cere clarificări
+              </Button>
+              <Button variant="outline" size="sm" onClick={rejectMonth}>
+                <XCircle className="h-4 w-4" />
+                Respinge
+              </Button>
+              <Button size="sm" onClick={() => setMonthlyStatus('approved', reportStatus?.pmNotes)}>
+                <CheckCircle className="h-4 w-4" />
+                Aprobă luna
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -594,7 +610,9 @@ export default function PMDashboard() {
       <main className="container mx-auto px-4 py-6">
         <section className="mb-6 grid gap-3 md:grid-cols-5">
           <div className="rounded-lg border bg-card p-4">
-            <p className="text-xs font-medium text-muted-foreground">Experți monitorizați</p>
+            <p className="text-xs font-medium text-muted-foreground">
+              {hasExtendedExpertAccess ? 'Experți monitorizați' : 'Raportare vizibilă'}
+            </p>
             <p className="mt-1 text-2xl font-bold">{pmSummary.totalExperts}</p>
             <p className="mt-1 text-xs text-muted-foreground">Draft {pmSummary.statusCounts.draft} / Trimis {pmSummary.statusCounts.sent} / Aprobat {pmSummary.statusCounts.approved}</p>
           </div>
@@ -620,9 +638,13 @@ export default function PMDashboard() {
 
         <section className="mb-6 rounded-lg border bg-card">
           <div className="border-b p-4">
-            <h2 className="text-base font-semibold">Status lunar pentru toți experții</h2>
+            <h2 className="text-base font-semibold">
+              {hasExtendedExpertAccess ? 'Status lunar pentru toți experții' : 'Status lunar pentru raportarea mea'}
+            </h2>
             <p className="text-sm text-muted-foreground">
-              Centralizează rolul, categoria, norma, orele pontate, statusul raportării și problemele lunii selectate.
+              {hasExtendedExpertAccess
+                ? 'Centralizează rolul, categoria, norma, orele pontate, statusul raportării și problemele lunii selectate.'
+                : 'Afișează strict rolul, norma, orele pontate, statusul raportării și problemele proprii pentru luna selectată.'}
             </p>
           </div>
           <div className="overflow-x-auto">
@@ -755,7 +777,7 @@ export default function PMDashboard() {
             <TabsTrigger value="pontaj">Pontaj Excel</TabsTrigger>
             <TabsTrigger value="raport">Raport Activitate</TabsTrigger>
             <TabsTrigger value="livrabile">Livrabile</TabsTrigger>
-            <TabsTrigger value="cross-expert">Cross-Expert</TabsTrigger>
+            {hasExtendedExpertAccess && <TabsTrigger value="cross-expert">Cross-Expert</TabsTrigger>}
             <TabsTrigger value="double-funding">Dublă finanțare</TabsTrigger>
             <TabsTrigger value="progres">Raport Progres</TabsTrigger>
             <TabsTrigger value="gt">Progres GT</TabsTrigger>
@@ -790,9 +812,11 @@ export default function PMDashboard() {
             />
           </TabsContent>
 
-          <TabsContent value="cross-expert">
-            <CrossExpertTab data={crossExpertData} onDataChange={setCrossExpertData} />
-          </TabsContent>
+          {hasExtendedExpertAccess && (
+            <TabsContent value="cross-expert">
+              <CrossExpertTab data={crossExpertData} onDataChange={setCrossExpertData} />
+            </TabsContent>
+          )}
 
           <TabsContent value="double-funding">
             <DoubleFundingTab

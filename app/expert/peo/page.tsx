@@ -181,7 +181,7 @@ export default function ExpertDashboard() {
 
   const currentStatus = reportStatus?.status || 'draft';
   const isApproved = currentStatus === 'approved';
-  const statusMeta = statusLabels[currentStatus];
+  const statusMeta = statusLabels[currentStatus as ReportStatus['status']] || statusLabels.draft;
 
   const handleSubmitMonth = async () => {
     if (!selectedExpertId || activities.length === 0 || isApproved) return;

@@ -1,8 +1,25 @@
 'use client';
 
 import { getAwsDataClient, isAwsAvailable } from '@/lib/aws/client';
+import { getSignedInUser } from '@/lib/aws/auth';
 import outputs from '@/amplify_outputs.json';
 import { peoUsersAsExperts } from '@/lib/peo-users';
+import {
+  canAccessExpertId,
+  filterActivitiesForScope,
+  filterAuditLogsForScope,
+  filterConcurrentProjectsForScope,
+  filterDocumentsForScope,
+  filterGrupTintaForScope,
+  filterReportStatusesForScope,
+  filterSharedDeliverablesForScope,
+  filterVerificationsForScope,
+  findExpertForUser,
+  normalizeIdentity,
+  resolveDataAccessScope,
+  type AccessUser,
+  type DataAccessScope,
+} from '@/lib/access-control';
 import {
   validateActivitiesBeforeCreate,
   type ActivityDraftForValidation,
@@ -82,6 +99,81 @@ function yearFromDate(date: string) {
 function modelHasField(modelName: string, fieldName: string) {
   const fields = (outputs as any)?.data?.model_introspection?.models?.[modelName]?.fields;
   return Boolean(fields?.[fieldName]);
+}
+
+const ACCESS_DENIED_MESSAGE = 'Acces interzis: nu ai drepturi pentru raportarea acestui expert.';
+
+function mergeExpertLists(primary: Expert[], fallback: Expert[]) {
+  const merged = new Map(fallback.map((expert) => [expert.email?.toLowerCase() ?? expert.id, expert]));
+
+  primary.forEach((expert) => {
+    merged.set(expert.email?.toLowerCase() ?? expert.id, expert);
+  });
+
+  return Array.from(merged.values()).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+async function listActiveExpertsFromBackend(client: any) {
+  const data = await listModel<any>(client.models.Expert, { isActive: { ne: false } });
+  return data.map(mapExpert);
+}
+
+async function findCurrentExpertFromBackend(client: any, user: AccessUser | null) {
+  if (!user) return undefined;
+
+  const fallbackExpert = findExpertForUser(peoUsersAsExperts(), user);
+  const email = normalizeIdentity(user.email);
+  const candidates: Expert[] = [];
+
+  if (email) {
+    const data = await listModel<any>(client.models.Expert, { email: { eq: email } });
+    candidates.push(...data.map(mapExpert));
+  }
+
+  const userId = normalizeIdentity(user.id);
+  if (userId) {
+    try {
+      const result = await client.models.Expert.get({ id: user.id });
+      assertNoErrors(result, 'AWS get current expert');
+      if (result.data) candidates.push(mapExpert(result.data));
+    } catch {
+      // Cognito ids usually do not match Expert ids; email matching and fallback handle the normal case.
+    }
+  }
+
+  return findExpertForUser(candidates, user) ?? fallbackExpert;
+}
+
+async function getCurrentDataAccessScope(client: any): Promise<DataAccessScope> {
+  const user = await getSignedInUser();
+  const initialScope = resolveDataAccessScope({ user, experts: [] });
+  if (initialScope.canAccessAllExperts) return initialScope;
+
+  const currentExpert = await findCurrentExpertFromBackend(client, user);
+  return resolveDataAccessScope({ user, experts: currentExpert ? [currentExpert] : [] });
+}
+
+async function assertCanAccessExpert(client: any, expertId?: string | null) {
+  const scope = await getCurrentDataAccessScope(client);
+  if (!canAccessExpertId(scope, expertId)) {
+    throw new Error(ACCESS_DENIED_MESSAGE);
+  }
+  return scope;
+}
+
+async function getAllowedExpertId(client: any, requestedExpertId?: string | null) {
+  const scope = await getCurrentDataAccessScope(client);
+  if (scope.canAccessAllExperts) return requestedExpertId ?? null;
+  return scope.currentExpertId ?? null;
+}
+
+async function assertCanAccessVerification(client: any, verificationId?: string | null) {
+  if (!verificationId) throw new Error(ACCESS_DENIED_MESSAGE);
+  const result = await client.models.Verification.get({ id: verificationId });
+  assertNoErrors(result, 'AWS get verification for access check');
+  if (!result.data) throw new Error(ACCESS_DENIED_MESSAGE);
+  await assertCanAccessExpert(client, result.data.expertId);
+  return result.data;
 }
 
 function withSupportedExpertFields(payload: Record<string, unknown>, expert: Partial<Expert>) {
@@ -614,20 +706,22 @@ async function createActivityUnchecked(
 export const expertsService = {
   async getAll(): Promise<Expert[]> {
     const client = getAwsDataClient() as any;
-    const data = await listModel<any>(client.models.Expert, { isActive: { ne: false } });
-    const experts = data.map(mapExpert);
     const fallbackExperts = peoUsersAsExperts();
-    const merged = new Map(fallbackExperts.map((expert) => [expert.email?.toLowerCase() ?? expert.id, expert]));
+    const scope = await getCurrentDataAccessScope(client);
 
-    experts.forEach((expert) => {
-      merged.set(expert.email?.toLowerCase() ?? expert.id, expert);
-    });
+    if (scope.canAccessAllExperts) {
+      const experts = await listActiveExpertsFromBackend(client);
+      return mergeExpertLists(experts, fallbackExperts);
+    }
 
-    return Array.from(merged.values()).sort((a, b) => a.name.localeCompare(b.name));
+    return scope.currentExpert ? [scope.currentExpert] : [];
   },
 
   async getById(id: string): Promise<Expert | null> {
     const client = getAwsDataClient() as any;
+    const scope = await getCurrentDataAccessScope(client);
+    if (!canAccessExpertId(scope, id)) return null;
+
     const result = await client.models.Expert.get({ id });
     assertNoErrors(result, 'AWS get expert');
     return result.data ? mapExpert(result.data) : peoUsersAsExperts().find((expert) => expert.id === id) ?? null;
@@ -635,6 +729,9 @@ export const expertsService = {
 
   async create(expert: Omit<Expert, 'id'>): Promise<Expert> {
     const client = getAwsDataClient() as any;
+    const scope = await getCurrentDataAccessScope(client);
+    if (!scope.canAccessAllExperts) throw new Error(ACCESS_DENIED_MESSAGE);
+
     const result = await client.models.Expert.create(withSupportedExpertFields({
       name: expert.name,
       role: expert.role,
@@ -652,6 +749,9 @@ export const expertsService = {
 
   async update(id: string, updates: Partial<Expert>): Promise<void> {
     const client = getAwsDataClient() as any;
+    const scope = await getCurrentDataAccessScope(client);
+    if (!scope.canAccessAllExperts) throw new Error(ACCESS_DENIED_MESSAGE);
+
     const result = await client.models.Expert.update(withSupportedExpertFields({
       id,
       name: updates.name,
@@ -676,13 +776,19 @@ export const auditLogsService = {
   async getAll(): Promise<AuditLog[]> {
     const client = getAwsDataClient() as any;
     if (!client.models.AuditLog) return [];
+    const scope = await getCurrentDataAccessScope(client);
+    if (scope.accessLevel === 'none') return [];
+
     const data = await listModel<any>(client.models.AuditLog);
-    return data.map(mapAuditLog).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    return filterAuditLogsForScope(data.map(mapAuditLog), scope).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   },
 
   async getByExpertAndMonth(expertId: string, month: number, year: number): Promise<AuditLog[]> {
     const client = getAwsDataClient() as any;
     if (!client.models.AuditLog) return [];
+    const allowedExpertId = await getAllowedExpertId(client, expertId);
+    if (!allowedExpertId || allowedExpertId !== expertId) return [];
+
     const data = await listModel<any>(client.models.AuditLog, {
       affectedExpertId: { eq: expertId },
       month: { eq: month },
@@ -694,6 +800,11 @@ export const auditLogsService = {
   async create(input: AdminInterventionRequest | AuditLog): Promise<AuditLog> {
     const client = getAwsDataClient() as any;
     const audit = 'createdAt' in input ? input : createAuditLog(input);
+    const scope = await getCurrentDataAccessScope(client);
+
+    if (!scope.canAccessAllExperts && !canAccessExpertId(scope, audit.affectedExpertId ?? audit.actorId)) {
+      throw new Error(ACCESS_DENIED_MESSAGE);
+    }
 
     if (!client.models.AuditLog) {
       return audit;
@@ -724,8 +835,11 @@ export const documentsService = {
   async getAll(): Promise<DocumentMetadata[]> {
     const client = getAwsDataClient() as any;
     if (!client.models.Document) return [];
-    const data = await listModel<any>(client.models.Document);
-    return data.map(mapDocument).sort((a, b) => b.uploadDate.localeCompare(a.uploadDate));
+    const scope = await getCurrentDataAccessScope(client);
+    if (scope.accessLevel === 'none') return [];
+    const filter = scope.canAccessAllExperts ? undefined : { uploadedByExpertId: { eq: scope.currentExpertId } };
+    const data = await listModel<any>(client.models.Document, filter);
+    return filterDocumentsForScope(data.map(mapDocument), scope).sort((a, b) => b.uploadDate.localeCompare(a.uploadDate));
   },
 
   async getById(id: string): Promise<DocumentMetadata | null> {
@@ -733,21 +847,28 @@ export const documentsService = {
     if (!client.models.Document) return null;
     const result = await client.models.Document.get({ id });
     assertNoErrors(result, 'AWS get document');
-    return result.data ? mapDocument(result.data) : null;
+    if (!result.data) return null;
+    const document = mapDocument(result.data);
+    const scope = await getCurrentDataAccessScope(client);
+    return filterDocumentsForScope([document], scope)[0] ?? null;
   },
 
   async getByProject(projectId: string): Promise<DocumentMetadata[]> {
     const client = getAwsDataClient() as any;
     if (!client.models.Document) return [];
+    const scope = await getCurrentDataAccessScope(client);
+    if (scope.accessLevel === 'none') return [];
     const data = await listModel<any>(client.models.Document, { projectId: { eq: projectId } });
-    return data.map(mapDocument);
+    return filterDocumentsForScope(data.map(mapDocument), scope);
   },
 
   async findByHash(fileHash: string): Promise<DocumentMetadata[]> {
     const client = getAwsDataClient() as any;
     if (!client.models.Document) return [];
+    const scope = await getCurrentDataAccessScope(client);
+    if (scope.accessLevel === 'none') return [];
     const data = await listModel<any>(client.models.Document, { fileHash: { eq: fileHash } });
-    return data.map(mapDocument);
+    return filterDocumentsForScope(data.map(mapDocument), scope);
   },
 };
 
@@ -755,13 +876,26 @@ export const sharedDeliverablesService = {
   async getAll(): Promise<SharedDeliverable[]> {
     const client = getAwsDataClient() as any;
     if (!client.models.SharedDeliverable) return [];
+    const scope = await getCurrentDataAccessScope(client);
+    if (scope.accessLevel === 'none') return [];
+
+    if (!scope.canAccessAllExperts && scope.currentExpertId) {
+      const [targetData, sourceData] = await Promise.all([
+        listModel<any>(client.models.SharedDeliverable, { targetExpertId: { eq: scope.currentExpertId } }),
+        listModel<any>(client.models.SharedDeliverable, { sourceExpertId: { eq: scope.currentExpertId } }),
+      ]);
+      const deduped = new Map([...targetData, ...sourceData].map((relation) => [relation.id, relation]));
+      return filterSharedDeliverablesForScope(Array.from(deduped.values()).map(mapSharedDeliverable), scope);
+    }
+
     const data = await listModel<any>(client.models.SharedDeliverable);
-    return data.map(mapSharedDeliverable);
+    return filterSharedDeliverablesForScope(data.map(mapSharedDeliverable), scope);
   },
 
   async getPendingForExpert(expertId: string): Promise<SharedDeliverable[]> {
     const client = getAwsDataClient() as any;
     if (!client.models.SharedDeliverable) return [];
+    await assertCanAccessExpert(client, expertId);
     const data = await listModel<any>(client.models.SharedDeliverable, {
       targetExpertId: { eq: expertId },
       status: { eq: 'pending_registration' },
@@ -775,6 +909,14 @@ export const sharedDeliverablesService = {
     const existing = await client.models.SharedDeliverable.get({ id: relationId });
     assertNoErrors(existing, 'AWS get shared deliverable');
     if (!existing.data) return null;
+    await assertCanAccessExpert(client, existing.data.targetExpertId);
+
+    const targetActivity = await client.models.Activity.get({ id: targetActivityId });
+    assertNoErrors(targetActivity, 'AWS get target activity');
+    if (!targetActivity.data || targetActivity.data.expertId !== existing.data.targetExpertId) {
+      throw new Error(ACCESS_DENIED_MESSAGE);
+    }
+
     if (existing.data.status !== 'pending_registration') {
       throw new Error('Livrabilul comun poate fi asociat doar din status pending_registration.');
     }
@@ -796,13 +938,17 @@ export const sharedDeliverablesService = {
 export const activitiesService = {
   async getAll(): Promise<Activity[]> {
     const client = getAwsDataClient() as any;
-    const data = await listModel<any>(client.models.Activity);
+    const scope = await getCurrentDataAccessScope(client);
+    if (scope.accessLevel === 'none') return [];
+    const filter = scope.canAccessAllExperts ? undefined : { expertId: { eq: scope.currentExpertId } };
+    const data = await listModel<any>(client.models.Activity, filter);
     const mapped = await Promise.all(data.map(attachActivityChildren));
-    return mapped.sort((a, b) => b.date.localeCompare(a.date));
+    return filterActivitiesForScope(mapped, scope).sort((a, b) => b.date.localeCompare(a.date));
   },
 
   async getByExpert(expertId: string): Promise<Activity[]> {
     const client = getAwsDataClient() as any;
+    await assertCanAccessExpert(client, expertId);
     const data = await listModel<any>(client.models.Activity, { expertId: { eq: expertId } });
     const mapped = await Promise.all(data.map(attachActivityChildren));
     return mapped.sort((a, b) => b.date.localeCompare(a.date));
@@ -810,25 +956,32 @@ export const activitiesService = {
 
   async getByMonth(month: number, year: number): Promise<Activity[]> {
     const client = getAwsDataClient() as any;
+    const scope = await getCurrentDataAccessScope(client);
+    if (scope.accessLevel === 'none') return [];
     const data = await listModel<any>(client.models.Activity, {
+      ...(scope.canAccessAllExperts ? {} : { expertId: { eq: scope.currentExpertId } }),
       month: { eq: month },
       year: { eq: year },
     });
     const mapped = await Promise.all(data.map(attachActivityChildren));
-    return mapped.sort((a, b) => a.date.localeCompare(b.date));
+    return filterActivitiesForScope(mapped, scope).sort((a, b) => a.date.localeCompare(b.date));
   },
 
   async getByDateRange(startDate: string, endDate: string): Promise<Activity[]> {
     const client = getAwsDataClient() as any;
+    const scope = await getCurrentDataAccessScope(client);
+    if (scope.accessLevel === 'none') return [];
     const data = await listModel<any>(client.models.Activity, {
+      ...(scope.canAccessAllExperts ? {} : { expertId: { eq: scope.currentExpertId } }),
       date: { between: [startDate, endDate] },
     });
     const mapped = await Promise.all(data.map(attachActivityChildren));
-    return mapped.sort((a, b) => a.date.localeCompare(b.date));
+    return filterActivitiesForScope(mapped, scope).sort((a, b) => a.date.localeCompare(b.date));
   },
 
   async create(activity: Omit<Activity, 'id' | 'createdAt' | 'updatedAt'>): Promise<Activity> {
     const client = getAwsDataClient() as any;
+    await assertCanAccessExpert(client, activity.expertId);
     await validateActivityBatchForWrite(client, [activity]);
     return createActivityUnchecked(client, activity);
   },
@@ -836,6 +989,7 @@ export const activitiesService = {
   async createBatch(activities: Omit<Activity, 'id' | 'createdAt' | 'updatedAt'>[]): Promise<Activity[]> {
     if (activities.length === 0) return [];
     const client = getAwsDataClient() as any;
+    await Promise.all(activities.map((activity) => assertCanAccessExpert(client, activity.expertId)));
     await validateActivityBatchForWrite(client, activities);
 
     const created: Activity[] = [];
@@ -855,6 +1009,9 @@ export const activitiesService = {
     },
   ): Promise<Activity> {
     const client = getAwsDataClient() as any;
+    const scope = await getCurrentDataAccessScope(client);
+    if (!scope.canAccessAllExperts) throw new Error(ACCESS_DENIED_MESSAGE);
+
     const prepared = prepareAdminActivityOverride({
       activity,
       actorId: admin.actorId,
@@ -873,6 +1030,11 @@ export const activitiesService = {
     assertNoErrors(existing, 'AWS get activity');
 
     if (existing.data) {
+      await assertCanAccessExpert(client, existing.data.expertId);
+      if (updates.expertId && updates.expertId !== existing.data.expertId) {
+        await assertCanAccessExpert(client, updates.expertId);
+      }
+
       const candidate = {
         ...existing.data,
         ...updates,
@@ -950,6 +1112,11 @@ export const activitiesService = {
 
   async delete(id: string): Promise<void> {
     const client = getAwsDataClient() as any;
+    const existing = await client.models.Activity.get({ id });
+    assertNoErrors(existing, 'AWS get activity');
+    if (!existing.data) return;
+    await assertCanAccessExpert(client, existing.data.expertId);
+
     const result = await client.models.Activity.delete({ id });
     assertNoErrors(result, 'AWS delete activity');
   },
@@ -963,12 +1130,18 @@ export const activitiesService = {
 export const verificationsService = {
   async getAll(): Promise<VerificationData[]> {
     const client = getAwsDataClient() as any;
-    const data = await listModel<any>(client.models.Verification);
-    return data.map(mapVerification);
+    const scope = await getCurrentDataAccessScope(client);
+    if (scope.accessLevel === 'none') return [];
+    const filter = scope.canAccessAllExperts ? undefined : { expertId: { eq: scope.currentExpertId } };
+    const data = await listModel<any>(client.models.Verification, filter);
+    return filterVerificationsForScope(data.map(mapVerification), scope);
   },
 
   async getByExpertAndMonth(expertId: string, month: string, year: string): Promise<VerificationData | null> {
     const client = getAwsDataClient() as any;
+    const allowedExpertId = await getAllowedExpertId(client, expertId);
+    if (!allowedExpertId || allowedExpertId !== expertId) return null;
+
     const data = await listModel<any>(client.models.Verification, {
       expertId: { eq: expertId },
       month: { eq: month },
@@ -979,6 +1152,7 @@ export const verificationsService = {
 
   async create(verification: Omit<VerificationData, 'id'>): Promise<VerificationData> {
     const client = getAwsDataClient() as any;
+    await assertCanAccessExpert(client, verification.expertId);
     const result = await client.models.Verification.create({
       expertId: verification.expertId,
       expertName: verification.expertName,
@@ -993,6 +1167,7 @@ export const verificationsService = {
 
   async update(id: string, updates: Partial<VerificationData>): Promise<void> {
     const client = getAwsDataClient() as any;
+    await assertCanAccessVerification(client, id);
     const result = await client.models.Verification.update({
       id,
       status: updates.status,
@@ -1003,6 +1178,7 @@ export const verificationsService = {
 
   async delete(id: string): Promise<void> {
     const client = getAwsDataClient() as any;
+    await assertCanAccessVerification(client, id);
     const result = await client.models.Verification.delete({ id });
     assertNoErrors(result, 'AWS delete verification');
   },
@@ -1025,12 +1201,19 @@ function mapVerification(item: any): VerificationData {
 export const neconformitatiService = {
   async getByVerification(verificationId: string): Promise<Neconformitate[]> {
     const client = getAwsDataClient() as any;
+    await assertCanAccessVerification(client, verificationId);
     const data = await listModel<any>(client.models.Neconformitate, { verificationId: { eq: verificationId } });
     return data.map(mapNeconformitate);
   },
 
   async create(neconformitate: Omit<Neconformitate, 'id' | 'createdAt'>): Promise<Neconformitate> {
     const client = getAwsDataClient() as any;
+    if (neconformitate.verificationId) {
+      await assertCanAccessVerification(client, neconformitate.verificationId);
+    } else {
+      await assertCanAccessExpert(client, neconformitate.affectedExpertId);
+    }
+
     const result = await client.models.Neconformitate.create({
       verificationId: neconformitate.verificationId,
       type: neconformitate.type,
@@ -1046,6 +1229,15 @@ export const neconformitatiService = {
 
   async resolve(id: string, resolution: string): Promise<void> {
     const client = getAwsDataClient() as any;
+    const existing = await client.models.Neconformitate.get({ id });
+    assertNoErrors(existing, 'AWS get neconformitate');
+    if (!existing.data) return;
+    if (existing.data.verificationId) {
+      await assertCanAccessVerification(client, existing.data.verificationId);
+    } else {
+      await assertCanAccessExpert(client, existing.data.affectedExpertId);
+    }
+
     const result = await client.models.Neconformitate.update({
       id,
       resolved: true,
@@ -1057,6 +1249,15 @@ export const neconformitatiService = {
 
   async delete(id: string): Promise<void> {
     const client = getAwsDataClient() as any;
+    const existing = await client.models.Neconformitate.get({ id });
+    assertNoErrors(existing, 'AWS get neconformitate');
+    if (!existing.data) return;
+    if (existing.data.verificationId) {
+      await assertCanAccessVerification(client, existing.data.verificationId);
+    } else {
+      await assertCanAccessExpert(client, existing.data.affectedExpertId);
+    }
+
     const result = await client.models.Neconformitate.delete({ id });
     assertNoErrors(result, 'AWS delete neconformitate');
   },
@@ -1081,12 +1282,14 @@ function mapNeconformitate(item: any): Neconformitate {
 export const notesService = {
   async getByVerification(verificationId: string): Promise<VerificationNote[]> {
     const client = getAwsDataClient() as any;
+    await assertCanAccessVerification(client, verificationId);
     const data = await listModel<any>(client.models.VerificationNote, { verificationId: { eq: verificationId } });
     return data.map(mapVerificationNote);
   },
 
   async create(note: Omit<VerificationNote, 'id' | 'createdAt' | 'updatedAt'>): Promise<VerificationNote> {
     const client = getAwsDataClient() as any;
+    if (note.verificationId) await assertCanAccessVerification(client, note.verificationId);
     const result = await client.models.VerificationNote.create({
       verificationId: note.verificationId,
       content: note.content,
@@ -1100,12 +1303,20 @@ export const notesService = {
 
   async update(id: string, content: string): Promise<void> {
     const client = getAwsDataClient() as any;
+    const existing = await client.models.VerificationNote.get({ id });
+    assertNoErrors(existing, 'AWS get verification note');
+    if (!existing.data) return;
+    if (existing.data.verificationId) await assertCanAccessVerification(client, existing.data.verificationId);
     const result = await client.models.VerificationNote.update({ id, content });
     assertNoErrors(result, 'AWS update note');
   },
 
   async delete(id: string): Promise<void> {
     const client = getAwsDataClient() as any;
+    const existing = await client.models.VerificationNote.get({ id });
+    assertNoErrors(existing, 'AWS get verification note');
+    if (!existing.data) return;
+    if (existing.data.verificationId) await assertCanAccessVerification(client, existing.data.verificationId);
     const result = await client.models.VerificationNote.delete({ id });
     assertNoErrors(result, 'AWS delete note');
   },
@@ -1226,14 +1437,18 @@ function mapWorkingGroup(item: any): WorkingGroup {
 export const concurrentProjectsService = {
   async getAll(): Promise<ConcurrentProject[]> {
     const client = getAwsDataClient() as any;
+    const scope = await getCurrentDataAccessScope(client);
+    if (scope.accessLevel === 'none') return [];
     const data = await listModel<any>(client.models.ConcurrentProject, {
+      ...(scope.canAccessAllExperts ? {} : { expertId: { eq: scope.currentExpertId } }),
       isActive: { ne: false },
     });
-    return data.map(mapConcurrentProject);
+    return filterConcurrentProjectsForScope(data.map(mapConcurrentProject), scope);
   },
 
   async getByExpert(expertId: string): Promise<ConcurrentProject[]> {
     const client = getAwsDataClient() as any;
+    await assertCanAccessExpert(client, expertId);
     const data = await listModel<any>(client.models.ConcurrentProject, {
       expertId: { eq: expertId },
       isActive: { ne: false },
@@ -1243,6 +1458,7 @@ export const concurrentProjectsService = {
 
   async create(project: Omit<ConcurrentProject, 'id'>): Promise<ConcurrentProject> {
     const client = getAwsDataClient() as any;
+    await assertCanAccessExpert(client, project.expertId);
     const result = await client.models.ConcurrentProject.create({
       expertId: project.expertId,
       projectName: project.projectName,
@@ -1260,6 +1476,11 @@ export const concurrentProjectsService = {
 
   async delete(id: string): Promise<void> {
     const client = getAwsDataClient() as any;
+    const existing = await client.models.ConcurrentProject.get({ id });
+    assertNoErrors(existing, 'AWS get concurrent project');
+    if (!existing.data) return;
+    await assertCanAccessExpert(client, existing.data.expertId);
+
     const result = await client.models.ConcurrentProject.delete({ id });
     assertNoErrors(result, 'AWS delete concurrent project');
   },
@@ -1284,6 +1505,9 @@ function mapConcurrentProject(item: any): ConcurrentProject {
 export const reportStatusService = {
   async getByExpertAndMonth(expertId: string, month: number, year: number): Promise<ReportStatus | null> {
     const client = getAwsDataClient() as any;
+    const allowedExpertId = await getAllowedExpertId(client, expertId);
+    if (!allowedExpertId || allowedExpertId !== expertId) return null;
+
     const data = await listModel<any>(client.models.ReportStatus, {
       expertId: { eq: expertId },
       month: { eq: month },
@@ -1294,15 +1518,19 @@ export const reportStatusService = {
 
   async getAllByMonth(month: number, year: number): Promise<ReportStatus[]> {
     const client = getAwsDataClient() as any;
+    const scope = await getCurrentDataAccessScope(client);
+    if (scope.accessLevel === 'none') return [];
     const data = await listModel<any>(client.models.ReportStatus, {
+      ...(scope.canAccessAllExperts ? {} : { expertId: { eq: scope.currentExpertId } }),
       month: { eq: month },
       year: { eq: year },
     });
-    return data.map(mapReportStatus);
+    return filterReportStatusesForScope(data.map(mapReportStatus), scope);
   },
 
   async upsert(status: Omit<ReportStatus, 'id'>): Promise<ReportStatus> {
     const client = getAwsDataClient() as any;
+    await assertCanAccessExpert(client, status.expertId);
     const existing = await reportStatusService.getByExpertAndMonth(status.expertId, status.month, status.year);
     const payload = {
       expertId: status.expertId,
@@ -1339,15 +1567,19 @@ function mapReportStatus(item: any): ReportStatus {
 export const grupTintaService = {
   async getAllByMonth(month: number, year: number): Promise<GrupTintaEntry[]> {
     const client = getAwsDataClient() as any;
+    const scope = await getCurrentDataAccessScope(client);
+    if (scope.accessLevel === 'none') return [];
     const data = await listModel<any>(client.models.GrupTintaEntry, {
+      ...(scope.canAccessAllExperts ? {} : { expertId: { eq: scope.currentExpertId } }),
       month: { eq: month },
       year: { eq: year },
     });
-    return data.map(mapGrupTinta);
+    return filterGrupTintaForScope(data.map(mapGrupTinta), scope);
   },
 
   async getByExpertAndMonth(expertId: string, month: number, year: number): Promise<GrupTintaEntry[]> {
     const client = getAwsDataClient() as any;
+    await assertCanAccessExpert(client, expertId);
     const data = await listModel<any>(client.models.GrupTintaEntry, {
       expertId: { eq: expertId },
       month: { eq: month },
@@ -1358,6 +1590,7 @@ export const grupTintaService = {
 
   async create(entry: Omit<GrupTintaEntry, 'id'>): Promise<GrupTintaEntry> {
     const client = getAwsDataClient() as any;
+    await assertCanAccessExpert(client, entry.expertId);
     const result = await client.models.GrupTintaEntry.create({
       expertId: entry.expertId,
       activityId: entry.activityId,
@@ -1375,13 +1608,21 @@ export const grupTintaService = {
 
   async delete(id: string): Promise<void> {
     const client = getAwsDataClient() as any;
+    const existing = await client.models.GrupTintaEntry.get({ id });
+    assertNoErrors(existing, 'AWS get grup tinta entry');
+    if (!existing.data) return;
+    await assertCanAccessExpert(client, existing.data.expertId);
+
     const result = await client.models.GrupTintaEntry.delete({ id });
     assertNoErrors(result, 'AWS delete grup tinta entry');
   },
 
   async getMonthlyStats(month: number, year: number): Promise<{ expertId: string; totalParticipants: number; sessionsCount: number }[]> {
     const client = getAwsDataClient() as any;
+    const scope = await getCurrentDataAccessScope(client);
+    if (scope.accessLevel === 'none') return [];
     const data = await listModel<any>(client.models.GrupTintaEntry, {
+      ...(scope.canAccessAllExperts ? {} : { expertId: { eq: scope.currentExpertId } }),
       month: { eq: month },
       year: { eq: year },
     });

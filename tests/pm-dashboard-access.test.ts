@@ -9,7 +9,14 @@ import {
   mergeRolesWithExpertProfile,
   resolveDashboardAccess,
 } from '../lib/pm-dashboard.ts';
-import type { Activity, Expert } from '../lib/types.ts';
+import {
+  canAccessExpertId,
+  filterActivitiesForScope,
+  filterDocumentsForScope,
+  filterReportStatusesForScope,
+  resolveDataAccessScope,
+} from '../lib/access-control.ts';
+import type { Activity, DocumentMetadata, Expert, ReportStatus } from '../lib/types.ts';
 
 const experts = JSON.parse(readFileSync(new URL('../data/import/experts.json', import.meta.url), 'utf8')) as Expert[];
 
@@ -36,7 +43,7 @@ test('Ivanov Roxana are acces simultan la Expert si PM din tabelul de experti', 
   assert.ok(roxana);
   assert.equal(roxana.name, 'Ivanov Roxana');
   assert.equal(roxana.role, 'Expert/PM');
-  assert.equal(roxana.category.toLowerCase(), 'gt');
+  assert.equal(String(roxana.category).toLowerCase(), 'gt');
   assert.equal(roxana.dailyHours, 8);
   assert.deepEqual(roxana.saCodes, ['SA1.1']);
   assert.equal(roxana.hasPmAccess, true);
@@ -47,6 +54,60 @@ test('Ivanov Roxana are acces simultan la Expert si PM din tabelul de experti', 
     canUseExpert: true,
     canUsePm: true,
   });
+});
+
+test('Ivanov Roxana Expert/PM este self-scoped fara acces extins explicit', () => {
+  const roxana = experts.find((expert) => expert.email === 'roxana.ivanov@confederatia-concordia.ro')!;
+  const andreea = experts.find((expert) => expert.email === 'andreea.cojocaru@confederatia-concordia.ro')!;
+  const scope = resolveDataAccessScope({
+    user: {
+      id: 'cognito-roxana',
+      email: 'roxana.ivanov@confederatia-concordia.ro',
+      roles: ['expert', 'pm'],
+    },
+    experts: [roxana, andreea],
+  });
+
+  assert.equal(scope.accessLevel, 'self');
+  assert.equal(scope.canUsePmDashboard, true);
+  assert.equal(scope.canAccessAllExperts, false);
+  assert.equal(scope.currentExpertId, roxana.id);
+  assert.equal(canAccessExpertId(scope, roxana.id), true);
+  assert.equal(canAccessExpertId(scope, andreea.id), false);
+
+  const activities = [
+    { id: 'own-a1', expertId: roxana.id, date: '2026-05-04', title: 'Raport GT', activityType: 'Raport', hours: 4 },
+    { id: 'other-a1', expertId: andreea.id, date: '2026-05-04', title: 'Raport AP', activityType: 'Raport', hours: 4 },
+  ] as Activity[];
+  assert.deepEqual(filterActivitiesForScope(activities, scope).map((activity) => activity.id), ['own-a1']);
+
+  const documents = [
+    { id: 'own-doc', uploadedByExpertId: roxana.id, s3Key: 'own', originalFileName: 'own.pdf', mimeType: 'application/pdf', fileSize: 1, uploadDate: '2026-05-04' },
+    { id: 'other-doc', uploadedByExpertId: andreea.id, s3Key: 'other', originalFileName: 'other.pdf', mimeType: 'application/pdf', fileSize: 1, uploadDate: '2026-05-04' },
+  ] as DocumentMetadata[];
+  assert.deepEqual(filterDocumentsForScope(documents, scope).map((document) => document.id), ['own-doc']);
+
+  const statuses = [
+    { id: 'own-status', expertId: roxana.id, month: 4, year: 2026, status: 'sent' },
+    { id: 'other-status', expertId: andreea.id, month: 4, year: 2026, status: 'approved' },
+  ] as ReportStatus[];
+  assert.deepEqual(filterReportStatusesForScope(statuses, scope).map((status) => status.id), ['own-status']);
+});
+
+test('PM pur si Admin au acces extins la toate raportarile', () => {
+  const pmScope = resolveDataAccessScope({
+    user: { id: 'pm-user', email: 'mihaela.grigoras@confederatia-concordia.ro', roles: ['pm'] },
+    experts,
+  });
+  assert.equal(pmScope.accessLevel, 'all');
+  assert.equal(pmScope.canAccessAllExperts, true);
+
+  const adminScope = resolveDataAccessScope({
+    user: { id: 'admin-user', email: 'admin@example.test', roles: ['admin'] },
+    experts: [],
+  });
+  assert.equal(adminScope.accessLevel, 'all');
+  assert.equal(adminScope.canAccessAllExperts, true);
 });
 
 test('summary PM calculeaza statusuri, alerte titlu, livrabile comune si cross alignment', () => {
@@ -63,7 +124,17 @@ test('summary PM calculeaza statusuri, alerte titlu, livrabile comune si cross a
     experts: testExperts,
     activities,
     reportStatuses: [{ id: 's1', expertId: 'e2', month: 4, year: 2026, status: 'approved' }],
-    documents: [{ id: 'd1', titleMatch: false, titleCheckStatus: 'mismatch' }],
+    documents: [{
+      id: 'd1',
+      s3Key: 'documents/d1.pdf',
+      originalFileName: 'd1.pdf',
+      mimeType: 'application/pdf',
+      fileSize: 1,
+      uploadedByExpertId: 'e1',
+      uploadDate: '2026-05-04',
+      titleMatch: false,
+      titleCheckStatus: 'mismatch',
+    }],
     sharedDeliverables: [{ id: 'sh1', documentId: 'd1', sourceExpertId: 'e1', targetExpertId: 'e2', status: 'pending_registration' }],
   });
 

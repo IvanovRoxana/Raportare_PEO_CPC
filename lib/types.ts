@@ -163,6 +163,8 @@ export interface Deliverable {
   activityDate?: string;
   saCode?: string;
   deliverableType?: string;
+  category?: string;
+  uploaded?: boolean;
   isCommonDeliverable?: boolean;
   sharedWithExpertIds?: string[];
   possibleDuplicateOfDocumentId?: string;

@@ -64,7 +64,7 @@ export async function getSignedInUser(): Promise<AppUser | null> {
     const attrs = await fetchUserAttributes();
     const email = attrs.email ?? user.signInDetails?.loginId;
     const expertProfile = peoUsersAsExperts().find(
-      (expert) => expert.email.toLowerCase() === String(email || '').toLowerCase()
+      (expert) => expert.email?.toLowerCase() === String(email || '').toLowerCase()
     );
     const roles = mergeRolesWithExpertProfile(await getCurrentUserRoles(), expertProfile);
 
