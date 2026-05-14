@@ -155,10 +155,16 @@ export default function PMDashboard() {
 
   // Set default expert when experts load
   useEffect(() => {
-    if (experts.length > 0 && (!selectedExpertId || !experts.some((expert) => expert.id === selectedExpertId))) {
-      setSelectedExpertId(experts[0].id);
-    }
-  }, [experts, selectedExpertId]);
+    if (experts.length === 0) return;
+
+    setSelectedExpertId((currentId) => {
+      if (currentId && experts.some((expert) => expert.id === currentId)) {
+        return currentId;
+      }
+
+      return experts[0].id;
+    });
+  }, [experts]);
 
   // Load API key
   useEffect(() => {
