@@ -87,6 +87,8 @@ export function ActivitiesTable({ activities, onEdit, onDelete }: ActivitiesTabl
           <TableBody>
             {sortedActivities.map((activity) => {
               const isExpanded = expandedRows.has(activity.id);
+              const deliverables = activity.deliverables ?? [];
+              const grupTinta = activity.grupTinta ?? [];
               return (
                 <>
                   <TableRow key={activity.id} className="hover:bg-muted/50">
@@ -118,18 +120,18 @@ export function ActivitiesTable({ activities, onEdit, onDelete }: ActivitiesTabl
                       {activity.location}
                     </TableCell>
                     <TableCell className="text-center">
-                      {activity.deliverables.length > 0 && (
+                      {deliverables.length > 0 && (
                         <div className="flex items-center justify-center gap-1">
                           <FileText className="h-4 w-4 text-muted-foreground" />
-                          <span className="text-sm">{activity.deliverables.length}</span>
+                          <span className="text-sm">{deliverables.length}</span>
                         </div>
                       )}
                     </TableCell>
                     <TableCell className="text-center">
-                      {activity.grupTinta.length > 0 && (
+                      {grupTinta.length > 0 && (
                         <div className="flex items-center justify-center gap-1">
                           <Users className="h-4 w-4 text-muted-foreground" />
-                          <span className="text-sm">{activity.grupTinta.length}</span>
+                          <span className="text-sm">{grupTinta.length}</span>
                         </div>
                       )}
                     </TableCell>
@@ -181,23 +183,23 @@ export function ActivitiesTable({ activities, onEdit, onDelete }: ActivitiesTabl
                               {activity.description || 'Fără descriere'}
                             </p>
                           </div>
-                          {activity.deliverables.length > 0 && (
+                          {deliverables.length > 0 && (
                             <div>
                               <h4 className="text-sm font-medium mb-1">Livrabile:</h4>
                               <ul className="list-disc list-inside text-sm text-muted-foreground">
-                                {activity.deliverables.map((d) => (
+                                {deliverables.map((d) => (
                                   <li key={d.id}>{d.fileName}</li>
                                 ))}
                               </ul>
                             </div>
                           )}
-                          {activity.grupTinta.length > 0 && (
+                          {grupTinta.length > 0 && (
                             <div>
                               <h4 className="text-sm font-medium mb-1">Grup Țintă:</h4>
                               <ul className="list-disc list-inside text-sm text-muted-foreground">
-                                {activity.grupTinta.map((g) => (
+                                {grupTinta.map((g) => (
                                   <li key={g.id}>
-                                    {g.name} {g.cnp && `(CNP: ${g.cnp})`}
+                                    {g.name || g.type || g.activityType || 'Intrare GT'} {g.cnp && `(CNP: ${g.cnp})`}
                                   </li>
                                 ))}
                               </ul>

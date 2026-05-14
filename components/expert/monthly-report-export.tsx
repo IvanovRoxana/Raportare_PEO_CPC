@@ -12,36 +12,44 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import type { Activity, Expert } from '@/lib/types';
+import type { Activity, ConcurrentProject, Expert } from '@/lib/types';
 import { getMonthName } from '@/lib/app-utils';
+import { getNonWorkingDayInfo } from '@/lib/non-working-days';
 import { getWorkingHoursInfo } from '@/lib/working-hours';
 
 interface MonthlyReportExportProps {
   expert: Expert;
   activities: Activity[];
+  concurrentProjects?: ConcurrentProject[];
   month: number;
   year: number;
 }
 
-export function MonthlyReportExport({ expert, activities, month, year }: MonthlyReportExportProps) {
+export function MonthlyReportExport({ expert, activities, concurrentProjects = [], month, year }: MonthlyReportExportProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [includeOPIS, setIncludeOPIS] = useState(true);
   const [includeTimesheet, setIncludeTimesheet] = useState(true);
+  const [includeConsolidatedTimesheet, setIncludeConsolidatedTimesheet] = useState(true);
   const [includeRA, setIncludeRA] = useState(true);
-  const [format, setFormat] = useState<'docx' | 'pdf' | 'xlsx'>('docx');
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const workingInfo = getWorkingHoursInfo(month, year, expert.norma || 8, activities);
   const totalHours = workingInfo.totalHours;
 
   const handleExport = async () => {
     setIsGenerating(true);
+    setExportError(null);
     try {
       // Generate the selected documents
       const docs = [];
       
       if (includeTimesheet) {
-        docs.push(generateTimesheet(expert, activities, month, year, workingInfo));
+        await downloadPontajExcel('peo');
+      }
+
+      if (includeConsolidatedTimesheet) {
+        await downloadPontajExcel('consolidated');
       }
       
       if (includeOPIS) {
@@ -87,9 +95,36 @@ export function MonthlyReportExport({ expert, activities, month, year }: Monthly
       setIsOpen(false);
     } catch (error) {
       console.error('Error exporting report:', error);
+      setExportError(error instanceof Error ? error.message : 'Exportul a esuat.');
     } finally {
       setIsGenerating(false);
     }
+  };
+
+  const downloadPontajExcel = async (kind: 'peo' | 'consolidated') => {
+    const response = await fetch('/api/export/pontaj', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kind,
+        expert,
+        activities,
+        concurrentProjects,
+        month,
+        year,
+      }),
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || 'Exportul Excel a esuat.');
+    }
+
+    const blob = await response.blob();
+    const disposition = response.headers.get('Content-Disposition') || '';
+    const filename = getFilenameFromDisposition(disposition) ||
+      `${kind === 'peo' ? 'Pontaj_PEO' : 'Pontaj_final_consolidat'}_${expert.name}_${getMonthName(month)}_${year}.xlsx`;
+    triggerDownload(blob, filename);
   };
 
   return (
@@ -131,6 +166,18 @@ export function MonthlyReportExport({ expert, activities, month, year }: Monthly
 
             <div className="flex items-center space-x-2">
               <Checkbox
+                id="final-timesheet"
+                checked={includeConsolidatedTimesheet}
+                onCheckedChange={(checked) => setIncludeConsolidatedTimesheet(checked as boolean)}
+              />
+              <label htmlFor="final-timesheet" className="text-sm flex items-center gap-2">
+                <FileSpreadsheet className="h-4 w-4 text-emerald-700" />
+                Pontaj final consolidat
+              </label>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <Checkbox
                 id="opis"
                 checked={includeOPIS}
                 onCheckedChange={(checked) => setIncludeOPIS(checked as boolean)}
@@ -154,12 +201,18 @@ export function MonthlyReportExport({ expert, activities, month, year }: Monthly
             </div>
           </div>
 
+          {exportError && (
+            <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              {exportError}
+            </div>
+          )}
+
           {/* Actions */}
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={() => setIsOpen(false)}>
               Anulează
             </Button>
-            <Button onClick={handleExport} disabled={isGenerating || (!includeOPIS && !includeTimesheet && !includeRA)}>
+            <Button onClick={handleExport} disabled={isGenerating || (!includeOPIS && !includeTimesheet && !includeConsolidatedTimesheet && !includeRA)}>
               {isGenerating ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -177,6 +230,25 @@ export function MonthlyReportExport({ expert, activities, month, year }: Monthly
       </DialogContent>
     </Dialog>
   );
+}
+
+function getFilenameFromDisposition(disposition: string) {
+  const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match) return decodeURIComponent(utf8Match[1]);
+
+  const asciiMatch = disposition.match(/filename="?([^";]+)"?/i);
+  return asciiMatch?.[1];
+}
+
+function triggerDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 function generateTimesheet(
@@ -217,14 +289,13 @@ Data\t\tOre\tActivitate
     const dayActivities = byDate.get(dateStr) || [];
     const totalHoursDay = dayActivities.reduce((sum, a) => sum + (a.hours || 0), 0);
     
-    const dayOfWeek = new Date(year, month, day).getDay();
-    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+    const nonWorkingInfo = getNonWorkingDayInfo(dateStr);
     
     if (totalHoursDay > 0) {
       dayActivities.forEach((a, i) => {
         content += `${i === 0 ? dateStr : '\t\t'}\t${a.hours}\t${a.title}\n`;
       });
-    } else if (!isWeekend) {
+    } else if (!nonWorkingInfo.isNonWorkingDay) {
       content += `${dateStr}\t0\t-\n`;
     }
   }
@@ -273,7 +344,7 @@ Nr.\tData\t\tDenumire Document\t\tObservații
   activities.forEach(a => {
     if (a.deliverables && a.deliverables.length > 0) {
       a.deliverables.forEach(d => {
-        content += `${nr}\t${a.date}\t${d.name || d.type || 'Document'}\t${d.stadiu || '-'}\n`;
+        content += `${nr}\t${a.date}\t${d.fileName || d.deliverableType || 'Document'}\t${d.titleCheckStatus || d.aiStatus || '-'}\n`;
         nr++;
       });
     }

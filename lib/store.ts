@@ -6,7 +6,6 @@ import type {
   VerificationData,
   AppSettings,
   Expert,
-  EXPERTS_LIST,
 } from './types';
 
 const STORAGE_KEYS = {

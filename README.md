@@ -38,3 +38,23 @@ npm run dev
 ## Current Baseline
 
 See `BASELINE_DECISION.md` for the comparison decision and first build priorities.
+
+## Amplify SSR API Checks
+
+The app is built for Amplify SSR/compute deployment. Keep the build artifact as `.next` and do not enable static export.
+
+After `npm run build && npm start`, verify the Node.js API runtime locally:
+
+```bash
+curl http://localhost:3000/api/health
+```
+
+AI routes remain server-side only and require server environment variables such as `OPENAI_API_KEY` to be configured in Amplify Hosting, not exposed with `NEXT_PUBLIC_*`.
+
+Example smoke command for an existing AI endpoint:
+
+```bash
+curl -X POST http://localhost:3000/api/ai/generate-report \
+  -H "Content-Type: application/json" \
+  -d "{\"activities\":[{\"date\":\"2026-05-14\",\"hours\":1,\"activityType\":\"Test\",\"title\":\"Test\",\"description\":\"Test\"}],\"month\":\"Mai\",\"year\":2026,\"expertName\":\"Test Expert\"}"
+```

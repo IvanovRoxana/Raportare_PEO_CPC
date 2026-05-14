@@ -1,0 +1,173 @@
+[
+  {
+    "id": "ro-2026-01-01-anul-nou",
+    "countryCode": "RO",
+    "date": "2026-01-01",
+    "year": 2026,
+    "name": "Anul Nou",
+    "type": "fixed",
+    "source": "Codul muncii Art. 139 / calendar sarbatori legale Romania 2026",
+    "sourceUrl": "https://www.cursbnr.ro/zile-libere"
+  },
+  {
+    "id": "ro-2026-01-02-anul-nou-ziua-2",
+    "countryCode": "RO",
+    "date": "2026-01-02",
+    "year": 2026,
+    "name": "A doua zi de Anul Nou",
+    "type": "fixed",
+    "source": "Codul muncii Art. 139 / calendar sarbatori legale Romania 2026",
+    "sourceUrl": "https://www.cursbnr.ro/zile-libere"
+  },
+  {
+    "id": "ro-2026-01-06-boboteaza",
+    "countryCode": "RO",
+    "date": "2026-01-06",
+    "year": 2026,
+    "name": "Boboteaza",
+    "type": "fixed",
+    "source": "Codul muncii Art. 139 / calendar sarbatori legale Romania 2026",
+    "sourceUrl": "https://www.cursbnr.ro/zile-libere"
+  },
+  {
+    "id": "ro-2026-01-07-sfantul-ion",
+    "countryCode": "RO",
+    "date": "2026-01-07",
+    "year": 2026,
+    "name": "Sfantul Ion",
+    "type": "fixed",
+    "source": "Codul muncii Art. 139 / calendar sarbatori legale Romania 2026",
+    "sourceUrl": "https://www.cursbnr.ro/zile-libere"
+  },
+  {
+    "id": "ro-2026-01-24-ziua-unirii-principatelor-romane",
+    "countryCode": "RO",
+    "date": "2026-01-24",
+    "year": 2026,
+    "name": "Ziua Unirii Principatelor Romane",
+    "type": "fixed",
+    "source": "Codul muncii Art. 139 / calendar sarbatori legale Romania 2026",
+    "sourceUrl": "https://www.cursbnr.ro/zile-libere"
+  },
+  {
+    "id": "ro-2026-04-10-vinerea-mare",
+    "countryCode": "RO",
+    "date": "2026-04-10",
+    "year": 2026,
+    "name": "Vinerea Mare",
+    "type": "orthodox",
+    "source": "Codul muncii Art. 139 / calendar sarbatori legale Romania 2026",
+    "sourceUrl": "https://www.cursbnr.ro/zile-libere"
+  },
+  {
+    "id": "ro-2026-04-12-pastele-ortodox",
+    "countryCode": "RO",
+    "date": "2026-04-12",
+    "year": 2026,
+    "name": "Pastele Ortodox",
+    "type": "orthodox",
+    "source": "Codul muncii Art. 139 / calendar sarbatori legale Romania 2026",
+    "sourceUrl": "https://www.cursbnr.ro/zile-libere"
+  },
+  {
+    "id": "ro-2026-04-13-a-doua-zi-de-paste",
+    "countryCode": "RO",
+    "date": "2026-04-13",
+    "year": 2026,
+    "name": "A doua zi de Paste",
+    "type": "orthodox",
+    "source": "Codul muncii Art. 139 / calendar sarbatori legale Romania 2026",
+    "sourceUrl": "https://www.cursbnr.ro/zile-libere"
+  },
+  {
+    "id": "ro-2026-05-01-ziua-muncii",
+    "countryCode": "RO",
+    "date": "2026-05-01",
+    "year": 2026,
+    "name": "Ziua Muncii",
+    "type": "fixed",
+    "source": "Codul muncii Art. 139 / calendar sarbatori legale Romania 2026",
+    "sourceUrl": "https://www.cursbnr.ro/zile-libere"
+  },
+  {
+    "id": "ro-2026-05-31-rusaliile",
+    "countryCode": "RO",
+    "date": "2026-05-31",
+    "year": 2026,
+    "name": "Rusaliile",
+    "type": "orthodox",
+    "source": "Codul muncii Art. 139 / calendar sarbatori legale Romania 2026",
+    "sourceUrl": "https://www.cursbnr.ro/zile-libere"
+  },
+  {
+    "id": "ro-2026-06-01-ziua-copilului",
+    "countryCode": "RO",
+    "date": "2026-06-01",
+    "year": 2026,
+    "name": "Ziua Copilului",
+    "type": "fixed",
+    "source": "Codul muncii Art. 139 / calendar sarbatori legale Romania 2026",
+    "sourceUrl": "https://www.cursbnr.ro/zile-libere"
+  },
+  {
+    "id": "ro-2026-06-01-a-doua-zi-de-rusalii",
+    "countryCode": "RO",
+    "date": "2026-06-01",
+    "year": 2026,
+    "name": "A doua zi de Rusalii",
+    "type": "orthodox",
+    "source": "Codul muncii Art. 139 / calendar sarbatori legale Romania 2026",
+    "sourceUrl": "https://www.cursbnr.ro/zile-libere",
+    "notes": "Aceeasi data ca Ziua Copilului; norma se reduce o singura data."
+  },
+  {
+    "id": "ro-2026-08-15-adormirea-maicii-domnului",
+    "countryCode": "RO",
+    "date": "2026-08-15",
+    "year": 2026,
+    "name": "Adormirea Maicii Domnului",
+    "type": "fixed",
+    "source": "Codul muncii Art. 139 / calendar sarbatori legale Romania 2026",
+    "sourceUrl": "https://www.cursbnr.ro/zile-libere"
+  },
+  {
+    "id": "ro-2026-11-30-sfantul-andrei",
+    "countryCode": "RO",
+    "date": "2026-11-30",
+    "year": 2026,
+    "name": "Sfantul Apostol Andrei",
+    "type": "fixed",
+    "source": "Codul muncii Art. 139 / calendar sarbatori legale Romania 2026",
+    "sourceUrl": "https://www.cursbnr.ro/zile-libere"
+  },
+  {
+    "id": "ro-2026-12-01-ziua-nationala",
+    "countryCode": "RO",
+    "date": "2026-12-01",
+    "year": 2026,
+    "name": "Ziua Nationala a Romaniei",
+    "type": "fixed",
+    "source": "Codul muncii Art. 139 / calendar sarbatori legale Romania 2026",
+    "sourceUrl": "https://www.cursbnr.ro/zile-libere"
+  },
+  {
+    "id": "ro-2026-12-25-craciunul",
+    "countryCode": "RO",
+    "date": "2026-12-25",
+    "year": 2026,
+    "name": "Craciunul",
+    "type": "fixed",
+    "source": "Codul muncii Art. 139 / calendar sarbatori legale Romania 2026",
+    "sourceUrl": "https://www.cursbnr.ro/zile-libere"
+  },
+  {
+    "id": "ro-2026-12-26-a-doua-zi-de-craciun",
+    "countryCode": "RO",
+    "date": "2026-12-26",
+    "year": 2026,
+    "name": "A doua zi de Craciun",
+    "type": "fixed",
+    "source": "Codul muncii Art. 139 / calendar sarbatori legale Romania 2026",
+    "sourceUrl": "https://www.cursbnr.ro/zile-libere"
+  }
+]

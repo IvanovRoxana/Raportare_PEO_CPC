@@ -107,7 +107,7 @@ export function PontajTab({ data, onDataChange }: PontajTabProps) {
 
   const totalHours = data.reduce((sum, row) => sum + row.hours, 0);
   const verifiedCount = data.filter((row) => row.verified).length;
-  const issuesCount = data.filter((row) => row.issues.length > 0).length;
+  const issuesCount = data.filter((row) => (row.issues ?? []).length > 0).length;
 
   return (
     <div className="space-y-6">
@@ -189,7 +189,7 @@ export function PontajTab({ data, onDataChange }: PontajTabProps) {
                   {data.map((row) => (
                     <TableRow
                       key={row.id}
-                      className={row.issues.length > 0 ? 'bg-destructive/5' : ''}
+                      className={(row.issues ?? []).length > 0 ? 'bg-destructive/5' : ''}
                     >
                       <TableCell>
                         <Checkbox
@@ -213,7 +213,7 @@ export function PontajTab({ data, onDataChange }: PontajTabProps) {
                             <Check className="h-3 w-3 mr-1" />
                             OK
                           </Badge>
-                        ) : row.issues.length > 0 ? (
+                        ) : (row.issues ?? []).length > 0 ? (
                           <Badge variant="destructive">
                             <AlertTriangle className="h-3 w-3 mr-1" />
                             Probleme

@@ -40,6 +40,25 @@ test('interventia administratorului cere justificare', () => {
   );
 });
 
+test('exceptia de zi nelucratoare permite rol PM cu justificare si audit', () => {
+  const audit = createAuditLog({
+    actionType: 'non_working_day_overridden',
+    actorId: 'pm-1',
+    actorRole: 'pm',
+    affectedExpertId: expert.id,
+    affectedExpertName: expert.name,
+    month: 5,
+    year: 2026,
+    fieldName: 'activity',
+    newValue: { date: '2026-06-01', hours: 4 },
+    justification: 'Activitate exceptionala aprobata de PM pentru zi nelucratoare.',
+  });
+
+  assert.equal(audit.actionType, 'non_working_day_overridden');
+  assert.equal(audit.actorRole, 'pm');
+  assert.match(audit.justification ?? '', /zi nelucratoare/);
+});
+
 test('actualizarea normei manuale produce patch si audit trail', () => {
   const result = prepareManualMonthlyNormUpdate({
     expert,

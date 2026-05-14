@@ -30,11 +30,12 @@ import { ActivitiesTable } from '@/components/expert/activities-table';
 import { ReportGenerator } from '@/components/expert/report-generator';
 import { MonthlyReportExport } from '@/components/expert/monthly-report-export';
 import { getMonthName } from '@/lib/backend-store';
-import { useExperts, useActivitiesByMonth, useActivityMutations, useApiKey, useReportStatus } from '@/hooks/use-backend-data';
+import { useExperts, useActivitiesByMonth, useActivityMutations, useApiKey, useReportStatus, useConcurrentProjects } from '@/hooks/use-backend-data';
 import type { Activity, Expert, ReportStatus } from '@/lib/types';
 import { UserMenu } from '@/components/user-menu';
 import { getSignedInUser } from '@/lib/aws/auth';
 import { isGtExpertCategory } from '@/lib/peo-category';
+import { assertCanLogHoursOnDate, getNonWorkingDayInfo } from '@/lib/non-working-days';
 import { getMonthlyBlockingState } from '@/lib/pontaj-rules';
 
 export default function ExpertDashboard() {
@@ -57,6 +58,7 @@ export default function ExpertDashboard() {
   const { create: createActivity, createBatch, update: updateActivity, remove: removeActivity } = useActivityMutations();
   const { apiKey, setApiKey, isLoading: apiKeyLoading } = useApiKey();
   const { status: reportStatus, updateStatus: updateReportStatus, isLoading: reportStatusLoading } = useReportStatus(selectedExpertId, currentMonth, currentYear);
+  const { projects: concurrentProjects } = useConcurrentProjects(selectedExpertId);
 
   // Get logged in user email
   useEffect(() => {
@@ -121,6 +123,10 @@ export default function ExpertDashboard() {
     setSaveError(null);
     setIsSaving(true);
     try {
+      newActivities
+        .filter((activity) => (Number(activity.hours) || 0) > 0)
+        .forEach((activity) => assertCanLogHoursOnDate(activity.date));
+
       if (editingActivity) {
         // Update existing activity
         for (const activity of newActivities) {
@@ -205,12 +211,29 @@ export default function ExpertDashboard() {
     }
   };
 
+  const getFirstWorkingDateInMonth = () => {
+    const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+    for (let day = 1; day <= daysInMonth; day += 1) {
+      const date = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      if (!getNonWorkingDayInfo(date).isNonWorkingDay) {
+        return date;
+      }
+    }
+
+    return `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-01`;
+  };
+
   const getDefaultActivityDate = () => {
     const today = new Date();
-    if (today.getMonth() === currentMonth && today.getFullYear() === currentYear) {
-      return today.toISOString().split('T')[0];
+    const todayDate = today.toISOString().split('T')[0];
+    if (
+      today.getMonth() === currentMonth &&
+      today.getFullYear() === currentYear &&
+      !getNonWorkingDayInfo(todayDate).isNonWorkingDay
+    ) {
+      return todayDate;
     }
-    return `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-01`;
+    return getFirstWorkingDateInMonth();
   };
 
   const getDefaultHours = () => Math.min(selectedExpert.norma || 8, 8).toString();
@@ -243,6 +266,16 @@ export default function ExpertDashboard() {
   const handleSelectDates = (dates: string[]) => {
     if (monthlyBlocking.isBlocked && dates.length > 0) {
       setSaveError(monthlyBlocking.reason);
+      return;
+    }
+
+    const blockedDate = dates.find((date) => getNonWorkingDayInfo(date).isNonWorkingDay);
+    if (blockedDate) {
+      try {
+        assertCanLogHoursOnDate(blockedDate);
+      } catch (error) {
+        setSaveError(error instanceof Error ? error.message : 'Ziua selectata este nelucratoare.');
+      }
       return;
     }
 
@@ -510,6 +543,12 @@ export default function ExpertDashboard() {
                   setSaveError(monthlyBlocking.reason);
                   return;
                 }
+                try {
+                  assertCanLogHoursOnDate(date);
+                } catch (error) {
+                  setSaveError(error instanceof Error ? error.message : 'Ziua selectata este nelucratoare.');
+                  return;
+                }
                 setSaveError(null);
                 syncSelectedDates([date]);
                 setShowForm(true);
@@ -545,6 +584,7 @@ export default function ExpertDashboard() {
                 <MonthlyReportExport
                   expert={selectedExpert as Expert}
                   activities={activities}
+                  concurrentProjects={concurrentProjects}
                   month={currentMonth}
                   year={currentYear}
                 />

@@ -24,7 +24,7 @@ import { getMonthName } from '@/lib/backend-store';
 import { buildPendingSharedDeliverableAlerts } from '@/lib/document-sharing';
 import { canAccessPmDashboard } from '@/lib/pm-dashboard';
 import type { Activity } from '@/lib/types';
-import { getRomanianHolidays } from '@/lib/working-hours';
+import { getNonWorkingDayInfo } from '@/lib/non-working-days';
 import { cn } from '@/lib/utils';
 
 type ProjectItem = {
@@ -93,7 +93,6 @@ function DashboardCalendar({
   month: number;
   year: number;
 }) {
-  const holidays = useMemo(() => new Set(getRomanianHolidays(year).map((date) => toIsoDate(date.getFullYear(), date.getMonth(), date.getDate()))), [year]);
   const dayTotals = useMemo(() => getDayTotals(projects), [projects]);
   const calendarDays = useMemo(() => getCalendarDays(year, month), [year, month]);
 
@@ -131,8 +130,8 @@ function DashboardCalendar({
 
             const dayTotal = dayTotals.get(day.dateStr);
             const totalHours = dayTotal?.total ?? 0;
-            const isWeekend = [0, 6].includes(day.date.getDay());
-            const isHoliday = holidays.has(day.dateStr);
+            const nonWorkingInfo = getNonWorkingDayInfo(day.date);
+            const isNonWorkingDay = nonWorkingInfo.isNonWorkingDay;
             const hasHours = totalHours > 0;
             const exceedsLimit = totalHours > 8;
 
@@ -141,15 +140,30 @@ function DashboardCalendar({
                 key={day.dateStr}
                 className={cn(
                   'min-h-24 rounded-md border p-2 text-sm',
-                  isWeekend || isHoliday ? 'border-muted bg-muted/40 text-muted-foreground' : 'bg-background',
+                  isNonWorkingDay ? 'border-muted bg-muted/40 text-muted-foreground' : 'bg-background',
                   hasHours && !exceedsLimit && 'border-green-300 bg-green-50 text-green-950',
                   exceedsLimit && 'border-red-300 bg-red-50 text-red-950'
                 )}
               >
                 <div className="flex items-center justify-between">
                   <span className="font-semibold">{day.day}</span>
-                  {isHoliday && <span className="text-[10px] font-semibold">SL</span>}
                 </div>
+                {nonWorkingInfo.badgeLabels.length > 0 && (
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {nonWorkingInfo.badgeLabels.map((label) => (
+                      <Badge key={label} variant="outline" className="px-1 py-0 text-[9px] leading-4">
+                        {label}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+                {nonWorkingInfo.holidayNames.length > 0 && (
+                  <div className="mt-1 space-y-0.5 text-[9px] leading-tight">
+                    {nonWorkingInfo.holidayNames.map((name) => (
+                      <div key={name}>{name}</div>
+                    ))}
+                  </div>
+                )}
 
                 {hasHours ? (
                   <div className="mt-2 space-y-1">

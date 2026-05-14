@@ -1,6 +1,9 @@
 import { governedGenerateText, aiErrorResponse } from '@/lib/ai-governance';
 import { NextResponse } from 'next/server';
 
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
 interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;

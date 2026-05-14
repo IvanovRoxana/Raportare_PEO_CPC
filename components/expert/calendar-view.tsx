@@ -5,7 +5,8 @@ import { Plus, X, Edit2, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { getWorkingDaysInMonth, getRomanianHolidays, getWorkingHoursInfo } from '@/lib/working-hours';
+import { getNonWorkingDayInfo } from '@/lib/non-working-days';
+import { getWorkingHoursInfo } from '@/lib/working-hours';
 import type { Activity, Expert } from '@/lib/types';
 
 interface CalendarViewProps {
@@ -51,7 +52,6 @@ export function CalendarView({
     return d;
   }, []);
 
-  const holidays = useMemo(() => getRomanianHolidays(year), [year]);
   const hoursInfo = useMemo(() => getWorkingHoursInfo(month, year, expert.norma || 8, activities), [month, year, expert.norma, activities]);
   
   // Group activities by date
@@ -76,6 +76,8 @@ export function CalendarView({
       isNonWorking: boolean;
       isHoliday: boolean;
       isWeekend: boolean;
+      holidayNames: string[];
+      badgeLabels: string[];
       isPast: boolean;
       isToday: boolean;
       dayActivities: Activity[];
@@ -90,12 +92,12 @@ export function CalendarView({
     for (let d = 1; d <= daysInMonth; d++) {
       const date = new Date(year, month, d);
       date.setHours(0, 0, 0, 0);
-      const dow = date.getDay();
       const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
       
-      const isWeekend = dow === 0 || dow === 6;
-      const isHoliday = holidays.includes(dateStr);
-      const isNonWorking = isWeekend || isHoliday;
+      const nonWorkingInfo = getNonWorkingDayInfo(date);
+      const isWeekend = nonWorkingInfo.isWeekend;
+      const isHoliday = nonWorkingInfo.isLegalHoliday;
+      const isNonWorking = nonWorkingInfo.isNonWorkingDay;
       const isPast = date < today;
       const isToday = date.getTime() === today.getTime();
       
@@ -120,6 +122,8 @@ export function CalendarView({
         isNonWorking,
         isHoliday,
         isWeekend,
+        holidayNames: nonWorkingInfo.holidayNames,
+        badgeLabels: nonWorkingInfo.badgeLabels,
         isPast,
         isToday,
         dayActivities,
@@ -133,7 +137,7 @@ export function CalendarView({
     }
     
     return result;
-  }, [year, month, holidays, today, activitiesByDay]);
+  }, [year, month, today, activitiesByDay]);
 
   // Calculate stats
   const stats = useMemo(() => {
@@ -149,6 +153,9 @@ export function CalendarView({
   }, [cells, hoursInfo]);
 
   const selectedDayActivities = selectedDay ? (activitiesByDay[selectedDay] || []) : [];
+  const selectedDayCell = selectedDay
+    ? (cells.find((cell) => cell?.dateStr === selectedDay) as NonNullable<typeof cells[0]> | undefined)
+    : undefined;
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
@@ -248,12 +255,12 @@ export function CalendarView({
               return (
                 <div
                   key={cell.dateStr}
-                  onClick={() => !cell.isNonWorking && setSelectedDay(isSelected ? null : cell.dateStr)}
+                  onClick={() => (!cell.isNonWorking || cell.dayActivities.length > 0) && setSelectedDay(isSelected ? null : cell.dateStr)}
                   className={`
-                    p-1.5 min-h-[70px] rounded-lg border transition-all
+                    p-1.5 min-h-[96px] rounded-lg border transition-all
                     ${colors.bg} ${colors.border} ${colors.text}
                     ${isSelected ? 'ring-2 ring-primary ring-offset-1' : ''}
-                    ${cell.isNonWorking ? 'cursor-default opacity-60' : 'cursor-pointer hover:ring-1 hover:ring-primary/50'}
+                    ${cell.isNonWorking && cell.dayActivities.length === 0 ? 'cursor-default opacity-60' : 'cursor-pointer hover:ring-1 hover:ring-primary/50'}
                   `}
                 >
                   <div className="flex justify-between items-start mb-0.5">
@@ -265,16 +272,29 @@ export function CalendarView({
                         azi
                       </span>
                     )}
-                    {cell.isHoliday && !cell.isWeekend && (
-                      <span className="text-[9px] opacity-65">SL</span>
-                    )}
                   </div>
+                  {cell.badgeLabels.length > 0 && (
+                    <div className="mb-1 flex flex-wrap gap-1">
+                      {cell.badgeLabels.map((label) => (
+                        <Badge key={label} variant="outline" className="px-1 py-0 text-[9px] leading-4">
+                          {label}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                  {cell.holidayNames.length > 0 && (
+                    <div className="mb-1 space-y-0.5 text-[9px] leading-tight opacity-80">
+                      {cell.holidayNames.map((name) => (
+                        <div key={name}>{name}</div>
+                      ))}
+                    </div>
+                  )}
                   
                   {cell.hasLeave && (
                     <div className="text-base font-bold">{cell.leaveType}</div>
                   )}
                   
-                  {!cell.isNonWorking && !cell.hasLeave && cell.totalHours > 0 && (
+                  {!cell.hasLeave && cell.totalHours > 0 && (
                     <div className="text-xl font-bold leading-tight">{cell.totalHours}h</div>
                   )}
                   
@@ -311,7 +331,7 @@ export function CalendarView({
                 {formatDate(selectedDay)}
               </CardTitle>
               <div className="flex gap-2">
-                {!readOnly && (
+                {!readOnly && !selectedDayCell?.isNonWorking && (
                   <Button size="sm" onClick={() => onAddForDay(selectedDay)}>
                     <Plus className="h-4 w-4 mr-1" />
                     Adauga
@@ -346,7 +366,7 @@ export function CalendarView({
                           {activity.saCode || 'SA'}
                         </Badge>
                         <span className="text-sm font-medium truncate">
-                          {activity.activityName || activity.description?.slice(0, 50) || 'Activitate'}
+                          {activity.title || activity.description?.slice(0, 50) || 'Activitate'}
                         </span>
                       </div>
                       {activity.description && (

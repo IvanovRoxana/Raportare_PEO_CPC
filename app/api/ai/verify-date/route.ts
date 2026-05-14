@@ -3,6 +3,9 @@ import { governedGenerateText, aiErrorResponse } from '@/lib/ai-governance';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
 const DateVerificationSchema = z.object({
   extractedDates: z.array(z.object({
     date: z.string(),

@@ -24,6 +24,7 @@ import {
   validateActivitiesBeforeCreate,
   type ActivityDraftForValidation,
 } from '@/lib/pontaj-rules';
+import { assertCanLogHoursOnDate, getNonWorkingDayInfo } from '@/lib/non-working-days';
 import type {
   Activity,
   ActivityCatalog,
@@ -1012,12 +1013,22 @@ export const activitiesService = {
     const scope = await getCurrentDataAccessScope(client);
     if (!scope.canAccessAllExperts) throw new Error(ACCESS_DENIED_MESSAGE);
 
+    const nonWorkingInfo = getNonWorkingDayInfo(activity.date);
+    if (nonWorkingInfo.isNonWorkingDay) {
+      assertCanLogHoursOnDate(activity.date, {
+        actorRole: admin.actorRole,
+        force: true,
+        justification: admin.justification,
+      });
+    }
+
     const prepared = prepareAdminActivityOverride({
       activity,
       actorId: admin.actorId,
       actorName: admin.actorName,
       actorRole: admin.actorRole,
       justification: admin.justification,
+      actionType: nonWorkingInfo.isNonWorkingDay ? 'non_working_day_overridden' : 'activity_admin_created',
     });
     const created = await createActivityUnchecked(client, prepared.activity);
     await auditLogsService.create(prepared.audit);

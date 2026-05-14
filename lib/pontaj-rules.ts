@@ -1,6 +1,6 @@
 'use client';
 
-import { getWorkingDaysInMonth } from './working-hours.ts';
+import { assertCanLogHoursOnDate, calculateMonthlyNormHours } from './non-working-days.ts';
 import type { Activity, Expert } from './types';
 
 export const DAILY_HOURS_LIMIT = 8;
@@ -26,7 +26,7 @@ export interface MonthlyNormInfo {
 
 export interface PontajValidationResult {
   ok: boolean;
-  code?: 'DAILY_LIMIT_EXCEEDED' | 'MONTHLY_NORM_EXCEEDED' | 'PROJECT_NORM_EXCEEDED';
+  code?: 'NON_WORKING_DAY' | 'DAILY_LIMIT_EXCEEDED' | 'MONTHLY_NORM_EXCEEDED' | 'PROJECT_NORM_EXCEEDED';
   message?: string;
   monthlyNorm: number;
   monthlyTotalBefore: number;
@@ -87,7 +87,8 @@ export function calculateMonthlyNormInfo(expert: Partial<Expert>, month: number,
   const source = expert as Record<string, unknown>;
   const normType = normalizeNormType(String(source.normType ?? source.tipNorma ?? ''));
   const dailyHours = getNumericField(source, ['oreZi', 'dailyHours', 'norma']) ?? 8;
-  const workingDays = getWorkingDaysInMonth(month + 1, year);
+  const calculatedNorm = calculateMonthlyNormHours({ month, year, dailyHours });
+  const workingDays = calculatedNorm.workingDays;
 
   const manualMonthlyNorm = getNumericField(source, ['manualMonthlyNorm', 'monthlyNormOverride', 'normaLunaraManuala']);
   const projectMonthlyNorm = getNumericField(source, ['projectMonthlyNorm', 'projectNorm', 'normaProiect']);
@@ -126,7 +127,7 @@ export function calculateMonthlyNormInfo(expert: Partial<Expert>, month: number,
     normType,
     dailyHours,
     workingDays,
-    monthlyNorm: workingDays * dailyHours,
+    monthlyNorm: calculatedNorm.normHours,
     source: 'calculated',
   };
 }
@@ -154,6 +155,26 @@ export function validateActivitiesBeforeCreate(args: {
   [...existingActivities, ...newActivities].forEach((activity) => {
     dailyTotalsAfter[activity.date] = (dailyTotalsAfter[activity.date] ?? 0) + (Number(activity.hours) || 0);
   });
+
+  for (const activity of newActivities) {
+    try {
+      assertCanLogHoursOnDate(activity.date);
+    } catch (error) {
+      return {
+        ok: false,
+        code: 'NON_WORKING_DAY',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Activitatea nu a fost creată: data selectată este zi nelucrătoare.',
+        monthlyNorm,
+        monthlyTotalBefore,
+        monthlyTotalAfter,
+        remainingMonthlyHours: Math.max(0, monthlyNorm - monthlyTotalBefore),
+        dailyTotalsAfter,
+      };
+    }
+  }
 
   for (const [date, total] of Object.entries(dailyTotalsAfter)) {
     if (total > DAILY_HOURS_LIMIT) {

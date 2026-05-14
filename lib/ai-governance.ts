@@ -89,7 +89,16 @@ function getLimits(): LimitSnapshot {
 }
 
 function getAuditLogPath() {
-  return process.env.AI_AUDIT_LOG_PATH ?? join(process.cwd(), 'data', 'audit', 'ai-audit.ndjson');
+  const configuredPath = process.env.AI_AUDIT_LOG_PATH;
+  if (configuredPath) {
+    return configuredPath;
+  }
+
+  if (process.env.NODE_ENV === 'production') {
+    return 'console';
+  }
+
+  return join(process.cwd(), 'data', 'audit', 'ai-audit.ndjson');
 }
 
 function dayKey(date = new Date()) {
@@ -286,16 +295,16 @@ function recordRequestAndSpend(costUsd: number) {
 
 async function appendAuditRecord(record: Record<string, unknown>) {
   const serialized = stableStringify(record);
+  const path = getAuditLogPath();
 
-  if (process.env.AI_AUDIT_LOG_TO_CONSOLE !== 'false') {
+  if (path === 'console' || process.env.AI_AUDIT_LOG_TO_CONSOLE !== 'false') {
     console.info(`[AI_AUDIT] ${serialized}`);
   }
 
-  if (process.env.AI_AUDIT_LOG_PATH === 'console') {
+  if (path === 'console') {
     return;
   }
 
-  const path = getAuditLogPath();
   try {
     await mkdir(dirname(path), { recursive: true });
     await appendFile(path, `${serialized}\n`, 'utf8');

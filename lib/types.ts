@@ -37,7 +37,7 @@ export interface Activity {
   description?: string;
   deliverables?: Deliverable[];
   location?: string;
-  dayType?: 'lucratoare' | 'weekend' | 'sarbatoare';
+  dayType?: 'lucratoare' | 'weekend' | 'sarbatoare' | 'CO' | 'CM' | string;
   workingGroupId?: string;
   status?: 'draft' | 'sent' | 'approved';
   shareStatus?: 'private' | 'public' | 'shared' | string;
@@ -57,6 +57,7 @@ export type AuditActionType =
   | 'manual_monthly_norm_updated'
   | 'project_norm_updated'
   | 'daily_limit_overridden'
+  | 'non_working_day_overridden'
   | 'day_unlocked'
   | 'activity_admin_created'
   | 'activity_admin_updated'
@@ -90,6 +91,21 @@ export interface AuditLog {
   newValue?: string;
   justification?: string;
   source: 'manual' | 'automatic' | 'import' | 'scheduled_job' | string;
+}
+
+export interface LegalHoliday {
+  id: string;
+  countryCode: string;
+  date: string;
+  year: number;
+  name: string;
+  type: 'fixed' | 'orthodox' | string;
+  source?: string;
+  sourceUrl?: string;
+  notes?: string;
+  isActive?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface AdminInterventionRequest {
@@ -241,9 +257,13 @@ export interface GrupTintaEntry {
   date: string;
   year: number;
   month: number;
-  activityType: string;
+  activityType?: string;
+  type?: string;
   organizations: string[];
-  participantsCount: number;
+  participantsCount?: number;
+  participants?: number;
+  name?: string;
+  cnp?: string;
   notes?: string;
   createdAt?: string;
 }

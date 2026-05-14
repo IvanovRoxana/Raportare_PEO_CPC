@@ -168,7 +168,7 @@ export function NotesTab({ data, onDataChange }: NotesTabProps) {
                             {note.category}
                           </Badge>
                           <span className="text-xs text-muted-foreground">
-                            {formatDateRo(note.createdAt)}
+                            {note.createdAt ? formatDateRo(note.createdAt) : '-'}
                           </span>
                         </div>
                         <Button

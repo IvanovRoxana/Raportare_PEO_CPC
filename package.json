@@ -9,7 +9,8 @@
     "start": "next start",
     "lint": "eslint .",
     "prepare:reference-data": "node scripts/prepare-reference-data.mjs",
-    "import:reference-data": "powershell -ExecutionPolicy Bypass -File scripts/import-reference-data-to-dynamodb.ps1"
+    "import:reference-data": "powershell -ExecutionPolicy Bypass -File scripts/import-reference-data-to-dynamodb.ps1",
+    "import:legal-holidays": "powershell -ExecutionPolicy Bypass -File scripts/import-legal-holidays-to-dynamodb.ps1"
   },
   "dependencies": {
     "@aws-amplify/adapter-nextjs": "^1.7.3",

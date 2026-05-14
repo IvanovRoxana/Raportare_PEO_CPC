@@ -34,12 +34,13 @@ export function GTProgressTab({ experts, activities, grupTintaEntries, month, ye
 
     grupTintaEntries.forEach(entry => {
       totalActivities++;
-      totalParticipants += entry.participants || 0;
+      const participants = entry.participants ?? entry.participantsCount ?? 0;
+      totalParticipants += participants;
       
       entry.organizations.forEach(orgId => {
         if (orgStats[orgId]) {
           orgStats[orgId].activities++;
-          orgStats[orgId].participants += entry.participants || 0;
+          orgStats[orgId].participants += participants;
           orgStats[orgId].experts.add(entry.expertId);
         }
       });
@@ -50,12 +51,13 @@ export function GTProgressTab({ experts, activities, grupTintaEntries, month, ye
       if (act.grupTinta && act.grupTinta.length > 0) {
         act.grupTinta.forEach(gt => {
           totalActivities++;
-          totalParticipants += gt.participants || 0;
+          const participants = gt.participants ?? gt.participantsCount ?? 0;
+          totalParticipants += participants;
           
           gt.organizations?.forEach(orgId => {
             if (orgStats[orgId]) {
               orgStats[orgId].activities++;
-              orgStats[orgId].participants += gt.participants || 0;
+              orgStats[orgId].participants += participants;
               orgStats[orgId].experts.add(act.expertId);
             }
           });
@@ -86,9 +88,9 @@ export function GTProgressTab({ experts, activities, grupTintaEntries, month, ye
       entries.push({
         date: entry.date,
         expert: expert?.name || 'Unknown',
-        type: entry.type || 'Activitate GT',
+        type: entry.type || entry.activityType || 'Activitate GT',
         orgs: entry.organizations,
-        participants: entry.participants,
+        participants: entry.participants ?? entry.participantsCount ?? 0,
       });
     });
 

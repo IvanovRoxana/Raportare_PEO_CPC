@@ -5,6 +5,7 @@ import { AlertTriangle, Check, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { formatDate, getMonthName } from '@/lib/app-utils';
+import { getNonWorkingDayInfo } from '@/lib/non-working-days';
 import { getWorkingHoursInfo } from '@/lib/working-hours';
 import type { Activity } from '@/lib/types';
 
@@ -115,13 +116,8 @@ export function MultiSelectCalendar({
     onMonthChange?.(newDate.getMonth(), newDate.getFullYear());
   };
 
-  const isWeekend = (date: Date) => {
-    const day = date.getDay();
-    return day === 0 || day === 6;
-  };
-
   const handleDateClick = (date: Date, isCurrentMonth: boolean) => {
-    if (!isCurrentMonth || isWeekend(date)) return;
+    if (!isCurrentMonth || getNonWorkingDayInfo(date).isNonWorkingDay) return;
 
     const dateStr = formatDate(date);
     if (selectedDates.includes(dateStr)) {
@@ -132,7 +128,7 @@ export function MultiSelectCalendar({
   };
 
   const handleMouseDown = (date: Date, isCurrentMonth: boolean) => {
-    if (!isCurrentMonth || isWeekend(date)) return;
+    if (!isCurrentMonth || getNonWorkingDayInfo(date).isNonWorkingDay) return;
     setIsSelecting(true);
     setSelectionStart(formatDate(date));
   };
@@ -143,7 +139,7 @@ export function MultiSelectCalendar({
   };
 
   const handleMouseEnter = (date: Date, isCurrentMonth: boolean) => {
-    if (!isSelecting || !selectionStart || !isCurrentMonth || isWeekend(date)) return;
+    if (!isSelecting || !selectionStart || !isCurrentMonth || getNonWorkingDayInfo(date).isNonWorkingDay) return;
 
     const startDate = new Date(`${selectionStart}T00:00:00`);
     const endDate = date;
@@ -152,7 +148,7 @@ export function MultiSelectCalendar({
     const current = new Date(start);
 
     while (current <= end) {
-      if (!isWeekend(current)) {
+      if (!getNonWorkingDayInfo(current).isNonWorkingDay) {
         newDates.push(formatDate(current));
       }
       current.setDate(current.getDate() + 1);
@@ -197,7 +193,8 @@ export function MultiSelectCalendar({
         {daysInMonth.map(({ date, isCurrentMonth }, index) => {
           const dateStr = formatDate(date);
           const isSelected = selectedDates.includes(dateStr);
-          const isWeekendDay = isWeekend(date);
+          const nonWorkingInfo = getNonWorkingDayInfo(date);
+          const isNonWorkingDay = nonWorkingInfo.isNonWorkingDay;
           const hasActivities = getDateActivities(date).length > 0;
           const totalHours = getTotalHours(date);
           const isToday = formatDate(new Date()) === dateStr;
@@ -210,10 +207,10 @@ export function MultiSelectCalendar({
               onMouseDown={() => handleMouseDown(date, isCurrentMonth)}
               onMouseEnter={() => handleMouseEnter(date, isCurrentMonth)}
               className={cn(
-                'relative min-h-[60px] cursor-pointer select-none rounded-md border p-1 transition-all',
+                'relative min-h-[86px] cursor-pointer select-none rounded-md border p-1 transition-all',
                 !isCurrentMonth && 'cursor-default opacity-30',
-                isWeekendDay && 'cursor-default bg-muted/50',
-                isCurrentMonth && !isWeekendDay && 'hover:bg-accent',
+                isNonWorkingDay && 'cursor-default bg-muted/50',
+                isCurrentMonth && !isNonWorkingDay && 'hover:bg-accent',
                 isSelected && 'border-primary bg-primary/20',
                 isToday && 'ring-2 ring-primary',
                 hasActivities && !isSelected && 'bg-green-50 dark:bg-green-950/30',
@@ -224,12 +221,28 @@ export function MultiSelectCalendar({
                   className={cn(
                     'text-sm font-medium',
                     !isCurrentMonth && 'text-muted-foreground',
-                    isWeekendDay && 'text-muted-foreground',
+                    isNonWorkingDay && 'text-muted-foreground',
                     isToday && 'font-bold text-primary',
                   )}
                 >
                   {date.getDate()}
                 </span>
+                {isCurrentMonth && nonWorkingInfo.badgeLabels.length > 0 && (
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {nonWorkingInfo.badgeLabels.map((label) => (
+                      <span key={label} className="rounded border bg-background/70 px-1 text-[9px] leading-4 text-muted-foreground">
+                        {label}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {isCurrentMonth && nonWorkingInfo.holidayNames.length > 0 && (
+                  <div className="mt-1 space-y-0.5 text-[9px] leading-tight text-muted-foreground">
+                    {nonWorkingInfo.holidayNames.map((name) => (
+                      <div key={name}>{name}</div>
+                    ))}
+                  </div>
+                )}
                 {isSelected && isCurrentMonth ? (
                   <div className="mt-auto">
                     <span className="text-xs font-semibold text-primary">{selectedHour}h</span>

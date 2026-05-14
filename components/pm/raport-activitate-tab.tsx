@@ -99,7 +99,7 @@ export function RaportActivitateTab({ data, pontajData, onDataChange }: RaportAc
 
   const matchingCount = data.filter((row) => row.matchesPontaj).length;
   const verifiedCount = data.filter((row) => row.verified).length;
-  const issuesCount = data.filter((row) => row.issues.length > 0).length;
+  const issuesCount = data.filter((row) => (row.issues ?? []).length > 0).length;
 
   return (
     <div className="space-y-6">
@@ -195,7 +195,7 @@ export function RaportActivitateTab({ data, pontajData, onDataChange }: RaportAc
                   {data.map((row) => (
                     <TableRow
                       key={row.id}
-                      className={row.issues.length > 0 ? 'bg-destructive/5' : ''}
+                      className={(row.issues ?? []).length > 0 ? 'bg-destructive/5' : ''}
                     >
                       <TableCell>
                         <Checkbox
@@ -213,8 +213,8 @@ export function RaportActivitateTab({ data, pontajData, onDataChange }: RaportAc
                         </p>
                       </TableCell>
                       <TableCell>
-                        {row.deliverables.length > 0 ? (
-                          <Badge variant="outline">{row.deliverables.length} fișiere</Badge>
+                        {(row.deliverables ?? []).length > 0 ? (
+                          <Badge variant="outline">{(row.deliverables ?? []).length} fișiere</Badge>
                         ) : (
                           <span className="text-xs text-muted-foreground">-</span>
                         )}
@@ -235,7 +235,7 @@ export function RaportActivitateTab({ data, pontajData, onDataChange }: RaportAc
                             <Check className="h-3 w-3 mr-1" />
                             OK
                           </Badge>
-                        ) : row.issues.length > 0 ? (
+                        ) : (row.issues ?? []).length > 0 ? (
                           <Badge variant="destructive">
                             <AlertTriangle className="h-3 w-3 mr-1" />
                             Probleme
@@ -258,9 +258,9 @@ export function RaportActivitateTab({ data, pontajData, onDataChange }: RaportAc
                 </h4>
                 <ul className="text-sm text-destructive space-y-1">
                   {data
-                    .filter((row) => row.issues.length > 0)
+                    .filter((row) => (row.issues ?? []).length > 0)
                     .map((row) =>
-                      row.issues.map((issue, i) => (
+                      (row.issues ?? []).map((issue, i) => (
                         <li key={`${row.id}-${i}`}>
                           • {formatDateRo(row.date)}: {issue}
                         </li>

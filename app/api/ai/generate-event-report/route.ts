@@ -3,6 +3,9 @@ import { governedGenerateText, aiErrorResponse } from '@/lib/ai-governance';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
 const EventReportSchema = z.object({
   eventTitle: z.string(),
   eventDate: z.string(),

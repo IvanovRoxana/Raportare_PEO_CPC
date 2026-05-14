@@ -47,8 +47,10 @@ export function GrupTintaSection({
       id: `gt_${Date.now()}`,
       expertId,
       date: form.date,
+      activityType: form.type || '',
       type: form.type || '',
       organizations: form.organizations,
+      participantsCount: Number(form.participants) || 0,
       participants: Number(form.participants) || 0,
       notes: form.notes || '',
       month,
@@ -73,10 +75,10 @@ export function GrupTintaSection({
     }));
   };
 
-  const totalParticipants = items.reduce((s, i) => s + (i.participants || 0), 0);
+  const totalParticipants = items.reduce((s, i) => s + (i.participants ?? i.participantsCount ?? 0), 0);
   const orgCounts: Record<string, number> = {};
   items.forEach(i => (i.organizations || []).forEach(o => {
-    orgCounts[o] = (orgCounts[o] || 0) + (i.participants || 0);
+    orgCounts[o] = (orgCounts[o] || 0) + (i.participants ?? i.participantsCount ?? 0);
   }));
 
   return (
@@ -248,7 +250,7 @@ export function GrupTintaSection({
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="text-xs text-slate-900 overflow-hidden text-ellipsis whitespace-nowrap">
-                      {item.type || 'Activitate GT'}
+                      {item.type || item.activityType || 'Activitate GT'}
                     </div>
                     {item.notes && (
                       <div className="text-[10px] text-slate-500">{item.notes}</div>
@@ -260,9 +262,9 @@ export function GrupTintaSection({
                         {id.toUpperCase()}
                       </Badge>
                     ))}
-                    {item.participants > 0 && (
+                    {(item.participants ?? item.participantsCount ?? 0) > 0 && (
                       <Badge className="text-[9px] px-1.5 py-0 bg-purple-100 text-purple-800">
-                        {item.participants}p
+                        {item.participants ?? item.participantsCount}p
                       </Badge>
                     )}
                   </div>

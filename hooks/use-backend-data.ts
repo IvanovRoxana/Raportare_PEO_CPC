@@ -23,7 +23,7 @@ import type { Activity, Expert, VerificationData, Neconformitate, VerificationNo
 const EMPTY_LIST: readonly never[] = Object.freeze([]);
 
 function stableList<T>(data: T[] | null | undefined): T[] {
-  return data ?? (EMPTY_LIST as T[]);
+  return data ?? ([...EMPTY_LIST] as T[]);
 }
 
 // Safe fetcher that returns null if the configured backend is not available

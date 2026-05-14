@@ -10,9 +10,26 @@ function stringifyAuditValue(value: unknown) {
   return JSON.stringify(value);
 }
 
-function requireAdminRole(actorRole: string) {
+function hasRole(actorRole: string, role: 'admin' | 'pm') {
   const normalizedRole = normalizeRole(actorRole);
-  if (!normalizedRole.split(/[,\s/]+/).includes('admin')) {
+  return normalizedRole.split(/[,\s/]+/).includes(role);
+}
+
+function requirePrivilegedRole(actorRole: string, actionType: string) {
+  const pmOrAdminActions = new Set([
+    'activity_admin_created',
+    'activity_admin_updated',
+    'daily_limit_overridden',
+    'non_working_day_overridden',
+    'pm_hours_generated',
+    'pm_hours_regenerated',
+  ]);
+
+  if (pmOrAdminActions.has(actionType) && (hasRole(actorRole, 'pm') || hasRole(actorRole, 'admin'))) {
+    return;
+  }
+
+  if (!hasRole(actorRole, 'admin')) {
     throw new Error('Interventia este permisa doar administratorului.');
   }
 }
@@ -24,7 +41,7 @@ function requireJustification(justification?: string) {
 }
 
 export function createAuditLog(input: AdminInterventionRequest): AuditLog {
-  requireAdminRole(input.actorRole);
+  requirePrivilegedRole(input.actorRole, input.actionType);
   requireJustification(input.justification);
 
   const createdAt = new Date().toISOString();
@@ -106,7 +123,7 @@ export function prepareAdminActivityOverride(args: {
   actorName?: string;
   actorRole: string;
   justification: string;
-  actionType?: 'activity_admin_created' | 'activity_admin_updated' | 'daily_limit_overridden';
+  actionType?: 'activity_admin_created' | 'activity_admin_updated' | 'daily_limit_overridden' | 'non_working_day_overridden';
 }) {
   const audit = createAuditLog({
     actionType: args.actionType ?? 'activity_admin_created',

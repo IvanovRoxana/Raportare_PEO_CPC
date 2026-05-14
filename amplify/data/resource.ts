@@ -68,6 +68,27 @@ const schema = a.schema({
       allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
     ]),
 
+  LegalHoliday: a
+    .model({
+      countryCode: a.string().default("RO"),
+      date: a.date().required(),
+      year: a.integer().required(),
+      name: a.string().required(),
+      type: a.string().required(),
+      source: a.string(),
+      sourceUrl: a.string(),
+      notes: a.string(),
+      isActive: a.boolean().default(true),
+    })
+    .secondaryIndexes((index) => [
+      index("date"),
+      index("year").sortKeys(["date"]),
+    ])
+    .authorization((allow) => [
+      allow.authenticated().to(["read"]),
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
   Deliverable: a
     .model({
       owner: a.string(),
