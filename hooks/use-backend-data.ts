@@ -20,6 +20,12 @@ import {
 } from '@/lib/backend-store';
 import type { Activity, Expert, VerificationData, Neconformitate, VerificationNote, AppSettings, ActivityCatalog, WorkingGroup, ConcurrentProject, ReportStatus, GrupTintaEntry, AuditLog, AdminInterventionRequest } from '@/lib/types';
 
+const EMPTY_LIST: readonly never[] = Object.freeze([]);
+
+function stableList<T>(data: T[] | null | undefined): T[] {
+  return data ?? (EMPTY_LIST as T[]);
+}
+
 // Safe fetcher that returns null if the configured backend is not available
 const safeFetcher = <T>(fetcher: () => Promise<T>) => async (): Promise<T | null> => {
   if (!isBackendAvailable()) {
@@ -38,7 +44,7 @@ export function useExperts() {
   );
   
   return {
-    experts: data || [],
+    experts: stableList(data),
     isLoading,
     error,
     mutate: () => mutate('experts'),
@@ -94,7 +100,7 @@ export function useActivities(expertId?: string) {
   );
   
   return {
-    activities: data || [],
+    activities: stableList(data),
     isLoading,
     error,
     mutate: () => mutate(key),
@@ -109,7 +115,7 @@ export function useActivitiesByMonth(month: number, year: number) {
   );
   
   return {
-    activities: data || [],
+    activities: stableList(data),
     isLoading,
     error,
     mutate: () => mutate(key),
@@ -124,7 +130,7 @@ export function useActivitiesByDateRange(startDate: string, endDate: string) {
   );
   
   return {
-    activities: data || [],
+    activities: stableList(data),
     isLoading,
     error,
     mutate: () => mutate(key),
@@ -170,7 +176,7 @@ export function useDocuments() {
   );
 
   return {
-    documents: data || [],
+    documents: stableList(data),
     isLoading,
     error,
     mutate: () => mutate('documents'),
@@ -188,7 +194,7 @@ export function useSharedDeliverables(expertId?: string) {
   );
 
   return {
-    sharedDeliverables: data || [],
+    sharedDeliverables: stableList(data),
     isLoading,
     error,
     mutate: () => mutate(key),
@@ -215,7 +221,7 @@ export function useVerifications() {
   );
   
   return {
-    verifications: data || [],
+    verifications: stableList(data),
     isLoading,
     error,
     mutate: () => mutate('verifications'),
@@ -269,7 +275,7 @@ export function useNeconformitati(verificationId: string | null) {
   );
   
   return {
-    neconformitati: data || [],
+    neconformitati: stableList(data),
     isLoading,
     error,
     mutate: () => key && mutate(key),
@@ -307,7 +313,7 @@ export function useNotes(verificationId: string | null) {
   );
   
   return {
-    notes: data || [],
+    notes: stableList(data),
     isLoading,
     error,
     mutate: () => key && mutate(key),
@@ -403,7 +409,7 @@ export function useActivityCatalog() {
   );
   
   return {
-    catalog: data || [],
+    catalog: stableList(data),
     isLoading,
     error,
   };
@@ -416,7 +422,7 @@ export function useActivityCatalogBySa(saCode: string | null) {
   );
   
   return {
-    activities: data || [],
+    activities: stableList(data),
     isLoading,
     error,
   };
@@ -433,7 +439,7 @@ export function useWorkingGroups() {
   );
   
   return {
-    groups: data || [],
+    groups: stableList(data),
     isLoading,
     error,
   };
@@ -446,7 +452,7 @@ export function useWorkingGroupsByType(type: string | null) {
   );
   
   return {
-    groups: data || [],
+    groups: stableList(data),
     isLoading,
     error,
   };
@@ -474,7 +480,7 @@ export function useConcurrentProjects(expertId: string | null) {
   };
   
   return {
-    projects: data || [],
+    projects: stableList(data),
     isLoading,
     error,
     addProject,
@@ -489,7 +495,7 @@ export function useAllConcurrentProjects() {
   );
 
   return {
-    projects: data || [],
+    projects: stableList(data),
     isLoading,
     error,
   };
@@ -528,7 +534,7 @@ export function useReportStatusByMonth(month: number, year: number) {
   );
   
   return {
-    statuses: data || [],
+    statuses: stableList(data),
     isLoading,
     error,
   };
@@ -558,7 +564,7 @@ export function useGrupTinta(expertId: string | null, month: number, year: numbe
   };
   
   return {
-    entries: data || [],
+    entries: stableList(data),
     isLoading,
     error,
     addEntry,
@@ -574,7 +580,7 @@ export function useGrupTintaStats(month: number, year: number) {
   );
   
   return {
-    stats: data || [],
+    stats: stableList(data),
     isLoading,
     error,
   };
@@ -588,7 +594,7 @@ export function useGrupTintaByMonth(month: number, year: number) {
   );
 
   return {
-    entries: data || [],
+    entries: stableList(data),
     isLoading,
     error,
   };
@@ -614,7 +620,7 @@ export function useAuditLogs(expertId?: string | null, month?: number, year?: nu
   );
 
   return {
-    auditLogs: data || [],
+    auditLogs: stableList(data),
     isLoading,
     error,
     mutate: () => mutate(key),
