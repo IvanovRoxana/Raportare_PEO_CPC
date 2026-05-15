@@ -36,7 +36,11 @@ import { UserMenu } from '@/components/user-menu';
 import { getSignedInUser } from '@/lib/aws/auth';
 import { isGtExpertCategory } from '@/lib/peo-category';
 import { assertCanLogHoursOnDate, getNonWorkingDayInfo } from '@/lib/non-working-days';
-import { getMonthlyBlockingState } from '@/lib/pontaj-rules';
+import {
+  getMonthlyBlockingState,
+  validateActivitiesBeforeCreate,
+  type ActivityDraftForValidation,
+} from '@/lib/pontaj-rules';
 
 export default function ExpertDashboard() {
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
@@ -123,9 +127,36 @@ export default function ExpertDashboard() {
     setSaveError(null);
     setIsSaving(true);
     try {
-      newActivities
-        .filter((activity) => (Number(activity.hours) || 0) > 0)
-        .forEach((activity) => assertCanLogHoursOnDate(activity.date));
+      if (!selectedExpertId) {
+        throw new Error('Selecteaza un expert inainte de salvare.');
+      }
+
+      const toValidationDraft = (activity: Activity): ActivityDraftForValidation => ({
+        id: activity.id,
+        expertId: activity.expertId || selectedExpertId,
+        date: activity.date,
+        hours: Number(activity.hours) || 0,
+        status: activity.status,
+        projectCode: activity.projectCode,
+      });
+      const validation = validateActivitiesBeforeCreate({
+        expert: selectedExpert,
+        existingActivities: activities
+          .filter((activity) => !editingActivity || activity.id !== editingActivity.id)
+          .map(toValidationDraft),
+        newActivities: newActivities.map((activity) =>
+          toValidationDraft({
+            ...activity,
+            expertId: selectedExpertId,
+          }),
+        ),
+        month: currentMonth,
+        year: currentYear,
+      });
+
+      if (!validation.ok) {
+        throw new Error(validation.message || 'Activitatea nu respecta regulile de pontaj.');
+      }
 
       if (editingActivity) {
         // Update existing activity
@@ -434,10 +465,15 @@ export default function ExpertDashboard() {
                   Adaugă activități, livrabile și documente justificative{isGtExpert ? ' și intrări pentru grupul țintă' : ''}.
                 </p>
               </div>
-              <Button onClick={handleAddActivity} disabled={!selectedExpert.id || isApproved || monthlyBlocking.isBlocked}>
-                <Plus className="h-4 w-4" />
-                Adaugă activitate
-              </Button>
+              <div className="flex flex-col items-end gap-1">
+                <Button onClick={handleAddActivity} disabled={!selectedExpert.id || isApproved || monthlyBlocking.isBlocked}>
+                  <Plus className="h-4 w-4" />
+                  Adaugă activitate
+                </Button>
+                <p className="text-xs text-muted-foreground">
+                  {monthlyBlocking.remainingHours}h disponibile din {monthlyBlocking.monthlyNorm}h
+                </p>
+              </div>
             </div>
 
             <div className="grid lg:grid-cols-3 gap-6">
@@ -468,6 +504,8 @@ export default function ExpertDashboard() {
                     expert={selectedExpert as import('@/lib/types').Expert}
                     allExperts={experts}
                     allActivities={allMonthActivities}
+                    month={currentMonth}
+                    year={currentYear}
                     apiKey={localApiKey || null}
                     onSave={handleSaveActivities}
                     onCancel={() => {

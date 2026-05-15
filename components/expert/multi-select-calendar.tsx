@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 import { formatDate, getMonthName } from '@/lib/app-utils';
 import { getNonWorkingDayInfo } from '@/lib/non-working-days';
 import { getWorkingHoursInfo } from '@/lib/working-hours';
+import { DAILY_HOURS_LIMIT } from '@/lib/pontaj-rules';
 import type { Activity } from '@/lib/types';
 
 interface MultiSelectCalendarProps {
@@ -40,6 +41,10 @@ export function MultiSelectCalendar({
   const workingInfo = useMemo(
     () => getWorkingHoursInfo(month, year, expertNorma, activities),
     [month, year, expertNorma, activities],
+  );
+  const selectedTotalHours = useMemo(
+    () => sortedSelectedDates.reduce((sum, date) => sum + Number(selectedHours[date] || defaultHours), 0),
+    [sortedSelectedDates, selectedHours, defaultHours],
   );
 
   const daysInMonth = useMemo(() => {
@@ -162,6 +167,8 @@ export function MultiSelectCalendar({
     getDateActivities(date).reduce((sum, activity) => sum + activity.hours, 0);
 
   const remainingHours = workingInfo.remaining;
+  const projectedTotalHours = workingInfo.totalHours + selectedTotalHours;
+  const projectedRemainingHours = workingInfo.maxHoursWithNorma - projectedTotalHours;
 
   return (
     <div
@@ -199,6 +206,10 @@ export function MultiSelectCalendar({
           const totalHours = getTotalHours(date);
           const isToday = formatDate(new Date()) === dateStr;
           const selectedHour = selectedHours[dateStr] || defaultHours.toString();
+          const projectedDailyHours = totalHours + (isSelected ? Number(selectedHour) || 0 : 0);
+          const exceedsDailyLimit = isCurrentMonth
+            && !isNonWorkingDay
+            && projectedDailyHours > DAILY_HOURS_LIMIT;
 
           return (
             <div
@@ -207,13 +218,14 @@ export function MultiSelectCalendar({
               onMouseDown={() => handleMouseDown(date, isCurrentMonth)}
               onMouseEnter={() => handleMouseEnter(date, isCurrentMonth)}
               className={cn(
-                'relative min-h-[86px] cursor-pointer select-none rounded-md border p-1 transition-all',
+                'relative min-h-[96px] cursor-pointer select-none rounded-md border p-1 transition-all',
                 !isCurrentMonth && 'cursor-default opacity-30',
                 isNonWorkingDay && 'cursor-default bg-muted/50',
                 isCurrentMonth && !isNonWorkingDay && 'hover:bg-accent',
                 isSelected && 'border-primary bg-primary/20',
                 isToday && 'ring-2 ring-primary',
                 hasActivities && !isSelected && 'bg-green-50 dark:bg-green-950/30',
+                exceedsDailyLimit && 'border-amber-500 bg-amber-50 text-amber-950 dark:bg-amber-950/30',
               )}
             >
               <div className="flex h-full flex-col">
@@ -244,14 +256,32 @@ export function MultiSelectCalendar({
                   </div>
                 )}
                 {isSelected && isCurrentMonth ? (
-                  <div className="mt-auto">
-                    <span className="text-xs font-semibold text-primary">{selectedHour}h</span>
+                  <div className="mt-auto space-y-0.5">
+                    <span
+                      className={cn(
+                        'flex items-center gap-1 text-xs font-semibold text-primary',
+                        exceedsDailyLimit && 'text-amber-700',
+                      )}
+                    >
+                      {exceedsDailyLimit && <AlertTriangle className="h-3 w-3" />}
+                      {selectedHour}h
+                    </span>
+                    {exceedsDailyLimit && (
+                      <span className="block text-[10px] leading-tight text-amber-700">
+                        Total {projectedDailyHours}h
+                      </span>
+                    )}
                   </div>
                 ) : (
                   hasActivities &&
                   isCurrentMonth && (
                     <div className="mt-auto">
-                      <span className="text-xs font-medium text-green-600 dark:text-green-400">
+                      <span
+                        className={cn(
+                          'text-xs font-medium text-green-600 dark:text-green-400',
+                          exceedsDailyLimit && 'text-amber-700 dark:text-amber-400',
+                        )}
+                      >
                         {totalHours}h
                       </span>
                     </div>
@@ -315,44 +345,66 @@ export function MultiSelectCalendar({
             )}
 
             <div className="max-h-44 space-y-1 overflow-y-auto pr-1">
-              {sortedSelectedDates.map((date) => (
-                <div key={date} className="flex items-center gap-2 rounded-md bg-background/80 px-2 py-1.5">
-                  <span className="flex-1 text-xs font-medium text-foreground">
-                    {new Date(`${date}T00:00:00`).toLocaleDateString('ro-RO', {
-                      weekday: 'short',
-                      day: '2-digit',
-                      month: '2-digit',
-                    })}
-                  </span>
-                  <input
-                    type="number"
-                    min={0}
-                    max={8}
-                    step={0.5}
-                    value={selectedHours[date] || defaultHours.toString()}
-                    onChange={(event) => updateSelectedHour(date, event.target.value)}
-                    className="h-8 w-16 rounded-md border border-input bg-background px-2 text-center text-xs"
-                  />
-                  <span className="text-xs text-muted-foreground">h</span>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 text-muted-foreground"
-                    onClick={() => syncSelectedDates(selectedDates.filter((selectedDate) => selectedDate !== date))}
+              {sortedSelectedDates.map((date) => {
+                const existingHours = (activityMap[date] || []).reduce((sum, activity) => sum + activity.hours, 0);
+                const selectedValue = Number(selectedHours[date] || defaultHours) || 0;
+                const projectedHours = existingHours + selectedValue;
+                const isOverDailyLimit = projectedHours > DAILY_HOURS_LIMIT;
+
+                return (
+                  <div
+                    key={date}
+                    className={cn(
+                      'flex items-center gap-2 rounded-md bg-background/80 px-2 py-1.5',
+                      isOverDailyLimit && 'border border-amber-300 bg-amber-50 text-amber-900',
+                    )}
                   >
-                    x
-                  </Button>
-                </div>
-              ))}
+                    <span className="flex-1 text-xs font-medium">
+                      {new Date(`${date}T00:00:00`).toLocaleDateString('ro-RO', {
+                        weekday: 'short',
+                        day: '2-digit',
+                        month: '2-digit',
+                      })}
+                      {isOverDailyLimit && (
+                        <span className="block text-[10px] leading-tight text-amber-700">
+                          Total {projectedHours}h
+                        </span>
+                      )}
+                    </span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={8}
+                      step={0.5}
+                      value={selectedHours[date] || defaultHours.toString()}
+                      onChange={(event) => updateSelectedHour(date, event.target.value)}
+                      className="h-8 w-16 rounded-md border border-input bg-background px-2 text-center text-xs"
+                    />
+                    <span className="text-xs text-muted-foreground">h</span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-muted-foreground"
+                      onClick={() => syncSelectedDates(selectedDates.filter((selectedDate) => selectedDate !== date))}
+                    >
+                      x
+                    </Button>
+                  </div>
+                );
+              })}
             </div>
 
-            <p className="text-xs text-muted-foreground">
-              Total selectie:{' '}
-              {sortedSelectedDates.reduce(
-                (sum, date) => sum + Number(selectedHours[date] || defaultHours),
-                0,
+            <p
+              className={cn(
+                'text-xs',
+                projectedRemainingHours < 0 ? 'font-medium text-amber-700' : 'text-muted-foreground',
               )}
-              h
+            >
+              Total selectie: {selectedTotalHours}h. Dupa selectie: {projectedTotalHours}h /{' '}
+              {workingInfo.maxHoursWithNorma}h
+              {projectedRemainingHours >= 0
+                ? ` - ${projectedRemainingHours}h ramase`
+                : ` - depasire ${Math.abs(projectedRemainingHours)}h`}
             </p>
           </div>
         )}

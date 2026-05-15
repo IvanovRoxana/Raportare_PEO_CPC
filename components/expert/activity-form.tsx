@@ -35,6 +35,7 @@ import { useActivityCatalog } from '@/hooks/use-backend-data';
 import type { Activity, Deliverable, GrupTintaEntry, Expert, ActivityCatalog } from '@/lib/types';
 import { isGtExpertCategory, normalizePeoCategory } from '@/lib/peo-category';
 import { buildDocumentS3Key, hashFirstPageText, normalizeDocumentTextForFingerprint, sha256Hex } from '@/lib/document-sharing';
+import { validateActivitiesBeforeCreate, type ActivityDraftForValidation } from '@/lib/pontaj-rules';
 
 interface ActivityFormProps {
   selectedDates: string[];
@@ -45,7 +46,9 @@ interface ActivityFormProps {
   expert?: Expert;
   allExperts?: Expert[];
   allActivities?: Activity[];
-  onSave: (activities: Activity[]) => void;
+  month: number;
+  year: number;
+  onSave: (activities: Activity[]) => void | Promise<void>;
   onCancel: () => void;
   initialActivity?: Activity;
   isSaving?: boolean;
@@ -61,6 +64,8 @@ export function ActivityForm({
   expert,
   allExperts = [],
   allActivities = [],
+  month,
+  year,
   onSave,
   onCancel,
   initialActivity,
@@ -166,6 +171,7 @@ export function ActivityForm({
   );
   const [description, setDescription] = useState(initialActivity?.description || '');
   const [location, setLocation] = useState(initialActivity?.location || 'Birou');
+  const [validationError, setValidationError] = useState<string | null>(null);
   
   // Deliverables state with slots
   const [deliverables, setDeliverables] = useState<DeliverableSlot[]>(
@@ -537,6 +543,8 @@ export function ActivityForm({
   };
 
   const handleSave = async () => {
+    setValidationError(null);
+
     const invalidTitleDeliverable = deliverables.find((d) => (
       d.uploaded
       && !d.isPhoto
@@ -553,6 +561,38 @@ export function ActivityForm({
         invalidTitleDeliverable.titleCheckMessage
         || 'Titlul livrabilului trebuie confirmat si trebuie sa se regaseasca in prima pagina.',
       );
+      return;
+    }
+
+    const newActivityDrafts: ActivityDraftForValidation[] = selectedDates.map((date) => ({
+      id: initialActivity?.id,
+      expertId,
+      date,
+      hours: isLeave ? 0 : (parseFloat(hoursPerDay[date] || defaultHours.toString()) || defaultHours),
+      status: initialActivity?.status,
+      projectCode: expert?.projectCode,
+    }));
+    const existingActivityDrafts: ActivityDraftForValidation[] = allActivities
+      .filter((activity) => activity.expertId === expertId)
+      .filter((activity) => !initialActivity || activity.id !== initialActivity.id)
+      .map((activity) => ({
+        id: activity.id,
+        expertId: activity.expertId,
+        date: activity.date,
+        hours: Number(activity.hours) || 0,
+        status: activity.status,
+        projectCode: activity.projectCode,
+      }));
+    const validation = validateActivitiesBeforeCreate({
+      expert: expert ?? { id: expertId, name: expertName, norma: expertNorma },
+      existingActivities: existingActivityDrafts,
+      newActivities: newActivityDrafts,
+      month,
+      year,
+    });
+
+    if (!validation.ok) {
+      setValidationError(validation.message || 'Activitatea nu respecta regulile de pontaj.');
       return;
     }
 
@@ -635,7 +675,7 @@ export function ActivityForm({
       };
     });
 
-    onSave(activities);
+    await onSave(activities);
   };
 
   const formatFileSize = (bytes: number) => {
@@ -1276,6 +1316,13 @@ export function ActivityForm({
             <span className="text-sm text-amber-800">
               Activitatea necesita cel putin un livrabil principal.
             </span>
+          </div>
+        )}
+
+        {validationError && (
+          <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>{validationError}</span>
           </div>
         )}
 
