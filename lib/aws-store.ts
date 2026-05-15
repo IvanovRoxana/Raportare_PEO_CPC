@@ -1575,6 +1575,8 @@ export const reportStatusService = {
       status: status.status,
       sentDate: status.sentDate,
       approvalDate: status.approvalDate,
+      expertAccessApproved: status.expertAccessApproved ?? false,
+      expertAccessApprovedAt: status.expertAccessApprovedAt,
       pmNotes: status.pmNotes,
     };
     const result = existing
@@ -1594,6 +1596,8 @@ function mapReportStatus(item: any): ReportStatus {
     status: item.status,
     sentDate: item.sentDate ?? undefined,
     approvalDate: item.approvalDate ?? undefined,
+    expertAccessApproved: item.expertAccessApproved ?? false,
+    expertAccessApprovedAt: item.expertAccessApprovedAt ?? undefined,
     pmNotes: item.pmNotes ?? undefined,
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,

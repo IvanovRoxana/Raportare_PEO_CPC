@@ -73,10 +73,13 @@ function needsTitleConfirmation(deliverable: Deliverable) {
 }
 
 export default function ExpertDashboard() {
+  const today = new Date();
+  const baseMonth = today.getMonth();
+  const baseYear = today.getFullYear();
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
   const [selectedHours, setSelectedHours] = useState<Record<string, string>>({});
-  const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
-  const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
+  const [currentMonth, setCurrentMonth] = useState(baseMonth);
+  const [currentYear, setCurrentYear] = useState(baseYear);
   const [showForm, setShowForm] = useState(false);
   const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
   const [selectedExpertId, setSelectedExpertId] = useState<string | null>(null);
@@ -92,6 +95,10 @@ export default function ExpertDashboard() {
   const { createBatch, update: updateActivity, remove: removeActivity } = useActivityMutations();
   const { apiKey, setApiKey, isLoading: apiKeyLoading } = useApiKey();
   const { status: reportStatus, updateStatus: updateReportStatus, isLoading: reportStatusLoading } = useReportStatus(selectedExpertId, currentMonth, currentYear);
+  const previousMonthDate = useMemo(() => new Date(baseYear, baseMonth - 1, 1), [baseMonth, baseYear]);
+  const nextMonthDate = useMemo(() => new Date(baseYear, baseMonth + 1, 1), [baseMonth, baseYear]);
+  const { status: previousMonthStatus } = useReportStatus(selectedExpertId, previousMonthDate.getMonth(), previousMonthDate.getFullYear());
+  const { status: nextMonthStatus } = useReportStatus(selectedExpertId, nextMonthDate.getMonth(), nextMonthDate.getFullYear());
   const { projects: concurrentProjects } = useConcurrentProjects(selectedExpertId);
   const { sharedDeliverables } = useSharedDeliverables(selectedExpertId || undefined);
 
@@ -145,12 +152,72 @@ export default function ExpertDashboard() {
     [selectedExpert, activities, currentMonth, currentYear],
   );
 
+  const getMonthOffsetFromBase = (month: number, year: number) =>
+    (year - baseYear) * 12 + (month - baseMonth);
+
+  const canOpenMonth = (month: number, year: number) => {
+    const offset = getMonthOffsetFromBase(month, year);
+    if (offset === 0) return true;
+    if (offset === -1) return previousMonthStatus?.expertAccessApproved === true;
+    if (offset === 1) return nextMonthStatus?.expertAccessApproved === true;
+    return false;
+  };
+
+  const getMonthAccessMessage = (month: number, year: number) =>
+    `Luna ${getMonthName(month)} ${year} se poate deschide doar dupa acordul PM.`;
+
+  const handleBlockedMonthChange = (month: number, year: number) => {
+    setSaveError(getMonthAccessMessage(month, year));
+  };
+
   const handleMonthChange = (month: number, year: number) => {
+    if (!canOpenMonth(month, year)) {
+      handleBlockedMonthChange(month, year);
+      return;
+    }
+
     setCurrentMonth(month);
     setCurrentYear(year);
     setSelectedDates([]);
     setSelectedHours({});
+    setSaveError(null);
   };
+
+  const availableMonthOptions = useMemo(() => {
+    const options = [
+      {
+        month: baseMonth,
+        year: baseYear,
+        label: `${getMonthName(baseMonth)} ${baseYear}`,
+      },
+    ];
+
+    if (previousMonthStatus?.expertAccessApproved) {
+      options.unshift({
+        month: previousMonthDate.getMonth(),
+        year: previousMonthDate.getFullYear(),
+        label: `${getMonthName(previousMonthDate.getMonth())} ${previousMonthDate.getFullYear()}`,
+      });
+    }
+
+    if (nextMonthStatus?.expertAccessApproved) {
+      options.push({
+        month: nextMonthDate.getMonth(),
+        year: nextMonthDate.getFullYear(),
+        label: `${getMonthName(nextMonthDate.getMonth())} ${nextMonthDate.getFullYear()}`,
+      });
+    }
+
+    return options;
+  }, [baseMonth, baseYear, nextMonthDate, nextMonthStatus, previousMonthDate, previousMonthStatus]);
+
+  const previousCalendarDate = new Date(currentYear, currentMonth - 1, 1);
+  const nextCalendarDate = new Date(currentYear, currentMonth + 1, 1);
+  const selectedMonthOffset = getMonthOffsetFromBase(currentMonth, currentYear);
+  const monthAccessMessage =
+    selectedMonthOffset === 0
+      ? 'Luna anterioara si luna viitoare se activeaza dupa acordul PM.'
+      : undefined;
 
   const handleSaveActivities = async (newActivities: Activity[]) => {
     if (reportStatus?.status === 'approved') return;
@@ -339,6 +406,8 @@ export default function ExpertDashboard() {
       month: currentMonth,
       status: 'sent',
       sentDate: new Date().toISOString(),
+      expertAccessApproved: reportStatus?.expertAccessApproved ?? false,
+      expertAccessApprovedAt: reportStatus?.expertAccessApprovedAt,
       pmNotes: reportStatus?.pmNotes,
     });
   };
@@ -645,6 +714,10 @@ export default function ExpertDashboard() {
                   onSelectedHoursChange={setSelectedHours}
                   activities={activities}
                   onMonthChange={handleMonthChange}
+                  onBlockedMonthChange={handleBlockedMonthChange}
+                  canGoToPreviousMonth={canOpenMonth(previousCalendarDate.getMonth(), previousCalendarDate.getFullYear())}
+                  canGoToNextMonth={canOpenMonth(nextCalendarDate.getMonth(), nextCalendarDate.getFullYear())}
+                  monthAccessMessage={monthAccessMessage}
                   expertNorma={selectedExpert.norma || 8}
                 />
 
@@ -718,9 +791,9 @@ export default function ExpertDashboard() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {Array.from({ length: 12 }, (_, i) => (
-                      <SelectItem key={i} value={`${i}-${currentYear}`}>
-                        {getMonthName(i)} {currentYear}
+                    {availableMonthOptions.map((option) => (
+                      <SelectItem key={`${option.month}-${option.year}`} value={`${option.month}-${option.year}`}>
+                        {option.label}
                       </SelectItem>
                     ))}
                   </SelectContent>

@@ -269,6 +269,8 @@ const schema = a.schema({
       status: a.string().default("draft"),
       sentDate: a.datetime(),
       approvalDate: a.datetime(),
+      expertAccessApproved: a.boolean().default(false),
+      expertAccessApprovedAt: a.datetime(),
       pmNotes: a.string(),
     })
     .secondaryIndexes((index) => [index("expertId").sortKeys(["year", "month"])])

@@ -253,7 +253,26 @@ export default function PMDashboard() {
       status,
       sentDate: reportStatus?.sentDate,
       approvalDate: status === 'approved' ? new Date().toISOString() : reportStatus?.approvalDate,
+      expertAccessApproved: reportStatus?.expertAccessApproved ?? false,
+      expertAccessApprovedAt: reportStatus?.expertAccessApprovedAt,
       pmNotes,
+    });
+  };
+
+  const toggleExpertMonthAccess = async () => {
+    if (!selectedExpertId || !canManagePmReview) return;
+    const nextValue = !(reportStatus?.expertAccessApproved ?? false);
+
+    await updateReportStatus({
+      expertId: selectedExpertId,
+      year: selectedYear,
+      month: selectedMonth,
+      status: currentReportStatus as ReportStatus['status'],
+      sentDate: reportStatus?.sentDate,
+      approvalDate: reportStatus?.approvalDate,
+      expertAccessApproved: nextValue,
+      expertAccessApprovedAt: nextValue ? new Date().toISOString() : undefined,
+      pmNotes: reportStatus?.pmNotes,
     });
   };
 
@@ -559,6 +578,12 @@ export default function PMDashboard() {
               {reportStatusLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
             </div>
             <div className="flex items-center gap-2">
+              <span className="text-muted-foreground">Acces expert:</span>
+              <Badge variant={reportStatus?.expertAccessApproved ? 'default' : 'secondary'}>
+                {reportStatus?.expertAccessApproved ? 'Permis' : 'Blocat'}
+              </Badge>
+            </div>
+            <div className="flex items-center gap-2">
               <span className="text-muted-foreground">Pontaj:</span>
               <Badge variant={pontajVerified === pontajData.length && pontajData.length > 0 ? 'default' : 'secondary'}>
                 {pontajVerified}/{pontajData.length}
@@ -606,6 +631,10 @@ export default function PMDashboard() {
               <Button size="sm" onClick={() => setMonthlyStatus('approved', reportStatus?.pmNotes)}>
                 <CheckCircle className="h-4 w-4" />
                 Aprobă luna
+              </Button>
+              <Button variant="outline" size="sm" onClick={toggleExpertMonthAccess}>
+                <FolderOpen className="h-4 w-4" />
+                {reportStatus?.expertAccessApproved ? 'Revocă acces expert' : 'Permite acces expert'}
               </Button>
             </div>
           )}

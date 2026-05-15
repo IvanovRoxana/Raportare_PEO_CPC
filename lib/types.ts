@@ -304,6 +304,8 @@ export interface ReportStatus {
   status: 'draft' | 'sent' | 'in_review' | 'approved' | 'rejected' | 'clarifications';
   sentDate?: string;
   approvalDate?: string;
+  expertAccessApproved?: boolean;
+  expertAccessApprovedAt?: string;
   pmNotes?: string;
   createdAt?: string;
   updatedAt?: string;

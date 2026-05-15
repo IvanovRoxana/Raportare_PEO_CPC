@@ -17,6 +17,10 @@ interface MultiSelectCalendarProps {
   onSelectedHoursChange?: (hours: Record<string, string>) => void;
   activities: Activity[];
   onMonthChange?: (month: number, year: number) => void;
+  onBlockedMonthChange?: (month: number, year: number) => void;
+  canGoToPreviousMonth?: boolean;
+  canGoToNextMonth?: boolean;
+  monthAccessMessage?: string;
   expertNorma?: number;
 }
 
@@ -27,6 +31,10 @@ export function MultiSelectCalendar({
   onSelectedHoursChange,
   activities,
   onMonthChange,
+  onBlockedMonthChange,
+  canGoToPreviousMonth = true,
+  canGoToNextMonth = true,
+  monthAccessMessage,
   expertNorma = 8,
 }: MultiSelectCalendarProps) {
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -111,12 +119,20 @@ export function MultiSelectCalendar({
 
   const goToPrevMonth = () => {
     const newDate = new Date(year, month - 1, 1);
+    if (!canGoToPreviousMonth) {
+      onBlockedMonthChange?.(newDate.getMonth(), newDate.getFullYear());
+      return;
+    }
     setCurrentDate(newDate);
     onMonthChange?.(newDate.getMonth(), newDate.getFullYear());
   };
 
   const goToNextMonth = () => {
     const newDate = new Date(year, month + 1, 1);
+    if (!canGoToNextMonth) {
+      onBlockedMonthChange?.(newDate.getMonth(), newDate.getFullYear());
+      return;
+    }
     setCurrentDate(newDate);
     onMonthChange?.(newDate.getMonth(), newDate.getFullYear());
   };
@@ -177,16 +193,22 @@ export function MultiSelectCalendar({
       onMouseLeave={handleMouseUp}
     >
       <div className="mb-4 flex items-center justify-between">
-        <Button variant="ghost" size="icon" onClick={goToPrevMonth}>
+        <Button variant="ghost" size="icon" onClick={goToPrevMonth} disabled={!canGoToPreviousMonth}>
           <ChevronLeft className="h-5 w-5" />
         </Button>
         <h3 className="text-lg font-semibold text-foreground">
           {getMonthName(month)} {year}
         </h3>
-        <Button variant="ghost" size="icon" onClick={goToNextMonth}>
+        <Button variant="ghost" size="icon" onClick={goToNextMonth} disabled={!canGoToNextMonth}>
           <ChevronRight className="h-5 w-5" />
         </Button>
       </div>
+
+      {monthAccessMessage && (
+        <p className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          {monthAccessMessage}
+        </p>
+      )}
 
       <div className="mb-2 grid grid-cols-7 gap-1">
         {['Lu', 'Ma', 'Mi', 'Jo', 'Vi', 'Sa', 'Du'].map((day) => (
