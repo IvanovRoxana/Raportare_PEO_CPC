@@ -598,6 +598,23 @@ async function listActivitiesForValidation(
   return data.filter((activity) => !excluded.has(activity.id)).map(activityToValidationDraft);
 }
 
+async function assertReportMonthIsMutable(
+  client: any,
+  expertId: string,
+  month: number,
+  year: number,
+) {
+  const statuses = await listModel<any>(client.models.ReportStatus, {
+    expertId: { eq: expertId },
+    month: { eq: month },
+    year: { eq: year },
+  });
+
+  if (statuses.some((status) => status.status === 'approved')) {
+    throw new Error('Luna este aprobata si nu mai permite modificari de activitati. Solicita redeschiderea raportarii de la PM/Admin.');
+  }
+}
+
 async function validateActivityBatchForWrite(
   client: any,
   activities: Omit<Activity, 'id' | 'createdAt' | 'updatedAt'>[],
@@ -621,6 +638,8 @@ async function validateActivityBatchForWrite(
 
     const month = monthFromDate(sample.date);
     const year = yearFromDate(sample.date);
+    await assertReportMonthIsMutable(client, sample.expertId, month, year);
+
     const existingActivities = await listActivitiesForValidation(client, sample.expertId, month, year, excludedIds);
     const validation = validateActivitiesBeforeCreate({
       expert,
@@ -1127,6 +1146,12 @@ export const activitiesService = {
     assertNoErrors(existing, 'AWS get activity');
     if (!existing.data) return;
     await assertCanAccessExpert(client, existing.data.expertId);
+    await assertReportMonthIsMutable(
+      client,
+      existing.data.expertId,
+      monthFromDate(existing.data.date),
+      yearFromDate(existing.data.date),
+    );
 
     const result = await client.models.Activity.delete({ id });
     assertNoErrors(result, 'AWS delete activity');

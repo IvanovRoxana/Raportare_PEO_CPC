@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { Settings, ArrowLeft, Loader2, Plus, Send, Lock, AlertTriangle } from 'lucide-react';
+import { Settings, ArrowLeft, Loader2, Plus, Send, Lock, AlertTriangle, CheckCircle } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -30,17 +30,47 @@ import { ActivitiesTable } from '@/components/expert/activities-table';
 import { ReportGenerator } from '@/components/expert/report-generator';
 import { MonthlyReportExport } from '@/components/expert/monthly-report-export';
 import { getMonthName } from '@/lib/backend-store';
-import { useExperts, useActivitiesByMonth, useActivityMutations, useApiKey, useReportStatus, useConcurrentProjects } from '@/hooks/use-backend-data';
-import type { Activity, Expert, ReportStatus } from '@/lib/types';
+import { useExperts, useActivitiesByMonth, useActivityMutations, useApiKey, useReportStatus, useConcurrentProjects, useSharedDeliverables } from '@/hooks/use-backend-data';
+import type { Activity, Deliverable, Expert, ReportStatus } from '@/lib/types';
 import { UserMenu } from '@/components/user-menu';
 import { getSignedInUser } from '@/lib/aws/auth';
 import { isGtExpertCategory } from '@/lib/peo-category';
 import { assertCanLogHoursOnDate, getNonWorkingDayInfo } from '@/lib/non-working-days';
+import { formatDate } from '@/lib/app-utils';
+import { isExceptionActivity } from '@/lib/peo-constants';
+import { getWorkingDaysListInMonth } from '@/lib/working-hours';
 import {
   getMonthlyBlockingState,
   validateActivitiesBeforeCreate,
   type ActivityDraftForValidation,
 } from '@/lib/pontaj-rules';
+
+type SubmitReadinessSeverity = 'ok' | 'warning' | 'blocking';
+
+interface SubmitReadinessItem {
+  label: string;
+  detail: string;
+  severity: SubmitReadinessSeverity;
+}
+
+const SUBMIT_MIN_NORM_PERCENT = 80;
+
+function isActivityException(activity: Activity) {
+  return activity.dayType === 'CO'
+    || activity.dayType === 'CM'
+    || Number(activity.hours) === 0
+    || isExceptionActivity(activity.activityType || activity.title || '');
+}
+
+function hasUsableDeliverable(deliverables?: Deliverable[]) {
+  return (deliverables ?? []).some((deliverable) =>
+    Boolean(deliverable.filePath || deliverable.s3Key || deliverable.fileName || deliverable.documentId),
+  );
+}
+
+function needsTitleConfirmation(deliverable: Deliverable) {
+  return !deliverable.fileType?.startsWith('image/');
+}
 
 export default function ExpertDashboard() {
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
@@ -59,10 +89,11 @@ export default function ExpertDashboard() {
   // Data hooks
   const { experts, isLoading: expertsLoading } = useExperts();
   const { activities: allMonthActivities, isLoading: activitiesLoading, mutate: refreshActivities } = useActivitiesByMonth(currentMonth, currentYear);
-  const { create: createActivity, createBatch, update: updateActivity, remove: removeActivity } = useActivityMutations();
+  const { createBatch, update: updateActivity, remove: removeActivity } = useActivityMutations();
   const { apiKey, setApiKey, isLoading: apiKeyLoading } = useApiKey();
   const { status: reportStatus, updateStatus: updateReportStatus, isLoading: reportStatusLoading } = useReportStatus(selectedExpertId, currentMonth, currentYear);
   const { projects: concurrentProjects } = useConcurrentProjects(selectedExpertId);
+  const { sharedDeliverables } = useSharedDeliverables(selectedExpertId || undefined);
 
   // Get logged in user email
   useEffect(() => {
@@ -219,10 +250,89 @@ export default function ExpertDashboard() {
   const currentStatus = reportStatus?.status || 'draft';
   const isApproved = currentStatus === 'approved';
   const statusMeta = statusLabels[currentStatus as ReportStatus['status']] || statusLabels.draft;
+  const submitReadiness = useMemo(() => {
+    const workingDays = getWorkingDaysListInMonth(currentMonth + 1, currentYear).map(formatDate);
+    const activityDates = new Set(activities.map((activity) => activity.date));
+    const missingWorkingDays = workingDays.filter((date) => !activityDates.has(date));
+    const activitiesMissingDeliverables = activities.filter((activity) =>
+      !isActivityException(activity) && !hasUsableDeliverable(activity.deliverables),
+    );
+    const deliverables = activities.flatMap((activity) => activity.deliverables ?? []);
+    const unconfirmedTitles = deliverables.filter((deliverable) =>
+      needsTitleConfirmation(deliverable) && deliverable.titleConfirmed !== true,
+    );
+    const aiReviewDeliverables = deliverables.filter((deliverable) =>
+      deliverable.aiStatus === 'review' || deliverable.aiStatus === 'ineligible',
+    );
+    const utilizationPercent = monthlyBlocking.monthlyNorm > 0
+      ? Math.round((monthlyBlocking.totalHours / monthlyBlocking.monthlyNorm) * 100)
+      : 0;
+    const pendingSharedDeliverables = sharedDeliverables.filter((relation) =>
+      relation.status === 'pending_registration',
+    );
+
+    const items: SubmitReadinessItem[] = [
+      {
+        label: 'Zile lucratoare acoperite',
+        detail: missingWorkingDays.length === 0
+          ? 'Toate zilele lucratoare au pontaj sau exceptie.'
+          : `${missingWorkingDays.length} zile lucratoare fara pontaj: ${missingWorkingDays.slice(0, 5).join(', ')}${missingWorkingDays.length > 5 ? '...' : ''}`,
+        severity: missingWorkingDays.length === 0 ? 'ok' : 'warning',
+      },
+      {
+        label: 'Livrabile pe activitati',
+        detail: activitiesMissingDeliverables.length === 0
+          ? 'Toate activitatile ne-exceptie au cel putin un livrabil.'
+          : `${activitiesMissingDeliverables.length} activitati fara livrabil.`,
+        severity: activitiesMissingDeliverables.length === 0 ? 'ok' : 'blocking',
+      },
+      {
+        label: 'Titluri confirmate',
+        detail: unconfirmedTitles.length === 0
+          ? 'Toate titlurile livrabilelor sunt confirmate.'
+          : `${unconfirmedTitles.length} livrabile au titlul neconfirmat.`,
+        severity: unconfirmedTitles.length === 0 ? 'ok' : 'blocking',
+      },
+      {
+        label: 'Verificari AI',
+        detail: aiReviewDeliverables.length === 0
+          ? 'Nu exista livrabile in review sau ineligible.'
+          : `${aiReviewDeliverables.length} livrabile sunt in review sau ineligible.`,
+        severity: aiReviewDeliverables.length === 0 ? 'ok' : 'blocking',
+      },
+      {
+        label: 'Norma lunara',
+        detail: `${monthlyBlocking.totalHours}h / ${monthlyBlocking.monthlyNorm}h (${utilizationPercent}%). Prag submit: ${SUBMIT_MIN_NORM_PERCENT}%.`,
+        severity: utilizationPercent >= SUBMIT_MIN_NORM_PERCENT ? 'ok' : 'warning',
+      },
+      {
+        label: 'Livrabile comune',
+        detail: pendingSharedDeliverables.length === 0
+          ? 'Nu exista livrabile comune in asteptare.'
+          : `${pendingSharedDeliverables.length} livrabile comune asteapta confirmare/inregistrare.`,
+        severity: pendingSharedDeliverables.length === 0 ? 'ok' : 'warning',
+      },
+    ];
+
+    const blockingItems = items.filter((item) => item.severity === 'blocking');
+    return {
+      items,
+      blockingItems,
+      hasBlockingIssues: activities.length === 0 || blockingItems.length > 0,
+      disabledReason: activities.length === 0
+        ? 'Adauga cel putin o activitate inainte de trimitere.'
+        : blockingItems[0]?.detail || '',
+    };
+  }, [activities, currentMonth, currentYear, monthlyBlocking, sharedDeliverables]);
 
   const handleSubmitMonth = async () => {
-    if (!selectedExpertId || activities.length === 0 || isApproved) return;
+    if (!selectedExpertId || isApproved) return;
+    if (submitReadiness.hasBlockingIssues) {
+      setSaveError(submitReadiness.disabledReason);
+      return;
+    }
 
+    setSaveError(null);
     await updateReportStatus({
       expertId: selectedExpertId,
       year: currentYear,
@@ -435,11 +545,60 @@ export default function ExpertDashboard() {
               </p>
             )}
           </div>
-          <Button onClick={handleSubmitMonth} disabled={activities.length === 0 || isApproved || currentStatus === 'sent' || currentStatus === 'in_review'}>
+          <span title={submitReadiness.disabledReason || undefined}>
+            <Button
+              onClick={handleSubmitMonth}
+              disabled={
+                submitReadiness.hasBlockingIssues
+                || isApproved
+                || currentStatus === 'sent'
+                || currentStatus === 'in_review'
+              }
+            >
             {isApproved ? <Lock className="h-4 w-4" /> : <Send className="h-4 w-4" />}
             {isApproved ? 'Lună aprobată' : 'Trimite luna către PM'}
-          </Button>
+            </Button>
+          </span>
         </div>
+
+        <Card className="mb-6">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Submit readiness</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+              {submitReadiness.items.map((item) => (
+                <div
+                  key={item.label}
+                  className="flex items-start gap-2 rounded-md border bg-background p-3"
+                >
+                  {item.severity === 'ok' ? (
+                    <CheckCircle className="mt-0.5 h-4 w-4 shrink-0 text-green-600" />
+                  ) : (
+                    <AlertTriangle
+                      className={
+                        item.severity === 'blocking'
+                          ? 'mt-0.5 h-4 w-4 shrink-0 text-red-600'
+                          : 'mt-0.5 h-4 w-4 shrink-0 text-amber-600'
+                      }
+                    />
+                  )}
+                  <div className="min-w-0 space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-medium text-foreground">{item.label}</p>
+                      <Badge
+                        variant={item.severity === 'blocking' ? 'destructive' : item.severity === 'warning' ? 'outline' : 'secondary'}
+                      >
+                        {item.severity === 'blocking' ? 'Blocant' : item.severity === 'warning' ? 'Atentie' : 'OK'}
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground">{item.detail}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
 
         <Tabs defaultValue="activitati" className="space-y-6">
           <TabsList className={`grid w-full ${isGtExpert ? 'grid-cols-4' : 'grid-cols-3'}`}>
