@@ -64,7 +64,18 @@ import {
 import { buildDashboardComplianceRows } from '@/lib/reporting-dashboard';
 import { getSignedInUser, type AppUser } from '@/lib/aws/auth';
 import { buildPmDashboardSummary } from '@/lib/pm-dashboard';
-import { canAccessExpertId, resolveDataAccessScope } from '@/lib/access-control';
+import {
+  canAccessExpertId,
+  filterActivitiesForScope,
+  filterAuditLogsForScope,
+  filterConcurrentProjectsForScope,
+  filterDocumentsForScope,
+  filterExpertsForScope,
+  filterGrupTintaForScope,
+  filterReportStatusesForScope,
+  filterSharedDeliverablesForScope,
+  resolveDataAccessScope,
+} from '@/lib/access-control';
 import { isEventActivity } from '@/lib/deliverable-types';
 import type {
   PontajRow,
@@ -81,6 +92,19 @@ import { ProgressReportTab } from '@/components/pm/progress-report-tab';
 import { GTProgressTab } from '@/components/pm/gt-progress-tab';
 import { DosarExpertModal } from '@/components/pm/dosar-expert-modal';
 import { DoubleFundingTab } from '@/components/pm/double-funding-tab';
+
+const EMPTY_PONTAJ_ROWS: PontajRow[] = [];
+const EMPTY_RAPORT_ROWS: RaportRow[] = [];
+const EMPTY_LIVRABIL_ROWS: LivrabilRow[] = [];
+const EMPTY_CROSS_EXPERT_ROWS: CrossExpertRow[] = [];
+
+function listHasSameItems<T>(current: T[], next: T[]) {
+  return current === next || (current.length === next.length && current.every((item, index) => Object.is(item, next[index])));
+}
+
+function keepCurrentListIfSame<T>(next: T[]) {
+  return (current: T[]) => (listHasSameItems(current, next) ? current : next);
+}
 
 export default function PMDashboard() {
   const router = useRouter();
@@ -138,13 +162,47 @@ export default function PMDashboard() {
     updateStatus: updateReportStatus,
     isLoading: reportStatusLoading,
   } = useReportStatus(selectedExpertId, selectedMonth, selectedYear);
-  const { statuses: monthlyReportStatuses } = useReportStatusByMonth(selectedMonth, selectedYear);
-  const { activities: monthActivities, mutate: refreshMonthActivities } = useActivitiesByMonth(selectedMonth, selectedYear);
-  const { auditLogs } = useAuditLogs(hasExtendedExpertAccess ? null : selectedExpertId, selectedMonth, selectedYear);
-  const { documents } = useDocuments();
-  const { sharedDeliverables } = useSharedDeliverables(hasExtendedExpertAccess ? undefined : selectedExpertId ?? undefined);
-  const { entries: grupTintaEntries } = useGrupTintaByMonth(selectedMonth, selectedYear);
-  const { projects: concurrentProjects } = useAllConcurrentProjects();
+  const { statuses: allMonthlyReportStatuses } = useReportStatusByMonth(selectedMonth, selectedYear);
+  const { activities: allMonthActivities, mutate: refreshMonthActivities } = useActivitiesByMonth(selectedMonth, selectedYear);
+  const scopedAuditExpertId = hasExtendedExpertAccess ? null : dataAccessScope.currentExpertId ?? selectedExpertId;
+  const { auditLogs: allAuditLogs } = useAuditLogs(scopedAuditExpertId, selectedMonth, selectedYear);
+  const { documents: allDocuments } = useDocuments();
+  const scopedSharedDeliverablesExpertId = hasExtendedExpertAccess ? undefined : dataAccessScope.currentExpertId ?? selectedExpertId ?? undefined;
+  const { sharedDeliverables: allSharedDeliverables } = useSharedDeliverables(scopedSharedDeliverablesExpertId);
+  const { entries: allGrupTintaEntries } = useGrupTintaByMonth(selectedMonth, selectedYear);
+  const { projects: allConcurrentProjects } = useAllConcurrentProjects();
+  const visibleExperts = useMemo(
+    () => filterExpertsForScope(experts, dataAccessScope),
+    [experts, dataAccessScope]
+  );
+  const monthlyReportStatuses = useMemo(
+    () => filterReportStatusesForScope(allMonthlyReportStatuses, dataAccessScope),
+    [allMonthlyReportStatuses, dataAccessScope]
+  );
+  const monthActivities = useMemo(
+    () => filterActivitiesForScope(allMonthActivities, dataAccessScope),
+    [allMonthActivities, dataAccessScope]
+  );
+  const auditLogs = useMemo(
+    () => filterAuditLogsForScope(allAuditLogs, dataAccessScope),
+    [allAuditLogs, dataAccessScope]
+  );
+  const documents = useMemo(
+    () => filterDocumentsForScope(allDocuments, dataAccessScope),
+    [allDocuments, dataAccessScope]
+  );
+  const sharedDeliverables = useMemo(
+    () => filterSharedDeliverablesForScope(allSharedDeliverables, dataAccessScope),
+    [allSharedDeliverables, dataAccessScope]
+  );
+  const grupTintaEntries = useMemo(
+    () => filterGrupTintaForScope(allGrupTintaEntries, dataAccessScope),
+    [allGrupTintaEntries, dataAccessScope]
+  );
+  const concurrentProjects = useMemo(
+    () => filterConcurrentProjectsForScope(allConcurrentProjects, dataAccessScope),
+    [allConcurrentProjects, dataAccessScope]
+  );
 
   useEffect(() => {
     getSignedInUser().then((user) => {
@@ -163,16 +221,16 @@ export default function PMDashboard() {
 
   // Set default expert when experts load
   useEffect(() => {
-    if (experts.length === 0) return;
+    if (!dataAccessScope.canUsePmDashboard || visibleExperts.length === 0) return;
 
     setSelectedExpertId((currentId) => {
-      if (currentId && experts.some((expert) => expert.id === currentId)) {
+      if (currentId && visibleExperts.some((expert) => expert.id === currentId)) {
         return currentId;
       }
 
-      return experts[0].id;
+      return visibleExperts[0].id;
     });
-  }, [experts]);
+  }, [dataAccessScope.canUsePmDashboard, visibleExperts]);
 
   // Load API key
   useEffect(() => {
@@ -184,31 +242,31 @@ export default function PMDashboard() {
   // Load verification data when it changes
   useEffect(() => {
     if (verification) {
-      setPontajData(verification.pontajRows || verification.pontajData || []);
-      setRaportData(verification.raportRows || verification.raportActivitateData || []);
-      setLivrabileData(verification.livrabilRows || verification.livrabileData || []);
-      setCrossExpertData(verification.crossExpertRows || verification.crossExpertData || []);
+      setPontajData(keepCurrentListIfSame(verification.pontajRows || verification.pontajData || EMPTY_PONTAJ_ROWS));
+      setRaportData(keepCurrentListIfSame(verification.raportRows || verification.raportActivitateData || EMPTY_RAPORT_ROWS));
+      setLivrabileData(keepCurrentListIfSame(verification.livrabilRows || verification.livrabileData || EMPTY_LIVRABIL_ROWS));
+      setCrossExpertData(keepCurrentListIfSame(verification.crossExpertRows || verification.crossExpertData || EMPTY_CROSS_EXPERT_ROWS));
     } else {
-      setPontajData([]);
-      setRaportData([]);
-      setLivrabileData([]);
-      setCrossExpertData([]);
+      setPontajData(keepCurrentListIfSame(EMPTY_PONTAJ_ROWS));
+      setRaportData(keepCurrentListIfSame(EMPTY_RAPORT_ROWS));
+      setLivrabileData(keepCurrentListIfSame(EMPTY_LIVRABIL_ROWS));
+      setCrossExpertData(keepCurrentListIfSame(EMPTY_CROSS_EXPERT_ROWS));
     }
   }, [verification]);
 
   // Load neconformitati and notes
   useEffect(() => {
-    setLocalNeconformitati(neconformitati);
+    setLocalNeconformitati(keepCurrentListIfSame(neconformitati));
   }, [neconformitati]);
 
   useEffect(() => {
-    setLocalNotes(notes);
+    setLocalNotes(keepCurrentListIfSame(notes));
   }, [notes]);
 
   // Get selected expert
   const selectedExpert = useMemo(() => {
-    return experts.find((e) => e.id === selectedExpertId) || experts[0] || { id: '', name: 'Expert', role: '' };
-  }, [experts, selectedExpertId]);
+    return visibleExperts.find((e) => e.id === selectedExpertId) || visibleExperts[0] || { id: '', name: 'Expert', role: '' };
+  }, [visibleExperts, selectedExpertId]);
 
   const saveVerificationData = async () => {
     if (!selectedExpertId || !canManagePmReview) return;
@@ -379,13 +437,13 @@ export default function PMDashboard() {
   const dashboardRows = useMemo(
     () =>
       buildDashboardComplianceRows({
-        experts,
+        experts: visibleExperts,
         activities: monthActivities,
         auditLogs,
         month: selectedMonth,
         year: selectedYear,
       }),
-    [experts, monthActivities, auditLogs, selectedMonth, selectedYear]
+    [visibleExperts, monthActivities, auditLogs, selectedMonth, selectedYear]
   );
   const dashboardTotals = useMemo(() => {
     const totalHours = dashboardRows.reduce((sum, row) => sum + row.totalHours, 0);
@@ -404,20 +462,20 @@ export default function PMDashboard() {
       .map((relation) => ({
         relation,
         document: documents.find((document) => document.id === relation.documentId),
-        sourceExpert: experts.find((expert) => expert.id === relation.sourceExpertId),
-        targetExpert: experts.find((expert) => expert.id === relation.targetExpertId),
+        sourceExpert: visibleExperts.find((expert) => expert.id === relation.sourceExpertId),
+        targetExpert: visibleExperts.find((expert) => expert.id === relation.targetExpertId),
       }));
-  }, [documents, experts, sharedDeliverables]);
+  }, [documents, visibleExperts, sharedDeliverables]);
   const pmSummary = useMemo(
     () =>
       buildPmDashboardSummary({
-        experts,
+        experts: visibleExperts,
         activities: monthActivities,
         reportStatuses: monthlyReportStatuses,
         documents,
         sharedDeliverables,
       }),
-    [documents, experts, monthActivities, monthlyReportStatuses, sharedDeliverables]
+    [documents, visibleExperts, monthActivities, monthlyReportStatuses, sharedDeliverables]
   );
   const reportStatusByExpertId = useMemo(
     () => new Map(monthlyReportStatuses.map((status) => [status.expertId, status])),
@@ -540,7 +598,7 @@ export default function PMDashboard() {
                   <SelectValue placeholder="Expert" />
                 </SelectTrigger>
                 <SelectContent>
-                  {experts.map((expert) => (
+                  {visibleExperts.map((expert) => (
                     <SelectItem key={expert.id} value={expert.id}>
                       {expert.name}
                     </SelectItem>
@@ -827,7 +885,7 @@ export default function PMDashboard() {
               </thead>
               <tbody>
                 {dashboardRows.map((row) => {
-                  const expert = experts.find((item) => item.id === row.expertId);
+                  const expert = visibleExperts.find((item) => item.id === row.expertId);
                   const monthlyStatus = reportStatusByExpertId.get(row.expertId)?.status || 'draft';
                   const statusMeta = statusLabels[monthlyStatus] || statusLabels.draft;
                   const issues = [
@@ -984,7 +1042,7 @@ export default function PMDashboard() {
 
           <TabsContent value="double-funding">
             <DoubleFundingTab
-              experts={experts}
+              experts={visibleExperts}
               activities={monthActivities}
               concurrentProjects={concurrentProjects}
               reportStatuses={monthlyReportStatuses}
@@ -995,7 +1053,7 @@ export default function PMDashboard() {
 
           <TabsContent value="progres">
             <ProgressReportTab
-              experts={experts}
+              experts={visibleExperts}
               activities={monthActivities}
               month={selectedMonth}
               year={selectedYear}
@@ -1004,7 +1062,7 @@ export default function PMDashboard() {
 
           <TabsContent value="gt">
             <GTProgressTab
-              experts={experts}
+              experts={visibleExperts}
               activities={monthActivities}
               grupTintaEntries={grupTintaEntries}
               month={selectedMonth}
