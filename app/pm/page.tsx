@@ -51,6 +51,7 @@ import {
   useNotes,
   useNoteMutations,
   useApiKey,
+  useActivityMutations,
   useReportStatus,
   useReportStatusByMonth,
   useActivitiesByMonth,
@@ -93,6 +94,12 @@ export default function PMDashboard() {
   const [isSaving, setIsSaving] = useState(false);
   const [dossierExpert, setDossierExpert] = useState<Expert | null>(null);
   const [dossierOpen, setDossierOpen] = useState(false);
+  const [pmExceptionOpen, setPmExceptionOpen] = useState(false);
+  const [pmExceptionType, setPmExceptionType] = useState<'CO' | 'CM' | 'Altele'>('CO');
+  const [pmExceptionDate, setPmExceptionDate] = useState('');
+  const [pmExceptionNotes, setPmExceptionNotes] = useState('');
+  const [pmExceptionError, setPmExceptionError] = useState<string | null>(null);
+  const [isSavingPmException, setIsSavingPmException] = useState(false);
 
   // Local data states for editing before save
   const [pontajData, setPontajData] = useState<PontajRow[]>([]);
@@ -125,13 +132,14 @@ export default function PMDashboard() {
   const { create: createNeconformitate, resolve: resolveNeconformitate, remove: removeNeconformitate } = useNeconformitateMutations();
   const { notes, isLoading: notesLoading } = useNotes(verification?.id || null);
   const { create: createNote, update: updateNote, remove: removeNote } = useNoteMutations();
+  const { create: createActivity } = useActivityMutations();
   const {
     status: reportStatus,
     updateStatus: updateReportStatus,
     isLoading: reportStatusLoading,
   } = useReportStatus(selectedExpertId, selectedMonth, selectedYear);
   const { statuses: monthlyReportStatuses } = useReportStatusByMonth(selectedMonth, selectedYear);
-  const { activities: monthActivities } = useActivitiesByMonth(selectedMonth, selectedYear);
+  const { activities: monthActivities, mutate: refreshMonthActivities } = useActivitiesByMonth(selectedMonth, selectedYear);
   const { auditLogs } = useAuditLogs(hasExtendedExpertAccess ? null : selectedExpertId, selectedMonth, selectedYear);
   const { documents } = useDocuments();
   const { sharedDeliverables } = useSharedDeliverables(hasExtendedExpertAccess ? undefined : selectedExpertId ?? undefined);
@@ -286,6 +294,62 @@ export default function PMDashboard() {
     const note = window.prompt('Motiv respingere:');
     if (note === null) return;
     await setMonthlyStatus('rejected', note.trim() || 'Respins de PM.');
+  };
+
+  const getDefaultExceptionDate = () =>
+    `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-01`;
+
+  const openPmExceptionDialog = () => {
+    setPmExceptionDate(getDefaultExceptionDate());
+    setPmExceptionType('CO');
+    setPmExceptionNotes('');
+    setPmExceptionError(null);
+    setPmExceptionOpen(true);
+  };
+
+  const savePmException = async () => {
+    if (!selectedExpertId || !canManagePmReview) return;
+    if (!pmExceptionDate) {
+      setPmExceptionError('Selecteaza data pentru inregistrare.');
+      return;
+    }
+
+    const date = new Date(`${pmExceptionDate}T00:00:00`);
+    if (date.getMonth() !== selectedMonth || date.getFullYear() !== selectedYear) {
+      setPmExceptionError('Data trebuie sa fie in luna selectata in Dashboard PM.');
+      return;
+    }
+
+    setIsSavingPmException(true);
+    setPmExceptionError(null);
+    try {
+      const label =
+        pmExceptionType === 'CO'
+          ? 'CO - Concediu odihna'
+          : pmExceptionType === 'CM'
+            ? 'CM - Concediu medical'
+            : 'Altele';
+
+      await createActivity({
+        expertId: selectedExpertId,
+        expertName: selectedExpert.name,
+        date: pmExceptionDate,
+        hours: 0,
+        activityType: label,
+        title: label,
+        description: pmExceptionNotes.trim() || `Inregistrare adaugata de PM: ${label}.`,
+        location: 'N/A',
+        dayType: pmExceptionType,
+        status: 'approved',
+        pmNotes: pmExceptionNotes.trim() || 'Adaugat de PM.',
+      });
+      await refreshMonthActivities();
+      setPmExceptionOpen(false);
+    } catch (error) {
+      setPmExceptionError(error instanceof Error ? error.message : 'Inregistrarea nu a putut fi salvata.');
+    } finally {
+      setIsSavingPmException(false);
+    }
   };
 
   const handleSaveSettings = async () => {
@@ -636,10 +700,75 @@ export default function PMDashboard() {
                 <FolderOpen className="h-4 w-4" />
                 {reportStatus?.expertAccessApproved ? 'Revocă acces expert' : 'Permite acces expert'}
               </Button>
+              <Button variant="outline" size="sm" onClick={openPmExceptionDialog}>
+                <FileWarning className="h-4 w-4" />
+                Adaugă CO/CM/Altele
+              </Button>
             </div>
           )}
         </div>
       </div>
+
+      <Dialog open={pmExceptionOpen} onOpenChange={setPmExceptionOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Adauga CO/CM/Altele pentru expert</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="grid gap-2">
+              <Label>Expert</Label>
+              <Input value={selectedExpert?.name || ''} disabled />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="pmExceptionType">Tip inregistrare</Label>
+              <Select value={pmExceptionType} onValueChange={(value) => setPmExceptionType(value as typeof pmExceptionType)}>
+                <SelectTrigger id="pmExceptionType">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="CO">CO - Concediu odihna</SelectItem>
+                  <SelectItem value="CM">CM - Concediu medical</SelectItem>
+                  <SelectItem value="Altele">Altele</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="pmExceptionDate">Data</Label>
+              <Input
+                id="pmExceptionDate"
+                type="date"
+                value={pmExceptionDate}
+                min={`${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-01`}
+                max={`${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-${String(new Date(selectedYear, selectedMonth + 1, 0).getDate()).padStart(2, '0')}`}
+                onChange={(event) => setPmExceptionDate(event.target.value)}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="pmExceptionNotes">Observatii PM</Label>
+              <Input
+                id="pmExceptionNotes"
+                value={pmExceptionNotes}
+                onChange={(event) => setPmExceptionNotes(event.target.value)}
+                placeholder="Motiv sau detalii pentru inregistrare"
+              />
+            </div>
+            {pmExceptionError && (
+              <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {pmExceptionError}
+              </p>
+            )}
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setPmExceptionOpen(false)}>
+                Anuleaza
+              </Button>
+              <Button onClick={savePmException} disabled={!selectedExpertId || isSavingPmException}>
+                {isSavingPmException && <Loader2 className="h-4 w-4 animate-spin" />}
+                Salveaza
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-6">

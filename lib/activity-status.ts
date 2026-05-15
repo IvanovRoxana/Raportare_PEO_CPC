@@ -28,7 +28,7 @@ export interface DeliverableWithStatus extends Deliverable {
 }
 
 export interface ActivityEntry extends Activity {
-  dayType?: 'lucratoare' | 'CO' | 'CM';
+  dayType?: 'lucratoare' | 'CO' | 'CM' | 'Altele' | string;
   uploaded?: boolean;
   fileNameMismatch?: boolean;
   common?: boolean;
@@ -40,7 +40,7 @@ export interface ActivityEntry extends Activity {
  */
 export function getActivityStatus(entry: ActivityEntry): ActivityStatus {
   // Leave days
-  if (entry.dayType === 'CO' || entry.dayType === 'CM') {
+  if (entry.dayType === 'CO' || entry.dayType === 'CM' || entry.dayType === 'Altele') {
     return 'leave';
   }
   
@@ -167,9 +167,9 @@ export function calculateCalendarCellState(
   if (isNonWorking) return 'nonworking';
   
   const totalHours = dayEntries.reduce((s, en) => s + (Number(en.hours) || 0), 0);
-  const hasLeave = dayEntries.some(en => en.dayType === 'CO' || en.dayType === 'CM');
-  const leaveType = hasLeave 
-    ? (dayEntries.find(en => en.dayType === 'CO') ? 'CO' : 'CM') 
+  const hasLeave = dayEntries.some(en => en.dayType === 'CO' || en.dayType === 'CM' || en.dayType === 'Altele');
+  const leaveType = hasLeave
+    ? (dayEntries.find(en => en.dayType === 'CO') ? 'CO' : 'CM')
     : null;
   
   if (hasLeave) {

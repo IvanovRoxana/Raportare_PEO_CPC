@@ -103,9 +103,9 @@ export function CalendarView({
       
       const dayActivities = activitiesByDay[dateStr] || [];
       const totalHours = dayActivities.reduce((sum, a) => sum + (a.hours || 0), 0);
-      const hasLeave = dayActivities.some(a => a.dayType === 'CO' || a.dayType === 'CM');
+      const hasLeave = dayActivities.some(a => a.dayType === 'CO' || a.dayType === 'CM' || a.dayType === 'Altele');
       const leaveType = hasLeave ? (dayActivities.find(a => a.dayType === 'CO') ? 'CO' : 'CM') : null;
-      const hasMissing = dayActivities.some(a => !a.description && a.dayType !== 'CO' && a.dayType !== 'CM');
+      const hasMissing = dayActivities.some(a => !a.description && a.dayType !== 'CO' && a.dayType !== 'CM' && a.dayType !== 'Altele');
       const exceeds = totalHours > 8 && !hasLeave;
       
       let status: keyof typeof STATUS_COLORS = 'empty';
