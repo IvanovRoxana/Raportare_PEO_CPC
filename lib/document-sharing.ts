@@ -6,7 +6,8 @@ export type SharedDeliverableStatus =
   | 'registered'
   | 'ignored_by_admin'
   | 'removed'
-  | 'confirmed_not_relevant';
+  | 'confirmed_not_relevant'
+  | 'ignored_by_target';
 
 export type DuplicateIssueType =
   | 'duplicate_detected'
@@ -49,6 +50,34 @@ export function buildDocumentS3Key(args: {
   const documentId = args.documentId.replace(/[^a-zA-Z0-9._-]/g, '_');
   const fileName = args.originalFileName.replace(/[^a-zA-Z0-9._-]/g, '_');
   return `projects/${projectId}/documents/${documentId}/${fileName}`;
+}
+
+export function isActivitySuggestionRelation(relation: Pick<SharedDeliverable, 'documentId'>) {
+  return relation.documentId.startsWith('activity:');
+}
+
+export function buildSharedActivitySuggestions(args: {
+  sourceActivityId: string;
+  sourceExpertId: string;
+  targetExpertIds: string[];
+  projectId?: string;
+}) {
+  const createdAt = new Date().toISOString();
+  const documentId = `activity:${args.sourceActivityId}`;
+  return [...new Set(args.targetExpertIds)]
+    .filter((targetExpertId) => targetExpertId && targetExpertId !== args.sourceExpertId)
+    .map((targetExpertId): SharedDeliverable => ({
+      id: `shared_activity_${args.sourceActivityId}_${targetExpertId}`.replace(/[^a-zA-Z0-9_]+/g, '_'),
+      documentId,
+      sourceExpertId: args.sourceExpertId,
+      targetExpertId,
+      projectId: args.projectId,
+      sourceActivityId: args.sourceActivityId,
+      status: 'pending_registration',
+      notifiedAt: createdAt,
+      createdAt,
+      updatedAt: createdAt,
+    }));
 }
 
 export function buildSharedDeliverables(args: {
@@ -147,7 +176,7 @@ export function buildPendingSharedDeliverableAlerts(args: {
   sharedDeliverables: SharedDeliverable[];
 }) {
   return args.sharedDeliverables
-    .filter((relation) => relation.targetExpertId === args.expert.id && relation.status === 'pending_registration')
+    .filter((relation) => relation.targetExpertId === args.expert.id && relation.status === 'pending_registration' && !isActivitySuggestionRelation(relation))
     .map((relation) => {
       const document = args.documents.find((item) => item.id === relation.documentId);
       return {
@@ -162,6 +191,46 @@ export function buildPendingSharedDeliverableAlerts(args: {
         deliverableType: document?.deliverableType,
         status: relation.status,
         message: `Exista un livrabil comun incarcat de ${document?.uploadedByExpertName || 'alt expert'} pentru ${document?.saCode || 'SA/activitate'}, dar nu a fost inca inregistrat in pontajul tau.`,
+      };
+    });
+}
+
+
+export function buildPendingSharedActivityAlerts(args: {
+  expert: Expert;
+  experts: Expert[];
+  sharedDeliverables: SharedDeliverable[];
+}) {
+  return args.sharedDeliverables
+    .filter((relation) => relation.targetExpertId === args.expert.id && relation.status === 'pending_registration' && isActivitySuggestionRelation(relation))
+    .map((relation) => {
+      const sourceExpert = args.experts.find((expert) => expert.id === relation.sourceExpertId);
+      return {
+        relationId: relation.id,
+        sourceActivityId: relation.sourceActivityId,
+        sourceExpertName: sourceExpert?.name || relation.sourceExpertId,
+        projectId: relation.projectId,
+        status: relation.status,
+        message: `${sourceExpert?.name || 'Un alt expert'} te-a sugerat ca participant la o activitate comuna. Poti adauga activitatea in pontajul tau sau o poti ignora.`,
+      };
+    });
+}
+
+export function buildReturnedSharedActivityAlerts(args: {
+  expert: Expert;
+  experts: Expert[];
+  sharedDeliverables: SharedDeliverable[];
+}) {
+  return args.sharedDeliverables
+    .filter((relation) => relation.sourceExpertId === args.expert.id && relation.status === 'ignored_by_target' && isActivitySuggestionRelation(relation))
+    .map((relation) => {
+      const targetExpert = args.experts.find((expert) => expert.id === relation.targetExpertId);
+      return {
+        relationId: relation.id,
+        targetExpertName: targetExpert?.name || relation.targetExpertId,
+        projectId: relation.projectId,
+        status: relation.status,
+        message: `${targetExpert?.name || 'Expertul selectat'} a ignorat sugestia de activitate comuna. Avertizarea ramane vizibila si pentru PM.`,
       };
     });
 }

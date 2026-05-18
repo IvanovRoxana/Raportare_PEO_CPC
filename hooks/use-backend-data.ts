@@ -208,7 +208,13 @@ export function useSharedDeliverableMutations() {
     return updated;
   };
 
-  return { registerForActivity };
+  const ignore = async (relationId: string) => {
+    const updated = await sharedDeliverablesService.ignore(relationId);
+    mutate((key: string) => typeof key === 'string' && key.startsWith('shared-deliverables'), undefined, { revalidate: true });
+    return updated;
+  };
+
+  return { registerForActivity, ignore };
 }
 
 // ============================================

@@ -44,7 +44,7 @@ import type {
   WorkingGroup,
 } from './types';
 import { createAuditLog, prepareAdminActivityOverride } from './audit-trail';
-import { buildSharedDeliverables, findDuplicateCandidates, markSharedDeliverableRegistered } from './document-sharing';
+import { buildSharedActivitySuggestions, buildSharedDeliverables, findDuplicateCandidates, markSharedDeliverableRegistered } from './document-sharing';
 import { normalizeTitleForMatch } from './title-suggestion';
 
 export { isAwsAvailable };
@@ -505,6 +505,64 @@ async function createDocumentMetadataForDeliverable(
   }
 }
 
+async function syncSharedActivitySuggestions(
+  client: any,
+  activity: Pick<Activity, 'expertId' | 'shareStatus' | 'takenByExperts' | 'projectCode'>,
+  activityId: string,
+) {
+  if (!client.models.SharedDeliverable) return;
+
+  const existing = await listModel<any>(client.models.SharedDeliverable, {
+    documentId: { eq: `activity:${activityId}` },
+  });
+  const selectedTargets = new Set(activity.shareStatus === 'shared' ? activity.takenByExperts ?? [] : []);
+
+  await Promise.all(existing.map((relation) => {
+    if (selectedTargets.has(relation.targetExpertId)) {
+      selectedTargets.delete(relation.targetExpertId);
+      if (relation.status === 'removed') {
+        return client.models.SharedDeliverable.update({
+          id: relation.id,
+          status: 'pending_registration',
+          notifiedAt: new Date().toISOString(),
+          removedAt: null,
+        });
+      }
+      return Promise.resolve(null);
+    }
+
+    if (relation.status === 'pending_registration') {
+      return client.models.SharedDeliverable.update({
+        id: relation.id,
+        status: 'removed',
+        removedAt: new Date().toISOString(),
+      });
+    }
+
+    return Promise.resolve(null);
+  }));
+
+  const suggestions = buildSharedActivitySuggestions({
+    sourceActivityId: activityId,
+    sourceExpertId: activity.expertId,
+    targetExpertIds: Array.from(selectedTargets),
+    projectId: activity.projectCode,
+  });
+
+  await Promise.all(suggestions.map((relation) =>
+    client.models.SharedDeliverable.create({
+      id: relation.id,
+      documentId: relation.documentId,
+      sourceExpertId: relation.sourceExpertId,
+      targetExpertId: relation.targetExpertId,
+      projectId: relation.projectId,
+      sourceActivityId: relation.sourceActivityId,
+      status: relation.status,
+      notifiedAt: relation.notifiedAt,
+    }),
+  ));
+}
+
 async function createSharedDeliverablesForDocument(
   client: any,
   activity: Partial<Activity>,
@@ -684,6 +742,7 @@ async function createActivityUnchecked(
   assertNoErrors(created, 'AWS create activity');
 
   const activityId = created.data.id;
+  await syncSharedActivitySuggestions(client, activity, activityId);
   await Promise.all([
     ...(activity.deliverables ?? []).map(async (deliverable) => {
       await createDocumentMetadataForDeliverable(client, activity, activityId, deliverable);
@@ -953,6 +1012,27 @@ export const sharedDeliverablesService = {
     assertNoErrors(result, 'AWS register shared deliverable');
     return result.data ? mapSharedDeliverable(result.data) : null;
   },
+
+  async ignore(relationId: string): Promise<SharedDeliverable | null> {
+    const client = getAwsDataClient() as any;
+    if (!client.models.SharedDeliverable) return null;
+    const existing = await client.models.SharedDeliverable.get({ id: relationId });
+    assertNoErrors(existing, 'AWS get shared activity suggestion');
+    if (!existing.data) return null;
+    await assertCanAccessExpert(client, existing.data.targetExpertId);
+
+    if (existing.data.status !== 'pending_registration') {
+      throw new Error('Sugestia de activitate comuna poate fi ignorata doar cat timp este in asteptare.');
+    }
+
+    const result = await client.models.SharedDeliverable.update({
+      id: relationId,
+      status: 'ignored_by_target',
+      ignoredAt: new Date().toISOString(),
+    });
+    assertNoErrors(result, 'AWS ignore shared activity suggestion');
+    return result.data ? mapSharedDeliverable(result.data) : null;
+  },
 };
 
 export const activitiesService = {
@@ -1091,6 +1171,15 @@ export const activitiesService = {
       pmNotes: updates.pmNotes,
     }, updates));
     assertNoErrors(result, 'AWS update activity');
+
+    if (existing.data) {
+      await syncSharedActivitySuggestions(client, {
+        expertId: updates.expertId ?? existing.data.expertId,
+        shareStatus: updates.shareStatus ?? existing.data.shareStatus,
+        takenByExperts: updates.takenByExperts ?? existing.data.takenByExperts ?? [],
+        projectCode: updates.projectCode ?? existing.data.projectCode ?? undefined,
+      }, id);
+    }
 
     if (updates.deliverables) {
       const existingDeliverables = await listModel<any>(client.models.Deliverable, { activityId: { eq: id } });

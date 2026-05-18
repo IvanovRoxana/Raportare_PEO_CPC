@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   buildDocumentS3Key,
+  buildPendingSharedActivityAlerts,
   buildPendingSharedDeliverableAlerts,
+  buildReturnedSharedActivityAlerts,
+  buildSharedActivitySuggestions,
   buildSharedDeliverables,
   findDuplicateCandidates,
   hashFirstPageText,
@@ -148,4 +151,45 @@ test('creeaza alerta pentru expertul colaborator cand livrabilul este pending', 
   assert.equal(alerts.length, 1);
   assert.equal(alerts[0].status, 'pending_registration');
   assert.match(alerts[0].message, /Expert Unu/);
+});
+
+
+test('creeaza si afiseaza sugestii de activitate comuna separate de livrabile', () => {
+  const relations = buildSharedActivitySuggestions({
+    sourceActivityId: 'activity-1',
+    sourceExpertId: 'expert-1',
+    targetExpertIds: ['expert-2', 'expert-2', 'expert-1'],
+    projectId: '302151',
+  });
+
+  assert.equal(relations.length, 1);
+  assert.equal(relations[0].documentId, 'activity:activity-1');
+  assert.equal(relations[0].status, 'pending_registration');
+  assert.ok(relations[0].notifiedAt);
+
+  const pendingAlerts = buildPendingSharedActivityAlerts({
+    expert: { id: 'expert-2', name: 'Expert Doi', role: 'Expert', norma: 8 },
+    experts: [{ id: 'expert-1', name: 'Expert Unu', role: 'Expert', norma: 8 }],
+    sharedDeliverables: relations,
+  });
+
+  assert.equal(pendingAlerts.length, 1);
+  assert.match(pendingAlerts[0].message, /Expert Unu/);
+});
+
+test('returneaza avertizarea la expertul initial cand activitatea comuna este ignorata', () => {
+  const returnedAlerts = buildReturnedSharedActivityAlerts({
+    expert: { id: 'expert-1', name: 'Expert Unu', role: 'Expert', norma: 8 },
+    experts: [{ id: 'expert-2', name: 'Expert Doi', role: 'Expert', norma: 8 }],
+    sharedDeliverables: [{
+      id: 'shared-activity-1',
+      documentId: 'activity:activity-1',
+      sourceExpertId: 'expert-1',
+      targetExpertId: 'expert-2',
+      status: 'ignored_by_target',
+    }],
+  });
+
+  assert.equal(returnedAlerts.length, 1);
+  assert.match(returnedAlerts[0].message, /Expert Doi/);
 });

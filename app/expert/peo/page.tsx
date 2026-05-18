@@ -30,7 +30,7 @@ import { ActivitiesTable } from '@/components/expert/activities-table';
 import { ReportGenerator } from '@/components/expert/report-generator';
 import { MonthlyReportExport } from '@/components/expert/monthly-report-export';
 import { getMonthName } from '@/lib/backend-store';
-import { useExperts, useActivitiesByMonth, useActivityMutations, useApiKey, useReportStatus, useConcurrentProjects, useSharedDeliverables } from '@/hooks/use-backend-data';
+import { useExperts, useActivitiesByMonth, useActivityMutations, useApiKey, useReportStatus, useConcurrentProjects, useSharedDeliverables, useSharedDeliverableMutations } from '@/hooks/use-backend-data';
 import type { Activity, Deliverable, Expert, ReportStatus } from '@/lib/types';
 import { UserMenu } from '@/components/user-menu';
 import { getSignedInUser } from '@/lib/aws/auth';
@@ -88,6 +88,7 @@ export default function ExpertDashboard() {
   const [isSaving, setIsSaving] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [pendingSharedActivityRelationId, setPendingSharedActivityRelationId] = useState<string | null>(null);
 
   // Data hooks
   const { experts, isLoading: expertsLoading } = useExperts();
@@ -100,7 +101,8 @@ export default function ExpertDashboard() {
   const { status: previousMonthStatus } = useReportStatus(selectedExpertId, previousMonthDate.getMonth(), previousMonthDate.getFullYear());
   const { status: nextMonthStatus } = useReportStatus(selectedExpertId, nextMonthDate.getMonth(), nextMonthDate.getFullYear());
   const { projects: concurrentProjects } = useConcurrentProjects(selectedExpertId);
-  const { sharedDeliverables } = useSharedDeliverables(selectedExpertId || undefined);
+  const { sharedDeliverables, mutate: refreshSharedDeliverables } = useSharedDeliverables(selectedExpertId || undefined);
+  const { registerForActivity } = useSharedDeliverableMutations();
 
   // Get logged in user email
   useEffect(() => {
@@ -120,6 +122,7 @@ export default function ExpertDashboard() {
       : null;
     setSelectedExpertId((matchingExpert ?? experts[0]).id);
   }, [experts, userEmail, selectedExpertId]);
+
 
   // Load API key when it changes
   useEffect(() => {
@@ -263,10 +266,19 @@ export default function ExpertDashboard() {
         }
       } else {
         // Add new activities
-        await createBatch(newActivities.map(a => ({
+        const createdActivities = await createBatch(newActivities.map(a => ({
           ...a,
           expertId: selectedExpertId!,
         })));
+
+        if (pendingSharedActivityRelationId && createdActivities[0]?.id) {
+          await registerForActivity(pendingSharedActivityRelationId, createdActivities[0].id);
+          await refreshSharedDeliverables();
+          setPendingSharedActivityRelationId(null);
+          if (typeof window !== 'undefined') {
+            window.history.replaceState(null, '', window.location.pathname);
+          }
+        }
       }
       await refreshActivities();
       setShowForm(false);
@@ -457,6 +469,28 @@ export default function ExpertDashboard() {
     setSelectedDates(uniqueDates);
     setSelectedHours(nextHours);
   };
+
+
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || pendingSharedActivityRelationId) return;
+    const relationId = new URLSearchParams(window.location.search).get('sharedActivityRelationId');
+    if (relationId) {
+      setPendingSharedActivityRelationId(relationId);
+    }
+  }, [pendingSharedActivityRelationId]);
+
+  useEffect(() => {
+    if (!pendingSharedActivityRelationId || showForm || !selectedExpertId) return;
+    if (monthlyBlocking.isBlocked) {
+      setSaveError(monthlyBlocking.reason);
+      return;
+    }
+    setSaveError('Completeaza activitatea sugerata, apoi salveaza pentru a inchide atentionarea de activitate comuna.');
+    syncSelectedDates([getDefaultActivityDate()]);
+    setEditingActivity(null);
+    setShowForm(true);
+  }, [pendingSharedActivityRelationId, showForm, selectedExpertId, monthlyBlocking.isBlocked, monthlyBlocking.reason]);
 
   const handleAddActivity = () => {
     if (monthlyBlocking.isBlocked) {
@@ -679,6 +713,13 @@ export default function ExpertDashboard() {
 
           {/* Tab: Activitati - pentru adaugare/editare activitati */}
           <TabsContent value="activitati" className="space-y-6">
+            {pendingSharedActivityRelationId && (
+              <div className="flex items-start gap-2 rounded-lg border border-blue-300 bg-blue-50 p-3 text-sm text-blue-800">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                <p>Adaugi o activitate pornita dintr-o sugestie de activitate comuna. La salvare, atentionarea va fi marcata ca rezolvata.</p>
+              </div>
+            )}
+
             {saveError && (
               <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
