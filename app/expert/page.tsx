@@ -10,21 +10,25 @@ import {
   CheckCircle2,
   ClipboardList,
   Globe2,
+  Save,
   Users,
 } from 'lucide-react';
 import { AdminViewAsBanner } from '@/components/admin/admin-view-as-banner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { UserMenu } from '@/components/user-menu';
-import { useActivitiesByMonth, useDocuments, useExperts, useSharedDeliverableMutations, useSharedDeliverables } from '@/hooks/use-backend-data';
+import { useActivitiesByMonth, useConcurrentProjects, useConcurrentProjectTimesheetByMonth, useConcurrentProjectTimesheetMutations, useDocuments, useExperts, useSharedDeliverableMutations, useSharedDeliverables } from '@/hooks/use-backend-data';
 import type { AppRole } from '@/lib/aws/auth';
 import { getSignedInUser } from '@/lib/aws/auth';
 import { getMonthName } from '@/lib/backend-store';
+import { buildConsolidatedTimesheet, filterActiveConcurrentProjectsForMonth, getConcurrentProjectMonthlyTotal, getConsolidatedWarnings } from '@/lib/concurrent-projects';
 import { buildPendingSharedActivityAlerts, buildPendingSharedDeliverableAlerts, buildReturnedSharedActivityAlerts } from '@/lib/document-sharing';
 import { canAccessPmDashboard } from '@/lib/pm-dashboard';
-import type { Activity } from '@/lib/types';
+import type { Activity, ConcurrentProject, ConcurrentProjectTimesheetEntry } from '@/lib/types';
 import { getNonWorkingDayInfo } from '@/lib/non-working-days';
 import { cn } from '@/lib/utils';
 
@@ -33,6 +37,8 @@ type ProjectItem = {
   name: string;
   href: string;
   activities: Activity[];
+  concurrentProject?: ConcurrentProject;
+  timesheetEntries?: ConcurrentProjectTimesheetEntry[];
 };
 
 const WORK_TABS = [
@@ -76,14 +82,24 @@ function getDayTotals(projects: ProjectItem[]) {
       day.byProject[project.id] = (day.byProject[project.id] || 0) + hours;
       totals.set(activity.date, day);
     });
+    project.timesheetEntries?.forEach((entry) => {
+      const hours = Number(entry.hours) || 0;
+      const day = totals.get(entry.date) ?? { total: 0, byProject: {} };
+      day.total += hours;
+      day.byProject[project.id] = (day.byProject[project.id] || 0) + hours;
+      totals.set(entry.date, day);
+    });
   });
 
   return totals;
 }
 
 function getProjectTotal(project: ProjectItem) {
-  return project.activities.reduce((sum, activity) => sum + (Number(activity.hours) || 0), 0);
+  const peoHours = project.activities.reduce((sum, activity) => sum + (Number(activity.hours) || 0), 0);
+  const concurrentHours = project.timesheetEntries?.reduce((sum, entry) => sum + (Number(entry.hours) || 0), 0) ?? 0;
+  return peoHours + concurrentHours;
 }
+
 
 function DashboardCalendar({
   projects,
@@ -198,6 +214,62 @@ function DashboardCalendar({
   );
 }
 
+
+function ConcurrentTimesheetEditor({
+  project,
+  entries,
+  draftEntries,
+  month,
+  year,
+  updateDraft,
+  saveEntry,
+}: {
+  project: ConcurrentProject;
+  entries: ConcurrentProjectTimesheetEntry[];
+  draftEntries: Record<string, Partial<ConcurrentProjectTimesheetEntry>>;
+  month: number;
+  year: number;
+  updateDraft: (date: string, updates: Partial<ConcurrentProjectTimesheetEntry>) => void;
+  saveEntry: (date: string) => void;
+}) {
+  const totals = getConcurrentProjectMonthlyTotal({ project, entries, month, year });
+  const dates = Array.from({ length: new Date(year, month + 1, 0).getDate() }, (_, index) => {
+    const day = index + 1;
+    return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  });
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-md border p-3 text-sm">
+        <div className="font-semibold">Project: {project.projectName}</div>
+        <div className="text-muted-foreground">Code: {project.projectCode || '-'} · Name & Project Role: {project.expertName || project.expertId}, {project.expertProjectRole || '-'}</div>
+        <div className="mt-2 flex flex-wrap gap-2"><Badge variant="secondary">Total proiect: {totals.totalHours}h</Badge>{Object.entries(totals.totalByWp).map(([wp, hours]) => <Badge key={wp} variant="outline">{wp}: {hours}h</Badge>)}</div>
+      </div>
+      <div className="max-h-[420px] overflow-auto rounded-md border">
+        <table className="w-full min-w-[820px] text-xs">
+          <thead className="bg-muted/50 text-muted-foreground"><tr><th className="px-2 py-2 text-left">DATE</th><th>DayType</th><th>WP</th><th>NO. h</th><th>TASK NAME</th><th>RELEVANT DELIVERABLE</th><th>Notes</th><th></th></tr></thead>
+          <tbody>{dates.map((date) => {
+            const existing = entries.find((entry) => entry.date === date);
+            const draft = { ...existing, ...draftEntries[date] } as Partial<ConcurrentProjectTimesheetEntry>;
+            return (
+              <tr key={date} className="border-t">
+                <td className="px-2 py-2 font-medium">{date}</td>
+                <td><Input className="h-8" value={draft.dayType || 'lucratoare'} onChange={(event) => updateDraft(date, { dayType: event.target.value })} /></td>
+                <td><Input className="h-8" value={draft.wp || ''} onChange={(event) => updateDraft(date, { wp: event.target.value })} /></td>
+                <td><Input className="h-8" type="number" min={0} step="0.5" value={draft.hours ?? ''} onChange={(event) => updateDraft(date, { hours: Number(event.target.value) || 0 })} /></td>
+                <td><Input className="h-8" value={draft.taskName || ''} onChange={(event) => updateDraft(date, { taskName: event.target.value })} /></td>
+                <td><Input className="h-8" value={draft.relevantDeliverable || ''} onChange={(event) => updateDraft(date, { relevantDeliverable: event.target.value })} /></td>
+                <td><Input className="h-8" value={draft.notes || ''} onChange={(event) => updateDraft(date, { notes: event.target.value })} /></td>
+                <td className="px-2"><Button size="sm" variant="outline" onClick={() => saveEntry(date)}><Save className="h-3 w-3" /> Draft</Button></td>
+              </tr>
+            );
+          })}</tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 export default function ExpertHomeDashboard() {
   const [currentMonth] = useState(new Date().getMonth());
   const [currentYear] = useState(new Date().getFullYear());
@@ -208,6 +280,8 @@ export default function ExpertHomeDashboard() {
   const { experts } = useExperts();
   const { activities: monthActivities } = useActivitiesByMonth(currentMonth, currentYear);
   const { documents } = useDocuments();
+  const [selectedConcurrentProjectId, setSelectedConcurrentProjectId] = useState<string>('');
+  const [draftConcurrentEntries, setDraftConcurrentEntries] = useState<Record<string, Partial<ConcurrentProjectTimesheetEntry>>>({});
 
   useEffect(() => {
     getSignedInUser().then((user) => {
@@ -221,6 +295,11 @@ export default function ExpertHomeDashboard() {
     if (!signedInEmail) return null;
     return experts.find((expert) => expert.email?.toLowerCase() === signedInEmail.toLowerCase()) ?? null;
   }, [experts, signedInEmail]);
+
+
+  const { projects: currentExpertConcurrentProjects } = useConcurrentProjects(currentExpert?.id ?? null);
+  const { entries: concurrentTimesheetEntries } = useConcurrentProjectTimesheetByMonth(currentMonth, currentYear);
+  const { upsertEntry } = useConcurrentProjectTimesheetMutations(currentMonth, currentYear);
 
   const expertName = currentExpert?.name ?? signedInName;
   const { sharedDeliverables, mutate: refreshSharedDeliverables } = useSharedDeliverables();
@@ -260,21 +339,78 @@ export default function ExpertHomeDashboard() {
     return monthActivities.filter((activity) => activity.expertId === currentExpert.id);
   }, [currentExpert, monthActivities]);
 
+  const activeConcurrentProjects = useMemo(
+    () => filterActiveConcurrentProjectsForMonth(currentExpertConcurrentProjects, currentMonth, currentYear),
+    [currentExpertConcurrentProjects, currentMonth, currentYear]
+  );
+  const expertConcurrentEntries = useMemo(
+    () => concurrentTimesheetEntries.filter((entry) => entry.expertId === currentExpert?.id),
+    [concurrentTimesheetEntries, currentExpert]
+  );
+
   const projects = useMemo<ProjectItem[]>(
     () => [
       {
         id: 'peo',
-        name: 'PEO',
+        name: 'PEO 302141',
         href: '/expert/peo',
         activities: peoActivities,
       },
+      ...activeConcurrentProjects.map((project) => ({
+        id: project.id,
+        name: `${project.projectName}${project.projectCode ? ` / ${project.projectCode}` : ''}`,
+        href: '#proiecte-paralele',
+        activities: [],
+        concurrentProject: project,
+        timesheetEntries: expertConcurrentEntries.filter((entry) => entry.concurrentProjectId === project.id),
+      })),
     ],
-    [peoActivities]
+    [activeConcurrentProjects, expertConcurrentEntries, peoActivities]
   );
 
+  const consolidatedRows = useMemo(
+    () => buildConsolidatedTimesheet({ activities: peoActivities, concurrentProjects: activeConcurrentProjects, entries: expertConcurrentEntries, month: currentMonth, year: currentYear }),
+    [activeConcurrentProjects, currentMonth, currentYear, expertConcurrentEntries, peoActivities]
+  );
+  const consolidatedWarnings = useMemo(() => getConsolidatedWarnings(consolidatedRows), [consolidatedRows]);
   const dayTotals = useMemo(() => getDayTotals(projects), [projects]);
-  const exceededDays = Array.from(dayTotals.values()).filter((day) => day.total > 8).length;
+  const exceededDays = consolidatedWarnings.exceededDays;
   const totalMonthHours = projects.reduce((sum, project) => sum + getProjectTotal(project), 0);
+  const peoMonthHours = getProjectTotal(projects[0]);
+  const selectedConcurrentProject = activeConcurrentProjects.find((project) => project.id === selectedConcurrentProjectId) ?? activeConcurrentProjects[0];
+  const updateConcurrentDraft = (date: string, updates: Partial<ConcurrentProjectTimesheetEntry>) => {
+    const existing = expertConcurrentEntries.find((entry) => entry.concurrentProjectId === selectedConcurrentProject?.id && entry.date === date);
+    setDraftConcurrentEntries({
+      ...draftConcurrentEntries,
+      [date]: { ...existing, ...draftConcurrentEntries[date], ...updates },
+    });
+  };
+
+  const saveConcurrentEntry = async (date: string) => {
+    if (!selectedConcurrentProject || !currentExpert) return;
+    const existing = expertConcurrentEntries.find((entry) => entry.concurrentProjectId === selectedConcurrentProject.id && entry.date === date);
+    const draft = draftConcurrentEntries[date] || existing || {};
+    await upsertEntry({
+      id: existing?.id,
+      concurrentProjectId: selectedConcurrentProject.id,
+      expertId: currentExpert.id,
+      date,
+      month: currentMonth,
+      year: currentYear,
+      wp: draft.wp || '',
+      hours: Number(draft.hours) || 0,
+      taskName: draft.taskName || '',
+      relevantDeliverable: draft.relevantDeliverable || '',
+      dayType: draft.dayType || 'lucratoare',
+      notes: draft.notes || '',
+      status: draft.status || 'draft',
+      source: 'expert_manual',
+      updatedBy: currentExpert.id,
+    });
+    const { [date]: _saved, ...rest } = draftConcurrentEntries;
+    setDraftConcurrentEntries(rest);
+  };
+
   const canOpenPmDashboard = canAccessPmDashboard({
     roles: signedInRoles,
     projectRole: currentExpert?.role,
@@ -430,6 +566,8 @@ export default function ExpertHomeDashboard() {
                 <TabsList className="grid h-auto w-full grid-cols-1 gap-2 bg-muted/50 p-1">
                   <TabsTrigger value="proiecte">Selectează Proiect</TabsTrigger>
                   <TabsTrigger value="ore">Ore luna curentă</TabsTrigger>
+                  <TabsTrigger value="consolidat">Pontaj consolidat</TabsTrigger>
+                  <TabsTrigger value="paralele">Proiect paralel</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="proiecte" className="mt-4 space-y-3">
@@ -449,11 +587,12 @@ export default function ExpertHomeDashboard() {
                       {getMonthName(currentMonth)} {currentYear}
                     </p>
                     <p className="mt-1 text-3xl font-bold">{totalMonthHours}h</p>
+                    <p className="mt-1 text-xs text-muted-foreground">PEO eligibil: {peoMonthHours}h · proiecte paralele doar în total consolidat</p>
                     <div className="mt-3 flex items-center gap-2 text-sm">
                       {exceededDays > 0 ? (
                         <>
                           <AlertTriangle className="h-4 w-4 text-red-600" />
-                          <span className="text-red-700">{exceededDays} zile peste 8 ore.</span>
+                          <span className="text-red-700">{exceededDays} zile peste 8 ore · {consolidatedWarnings.coCmConflicts} conflicte CO/CM.</span>
                         </>
                       ) : (
                         <>
@@ -473,6 +612,54 @@ export default function ExpertHomeDashboard() {
                     ))}
                   </div>
                 </TabsContent>
+
+                <TabsContent value="consolidat" className="mt-4 space-y-3">
+                  <div className="rounded-md border bg-muted/30 p-3 text-sm">
+                    <div className="font-semibold">Total consolidat — {totalMonthHours}h</div>
+                    <div className="text-muted-foreground">PEO 302141: {peoMonthHours}h · proiecte paralele: {totalMonthHours - peoMonthHours}h</div>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <Badge variant={consolidatedWarnings.exceededDays ? 'destructive' : 'secondary'}>{consolidatedWarnings.exceededDays} zile cu depășire</Badge>
+                      <Badge variant={consolidatedWarnings.coCmConflicts ? 'destructive' : 'secondary'}>{consolidatedWarnings.coCmConflicts} conflicte CO/CM</Badge>
+                    </div>
+                  </div>
+                  <div className="max-h-80 space-y-2 overflow-auto">
+                    {consolidatedRows.filter((row) => row.totalHours > 0 || row.dayTypes.length > 0).map((row) => (
+                      <div key={row.date} className="rounded-md border p-2 text-xs">
+                        <div className="flex justify-between gap-2 font-medium"><span>{row.date}</span><span>{row.totalHours}h · {row.status}</span></div>
+                        <div className="mt-1 text-muted-foreground">PEO {row.peoHours}h · paralele {Object.values(row.concurrentHoursByProject).reduce((sum, hours) => sum + hours, 0)}h · {row.dayTypes.join(', ') || 'lucrătoare'}</div>
+                        {row.observations.length > 0 && <div className="mt-1 text-amber-700">{row.observations.join(' · ')}</div>}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900">
+                    Confirm că orele raportate pentru PEO 302141 și proiectele paralele declarate pentru luna selectată sunt corecte și complete.
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="paralele" className="mt-4 space-y-3" id="proiecte-paralele">
+                  {activeConcurrentProjects.length === 0 ? (
+                    <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">Nu ai proiecte paralele active în luna curentă.</div>
+                  ) : (
+                    <>
+                      <Select value={selectedConcurrentProject?.id || ''} onValueChange={setSelectedConcurrentProjectId}>
+                        <SelectTrigger><SelectValue placeholder="Selectează proiect paralel" /></SelectTrigger>
+                        <SelectContent>{activeConcurrentProjects.map((project) => <SelectItem key={project.id} value={project.id}>{project.projectName} {project.projectCode ? `/ ${project.projectCode}` : ''}</SelectItem>)}</SelectContent>
+                      </Select>
+                      {selectedConcurrentProject && (
+                        <ConcurrentTimesheetEditor
+                          project={selectedConcurrentProject}
+                          entries={expertConcurrentEntries.filter((entry) => entry.concurrentProjectId === selectedConcurrentProject.id)}
+                          draftEntries={draftConcurrentEntries}
+                          month={currentMonth}
+                          year={currentYear}
+                          updateDraft={updateConcurrentDraft}
+                          saveEntry={saveConcurrentEntry}
+                        />
+                      )}
+                    </>
+                  )}
+                </TabsContent>
+
               </Tabs>
             </CardContent>
           </Card>

@@ -9,6 +9,7 @@ import {
   filterActivitiesForScope,
   filterAuditLogsForScope,
   filterConcurrentProjectsForScope,
+  filterConcurrentProjectTimesheetEntriesForScope,
   filterDocumentsForScope,
   filterGrupTintaForScope,
   filterReportStatusesForScope,
@@ -32,6 +33,7 @@ import type {
   AppSettings,
   AuditLog,
   ConcurrentProject,
+  ConcurrentProjectTimesheetEntry,
   Deliverable,
   DocumentMetadata,
   Expert,
@@ -87,6 +89,41 @@ function listModel<T>(
   filter?: Record<string, unknown>,
 ) {
   return listAll<T>((args) => model.list(args), filter);
+}
+
+
+async function createConcurrentProjectAudit(client: any, input: {
+  actionType: string;
+  affectedExpertId?: string;
+  affectedExpertName?: string;
+  projectCode?: string;
+  month?: number;
+  year?: number;
+  fieldName?: string;
+  oldValue?: unknown;
+  newValue?: unknown;
+  justification: string;
+  source?: string;
+}) {
+  if (!client.models.AuditLog) return;
+  const user = await getSignedInUser();
+  const result = await client.models.AuditLog.create({
+    actionType: input.actionType,
+    actorId: user?.id || 'system',
+    actorName: user?.displayName || user?.email || 'Utilizator aplicație',
+    actorRole: (user?.roles || []).join(',') || 'unknown',
+    affectedExpertId: input.affectedExpertId,
+    affectedExpertName: input.affectedExpertName,
+    projectCode: input.projectCode,
+    month: input.month,
+    year: input.year,
+    fieldName: input.fieldName,
+    oldValue: input.oldValue === undefined ? undefined : JSON.stringify(input.oldValue),
+    newValue: input.newValue === undefined ? undefined : JSON.stringify(input.newValue),
+    justification: input.justification,
+    source: input.source || 'manual',
+  });
+  assertNoErrors(result, 'AWS audit concurrent project change');
 }
 
 function monthFromDate(date: string) {
@@ -1586,8 +1623,10 @@ export const concurrentProjectsService = {
     await assertCanAccessExpert(client, project.expertId);
     const result = await client.models.ConcurrentProject.create({
       expertId: project.expertId,
+      expertName: project.expertName,
       projectName: project.projectName,
       projectCode: project.projectCode,
+      expertProjectRole: project.expertProjectRole,
       fundingSource: project.fundingSource,
       dailyHours: project.dailyHours,
       startDate: project.startDate,
@@ -1596,6 +1635,33 @@ export const concurrentProjectsService = {
       notes: project.notes,
     });
     assertNoErrors(result, 'AWS create concurrent project');
+    await createConcurrentProjectAudit(client, { actionType: 'concurrent_project_created', affectedExpertId: project.expertId, affectedExpertName: project.expertName, projectCode: project.projectCode, newValue: project, justification: 'Proiect paralel creat pentru verificarea dublei finanțări.' });
+    return mapConcurrentProject(result.data);
+  },
+
+  async update(id: string, updates: Partial<ConcurrentProject>): Promise<ConcurrentProject> {
+    const client = getAwsDataClient() as any;
+    const existing = await client.models.ConcurrentProject.get({ id });
+    assertNoErrors(existing, 'AWS get concurrent project');
+    if (!existing.data) throw new Error('Proiectul paralel nu a fost găsit.');
+    await assertCanAccessExpert(client, existing.data.expertId);
+    if (updates.expertId && updates.expertId !== existing.data.expertId) await assertCanAccessExpert(client, updates.expertId);
+    const result = await client.models.ConcurrentProject.update({
+      id,
+      expertId: updates.expertId ?? existing.data.expertId,
+      expertName: updates.expertName,
+      projectName: updates.projectName,
+      projectCode: updates.projectCode,
+      expertProjectRole: updates.expertProjectRole,
+      fundingSource: updates.fundingSource,
+      dailyHours: updates.dailyHours,
+      startDate: updates.startDate,
+      endDate: updates.endDate,
+      isActive: updates.isActive,
+      notes: updates.notes,
+    });
+    assertNoErrors(result, 'AWS update concurrent project');
+    await createConcurrentProjectAudit(client, { actionType: updates.isActive === false ? 'concurrent_project_archived' : 'concurrent_project_updated', affectedExpertId: updates.expertId ?? existing.data.expertId, affectedExpertName: updates.expertName ?? existing.data.expertName, projectCode: updates.projectCode ?? existing.data.projectCode, oldValue: existing.data, newValue: updates, justification: updates.isActive === false ? 'Proiect paralel dezactivat/arhivat fără ștergere definitivă.' : 'Date proiect paralel actualizate.' });
     return mapConcurrentProject(result.data);
   },
 
@@ -1606,8 +1672,9 @@ export const concurrentProjectsService = {
     if (!existing.data) return;
     await assertCanAccessExpert(client, existing.data.expertId);
 
-    const result = await client.models.ConcurrentProject.delete({ id });
-    assertNoErrors(result, 'AWS delete concurrent project');
+    const result = await client.models.ConcurrentProject.update({ id, isActive: false });
+    assertNoErrors(result, 'AWS archive concurrent project');
+    await createConcurrentProjectAudit(client, { actionType: 'concurrent_project_archived', affectedExpertId: existing.data.expertId, affectedExpertName: existing.data.expertName, projectCode: existing.data.projectCode, oldValue: existing.data, newValue: { isActive: false }, justification: 'Proiect paralel arhivat fără ștergere definitivă.' });
   },
 };
 
@@ -1615,8 +1682,10 @@ function mapConcurrentProject(item: any): ConcurrentProject {
   return {
     id: item.id,
     expertId: item.expertId,
+    expertName: item.expertName ?? undefined,
     projectName: item.projectName,
     projectCode: item.projectCode ?? undefined,
+    expertProjectRole: item.expertProjectRole ?? undefined,
     fundingSource: item.fundingSource ?? undefined,
     dailyHours: item.dailyHours,
     startDate: item.startDate,
@@ -1624,6 +1693,97 @@ function mapConcurrentProject(item: any): ConcurrentProject {
     isActive: item.isActive ?? true,
     notes: item.notes ?? undefined,
     createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+  };
+}
+
+export const concurrentProjectTimesheetService = {
+  async getAllByMonth(month: number, year: number): Promise<ConcurrentProjectTimesheetEntry[]> {
+    const client = getAwsDataClient() as any;
+    const scope = await getCurrentDataAccessScope(client);
+    if (scope.accessLevel === 'none' || !client.models.ConcurrentProjectTimesheetEntry) return [];
+    const data = await listModel<any>(client.models.ConcurrentProjectTimesheetEntry, {
+      ...(scope.canAccessAllExperts ? {} : { expertId: { eq: scope.currentExpertId } }),
+      month: { eq: month },
+      year: { eq: year },
+    });
+    return filterConcurrentProjectTimesheetEntriesForScope(data.map(mapConcurrentProjectTimesheetEntry), scope);
+  },
+
+  async getByProjectMonth(concurrentProjectId: string, month: number, year: number): Promise<ConcurrentProjectTimesheetEntry[]> {
+    const client = getAwsDataClient() as any;
+    if (!client.models.ConcurrentProjectTimesheetEntry) return [];
+    const project = await client.models.ConcurrentProject.get({ id: concurrentProjectId });
+    assertNoErrors(project, 'AWS get concurrent project');
+    if (project.data) await assertCanAccessExpert(client, project.data.expertId);
+    const data = await listModel<any>(client.models.ConcurrentProjectTimesheetEntry, {
+      concurrentProjectId: { eq: concurrentProjectId },
+      month: { eq: month },
+      year: { eq: year },
+    });
+    return data.map(mapConcurrentProjectTimesheetEntry);
+  },
+
+  async upsert(entry: Omit<ConcurrentProjectTimesheetEntry, 'id'> & { id?: string }): Promise<ConcurrentProjectTimesheetEntry> {
+    const client = getAwsDataClient() as any;
+    await assertCanAccessExpert(client, entry.expertId);
+    if (!client.models.ConcurrentProjectTimesheetEntry) throw new Error('Modelul ConcurrentProjectTimesheetEntry nu este disponibil in backend.');
+    const payload = {
+      concurrentProjectId: entry.concurrentProjectId,
+      expertId: entry.expertId,
+      date: entry.date,
+      month: entry.month,
+      year: entry.year,
+      wp: entry.wp,
+      hours: entry.hours,
+      taskName: entry.taskName,
+      relevantDeliverable: entry.relevantDeliverable,
+      dayType: entry.dayType || 'lucratoare',
+      notes: entry.notes,
+      status: entry.status || 'draft',
+      source: entry.source || 'expert_manual',
+      createdBy: entry.createdBy,
+      updatedBy: entry.updatedBy,
+    };
+    const result = entry.id
+      ? await client.models.ConcurrentProjectTimesheetEntry.update({ id: entry.id, ...payload })
+      : await client.models.ConcurrentProjectTimesheetEntry.create(payload);
+    assertNoErrors(result, 'AWS upsert concurrent project timesheet entry');
+    await createConcurrentProjectAudit(client, { actionType: entry.status === 'submitted' ? 'concurrent_project_timesheet_submitted' : entry.status === 'verified' ? 'concurrent_project_timesheet_verified' : 'concurrent_project_timesheet_updated', affectedExpertId: entry.expertId, projectCode: entry.concurrentProjectId, month: entry.month, year: entry.year, fieldName: entry.date, newValue: entry, justification: 'Pontaj proiect paralel creat sau actualizat.', source: entry.source?.includes('import') ? 'import' : 'manual' });
+    return mapConcurrentProjectTimesheetEntry(result.data);
+  },
+
+  async delete(id: string): Promise<void> {
+    const client = getAwsDataClient() as any;
+    const existing = await client.models.ConcurrentProjectTimesheetEntry.get({ id });
+    assertNoErrors(existing, 'AWS get concurrent project timesheet entry');
+    if (!existing.data) return;
+    await assertCanAccessExpert(client, existing.data.expertId);
+    const result = await client.models.ConcurrentProjectTimesheetEntry.delete({ id });
+    assertNoErrors(result, 'AWS delete concurrent project timesheet entry');
+  },
+};
+
+function mapConcurrentProjectTimesheetEntry(item: any): ConcurrentProjectTimesheetEntry {
+  return {
+    id: item.id,
+    concurrentProjectId: item.concurrentProjectId,
+    expertId: item.expertId,
+    date: item.date,
+    month: item.month,
+    year: item.year,
+    wp: item.wp ?? undefined,
+    hours: item.hours,
+    taskName: item.taskName ?? undefined,
+    relevantDeliverable: item.relevantDeliverable ?? undefined,
+    dayType: item.dayType ?? 'lucratoare',
+    notes: item.notes ?? undefined,
+    status: item.status ?? 'draft',
+    source: item.source ?? 'expert_manual',
+    createdBy: item.createdBy ?? undefined,
+    updatedBy: item.updatedBy ?? undefined,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
   };
 }
 

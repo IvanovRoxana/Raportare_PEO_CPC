@@ -73,7 +73,13 @@ export type AuditActionType =
   | 'document_duplicate_detected'
   | 'shared_deliverable_created'
   | 'shared_deliverable_registered'
-  | 'shared_deliverable_status_changed';
+  | 'shared_deliverable_status_changed'
+  | 'concurrent_project_created'
+  | 'concurrent_project_updated'
+  | 'concurrent_project_archived'
+  | 'concurrent_project_timesheet_updated'
+  | 'concurrent_project_timesheet_submitted'
+  | 'concurrent_project_timesheet_verified';
 
 export interface AuditLog {
   id: string;
@@ -315,8 +321,10 @@ export interface ReportStatus {
 export interface ConcurrentProject {
   id: string;
   expertId: string;
+  expertName?: string;
   projectName: string;
   projectCode?: string;
+  expertProjectRole?: string;
   fundingSource?: string;
   dailyHours: number;
   startDate: string;
@@ -324,6 +332,32 @@ export interface ConcurrentProject {
   isActive: boolean;
   notes?: string;
   createdAt?: string;
+  updatedAt?: string;
+}
+
+export type ConcurrentProjectDayType = 'lucratoare' | 'weekend' | 'sarbatoare' | 'CO' | 'CM' | 'Altele' | string;
+export type ConcurrentProjectTimesheetSource = 'expert_manual' | 'pm_manual' | 'import' | string;
+export type ConcurrentProjectTimesheetStatus = 'draft' | 'submitted' | 'verified' | 'rejected' | string;
+
+export interface ConcurrentProjectTimesheetEntry {
+  id: string;
+  concurrentProjectId: string;
+  expertId: string;
+  date: string;
+  month: number;
+  year: number;
+  wp?: string;
+  hours: number;
+  taskName?: string;
+  relevantDeliverable?: string;
+  dayType: ConcurrentProjectDayType;
+  notes?: string;
+  status: ConcurrentProjectTimesheetStatus;
+  source: ConcurrentProjectTimesheetSource;
+  createdBy?: string;
+  updatedBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface VerificationData {

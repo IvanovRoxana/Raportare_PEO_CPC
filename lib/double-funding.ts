@@ -1,5 +1,6 @@
-import type { Activity, ConcurrentProject, Expert, ReportStatus } from './types.ts';
+import type { Activity, ConcurrentProject, ConcurrentProjectTimesheetEntry, Expert, ReportStatus } from './types.ts';
 import { getWorkingDaysListInMonth } from './working-hours.ts';
+import { buildConsolidatedTimesheet, getEntriesForProjectMonth, isAbsenceDayType } from './concurrent-projects.ts';
 
 export type DoubleFundingRiskStatus = 'ok' | 'needs_review' | 'high_risk';
 
@@ -23,6 +24,10 @@ export interface DoubleFundingRiskRow {
   status: DoubleFundingRiskStatus;
   reasons: string[];
   reportStatus?: ReportStatus['status'];
+  dailyEntryCount: number;
+  incompleteTimesheet: boolean;
+  exceededDays: number;
+  coCmConflicts: number;
 }
 
 export interface DoubleFundingSummary {
@@ -56,6 +61,7 @@ export function buildDoubleFundingRiskRows(args: {
   experts: Expert[];
   activities: Activity[];
   concurrentProjects: ConcurrentProject[];
+  concurrentTimesheetEntries?: ConcurrentProjectTimesheetEntry[];
   reportStatuses?: ReportStatus[];
   month: number;
   year: number;
@@ -76,16 +82,35 @@ export function buildDoubleFundingRiskRows(args: {
       const expertActivities = args.activities.filter((activity) => activity.expertId === project.expertId);
       const peoHours = sumHours(expertActivities);
       const peoMonthlyNorm = (expert?.dailyHours ?? expert?.oreZi ?? expert?.norma ?? 8) * workingDays.length;
-      const concurrentEstimatedHours = Number(project.dailyHours || 0) * activeDays.length;
+      const projectEntries = getEntriesForProjectMonth(args.concurrentTimesheetEntries || [], project.id, args.month, args.year);
+      const hasDailyEntries = projectEntries.length > 0;
+      const concurrentEstimatedHours = hasDailyEntries
+        ? projectEntries.reduce((sum, entry) => sum + (Number(entry.hours) || 0), 0)
+        : Number(project.dailyHours || 0) * activeDays.length;
       const totalEstimatedHours = peoHours + concurrentEstimatedHours;
       const dailyPeoTotals = new Map<string, number>();
       expertActivities.forEach((activity) => {
         dailyPeoTotals.set(activity.date, (dailyPeoTotals.get(activity.date) ?? 0) + (Number(activity.hours) || 0));
       });
+      const entryHoursByDate = new Map<string, number>();
+      projectEntries.forEach((entry) => {
+        entryHoursByDate.set(entry.date, (entryHoursByDate.get(entry.date) ?? 0) + (Number(entry.hours) || 0));
+      });
       const maxDailyCombinedHours = activeDays.reduce((max, day) => {
-        const peoDayHours = dailyPeoTotals.get(iso(day)) ?? 0;
-        return Math.max(max, peoDayHours + Number(project.dailyHours || 0));
-      }, Number(project.dailyHours || 0));
+        const date = iso(day);
+        const peoDayHours = dailyPeoTotals.get(date) ?? 0;
+        const concurrentDayHours = hasDailyEntries ? (entryHoursByDate.get(date) ?? 0) : Number(project.dailyHours || 0);
+        return Math.max(max, peoDayHours + concurrentDayHours);
+      }, 0);
+      const consolidatedRows = buildConsolidatedTimesheet({
+        activities: expertActivities,
+        concurrentProjects: [project],
+        entries: projectEntries,
+        month: args.month,
+        year: args.year,
+      });
+      const exceededDays = consolidatedRows.filter((row) => row.totalHours > 8).length;
+      const coCmConflicts = consolidatedRows.filter((row) => row.dayTypes.some(isAbsenceDayType) && row.totalHours > 0).length;
       const reasons: string[] = [];
 
       if (maxDailyCombinedHours > 8) {
@@ -99,6 +124,15 @@ export function buildDoubleFundingRiskRows(args: {
       }
       if (!project.endDate) {
         reasons.push('Perioadă fără dată de final');
+      }
+      if (hasDailyEntries && projectEntries.some((entry) => (Number(entry.hours) || 0) > 0 && (!entry.wp?.trim() || !entry.taskName?.trim()))) {
+        reasons.push('Pontaj proiect paralel cu WP sau task name lipsă');
+      }
+      if (hasDailyEntries && coCmConflicts > 0) {
+        reasons.push('Conflict CO/CM/Altele cu ore lucrate în aceeași zi');
+      }
+      if (!hasDailyEntries && activeDays.length > 0) {
+        reasons.push('Pontaj zilnic proiect paralel necompletat; se folosește dailyHours estimativ');
       }
 
       const status: DoubleFundingRiskStatus =
@@ -128,6 +162,10 @@ export function buildDoubleFundingRiskRows(args: {
         status,
         reasons,
         reportStatus: reportStatusByExpert.get(project.expertId),
+        dailyEntryCount: projectEntries.length,
+        incompleteTimesheet: !hasDailyEntries && activeDays.length > 0,
+        exceededDays,
+        coCmConflicts,
       };
     })
     .sort((a, b) => statusWeight(b.status) - statusWeight(a.status) || a.expertName.localeCompare(b.expertName));
@@ -171,6 +209,11 @@ export function buildPmExportRows(args: {
       concurrentProjects: risks.length,
       highRiskConcurrentProjects: risks.filter((risk) => risk.status === 'high_risk').length,
       needsReviewConcurrentProjects: risks.filter((risk) => risk.status === 'needs_review').length,
+      concurrentHours: risks.reduce((sum, risk) => sum + risk.concurrentEstimatedHours, 0),
+      consolidatedHours: sumHours(expertActivities) + risks.reduce((sum, risk) => sum + risk.concurrentEstimatedHours, 0),
+      exceededDays: risks.reduce((sum, risk) => sum + risk.exceededDays, 0),
+      coCmConflicts: risks.reduce((sum, risk) => sum + risk.coCmConflicts, 0),
+      incompleteTimesheets: risks.filter((risk) => risk.incompleteTimesheet).length,
       riskReasons: risks.flatMap((risk) => risk.reasons).join(' | '),
     };
   });

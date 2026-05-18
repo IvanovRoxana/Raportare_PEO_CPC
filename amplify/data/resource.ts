@@ -330,8 +330,10 @@ const schema = a.schema({
   ConcurrentProject: a
     .model({
       expertId: a.id().required(),
+      expertName: a.string(),
       projectName: a.string().required(),
       projectCode: a.string(),
+      expertProjectRole: a.string(),
       fundingSource: a.string(),
       dailyHours: a.float().required(),
       startDate: a.date().required(),
@@ -340,6 +342,30 @@ const schema = a.schema({
       notes: a.string(),
     })
     .secondaryIndexes((index) => [index("expertId")])
+    .authorization((allow) => [
+      allow.groups(["expert"]).to(["create", "read", "update"]),
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
+  ConcurrentProjectTimesheetEntry: a
+    .model({
+      concurrentProjectId: a.id().required(),
+      expertId: a.id().required(),
+      date: a.date().required(),
+      month: a.integer().required(),
+      year: a.integer().required(),
+      wp: a.string(),
+      hours: a.float().required(),
+      taskName: a.string(),
+      relevantDeliverable: a.string(),
+      dayType: a.string().required(),
+      notes: a.string(),
+      status: a.string().required(),
+      source: a.string().required(),
+      createdBy: a.string(),
+      updatedBy: a.string(),
+    })
+    .secondaryIndexes((index) => [index("concurrentProjectId"), index("expertId"), index("month"), index("year")])
     .authorization((allow) => [
       allow.groups(["expert"]).to(["create", "read", "update"]),
       allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),

@@ -12,13 +12,14 @@ import {
   activityCatalogService,
   workingGroupsService,
   concurrentProjectsService,
+  concurrentProjectTimesheetService,
   reportStatusService,
   grupTintaService,
   auditLogsService,
   documentsService,
   sharedDeliverablesService,
 } from '@/lib/backend-store';
-import type { Activity, Expert, VerificationData, Neconformitate, VerificationNote, AppSettings, ActivityCatalog, WorkingGroup, ConcurrentProject, ReportStatus, GrupTintaEntry, AuditLog, AdminInterventionRequest } from '@/lib/types';
+import type { Activity, Expert, VerificationData, Neconformitate, VerificationNote, AppSettings, ActivityCatalog, WorkingGroup, ConcurrentProject, ConcurrentProjectTimesheetEntry, ReportStatus, GrupTintaEntry, AuditLog, AdminInterventionRequest } from '@/lib/types';
 
 const EMPTY_LIST: readonly never[] = Object.freeze([]);
 
@@ -476,13 +477,23 @@ export function useConcurrentProjects(expertId: string | null) {
   );
   
   const addProject = async (project: Omit<ConcurrentProject, 'id'>) => {
-    await concurrentProjectsService.create(project);
+    const created = await concurrentProjectsService.create(project);
     mutate(key);
+    mutate('concurrent-projects-all');
+    return created;
+  };
+
+  const updateProject = async (id: string, updates: Partial<ConcurrentProject>) => {
+    const updated = await concurrentProjectsService.update(id, updates);
+    mutate(key);
+    mutate('concurrent-projects-all');
+    return updated;
   };
   
   const removeProject = async (id: string) => {
     await concurrentProjectsService.delete(id);
     mutate(key);
+    mutate('concurrent-projects-all');
   };
   
   return {
@@ -490,6 +501,7 @@ export function useConcurrentProjects(expertId: string | null) {
     isLoading,
     error,
     addProject,
+    updateProject,
     removeProject,
   };
 }
@@ -504,7 +516,64 @@ export function useAllConcurrentProjects() {
     projects: stableList(data),
     isLoading,
     error,
+    mutate: () => mutate('concurrent-projects-all'),
   };
+}
+
+export function useConcurrentProjectTimesheet(projectId: string | null, month: number, year: number) {
+  const key = projectId ? `concurrent-project-timesheet-${projectId}-${month}-${year}` : null;
+  const { data, error, isLoading } = useSWR(
+    key && isBackendAvailable() ? key : null,
+    safeFetcher(() => concurrentProjectTimesheetService.getByProjectMonth(projectId!, month, year))
+  );
+
+  return {
+    entries: stableList(data),
+    isLoading,
+    error,
+    mutate: () => key && mutate(key),
+  };
+}
+
+export function useConcurrentProjectTimesheetByMonth(month: number, year: number) {
+  const key = `concurrent-project-timesheet-month-${month}-${year}`;
+  const { data, error, isLoading } = useSWR(
+    isBackendAvailable() ? key : null,
+    safeFetcher(() => concurrentProjectTimesheetService.getAllByMonth(month, year))
+  );
+
+  return {
+    entries: stableList(data),
+    isLoading,
+    error,
+    mutate: () => mutate(key),
+  };
+}
+
+export function useConcurrentProjectTimesheetMutations(month?: number, year?: number) {
+  const refresh = (entry?: Pick<ConcurrentProjectTimesheetEntry, 'concurrentProjectId' | 'month' | 'year'>) => {
+    const targetMonth = entry?.month ?? month;
+    const targetYear = entry?.year ?? year;
+    if (entry?.concurrentProjectId && targetMonth !== undefined && targetYear !== undefined) {
+      mutate(`concurrent-project-timesheet-${entry.concurrentProjectId}-${targetMonth}-${targetYear}`);
+    }
+    if (targetMonth !== undefined && targetYear !== undefined) {
+      mutate(`concurrent-project-timesheet-month-${targetMonth}-${targetYear}`);
+    }
+  };
+
+  const upsertEntry = async (entry: Omit<ConcurrentProjectTimesheetEntry, 'id'> & { id?: string }) => {
+    const saved = await concurrentProjectTimesheetService.upsert(entry);
+    refresh(saved);
+    return saved;
+  };
+
+  const deleteEntry = async (id: string, entry?: Pick<ConcurrentProjectTimesheetEntry, 'concurrentProjectId' | 'month' | 'year'>) => {
+    await concurrentProjectTimesheetService.delete(id);
+    refresh(entry);
+  };
+
+  return { upsertEntry, deleteEntry };
 }
 
 // ============================================
