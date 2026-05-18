@@ -7,7 +7,13 @@ import {
   buildPmExportRows,
   dateRangesOverlap,
 } from '../lib/double-funding.ts';
-import type { Activity, ConcurrentProject, Expert } from '../lib/types.ts';
+import {
+  buildConsolidatedTimesheet,
+  getConcurrentProjectMonthlyTotal,
+} from '../lib/concurrent-projects.ts';
+import { buildDefaultConcurrentProjects, mergeConcurrentProjectsWithDefaults } from '../lib/default-concurrent-projects.ts';
+import { filterConcurrentProjectsForScope } from '../lib/access-control.ts';
+import type { Activity, ConcurrentProject, ConcurrentProjectTimesheetEntry, Expert } from '../lib/types.ts';
 
 const experts = [
   {
@@ -91,11 +97,6 @@ test('summary si export PM final includ riscurile de proiecte concurente', () =>
   assert.match(csv, /sent/);
 });
 
-import {
-  buildConsolidatedTimesheet,
-  getConcurrentProjectMonthlyTotal,
-} from '../lib/concurrent-projects.ts';
-import type { ConcurrentProjectTimesheetEntry } from '../lib/types.ts';
 
 test('calculeaza total consolidat, total proiect paralel si total pe WP din intrari zilnice', () => {
   const activities = [
@@ -157,12 +158,38 @@ test('fallback dailyHours ramane activ daca nu exista intrari zilnice', () => {
   assert.equal(total.totalHours > 0, true);
 });
 
-test('filtrarea proiectelor paralele dupa expert si restrictia de acces self', async () => {
-  const { filterConcurrentProjectsForScope } = await import('../lib/access-control.ts');
+test('filtrarea proiectelor paralele dupa expert si restrictia de acces self', () => {
   const projects = [
     { id: 'own', expertId: 'roxana', projectName: 'A', dailyHours: 1, startDate: '2026-05-01', isActive: true },
     { id: 'other', expertId: 'alt', projectName: 'B', dailyHours: 1, startDate: '2026-05-01', isActive: true },
   ] as ConcurrentProject[];
   const filtered = filterConcurrentProjectsForScope(projects, { accessLevel: 'self', canUsePmDashboard: false, canAccessAllExperts: false, currentExpertId: 'roxana', reason: 'expert_self' });
   assert.deepEqual(filtered.map((project) => project.id), ['own']);
+});
+
+test('GOODWORKS4ALL este configurat implicit pentru Andreea Cojocaru, Bianca Toma si Gabriel Zvinca', () => {
+  const defaults = buildDefaultConcurrentProjects();
+  const projectIdsByExpert = new Map(defaults.map((project) => [project.expertId, `${project.projectName}/${project.projectCode}`]));
+
+  assert.equal(projectIdsByExpert.get('andreea-cojocaru'), 'GOODWORKS4ALL/P6-GW4ALL');
+  assert.equal(projectIdsByExpert.get('bianca-toma'), 'GOODWORKS4ALL/P6-GW4ALL');
+  assert.equal(projectIdsByExpert.get('gabriel-zvinca'), 'GOODWORKS4ALL/P6-GW4ALL');
+});
+
+test('proiectul GOODWORKS4ALL implicit nu dubleaza o inregistrare backend existenta', () => {
+  const backendProject = {
+    id: 'backend-gw-andreea',
+    expertId: 'andreea-cojocaru',
+    expertName: 'Andreea Cojocaru',
+    projectName: 'GOODWORKS4ALL',
+    projectCode: 'P6-GW4ALL',
+    dailyHours: 0,
+    startDate: '2026-05-01',
+    isActive: true,
+  } as ConcurrentProject;
+
+  const merged = mergeConcurrentProjectsWithDefaults([backendProject], buildDefaultConcurrentProjects());
+  const andreeaGwProjects = merged.filter((project) => project.expertId === 'andreea-cojocaru' && project.projectCode === 'P6-GW4ALL');
+  assert.equal(andreeaGwProjects.length, 1);
+  assert.equal(andreeaGwProjects[0].id, 'backend-gw-andreea');
 });

@@ -48,6 +48,7 @@ import type {
 } from './types';
 import { createAuditLog, prepareAdminActivityOverride } from './audit-trail';
 import { buildSharedActivitySuggestions, buildSharedDeliverables, findDuplicateCandidates, markSharedDeliverableRegistered } from './document-sharing';
+import { buildDefaultConcurrentProjects, mergeConcurrentProjectsWithDefaults } from './default-concurrent-projects';
 import { normalizeTitleForMatch } from './title-suggestion';
 
 export { isAwsAvailable };
@@ -1611,9 +1612,12 @@ export const concurrentProjectsService = {
     if (scope.accessLevel === 'none') return [];
     const data = await listModel<any>(client.models.ConcurrentProject, {
       ...(scope.canAccessAllExperts ? {} : { expertId: { eq: scope.currentExpertId } }),
-      isActive: { ne: false },
     });
-    return filterConcurrentProjectsForScope(data.map(mapConcurrentProject), scope);
+    const projects = mergeConcurrentProjectsWithDefaults(
+      data.map(mapConcurrentProject),
+      buildDefaultConcurrentProjects(peoUsersAsExperts())
+    );
+    return filterConcurrentProjectsForScope(projects, scope);
   },
 
   async getByExpert(expertId: string): Promise<ConcurrentProject[]> {
@@ -1621,9 +1625,11 @@ export const concurrentProjectsService = {
     await assertCanAccessExpert(client, expertId);
     const data = await listModel<any>(client.models.ConcurrentProject, {
       expertId: { eq: expertId },
-      isActive: { ne: false },
     });
-    return data.map(mapConcurrentProject);
+    return mergeConcurrentProjectsWithDefaults(
+      data.map(mapConcurrentProject),
+      buildDefaultConcurrentProjects(peoUsersAsExperts()).filter((project) => project.expertId === expertId)
+    );
   },
 
   async create(project: Omit<ConcurrentProject, 'id'>): Promise<ConcurrentProject> {
