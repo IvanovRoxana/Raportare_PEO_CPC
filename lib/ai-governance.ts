@@ -13,8 +13,8 @@ type AiGovernanceMetadata = {
   actorId?: string;
   actorName?: string;
   projectCode?: string;
-  month?: number;
-  year?: number;
+  month?: number | string;
+  year?: number | string;
 };
 
 type GovernedGenerateTextOptions = GenerateTextOptions & AiGovernanceMetadata;
