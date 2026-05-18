@@ -1,4 +1,4 @@
-import type { Expert, Activity, AuditLog, ConcurrentProject, DocumentMetadata, GrupTintaEntry, ReportStatus, SharedDeliverable, VerificationData } from './types.ts';
+import type { Expert, Activity, AuditLog, ConcurrentProject, ConcurrentProjectTimesheetEntry, DocumentMetadata, GrupTintaEntry, ReportStatus, SharedDeliverable, VerificationData } from './types.ts';
 
 export type AccessUser = {
   id: string;
@@ -180,4 +180,9 @@ export function filterGrupTintaForScope(entries: GrupTintaEntry[], scope: DataAc
 export function filterConcurrentProjectsForScope(projects: ConcurrentProject[], scope: DataAccessScope) {
   if (scope.canAccessAllExperts) return projects;
   return projects.filter((project) => project.expertId === scope.currentExpertId);
+}
+
+export function filterConcurrentProjectTimesheetEntriesForScope(entries: ConcurrentProjectTimesheetEntry[], scope: DataAccessScope) {
+  if (scope.canAccessAllExperts) return entries;
+  return entries.filter((entry) => entry.expertId === scope.currentExpertId);
 }

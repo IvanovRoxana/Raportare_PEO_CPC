@@ -60,6 +60,8 @@ import {
   useSharedDeliverables,
   useGrupTintaByMonth,
   useAllConcurrentProjects,
+  useConcurrentProjects,
+  useConcurrentProjectTimesheetByMonth,
 } from '@/hooks/use-backend-data';
 import { buildDashboardComplianceRows } from '@/lib/reporting-dashboard';
 import { getSignedInUser, type AppUser } from '@/lib/aws/auth';
@@ -70,6 +72,7 @@ import {
   filterActivitiesForScope,
   filterAuditLogsForScope,
   filterConcurrentProjectsForScope,
+  filterConcurrentProjectTimesheetEntriesForScope,
   filterDocumentsForScope,
   filterExpertsForScope,
   filterGrupTintaForScope,
@@ -172,6 +175,8 @@ export default function PMDashboard() {
   const { sharedDeliverables: allSharedDeliverables } = useSharedDeliverables(scopedSharedDeliverablesExpertId);
   const { entries: allGrupTintaEntries } = useGrupTintaByMonth(selectedMonth, selectedYear);
   const { projects: allConcurrentProjects } = useAllConcurrentProjects();
+  const { addProject: createConcurrentProject, updateProject: updateConcurrentProject, removeProject: archiveConcurrentProject } = useConcurrentProjects(selectedExpertId);
+  const { entries: allConcurrentTimesheetEntries } = useConcurrentProjectTimesheetByMonth(selectedMonth, selectedYear);
   const visibleExperts = useMemo(
     () => filterExpertsForScope(experts, dataAccessScope),
     [experts, dataAccessScope]
@@ -203,6 +208,10 @@ export default function PMDashboard() {
   const concurrentProjects = useMemo(
     () => filterConcurrentProjectsForScope(allConcurrentProjects, dataAccessScope),
     [allConcurrentProjects, dataAccessScope]
+  );
+  const concurrentTimesheetEntries = useMemo(
+    () => filterConcurrentProjectTimesheetEntriesForScope(allConcurrentTimesheetEntries, dataAccessScope),
+    [allConcurrentTimesheetEntries, dataAccessScope]
   );
 
   useEffect(() => {
@@ -1050,6 +1059,10 @@ export default function PMDashboard() {
               experts={visibleExperts}
               activities={monthActivities}
               concurrentProjects={concurrentProjects}
+              concurrentTimesheetEntries={concurrentTimesheetEntries}
+              onCreateConcurrentProject={createConcurrentProject}
+              onUpdateConcurrentProject={updateConcurrentProject}
+              onArchiveConcurrentProject={archiveConcurrentProject}
               reportStatuses={monthlyReportStatuses}
               month={selectedMonth}
               year={selectedYear}
