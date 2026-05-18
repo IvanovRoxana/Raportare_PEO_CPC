@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { Upload, X, FileText, Loader2, Users, Plus, AlertTriangle, CheckCircle } from 'lucide-react';
+import { Upload, X, FileText, Loader2, Users, Plus, AlertTriangle, CheckCircle, Sparkles } from 'lucide-react';
 import { uploadData } from 'aws-amplify/storage';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { FieldGroup, Field, FieldLabel } from '@/components/ui/field';
 import { generateId, formatDateRo } from '@/lib/app-utils';
 import { EventDocsPanel } from './event-docs-panel';
@@ -172,6 +173,10 @@ export function ActivityForm({
   const [description, setDescription] = useState(initialActivity?.description || '');
   const [location, setLocation] = useState(initialActivity?.location || 'Birou');
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [isCatalogHelpOpen, setIsCatalogHelpOpen] = useState(false);
+  const [isAiRefining, setIsAiRefining] = useState(false);
+  const [aiSuggestion, setAiSuggestion] = useState<string | null>(null);
+  const [aiSuggestionError, setAiSuggestionError] = useState<string | null>(null);
   
   // Deliverables state with slots
   const [deliverables, setDeliverables] = useState<DeliverableSlot[]>(
@@ -276,6 +281,27 @@ export function ActivityForm({
     ) || null;
   }, [activityTitle, saCode, filteredCatalog]);
 
+  const catalogGuidanceItems = useMemo(() => {
+    if (!selectedCatalogItem) return [];
+
+    return [
+      { label: 'Descriere', value: selectedCatalogItem.description },
+      { label: 'Obiective', value: selectedCatalogItem.objectives },
+      { label: 'Componenta serviciului', value: selectedCatalogItem.serviceComponent || selectedCatalogItem.serviceCategory },
+      { label: 'Beneficiari', value: selectedCatalogItem.beneficiaries },
+      { label: 'Rezultate așteptate', value: selectedCatalogItem.expectedResults },
+      { label: 'Livrabile', value: selectedCatalogItem.deliverables },
+      { label: 'Indicatori / observații relevante', value: selectedCatalogItem.indicators },
+    ].filter((item): item is { label: string; value: string } => Boolean(item.value?.trim()));
+  }, [selectedCatalogItem]);
+
+  const hasCatalogGuidance = catalogGuidanceItems.length > 0;
+  const canRefineDescriptionWithAi = Boolean(
+    selectedCatalogItem &&
+    hasCatalogGuidance &&
+    (description || '').trim().length > 0
+  );
+
   const collaboratorSuggestions = useMemo(() => {
     const suggestionScores = new Map<string, { score: number; reasons: Set<string> }>();
     const selectedDateSet = new Set(selectedDates);
@@ -358,6 +384,11 @@ export function ActivityForm({
       setActivityTitle('');
     }
   }, [saCode, availableActivities, activityTitle]);
+
+  useEffect(() => {
+    setAiSuggestion(null);
+    setAiSuggestionError(null);
+  }, [activityTitle, saCode]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -478,6 +509,61 @@ export function ActivityForm({
       setTitleVerificationResult('Eroare la verificarea titlului');
     } finally {
       setIsVerifyingTitle(false);
+    }
+  };
+
+  const refineDescriptionWithAi = async () => {
+    if (!selectedCatalogItem || !canRefineDescriptionWithAi) return;
+
+    setIsAiRefining(true);
+    setAiSuggestion(null);
+    setAiSuggestionError(null);
+
+    try {
+      const dateSummary = selectedDates.length === 1
+        ? selectedDates[0]
+        : [...selectedDates].sort().join(', ');
+      const hoursSummary = selectedDates.length === 1
+        ? hoursPerDay[selectedDates[0]] || hours
+        : [...selectedDates]
+            .sort()
+            .map((date) => `${date}: ${hoursPerDay[date] || defaultHours}h`)
+            .join('; ');
+
+      const response = await fetch('/api/ai/suggest-activity-description', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          activityId: selectedCatalogItem.id,
+          activityName: selectedCatalogItem.activityName,
+          subactivity: selectedCatalogItem.saCode,
+          date: dateSummary,
+          hours: hoursSummary,
+          expertName,
+          rawDescription: description,
+          catalog: {
+            description: selectedCatalogItem.description,
+            objectives: selectedCatalogItem.objectives,
+            serviceComponent: selectedCatalogItem.serviceComponent || selectedCatalogItem.serviceCategory,
+            beneficiaries: selectedCatalogItem.beneficiaries,
+            expectedResults: selectedCatalogItem.expectedResults,
+            deliverables: selectedCatalogItem.deliverables,
+            indicators: selectedCatalogItem.indicators,
+          },
+        }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || !data.suggestion) {
+        throw new Error(data.error || 'Sugestia AI nu a putut fi generată.');
+      }
+
+      setAiSuggestion(data.suggestion);
+    } catch {
+      setAiSuggestionError('Sugestia AI nu a putut fi generată momentan. Poți completa manual descrierea activității.');
+    } finally {
+      setIsAiRefining(false);
     }
   };
 
@@ -720,6 +806,45 @@ export function ActivityForm({
         )}
       </CardHeader>
       <CardContent className="space-y-6">
+        <Dialog open={isCatalogHelpOpen} onOpenChange={setIsCatalogHelpOpen}>
+          <DialogContent className="sm:max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Repere din catalog pentru completarea activității</DialogTitle>
+              <DialogDescription>
+                Consultă reperele oficiale asociate activității selectate înainte de completarea descrierii.
+              </DialogDescription>
+            </DialogHeader>
+            {selectedCatalogItem && hasCatalogGuidance ? (
+              <div className="max-h-[60vh] space-y-4 overflow-y-auto pr-1">
+                <div className="rounded-md border bg-muted/30 p-3 text-sm">
+                  <div className="font-medium">{selectedCatalogItem.activityName}</div>
+                  <div className="text-muted-foreground">{selectedCatalogItem.saCode}</div>
+                </div>
+                <div className="space-y-3">
+                  {catalogGuidanceItems.map((item) => (
+                    <div key={item.label} className="rounded-md border p-3">
+                      <div className="mb-1 text-sm font-medium">{item.label}</div>
+                      <p className="whitespace-pre-wrap text-sm text-muted-foreground">{item.value}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+                  Aceste repere sunt preluate din Catalogul activităților și au rol orientativ. Expertul trebuie să descrie activitatea efectiv realizată.
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-md border bg-muted/30 p-4 text-sm text-muted-foreground">
+                Selectează o activitate cu repere disponibile în catalog pentru a vedea ajutorul de completare.
+              </div>
+            )}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setIsCatalogHelpOpen(false)}>
+                Închide
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         {/* Day Type and Hours */}
         <div className="grid grid-cols-2 gap-4">
           <Field>
@@ -883,6 +1008,23 @@ export function ActivityForm({
                   {selectedCatalogItem.serviceCategory} - {selectedCatalogItem.description}
                 </p>
               )}
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsCatalogHelpOpen(true)}
+                  disabled={!selectedCatalogItem || !hasCatalogGuidance}
+                >
+                  <FileText className="h-3.5 w-3.5 mr-1" />
+                  Ajutor completare
+                </Button>
+                {selectedCatalogItem && !hasCatalogGuidance && (
+                  <span className="text-xs text-muted-foreground">
+                    Nu există repere suplimentare în catalog pentru această activitate.
+                  </span>
+                )}
+              </div>
               {titleVerificationResult && (
                 <p className="text-sm text-muted-foreground mt-1 p-2 bg-muted rounded">
                   {titleVerificationResult}
@@ -910,6 +1052,54 @@ export function ActivityForm({
                 rows={4}
                 className={needsCommonDesc ? 'border-amber-500' : ''}
               />
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={refineDescriptionWithAi}
+                  disabled={!canRefineDescriptionWithAi || isAiRefining}
+                >
+                  {isAiRefining ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                      Se rafinează...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-3.5 w-3.5 mr-1" />
+                      Rafinează descrierea cu AI
+                    </>
+                  )}
+                </Button>
+                {!canRefineDescriptionWithAi && selectedCatalogItem && hasCatalogGuidance && (description || '').trim().length === 0 && (
+                  <span className="text-xs text-muted-foreground">
+                    Scrie câteva idei pentru a activa rafinarea AI.
+                  </span>
+                )}
+              </div>
+              {aiSuggestionError && (
+                <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                  {aiSuggestionError}
+                </div>
+              )}
+              {aiSuggestion && (
+                <div className="mt-3 space-y-2 rounded-md border bg-muted/40 p-3">
+                  <div className="text-sm font-medium">Sugestie AI editabilă</div>
+                  <p className="whitespace-pre-wrap text-sm text-muted-foreground">{aiSuggestion}</p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setDescription(aiSuggestion);
+                      setAiSuggestion(null);
+                    }}
+                  >
+                    Folosește această sugestie
+                  </Button>
+                </div>
+              )}
               {isException && (description || '').length < 15 && (
                 <div className="text-xs text-amber-700 mt-1">
                   {(description || '').length}/15 caractere
