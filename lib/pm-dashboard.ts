@@ -43,8 +43,12 @@ export function resolveDashboardAccess(input: DashboardAccessInput) {
   };
 }
 
-export function mergeRolesWithExpertProfile(roles: string[], expert?: Pick<Expert, 'role' | 'hasPmAccess'> | null) {
+export function mergeRolesWithExpertProfile(
+  roles: string[],
+  expert?: (Pick<Expert, 'role' | 'hasPmAccess'> & { cognitoGroups?: string[] }) | null,
+) {
   const merged = new Set(roles.map((role) => role.toLowerCase()));
+  expert?.cognitoGroups?.forEach((group) => merged.add(group.toLowerCase()));
   if (expert && canAccessExpertModule({ projectRole: expert.role })) merged.add('expert');
   if (expert && canAccessPmDashboard({ projectRole: expert.role, hasPmAccess: expert.hasPmAccess })) merged.add('pm');
   return Array.from(merged).filter((role): role is 'expert' | 'pm' | 'admin' =>

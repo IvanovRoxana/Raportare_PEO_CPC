@@ -17,6 +17,7 @@ import {
   SlidersHorizontal,
   UsersRound,
 } from 'lucide-react';
+import { ViewAsExpertPanel } from '@/components/admin/view-as-expert-panel';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -211,6 +212,10 @@ export default function AdminPage() {
         </div>
 
         <aside className="space-y-6">
+<aside className="space-y-6">
+          <ViewAsExpertPanel experts={experts as Expert[]} />
+
+          <Card className="rounded-lg">
           <Card className="rounded-lg">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">

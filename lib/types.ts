@@ -19,6 +19,7 @@ export interface Expert {
   projectTitle?: string;
   saCodes?: string[]; // Assigned sub-activities (SA1.1, SA2.1, etc.)
   hasPmAccess?: boolean; // True if expert has access to PM module
+  cognitoGroups?: string[]; // Cognito/application groups assigned to the expert user
   isActive?: boolean;
   createdAt?: string;
   updatedAt?: string;

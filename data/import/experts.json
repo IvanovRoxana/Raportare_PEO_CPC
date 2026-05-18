@@ -142,7 +142,8 @@
     "hasPmAccess": true,
     "cognitoGroups": [
       "expert",
-      "pm"
+      "pm",
+      "admin"
     ],
     "isActive": true
   },
