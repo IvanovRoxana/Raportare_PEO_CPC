@@ -12,6 +12,7 @@ import {
   resolveDashboardAccess,
 } from '../lib/pm-dashboard.ts';
 import {
+  buildCollaborationExpertOptions,
   canAccessExpertId,
   filterActivitiesForScope,
   filterDocumentsForScope,
@@ -21,6 +22,15 @@ import {
 import type { Activity, DocumentMetadata, Expert, ReportStatus } from '../lib/types.ts';
 
 const experts = JSON.parse(readFileSync(new URL('../data/import/experts.json', import.meta.url), 'utf8')) as Expert[];
+
+test('lista de colaborare include toti expertii activi, nu doar expertul curent', () => {
+  const current = { id: 'e1', name: 'Expert Curent', role: 'Expert', isActive: true } as Expert;
+  const colleague = { id: 'e2', name: 'Alt Expert', role: 'Expert', isActive: true } as Expert;
+  const inactive = { id: 'e3', name: 'Expert Inactiv', role: 'Expert', isActive: false } as Expert;
+  const options = buildCollaborationExpertOptions([current, inactive, colleague]);
+
+  assert.deepEqual(options.map((expert) => expert.id), ['e2', 'e1']);
+});
 
 test('utilizator Expert vede doar Modul Expert', () => {
   assert.deepEqual(resolveDashboardAccess({ roles: ['expert'], projectRole: 'Expert', hasPmAccess: false }), {

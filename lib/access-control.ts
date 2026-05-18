@@ -137,6 +137,12 @@ export function canAccessExpertId(scope: DataAccessScope, expertId?: string | nu
   return scope.canAccessAllExperts || scope.currentExpertId === expertId;
 }
 
+export function buildCollaborationExpertOptions(experts: Expert[]) {
+  return experts
+    .filter((expert) => expert.isActive !== false)
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
 export function filterExpertsForScope(experts: Expert[], scope: DataAccessScope) {
   if (scope.canAccessAllExperts) return experts;
   return experts.filter((expert) => expert.id === scope.currentExpertId);
