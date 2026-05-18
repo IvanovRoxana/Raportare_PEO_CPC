@@ -1,6 +1,6 @@
 'use client';
 
-import type { TitleCheckStatus, TitleSource } from './title-suggestion';
+import type { TitleCheckStatus, TitleSource, TitleSuggestionConfidence } from './title-suggestion';
 import { titleExistsInFirstPage } from './title-suggestion';
 
 // All deliverable types available in the system
@@ -108,6 +108,23 @@ export type DeliverableSlotType =
   | 'event_proof'    // Photo / Attendance list
   | 'justificativ';  // Supporting documents
 
+export interface DeliverableEligibilityCheck {
+  status: 'eligibil' | 'eligibil_cu_observatii' | 'neeligibil' | 'neconcludent' | string;
+  score: number;
+  summary: string;
+  checks: Array<{
+    criterion: string;
+    status: 'pass' | 'warning' | 'fail' | 'unknown' | string;
+    explanation: string;
+  }>;
+  missingElements: string[];
+  recommendations: string[];
+  riskFlags: string[];
+  checkedAt?: string;
+  checkedBy?: string;
+  modelAuditId?: string;
+}
+
 export interface DeliverableSlot {
   id: string;
   slotType: DeliverableSlotType;
@@ -144,6 +161,9 @@ export interface DeliverableSlot {
   docText: string | null;
   declaredTitle: string;
   suggestedTitle?: string | null;
+  titleSuggestionConfidence?: TitleSuggestionConfidence;
+  titleSuggestionAlternatives?: string[];
+  titleSuggestionReason?: string;
   firstPageText?: string | null;
   titleSource?: TitleSource;
   titleMatch: boolean | null;
@@ -156,6 +176,7 @@ export interface DeliverableSlot {
     reason: string;
     issues: string[];
   } | null;
+  eligibilityCheck?: DeliverableEligibilityCheck | null;
   common?: boolean; // If this is a shared deliverable across experts
   isPendingConfirm: boolean;
 }
@@ -198,6 +219,9 @@ export function createDeliverableSlot(slotType: DeliverableSlotType, name: strin
     docText: null,
     declaredTitle: '',
     suggestedTitle: null,
+    titleSuggestionConfidence: undefined,
+    titleSuggestionAlternatives: [],
+    titleSuggestionReason: undefined,
     firstPageText: null,
     titleSource: undefined,
     titleMatch: null,
@@ -206,6 +230,7 @@ export function createDeliverableSlot(slotType: DeliverableSlotType, name: strin
     titleCheckMessage: undefined,
     stadiu: '',
     aiCheck: null,
+    eligibilityCheck: null,
     common: false,
     isPendingConfirm: false,
   };

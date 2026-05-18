@@ -164,6 +164,23 @@ export interface DashboardComplianceRow {
   adminInterventions: number;
 }
 
+export interface DeliverableEligibilityCheck {
+  status: 'eligibil' | 'eligibil_cu_observatii' | 'neeligibil' | 'neconcludent' | string;
+  score: number;
+  summary: string;
+  checks: Array<{
+    criterion: string;
+    status: 'pass' | 'warning' | 'fail' | 'unknown' | string;
+    explanation: string;
+  }>;
+  missingElements: string[];
+  recommendations: string[];
+  riskFlags: string[];
+  checkedAt?: string;
+  checkedBy?: string;
+  modelAuditId?: string;
+}
+
 export interface Deliverable {
   id: string;
   activityId?: string;
@@ -197,6 +214,9 @@ export interface Deliverable {
   docTitle?: string;
   docText?: string;
   suggestedTitle?: string;
+  titleSuggestionConfidence?: 'high' | 'medium' | 'low' | string;
+  titleSuggestionAlternatives?: string[];
+  titleSuggestionReason?: string;
   firstPageText?: string;
   titleSource?: 'auto_detected' | 'manual' | 'edited_by_expert' | 'admin_override' | string;
   titleMatch?: boolean | null;
@@ -205,6 +225,7 @@ export interface Deliverable {
   titleCheckMessage?: string;
   aiStatus?: string;
   aiReason?: string;
+  eligibilityCheck?: DeliverableEligibilityCheck | null;
   fileData?: string; // Base64 encoded for localStorage fallback
 }
 
@@ -231,8 +252,12 @@ export interface DocumentMetadata {
   suggestedTitle?: string;
   extractedTitle?: string;
   extractedTitleNormalized?: string;
+  titleSuggestionConfidence?: 'high' | 'medium' | 'low' | string;
+  titleSuggestionAlternatives?: string[];
+  titleSuggestionReason?: string;
   titleMatch?: boolean | null;
   titleCheckStatus?: string;
+  eligibilityCheck?: DeliverableEligibilityCheck | null;
   isCommonDeliverable?: boolean;
   possibleDuplicateOfDocumentId?: string;
   duplicateStatus?: string;
