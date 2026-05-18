@@ -13,6 +13,7 @@ import {
 import { configureAmplify } from './client';
 import { peoUsersAsExperts } from '@/lib/peo-users';
 import { mergeRolesWithExpertProfile } from '@/lib/pm-dashboard';
+import { buildViewAsUser, getAdminViewAsSession } from '@/lib/admin-view-as';
 
 export type AppRole = 'expert' | 'pm' | 'admin';
 
@@ -57,7 +58,7 @@ export async function confirmPasswordReset(email: string, code: string, newPassw
   });
 }
 
-export async function getSignedInUser(): Promise<AppUser | null> {
+export async function getSignedInUser(options: { ignoreViewAs?: boolean } = {}): Promise<AppUser | null> {
   configureAmplify();
   try {
     const user = await getCurrentUser();
@@ -67,13 +68,23 @@ export async function getSignedInUser(): Promise<AppUser | null> {
       (expert) => expert.email?.toLowerCase() === String(email || '').toLowerCase()
     );
     const roles = mergeRolesWithExpertProfile(await getCurrentUserRoles(), expertProfile);
-
-    return {
+    const realUser = {
       id: user.userId,
       email,
       displayName: attrs.name ?? attrs.email ?? user.username,
       roles,
     };
+
+    if (!options.ignoreViewAs) {
+      const viewAsUser = buildViewAsUser({
+        realUserRoles: realUser.roles,
+        session: getAdminViewAsSession(),
+      });
+
+      if (viewAsUser) return viewAsUser;
+    }
+
+    return realUser;
   } catch {
     return null;
   }

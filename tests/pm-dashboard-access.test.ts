@@ -38,7 +38,7 @@ test('utilizator Expert/PM vede Modul Expert si Dashboard PM', () => {
   assert.equal(access.canUsePm, true);
 });
 
-test('Ivanov Roxana are acces simultan la Expert si PM din tabelul de experti', () => {
+test('Ivanov Roxana are acces simultan la Expert, PM si Admin din tabelul de experti', () => {
   const roxana = (experts as Expert[]).find((expert) => expert.email === 'roxana.ivanov@confederatia-concordia.ro');
   assert.ok(roxana);
   assert.equal(roxana.name, 'Ivanov Roxana');
@@ -47,51 +47,53 @@ test('Ivanov Roxana are acces simultan la Expert si PM din tabelul de experti', 
   assert.equal(roxana.dailyHours, 8);
   assert.deepEqual(roxana.saCodes, ['SA1.1']);
   assert.equal(roxana.hasPmAccess, true);
+  assert.deepEqual(roxana.cognitoGroups, ['expert', 'pm', 'admin']);
 
   const roles = mergeRolesWithExpertProfile(['expert'], roxana);
-  assert.deepEqual(roles.sort(), ['expert', 'pm']);
+  assert.deepEqual(roles.sort(), ['admin', 'expert', 'pm']);
   assert.deepEqual(resolveDashboardAccess({ roles, projectRole: roxana.role, hasPmAccess: roxana.hasPmAccess }), {
     canUseExpert: true,
     canUsePm: true,
   });
 });
 
-test('Ivanov Roxana Expert/PM este self-scoped fara acces extins explicit', () => {
+test('Ivanov Roxana Expert/PM/Admin are acces extins ca admin', () => {
   const roxana = experts.find((expert) => expert.email === 'roxana.ivanov@confederatia-concordia.ro')!;
   const andreea = experts.find((expert) => expert.email === 'andreea.cojocaru@confederatia-concordia.ro')!;
   const scope = resolveDataAccessScope({
     user: {
       id: 'cognito-roxana',
       email: 'roxana.ivanov@confederatia-concordia.ro',
-      roles: ['expert', 'pm'],
+      roles: ['expert', 'pm', 'admin'],
     },
     experts: [roxana, andreea],
   });
 
-  assert.equal(scope.accessLevel, 'self');
+  assert.equal(scope.accessLevel, 'all');
   assert.equal(scope.canUsePmDashboard, true);
-  assert.equal(scope.canAccessAllExperts, false);
+  assert.equal(scope.canAccessAllExperts, true);
   assert.equal(scope.currentExpertId, roxana.id);
+  assert.equal(scope.reason, 'admin');
   assert.equal(canAccessExpertId(scope, roxana.id), true);
-  assert.equal(canAccessExpertId(scope, andreea.id), false);
+  assert.equal(canAccessExpertId(scope, andreea.id), true);
 
   const activities = [
     { id: 'own-a1', expertId: roxana.id, date: '2026-05-04', title: 'Raport GT', activityType: 'Raport', hours: 4 },
     { id: 'other-a1', expertId: andreea.id, date: '2026-05-04', title: 'Raport AP', activityType: 'Raport', hours: 4 },
   ] as Activity[];
-  assert.deepEqual(filterActivitiesForScope(activities, scope).map((activity) => activity.id), ['own-a1']);
+  assert.deepEqual(filterActivitiesForScope(activities, scope).map((activity) => activity.id), ['own-a1', 'other-a1']);
 
   const documents = [
     { id: 'own-doc', uploadedByExpertId: roxana.id, s3Key: 'own', originalFileName: 'own.pdf', mimeType: 'application/pdf', fileSize: 1, uploadDate: '2026-05-04' },
     { id: 'other-doc', uploadedByExpertId: andreea.id, s3Key: 'other', originalFileName: 'other.pdf', mimeType: 'application/pdf', fileSize: 1, uploadDate: '2026-05-04' },
   ] as DocumentMetadata[];
-  assert.deepEqual(filterDocumentsForScope(documents, scope).map((document) => document.id), ['own-doc']);
+  assert.deepEqual(filterDocumentsForScope(documents, scope).map((document) => document.id), ['own-doc', 'other-doc']);
 
   const statuses = [
     { id: 'own-status', expertId: roxana.id, month: 4, year: 2026, status: 'sent' },
     { id: 'other-status', expertId: andreea.id, month: 4, year: 2026, status: 'approved' },
   ] as ReportStatus[];
-  assert.deepEqual(filterReportStatusesForScope(statuses, scope).map((status) => status.id), ['own-status']);
+  assert.deepEqual(filterReportStatusesForScope(statuses, scope).map((status) => status.id), ['own-status', 'other-status']);
 });
 
 test('PM pur si Admin au acces extins la toate raportarile', () => {
