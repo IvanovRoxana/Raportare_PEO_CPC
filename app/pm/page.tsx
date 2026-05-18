@@ -8,12 +8,6 @@ import {
   Save,
   Loader2,
   AlertCircle,
-  CheckCircle,
-  XCircle,
-  MessageSquare,
-  Eye,
-  FileWarning,
-  FolderOpen,
 } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -66,7 +60,6 @@ import {
 import { buildDashboardComplianceRows } from '@/lib/reporting-dashboard';
 import { getSignedInUser, type AppUser } from '@/lib/aws/auth';
 import { buildPmDashboardSummary } from '@/lib/pm-dashboard';
-import { isActivitySuggestionRelation } from '@/lib/document-sharing';
 import {
   canAccessExpertId,
   filterActivitiesForScope,
@@ -96,6 +89,10 @@ import { ProgressReportTab } from '@/components/pm/progress-report-tab';
 import { GTProgressTab } from '@/components/pm/gt-progress-tab';
 import { DosarExpertModal } from '@/components/pm/dosar-expert-modal';
 import { DoubleFundingTab } from '@/components/pm/double-funding-tab';
+import { PmStatusPanel } from '@/components/pm/pm-status-panel';
+import { PmDashboardKpiCards } from '@/components/pm/pm-dashboard-kpi-cards';
+import { PmAlertsPanel } from '@/components/pm/pm-alerts-panel';
+import { PmMonthlyStatusTable } from '@/components/pm/pm-monthly-status-table';
 
 const EMPTY_PONTAJ_ROWS: PontajRow[] = [];
 const EMPTY_RAPORT_ROWS: RaportRow[] = [];
@@ -578,204 +575,161 @@ export default function PMDashboard() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b bg-card">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
+      <header className="border-b bg-card/95">
+        <div className="container mx-auto px-4 py-5">
+          <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex items-start gap-4">
               <Link href="/">
-                <Button variant="ghost" size="icon">
+                <Button variant="ghost" size="icon" className="mt-1 rounded-full">
                   <ArrowLeft className="h-5 w-5" />
                 </Button>
               </Link>
-              <div>
-                <h1 className="text-xl font-bold text-foreground">
-                  {hasExtendedExpertAccess ? 'PM Dashboard - Verificare' : 'Raportarea mea - Verificare'}
-                </h1>
-                <p className="text-sm text-muted-foreground">
-                  Cod Proiect: 302141
-                </p>
+              <div className="space-y-2">
+                <Badge variant="outline" className="border-primary/30 bg-primary/5 text-primary">
+                  Control center PEO
+                </Badge>
+                <div>
+                  <h1 className="text-2xl font-bold tracking-tight text-foreground md:text-3xl">
+                    {hasExtendedExpertAccess
+                      ? 'Dashboard PM — Raportare PEO 302141'
+                      : 'Raportarea mea — Verificare'}
+                  </h1>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {getMonthName(selectedMonth)} {selectedYear} • Cod proiect 302141
+                  </p>
+                </div>
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
-              {/* Expert Selector */}
-              <Select
-                value={selectedExpertId || ''}
-                onValueChange={(id) => setSelectedExpertId(id)}
-                disabled={!hasExtendedExpertAccess}
-              >
-                <SelectTrigger className="w-[160px]">
-                  <SelectValue placeholder="Expert" />
-                </SelectTrigger>
-                <SelectContent>
-                  {visibleExperts.map((expert) => (
-                    <SelectItem key={expert.id} value={expert.id}>
-                      {expert.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+              <div className="rounded-2xl border bg-background/70 p-3 shadow-sm">
+                <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Filtre raportare
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <Select
+                    value={selectedExpertId || ''}
+                    onValueChange={(id) => setSelectedExpertId(id)}
+                    disabled={!hasExtendedExpertAccess}
+                  >
+                    <SelectTrigger className="w-full sm:w-[190px]">
+                      <SelectValue placeholder="Expert" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {visibleExperts.map((expert) => (
+                        <SelectItem key={expert.id} value={expert.id}>
+                          {expert.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
 
-              {/* Month Selector */}
-              <Select
-                value={selectedMonth.toString()}
-                onValueChange={(v) => setSelectedMonth(parseInt(v))}
-              >
-                <SelectTrigger className="w-[130px]">
-                  <SelectValue placeholder="Luna" />
-                </SelectTrigger>
-                <SelectContent>
-                  {months.map((m) => (
-                    <SelectItem key={m.value} value={m.value.toString()}>
-                      {m.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                  <Select
+                    value={selectedMonth.toString()}
+                    onValueChange={(v) => setSelectedMonth(parseInt(v))}
+                  >
+                    <SelectTrigger className="w-full sm:w-[140px]">
+                      <SelectValue placeholder="Luna" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {months.map((m) => (
+                        <SelectItem key={m.value} value={m.value.toString()}>
+                          {m.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
 
-              {/* Year Selector */}
-              <Select
-                value={selectedYear.toString()}
-                onValueChange={(v) => setSelectedYear(parseInt(v))}
-              >
-                <SelectTrigger className="w-[90px]">
-                  <SelectValue placeholder="An" />
-                </SelectTrigger>
-                <SelectContent>
-                  {years.map((y) => (
-                    <SelectItem key={y.value} value={y.value.toString()}>
-                      {y.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                  <Select
+                    value={selectedYear.toString()}
+                    onValueChange={(v) => setSelectedYear(parseInt(v))}
+                  >
+                    <SelectTrigger className="w-full sm:w-[100px]">
+                      <SelectValue placeholder="An" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {years.map((y) => (
+                        <SelectItem key={y.value} value={y.value.toString()}>
+                          {y.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
 
-              {canManagePmReview && (
-                <Button variant="outline" onClick={saveVerificationData} disabled={isSaving}>
-                  {isSaving ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  ) : (
-                    <Save className="h-4 w-4 mr-2" />
-                  )}
-                  Salveaza
-                </Button>
-              )}
+              <div className="flex items-center gap-2 self-start lg:self-center">
+                {canManagePmReview && (
+                  <Button onClick={saveVerificationData} disabled={isSaving}>
+                    {isSaving ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Save className="h-4 w-4 mr-2" />
+                    )}
+                    Salvează
+                  </Button>
+                )}
 
-              {canManagePmReview && (
-                <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
-                  <DialogTrigger asChild>
-                    <Button variant="outline" size="icon">
-                      <Settings className="h-5 w-5" />
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Setari</DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-4 py-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="apiKey">Claude API Key</Label>
-                        <Input
-                          id="apiKey"
-                          type="password"
-                          value={localApiKey}
-                          onChange={(e) => setLocalApiKey(e.target.value)}
-                          placeholder="sk-ant-..."
-                        />
-                        <p className="text-xs text-muted-foreground">
-                          Necesar pentru functiile AI (comparare documente, asistent Ramona)
-                        </p>
-                      </div>
-                      <Button onClick={handleSaveSettings} className="w-full">
-                        Salveaza
+                {canManagePmReview && (
+                  <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+                    <DialogTrigger asChild>
+                      <Button variant="outline" size="icon">
+                        <Settings className="h-5 w-5" />
                       </Button>
-                    </div>
-                  </DialogContent>
-                </Dialog>
-              )}
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Setari</DialogTitle>
+                      </DialogHeader>
+                      <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="apiKey">Claude API Key</Label>
+                          <Input
+                            id="apiKey"
+                            type="password"
+                            value={localApiKey}
+                            onChange={(e) => setLocalApiKey(e.target.value)}
+                            placeholder="sk-ant-..."
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Necesar pentru functiile AI (comparare documente, asistent Ramona)
+                          </p>
+                        </div>
+                        <Button onClick={handleSaveSettings} className="w-full">
+                          Salveaza
+                        </Button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                )}
 
-              <UserMenu />
+                <UserMenu />
+              </div>
             </div>
           </div>
         </div>
       </header>
 
-      {/* Statistics Bar */}
-      <div className="border-b bg-muted/30">
-        <div className="container mx-auto px-4 py-3">
-          <div className="flex flex-wrap items-center gap-3 text-sm">
-            <div className="flex items-center gap-2">
-              <span className="text-muted-foreground">Status lună:</span>
-              <Badge variant={currentReportStatusMeta.variant}>{currentReportStatusMeta.label}</Badge>
-              {reportStatusLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-muted-foreground">Acces expert:</span>
-              <Badge variant={reportStatus?.expertAccessApproved ? 'default' : 'secondary'}>
-                {reportStatus?.expertAccessApproved ? 'Permis' : 'Blocat'}
-              </Badge>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-muted-foreground">Pontaj:</span>
-              <Badge variant={pontajVerified === pontajData.length && pontajData.length > 0 ? 'default' : 'secondary'}>
-                {pontajVerified}/{pontajData.length}
-              </Badge>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-muted-foreground">Raport:</span>
-              <Badge variant={raportVerified === raportData.length && raportData.length > 0 ? 'default' : 'secondary'}>
-                {raportVerified}/{raportData.length}
-              </Badge>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-muted-foreground">Livrabile:</span>
-              <Badge variant={livrabileMatched === livrabileData.length && livrabileData.length > 0 ? 'default' : 'secondary'}>
-                {livrabileMatched}/{livrabileData.length}
-              </Badge>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-muted-foreground">Neconformitati:</span>
-              <Badge variant={unresolvedIssues > 0 ? 'destructive' : 'secondary'}>
-                {unresolvedIssues} nerezolvate
-              </Badge>
-            </div>
-            {verificationLoading && (
-              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-            )}
-          </div>
-          {reportStatus?.pmNotes && (
-            <p className="mt-2 text-xs text-muted-foreground">Observații status: {reportStatus.pmNotes}</p>
-          )}
-          {canManagePmReview && (
-            <div className="mt-3 flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" onClick={() => setMonthlyStatus('in_review')}>
-                <Eye className="h-4 w-4" />
-                În verificare
-              </Button>
-              <Button variant="outline" size="sm" onClick={requestClarifications}>
-                <MessageSquare className="h-4 w-4" />
-                Cere clarificări
-              </Button>
-              <Button variant="outline" size="sm" onClick={rejectMonth}>
-                <XCircle className="h-4 w-4" />
-                Respinge
-              </Button>
-              <Button size="sm" onClick={() => setMonthlyStatus('approved', reportStatus?.pmNotes)}>
-                <CheckCircle className="h-4 w-4" />
-                Aprobă luna
-              </Button>
-              <Button variant="outline" size="sm" onClick={toggleExpertMonthAccess}>
-                <FolderOpen className="h-4 w-4" />
-                {reportStatus?.expertAccessApproved ? 'Revocă acces expert' : 'Permite acces expert'}
-              </Button>
-              <Button variant="outline" size="sm" onClick={openPmExceptionDialog}>
-                <FileWarning className="h-4 w-4" />
-                Adaugă CO/CM/Altele
-              </Button>
-            </div>
-          )}
-        </div>
-      </div>
+      <PmStatusPanel
+        statusMeta={currentReportStatusMeta}
+        reportStatus={reportStatus}
+        reportStatusLoading={reportStatusLoading}
+        verificationLoading={verificationLoading}
+        canManagePmReview={canManagePmReview}
+        pontajVerified={pontajVerified}
+        pontajTotal={pontajData.length}
+        raportVerified={raportVerified}
+        raportTotal={raportData.length}
+        livrabileMatched={livrabileMatched}
+        livrabileTotal={livrabileData.length}
+        unresolvedIssues={unresolvedIssues}
+        onSetInReview={() => setMonthlyStatus('in_review')}
+        onRequestClarifications={requestClarifications}
+        onRejectMonth={rejectMonth}
+        onApproveMonth={() => setMonthlyStatus('approved', reportStatus?.pmNotes)}
+        onToggleExpertAccess={toggleExpertMonthAccess}
+        onOpenPmExceptionDialog={openPmExceptionDialog}
+      />
 
       <Dialog open={pmExceptionOpen} onOpenChange={setPmExceptionOpen}>
         <DialogContent>
@@ -840,173 +794,31 @@ export default function PMDashboard() {
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-6">
-        <section className="mb-6 grid gap-3 md:grid-cols-5">
-          <div className="rounded-lg border bg-card p-4">
-            <p className="text-xs font-medium text-muted-foreground">
-              {hasExtendedExpertAccess ? 'Experți monitorizați' : 'Raportare vizibilă'}
-            </p>
-            <p className="mt-1 text-2xl font-bold">{pmSummary.totalExperts}</p>
-            <p className="mt-1 text-xs text-muted-foreground">Draft {pmSummary.statusCounts.draft} / Trimis {pmSummary.statusCounts.sent} / Aprobat {pmSummary.statusCounts.approved}</p>
-          </div>
-          <div className="rounded-lg border bg-card p-4">
-            <p className="text-xs font-medium text-muted-foreground">Ore pontate</p>
-            <p className="mt-1 text-2xl font-bold">{dashboardTotals.totalHours}h</p>
-            <p className="mt-1 text-xs text-muted-foreground">Rămase {dashboardTotals.totalRemaining}h</p>
-          </div>
-          <div className="rounded-lg border bg-card p-4">
-            <p className="text-xs font-medium text-muted-foreground">Zile fara activitate</p>
-            <p className="mt-1 text-2xl font-bold">{dashboardTotals.missingDays}</p>
-          </div>
-          <div className="rounded-lg border bg-card p-4">
-            <p className="text-xs font-medium text-muted-foreground">Zile blocate</p>
-            <p className="mt-1 text-2xl font-bold">{dashboardTotals.blockedDays}</p>
-          </div>
-          <div className="rounded-lg border bg-card p-4">
-            <p className="text-xs font-medium text-muted-foreground">Alerte documente</p>
-            <p className="mt-1 text-2xl font-bold">{pmSummary.titleIssues + pmSummary.pendingSharedDeliverables}</p>
-            <p className="mt-1 text-xs text-muted-foreground">Titlu {pmSummary.titleIssues} / comune {pmSummary.pendingSharedDeliverables}</p>
-          </div>
-        </section>
+        <PmDashboardKpiCards
+          hasExtendedExpertAccess={hasExtendedExpertAccess}
+          pmSummary={pmSummary}
+          dashboardTotals={dashboardTotals}
+          titleIssuesCount={titleIssues.length}
+          pendingSharedDeliverablesCount={pendingSharedDeliverables.length}
+          eventDocumentIssuesCount={eventDocumentIssues.length}
+        />
 
-        <section className="mb-6 rounded-lg border bg-card">
-          <div className="border-b p-4">
-            <h2 className="text-base font-semibold">
-              {hasExtendedExpertAccess ? 'Status lunar pentru toți experții' : 'Status lunar pentru raportarea mea'}
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              {hasExtendedExpertAccess
-                ? 'Centralizează rolul, categoria, norma, orele pontate, statusul raportării și problemele lunii selectate.'
-                : 'Afișează strict rolul, norma, orele pontate, statusul raportării și problemele proprii pentru luna selectată.'}
-            </p>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[920px] text-sm">
-              <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
-                <tr>
-                  <th className="px-4 py-3 font-medium">Expert</th>
-                  <th className="px-4 py-3 font-medium">Categorie</th>
-                  <th className="px-4 py-3 font-medium">Rol</th>
-                  <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="px-4 py-3 font-medium">Ore / normă</th>
-                  <th className="px-4 py-3 font-medium">Completare</th>
-                  <th className="px-4 py-3 font-medium">Probleme</th>
-                  <th className="px-4 py-3 font-medium">Acțiuni</th>
-                </tr>
-              </thead>
-              <tbody>
-                {dashboardRows.map((row) => {
-                  const expert = visibleExperts.find((item) => item.id === row.expertId);
-                  const monthlyStatus = reportStatusByExpertId.get(row.expertId)?.status || 'draft';
-                  const statusMeta = statusLabels[monthlyStatus] || statusLabels.draft;
-                  const issues = [
-                    row.hasDailyLimitIssue ? '8h/zi' : null,
-                    row.hasMonthlyNormIssue ? 'normă lunară' : null,
-                    row.hasProjectNormIssue ? 'normă proiect' : null,
-                    row.missingActivityDays.length > 0 ? `${row.missingActivityDays.length} zile lipsă` : null,
-                    row.blockedDays.length > 0 ? `${row.blockedDays.length} zile blocate` : null,
-                    row.adminInterventions > 0 ? `${row.adminInterventions} intervenții admin` : null,
-                  ].filter(Boolean);
+        <PmAlertsPanel
+          titleIssues={titleIssues}
+          pendingSharedDeliverables={pendingSharedDeliverables}
+          eventDocumentIssues={eventDocumentIssues}
+          unresolvedNeconformitati={localNeconformitati.filter((item) => !item.resolved)}
+          dashboardRows={dashboardRows}
+        />
 
-                  return (
-                    <tr key={row.expertId} className="border-t">
-                      <td className="px-4 py-3 font-medium">{row.expertName}</td>
-                      <td className="px-4 py-3">{row.category || '-'}</td>
-                      <td className="px-4 py-3">{row.role || '-'}</td>
-                      <td className="px-4 py-3">
-                        <Badge variant={statusMeta.variant}>{statusMeta.label}</Badge>
-                      </td>
-                      <td className="px-4 py-3">{row.totalHours}h / {row.monthlyNorm}h</td>
-                      <td className="px-4 py-3">{row.utilizationPercent}%</td>
-                      <td className="px-4 py-3">
-                        {issues.length > 0 ? (
-                          <div className="flex flex-wrap gap-1">
-                            {issues.map((issue) => (
-                              <Badge key={issue} variant="outline" className="border-amber-300 bg-amber-50 text-amber-900">
-                                {issue}
-                              </Badge>
-                            ))}
-                          </div>
-                        ) : (
-                          <Badge variant="secondary">OK</Badge>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        {expert && (
-                          <Button variant="outline" size="sm" onClick={() => openDossier(expert)}>
-                            <FolderOpen className="h-4 w-4" />
-                            Dosar
-                          </Button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        {(eventDocumentIssues.length > 0 || titleIssues.length > 0) && (
-          <section className="mb-6 grid gap-3 md:grid-cols-2">
-            {eventDocumentIssues.length > 0 && (
-              <div className="rounded-lg border border-amber-300 bg-amber-50 p-4">
-                <div className="flex items-center gap-2 font-semibold text-amber-950">
-                  <FileWarning className="h-4 w-4" />
-                  Evenimente fără MOM sau dovadă eveniment ({eventDocumentIssues.length})
-                </div>
-                <div className="mt-2 space-y-1 text-sm text-amber-950">
-                  {eventDocumentIssues.slice(0, 4).map((activity) => (
-                    <div key={activity.id}>{activity.date} - {activity.expertName}: {activity.title || activity.activityType}</div>
-                  ))}
-                </div>
-              </div>
-            )}
-            {titleIssues.length > 0 && (
-              <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-4">
-                <div className="flex items-center gap-2 font-semibold text-destructive">
-                  <AlertCircle className="h-4 w-4" />
-                  Documente cu title_mismatch ({titleIssues.length})
-                </div>
-                <div className="mt-2 space-y-1 text-sm">
-                  {titleIssues.slice(0, 4).map((document) => (
-                    <div key={document.id}>{document.declaredTitle || document.originalFileName}</div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </section>
-        )}
-
-        {pendingSharedDeliverables.length > 0 && (
-          <section className="mb-6 rounded-lg border border-amber-300 bg-amber-50 p-4">
-            <div className="flex items-center gap-2 font-semibold text-amber-950">
-              <AlertCircle className="h-4 w-4" />
-              Activitati/livrabile comune de verificat ({pendingSharedDeliverables.length})
-            </div>
-            <div className="mt-3 grid gap-2 md:grid-cols-2">
-              {pendingSharedDeliverables.map(({ relation, document, sourceExpert, targetExpert }) => (
-                <div key={relation.id} className="rounded-md border border-amber-200 bg-white/70 p-3 text-sm">
-                  <div className="font-medium">
-                    {isActivitySuggestionRelation(relation)
-                      ? 'Sugestie activitate comuna'
-                      : document?.declaredTitle || document?.suggestedTitle || document?.originalFileName || relation.documentId}
-                  </div>
-                  <div className="mt-1 text-xs text-muted-foreground">
-                    {isActivitySuggestionRelation(relation)
-                      ? `Sugerata de ${sourceExpert?.name || relation.sourceExpertId} pentru ${targetExpert?.name || relation.targetExpertId}`
-                      : `Incarcat de ${sourceExpert?.name || relation.sourceExpertId} pentru ${targetExpert?.name || relation.targetExpertId}`}
-                  </div>
-                  <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                    {document?.projectId && <Badge variant="outline">{document.projectId}</Badge>}
-                    {document?.saCode && <Badge variant="outline">{document.saCode}</Badge>}
-                    {document?.activityDate && <Badge variant="outline">{document.activityDate}</Badge>}
-                    <Badge variant={relation.status === 'ignored_by_target' ? 'outline' : 'secondary'}>{relation.status}</Badge>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
+        <PmMonthlyStatusTable
+          hasExtendedExpertAccess={hasExtendedExpertAccess}
+          dashboardRows={dashboardRows}
+          visibleExperts={visibleExperts}
+          reportStatusByExpertId={reportStatusByExpertId}
+          statusLabels={statusLabels}
+          onOpenDossier={openDossier}
+        />
 
         <Tabs defaultValue="pontaj" className="space-y-6">
           <TabsList className="flex h-auto flex-wrap">
