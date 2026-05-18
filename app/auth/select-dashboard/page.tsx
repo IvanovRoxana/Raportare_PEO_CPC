@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { BriefcaseBusiness, CircleDollarSign, FileText, LayoutDashboard, Loader2 } from 'lucide-react';
+import { BriefcaseBusiness, CircleDollarSign, FileText, LayoutDashboard, Loader2, ShieldCheck } from 'lucide-react';
 import { getDashboardPathForRoles, getSignedInUser } from '@/lib/aws/auth';
 import { resolveDashboardAccess } from '@/lib/pm-dashboard';
 import { Button } from '@/components/ui/button';
@@ -12,6 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 export default function SelectDashboardPage() {
   const [canUseExpert, setCanUseExpert] = useState(false);
   const [canUsePm, setCanUsePm] = useState(false);
+  const [canUseAdmin, setCanUseAdmin] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
 
@@ -23,14 +24,17 @@ export default function SelectDashboardPage() {
       }
 
       const { canUseExpert: expertAccess, canUsePm: pmAccess } = resolveDashboardAccess({ roles: user.roles });
+      const adminAccess = user.roles.includes('admin');
+      const availableDashboards = [expertAccess, pmAccess, adminAccess].filter(Boolean).length;
 
-      if (!(expertAccess && pmAccess)) {
+      if (availableDashboards <= 1) {
         router.replace(getDashboardPathForRoles(user.roles));
         return;
       }
 
       setCanUseExpert(expertAccess);
       setCanUsePm(pmAccess);
+      setCanUseAdmin(adminAccess);
       setIsLoading(false);
     });
   }, [router]);
@@ -52,7 +56,7 @@ export default function SelectDashboardPage() {
           <CardHeader className="text-center">
             <CardTitle className="text-2xl">Alege zona de lucru</CardTitle>
             <CardDescription>
-              Contul tău are acces atât la zona de expert, cât și la zona PM.
+              Contul tău are mai multe roluri. Alege explicit dacă lucrezi ca Expert, PM sau Admin.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -61,7 +65,7 @@ export default function SelectDashboardPage() {
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
               </div>
             ) : (
-              <div className="grid gap-4 sm:grid-cols-3">
+              <div className="grid gap-4 sm:grid-cols-4">
                 {canUseExpert && (
                   <Button asChild size="lg" className="h-24 flex-col gap-2">
                     <Link href="/expert">
@@ -85,6 +89,15 @@ export default function SelectDashboardPage() {
                     <Link href="/financiar">
                       <CircleDollarSign className="h-6 w-6" />
                       Dashboard financiar
+                    </Link>
+                  </Button>
+                )}
+
+                {canUseAdmin && (
+                  <Button asChild size="lg" variant="default" className="h-24 flex-col gap-2">
+                    <Link href="/admin">
+                      <ShieldCheck className="h-6 w-6" />
+                      Dashboard Admin
                     </Link>
                   </Button>
                 )}

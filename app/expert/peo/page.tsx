@@ -32,6 +32,7 @@ import { MonthlyReportExport } from '@/components/expert/monthly-report-export';
 import { getMonthName } from '@/lib/backend-store';
 import { useExperts, useActivitiesByMonth, useActivityMutations, useApiKey, useReportStatus, useConcurrentProjects, useSharedDeliverables, useSharedDeliverableMutations } from '@/hooks/use-backend-data';
 import type { Activity, Deliverable, Expert, ReportStatus } from '@/lib/types';
+import { AdminViewAsBanner } from '@/components/admin/admin-view-as-banner';
 import { UserMenu } from '@/components/user-menu';
 import { getSignedInUser } from '@/lib/aws/auth';
 import { isGtExpertCategory } from '@/lib/peo-category';
@@ -548,6 +549,7 @@ export default function ExpertDashboard() {
 
   return (
     <div className="min-h-screen bg-background">
+      <AdminViewAsBanner />
       {/* Header */}
       <header className="border-b bg-card">
         <div className="container mx-auto px-4 py-4">

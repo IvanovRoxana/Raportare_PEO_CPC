@@ -12,6 +12,7 @@ import {
   Globe2,
   Users,
 } from 'lucide-react';
+import { AdminViewAsBanner } from '@/components/admin/admin-view-as-banner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -282,6 +283,7 @@ export default function ExpertHomeDashboard() {
 
   return (
     <div className="min-h-screen bg-background">
+      <AdminViewAsBanner />
       <header className="border-b bg-card">
         <div className="mx-auto flex max-w-screen-2xl flex-wrap items-center justify-between gap-4 px-4 py-5 sm:px-6 lg:px-8">
           <div>

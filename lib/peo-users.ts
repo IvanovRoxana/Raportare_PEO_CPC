@@ -1,6 +1,6 @@
 import type { Expert } from './types';
 
-export type PeoUserRole = 'expert' | 'pm';
+export type PeoUserRole = 'expert' | 'pm' | 'admin';
 
 export type PeoUser = {
   id: string;
@@ -103,7 +103,7 @@ export const peoUsers: PeoUser[] = [
     category: 'gt',
     norma: 8,
     saCodes: ['SA1.1'],
-    roles: ['expert', 'pm'],
+    roles: ['expert', 'pm', 'admin'],
   },
   {
     id: 'dan-zaharia',
@@ -166,7 +166,8 @@ export function peoUsersAsExperts(): Expert[] {
     projectCode: '302141',
     projectTitle: 'Consolidarea capacității Concordia pentru dialog social',
     saCodes: user.saCodes,
-    hasPmAccess: user.roles.includes('pm'),
+    hasPmAccess: user.roles.includes('pm') || user.roles.includes('admin'),
+    cognitoGroups: user.roles,
     isActive: true,
     createdAt: now,
     updatedAt: now,
