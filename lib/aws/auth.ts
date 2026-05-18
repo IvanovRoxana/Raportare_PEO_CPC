@@ -14,6 +14,7 @@ import { configureAmplify } from './client';
 import { peoUsersAsExperts } from '@/lib/peo-users';
 import { mergeRolesWithExpertProfile } from '@/lib/pm-dashboard';
 import { buildViewAsUser, getAdminViewAsSession } from '@/lib/admin-view-as';
+import { getDashboardPathForRoleSet } from '@/lib/dashboard-routing';
 
 export type AppRole = 'expert' | 'pm' | 'admin';
 
@@ -107,18 +108,7 @@ export async function getCurrentUserRoles(): Promise<AppRole[]> {
 }
 
 export function getDashboardPathForRoles(roles: AppRole[]) {
-  const canUseExpert = roles.includes('expert');
-  const canUsePm = roles.includes('pm') || roles.includes('admin');
-
-  if (canUseExpert) {
-    return '/expert';
-  }
-
-  if (canUsePm) {
-    return '/pm';
-  }
-
-  return '/expert';
+  return getDashboardPathForRoleSet(roles);
 }
 
 export async function signOutCurrentUser() {
