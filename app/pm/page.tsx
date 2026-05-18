@@ -64,6 +64,7 @@ import {
 import { buildDashboardComplianceRows } from '@/lib/reporting-dashboard';
 import { getSignedInUser, type AppUser } from '@/lib/aws/auth';
 import { buildPmDashboardSummary } from '@/lib/pm-dashboard';
+import { isActivitySuggestionRelation } from '@/lib/document-sharing';
 import {
   canAccessExpertId,
   filterActivitiesForScope,
@@ -458,7 +459,7 @@ export default function PMDashboard() {
   }, [dashboardRows]);
   const pendingSharedDeliverables = useMemo(() => {
     return sharedDeliverables
-      .filter((relation) => relation.status === 'pending_registration')
+      .filter((relation) => relation.status === 'pending_registration' || relation.status === 'ignored_by_target')
       .map((relation) => ({
         relation,
         document: documents.find((document) => document.id === relation.documentId),
@@ -971,22 +972,26 @@ export default function PMDashboard() {
           <section className="mb-6 rounded-lg border border-amber-300 bg-amber-50 p-4">
             <div className="flex items-center gap-2 font-semibold text-amber-950">
               <AlertCircle className="h-4 w-4" />
-              Livrabile comune in asteptarea inregistrarii ({pendingSharedDeliverables.length})
+              Activitati/livrabile comune de verificat ({pendingSharedDeliverables.length})
             </div>
             <div className="mt-3 grid gap-2 md:grid-cols-2">
               {pendingSharedDeliverables.map(({ relation, document, sourceExpert, targetExpert }) => (
                 <div key={relation.id} className="rounded-md border border-amber-200 bg-white/70 p-3 text-sm">
                   <div className="font-medium">
-                    {document?.declaredTitle || document?.suggestedTitle || document?.originalFileName || relation.documentId}
+                    {isActivitySuggestionRelation(relation)
+                      ? 'Sugestie activitate comuna'
+                      : document?.declaredTitle || document?.suggestedTitle || document?.originalFileName || relation.documentId}
                   </div>
                   <div className="mt-1 text-xs text-muted-foreground">
-                    Incarcat de {sourceExpert?.name || relation.sourceExpertId} pentru {targetExpert?.name || relation.targetExpertId}
+                    {isActivitySuggestionRelation(relation)
+                      ? `Sugerata de ${sourceExpert?.name || relation.sourceExpertId} pentru ${targetExpert?.name || relation.targetExpertId}`
+                      : `Incarcat de ${sourceExpert?.name || relation.sourceExpertId} pentru ${targetExpert?.name || relation.targetExpertId}`}
                   </div>
                   <div className="mt-2 flex flex-wrap gap-2 text-xs">
                     {document?.projectId && <Badge variant="outline">{document.projectId}</Badge>}
                     {document?.saCode && <Badge variant="outline">{document.saCode}</Badge>}
                     {document?.activityDate && <Badge variant="outline">{document.activityDate}</Badge>}
-                    <Badge variant="secondary">{relation.status}</Badge>
+                    <Badge variant={relation.status === 'ignored_by_target' ? 'outline' : 'secondary'}>{relation.status}</Badge>
                   </div>
                 </div>
               ))}

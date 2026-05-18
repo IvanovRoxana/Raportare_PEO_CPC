@@ -17,11 +17,11 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { UserMenu } from '@/components/user-menu';
-import { useActivitiesByMonth, useDocuments, useExperts, useSharedDeliverables } from '@/hooks/use-backend-data';
+import { useActivitiesByMonth, useDocuments, useExperts, useSharedDeliverableMutations, useSharedDeliverables } from '@/hooks/use-backend-data';
 import type { AppRole } from '@/lib/aws/auth';
 import { getSignedInUser } from '@/lib/aws/auth';
 import { getMonthName } from '@/lib/backend-store';
-import { buildPendingSharedDeliverableAlerts } from '@/lib/document-sharing';
+import { buildPendingSharedActivityAlerts, buildPendingSharedDeliverableAlerts, buildReturnedSharedActivityAlerts } from '@/lib/document-sharing';
 import { canAccessPmDashboard } from '@/lib/pm-dashboard';
 import type { Activity } from '@/lib/types';
 import { getNonWorkingDayInfo } from '@/lib/non-working-days';
@@ -222,7 +222,8 @@ export default function ExpertHomeDashboard() {
   }, [experts, signedInEmail]);
 
   const expertName = currentExpert?.name ?? signedInName;
-  const { sharedDeliverables } = useSharedDeliverables(currentExpert?.id);
+  const { sharedDeliverables, mutate: refreshSharedDeliverables } = useSharedDeliverables();
+  const { ignore: ignoreSharedSuggestion } = useSharedDeliverableMutations();
   const pendingSharedAlerts = useMemo(() => {
     if (!currentExpert) return [];
     return buildPendingSharedDeliverableAlerts({
@@ -231,6 +232,27 @@ export default function ExpertHomeDashboard() {
       sharedDeliverables,
     });
   }, [currentExpert, documents, sharedDeliverables]);
+  const pendingActivityAlerts = useMemo(() => {
+    if (!currentExpert) return [];
+    return buildPendingSharedActivityAlerts({
+      expert: currentExpert,
+      experts,
+      sharedDeliverables,
+    });
+  }, [currentExpert, experts, sharedDeliverables]);
+  const returnedActivityAlerts = useMemo(() => {
+    if (!currentExpert) return [];
+    return buildReturnedSharedActivityAlerts({
+      expert: currentExpert,
+      experts,
+      sharedDeliverables,
+    });
+  }, [currentExpert, experts, sharedDeliverables]);
+
+  const handleIgnoreActivitySuggestion = async (relationId: string) => {
+    await ignoreSharedSuggestion(relationId);
+    await refreshSharedDeliverables();
+  };
 
   const peoActivities = useMemo(() => {
     if (!currentExpert) return [];
@@ -280,6 +302,63 @@ export default function ExpertHomeDashboard() {
       </header>
 
       <main className="mx-auto max-w-screen-2xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+
+        {pendingActivityAlerts.length > 0 && (
+          <section className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-950">
+            <div className="flex items-center gap-2 font-semibold">
+              <AlertTriangle className="h-4 w-4" />
+              Activitati comune sugerate
+            </div>
+            <div className="mt-3 space-y-2">
+              {pendingActivityAlerts.map((alert) => (
+                <div key={alert.relationId} className="rounded-md border border-amber-200 bg-white/70 p-3 text-sm">
+                  <div className="font-medium">Sugestie de la {alert.sourceExpertName}</div>
+                  <div className="mt-1 text-xs text-amber-800">{alert.message}</div>
+                  <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                    {alert.projectId && <Badge variant="outline">{alert.projectId}</Badge>}
+                    <Badge variant="secondary">{alert.status}</Badge>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button asChild size="sm" className="h-8 rounded-md">
+                      <Link href={`/expert/peo?sharedActivityRelationId=${encodeURIComponent(alert.relationId)}`}>Adauga activitate</Link>
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8 rounded-md border-amber-300 text-amber-900"
+                      onClick={() => handleIgnoreActivitySuggestion(alert.relationId)}
+                    >
+                      Ignora activitatea
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {returnedActivityAlerts.length > 0 && (
+          <section className="rounded-lg border border-orange-300 bg-orange-50 p-4 text-orange-950">
+            <div className="flex items-center gap-2 font-semibold">
+              <AlertTriangle className="h-4 w-4" />
+              Activitati comune ignorate
+            </div>
+            <div className="mt-3 space-y-2">
+              {returnedActivityAlerts.map((alert) => (
+                <div key={alert.relationId} className="rounded-md border border-orange-200 bg-white/70 p-3 text-sm">
+                  <div className="font-medium">{alert.targetExpertName} a ignorat sugestia</div>
+                  <div className="mt-1 text-xs text-orange-800">{alert.message}</div>
+                  <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                    {alert.projectId && <Badge variant="outline">{alert.projectId}</Badge>}
+                    <Badge variant="secondary">{alert.status}</Badge>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
         {pendingSharedAlerts.length > 0 && (
           <section className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-950">
             <div className="flex items-center gap-2 font-semibold">
