@@ -15,6 +15,7 @@ export const settingsService = awsStore.settingsService;
 export const activityCatalogService = awsStore.activityCatalogService;
 export const workingGroupsService = awsStore.workingGroupsService;
 export const concurrentProjectsService = awsStore.concurrentProjectsService;
+export const concurrentProjectTimesheetService = awsStore.concurrentProjectTimesheetService;
 export const reportStatusService = awsStore.reportStatusService;
 export const grupTintaService = awsStore.grupTintaService;
 export const auditLogsService = awsStore.auditLogsService;

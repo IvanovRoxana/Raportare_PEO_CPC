@@ -90,3 +90,108 @@ test('summary si export PM final includ riscurile de proiecte concurente', () =>
   assert.match(csv, /Ivanov Roxana/);
   assert.match(csv, /sent/);
 });
+
+import {
+  buildConsolidatedTimesheet,
+  getConcurrentProjectMonthlyTotal,
+} from '../lib/concurrent-projects.ts';
+import type { ConcurrentProjectTimesheetEntry } from '../lib/types.ts';
+
+test('calculeaza total consolidat, total proiect paralel si total pe WP din intrari zilnice', () => {
+  const activities = [
+    { id: 'a1', expertId: 'roxana', date: '2026-05-12', hours: 6, activityType: 'GT', title: 'PEO' },
+  ] as Activity[];
+  const project = {
+    id: 'gw', expertId: 'roxana', projectName: 'GOODWORKS4ALL', projectCode: 'P6-GW4ALL', dailyHours: 4, startDate: '2026-05-01', endDate: '2026-05-31', isActive: true,
+  } as ConcurrentProject;
+  const entries = [
+    { id: 'e1', concurrentProjectId: 'gw', expertId: 'roxana', date: '2026-05-12', month: 4, year: 2026, wp: 'WP1', hours: 2, taskName: 'Task', relevantDeliverable: 'D1', dayType: 'lucratoare', source: 'expert_manual', status: 'draft' },
+    { id: 'e2', concurrentProjectId: 'gw', expertId: 'roxana', date: '2026-05-13', month: 4, year: 2026, wp: 'WP2', hours: 4, taskName: 'Task', relevantDeliverable: 'D2', dayType: 'lucratoare', source: 'expert_manual', status: 'draft' },
+  ] as ConcurrentProjectTimesheetEntry[];
+
+  const total = getConcurrentProjectMonthlyTotal({ project, entries, month: 4, year: 2026 });
+  assert.equal(total.totalHours, 6);
+  assert.equal(total.totalByWp.WP1, 2);
+  assert.equal(total.totalByWp.WP2, 4);
+
+  const consolidated = buildConsolidatedTimesheet({ activities, concurrentProjects: [project], entries, month: 4, year: 2026 });
+  assert.equal(consolidated.find((row) => row.date === '2026-05-12')?.totalHours, 8);
+});
+
+test('foloseste intrarile zilnice in dublă finanțare si detecteaza depasire peste 8h', () => {
+  const activities = [
+    { id: 'a1', expertId: 'roxana', date: '2026-05-12', hours: 6, activityType: 'GT', title: 'PEO' },
+  ] as Activity[];
+  const projects = [
+    { id: 'gw', expertId: 'roxana', projectName: 'GOODWORKS4ALL', dailyHours: 1, startDate: '2026-05-01', endDate: '2026-05-31', isActive: true },
+  ] as ConcurrentProject[];
+  const entries = [
+    { id: 'e1', concurrentProjectId: 'gw', expertId: 'roxana', date: '2026-05-12', month: 4, year: 2026, wp: 'WP1', hours: 4, taskName: 'Task', relevantDeliverable: 'D1', dayType: 'lucratoare', source: 'expert_manual', status: 'draft' },
+  ] as ConcurrentProjectTimesheetEntry[];
+
+  const rows = buildDoubleFundingRiskRows({ experts, activities, concurrentProjects: projects, concurrentTimesheetEntries: entries, month: 4, year: 2026 });
+  assert.equal(rows[0].concurrentEstimatedHours, 4);
+  assert.equal(rows[0].maxDailyCombinedHours, 10);
+  assert.equal(rows[0].exceededDays, 1);
+  assert.equal(rows[0].status, 'high_risk');
+});
+
+test('detecteaza conflict CO/CM cu ore lucrate in alt proiect', () => {
+  const activities = [
+    { id: 'a1', expertId: 'roxana', date: '2026-05-11', hours: 2, activityType: 'GT', title: 'PEO' },
+  ] as Activity[];
+  const project = { id: 'gw', expertId: 'roxana', projectName: 'GOODWORKS4ALL', dailyHours: 0, startDate: '2026-05-01', endDate: '2026-05-31', isActive: true } as ConcurrentProject;
+  const entries = [
+    { id: 'e1', concurrentProjectId: 'gw', expertId: 'roxana', date: '2026-05-11', month: 4, year: 2026, wp: '', hours: 0, taskName: 'CO', relevantDeliverable: '', dayType: 'CO', source: 'pm_manual', status: 'draft' },
+  ] as ConcurrentProjectTimesheetEntry[];
+
+  const consolidated = buildConsolidatedTimesheet({ activities, concurrentProjects: [project], entries, month: 4, year: 2026 });
+  assert.equal(consolidated.find((row) => row.date === '2026-05-11')?.status, 'conflict CO-CM');
+});
+
+test('fallback dailyHours ramane activ daca nu exista intrari zilnice', () => {
+  const project = { id: 'gw', expertId: 'roxana', projectName: 'GOODWORKS4ALL', dailyHours: 2, startDate: '2026-05-01', endDate: '2026-05-31', isActive: true } as ConcurrentProject;
+  const total = getConcurrentProjectMonthlyTotal({ project, entries: [], month: 4, year: 2026 });
+  assert.equal(total.hasDailyEntries, false);
+  assert.equal(total.isIncomplete, true);
+  assert.equal(total.totalHours > 0, true);
+});
+
+test('filtrarea proiectelor paralele dupa expert si restrictia de acces self', async () => {
+  const { filterConcurrentProjectsForScope } = await import('../lib/access-control.ts');
+  const projects = [
+    { id: 'own', expertId: 'roxana', projectName: 'A', dailyHours: 1, startDate: '2026-05-01', isActive: true },
+    { id: 'other', expertId: 'alt', projectName: 'B', dailyHours: 1, startDate: '2026-05-01', isActive: true },
+  ] as ConcurrentProject[];
+  const filtered = filterConcurrentProjectsForScope(projects, { accessLevel: 'self', canUsePmDashboard: false, canAccessAllExperts: false, currentExpertId: 'roxana', reason: 'expert_self' });
+  assert.deepEqual(filtered.map((project) => project.id), ['own']);
+});
+
+test('GOODWORKS4ALL este configurat implicit pentru Andreea Cojocaru, Bianca Toma si Gabriel Zvinca', async () => {
+  const { buildDefaultConcurrentProjects, mergeConcurrentProjectsWithDefaults } = await import('../lib/default-concurrent-projects.ts');
+  const defaults = buildDefaultConcurrentProjects();
+  const projectIdsByExpert = new Map(defaults.map((project) => [project.expertId, `${project.projectName}/${project.projectCode}`]));
+
+  assert.equal(projectIdsByExpert.get('andreea-cojocaru'), 'GOODWORKS4ALL/P6-GW4ALL');
+  assert.equal(projectIdsByExpert.get('bianca-toma'), 'GOODWORKS4ALL/P6-GW4ALL');
+  assert.equal(projectIdsByExpert.get('gabriel-zvinca'), 'GOODWORKS4ALL/P6-GW4ALL');
+});
+
+test('proiectul GOODWORKS4ALL implicit nu dubleaza o inregistrare backend existenta', async () => {
+  const { buildDefaultConcurrentProjects, mergeConcurrentProjectsWithDefaults } = await import('../lib/default-concurrent-projects.ts');
+  const backendProject = {
+    id: 'backend-gw-andreea',
+    expertId: 'andreea-cojocaru',
+    expertName: 'Andreea Cojocaru',
+    projectName: 'GOODWORKS4ALL',
+    projectCode: 'P6-GW4ALL',
+    dailyHours: 0,
+    startDate: '2026-05-01',
+    isActive: true,
+  } as ConcurrentProject;
+
+  const merged = mergeConcurrentProjectsWithDefaults([backendProject], buildDefaultConcurrentProjects());
+  const andreeaGwProjects = merged.filter((project) => project.expertId === 'andreea-cojocaru' && project.projectCode === 'P6-GW4ALL');
+  assert.equal(andreeaGwProjects.length, 1);
+  assert.equal(andreeaGwProjects[0].id, 'backend-gw-andreea');
+});
