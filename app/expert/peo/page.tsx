@@ -30,7 +30,17 @@ import { ActivitiesTable } from '@/components/expert/activities-table';
 import { ReportGenerator } from '@/components/expert/report-generator';
 import { MonthlyReportExport } from '@/components/expert/monthly-report-export';
 import { getMonthName } from '@/lib/backend-store';
-import { useExperts, useActivitiesByMonth, useActivityMutations, useApiKey, useReportStatus, useConcurrentProjects, useSharedDeliverables, useSharedDeliverableMutations } from '@/hooks/use-backend-data';
+import {
+  useActivitiesByMonth,
+  useActivityMutations,
+  useApiKey,
+  useCollaborationExperts,
+  useConcurrentProjects,
+  useExperts,
+  useReportStatus,
+  useSharedDeliverableMutations,
+  useSharedDeliverables,
+} from '@/hooks/use-backend-data';
 import type { Activity, Deliverable, Expert, ReportStatus } from '@/lib/types';
 import { AdminViewAsBanner } from '@/components/admin/admin-view-as-banner';
 import { UserMenu } from '@/components/user-menu';
@@ -93,6 +103,7 @@ export default function ExpertDashboard() {
 
   // Data hooks
   const { experts, isLoading: expertsLoading } = useExperts();
+  const { experts: collaborationExperts } = useCollaborationExperts();
   const { activities: allMonthActivities, isLoading: activitiesLoading, mutate: refreshActivities } = useActivitiesByMonth(currentMonth, currentYear);
   const { createBatch, update: updateActivity, remove: removeActivity } = useActivityMutations();
   const { apiKey, setApiKey, isLoading: apiKeyLoading } = useApiKey();
@@ -777,7 +788,7 @@ export default function ExpertDashboard() {
                     expertId={selectedExpertId || ''}
                     expertName={selectedExpert.name}
                     expert={selectedExpert as import('@/lib/types').Expert}
-                    allExperts={experts}
+                    allExperts={collaborationExperts.length > 0 ? collaborationExperts : experts}
                     allActivities={allMonthActivities}
                     month={currentMonth}
                     year={currentYear}

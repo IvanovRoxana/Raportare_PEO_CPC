@@ -43,7 +43,7 @@ export function useExperts() {
     isBackendAvailable() ? 'experts' : null,
     safeFetcher(expertsService.getAll)
   );
-  
+
   return {
     experts: stableList(data),
     isLoading,
@@ -52,12 +52,26 @@ export function useExperts() {
   };
 }
 
+export function useCollaborationExperts() {
+  const { data, error, isLoading } = useSWR(
+    isBackendAvailable() ? 'collaboration-experts' : null,
+    safeFetcher(expertsService.getCollaborationOptions)
+  );
+
+  return {
+    experts: stableList(data),
+    isLoading,
+    error,
+    mutate: () => mutate('collaboration-experts'),
+  };
+}
+
 export function useExpert(id: string | null) {
   const { data, error, isLoading } = useSWR(
     id && isBackendAvailable() ? `expert-${id}` : null,
     safeFetcher(() => expertsService.getById(id!))
   );
-  
+
   return {
     expert: data,
     isLoading,
@@ -99,7 +113,7 @@ export function useActivities(expertId?: string) {
     isBackendAvailable() ? key : null,
     safeFetcher(fetcher)
   );
-  
+
   return {
     activities: stableList(data),
     isLoading,
@@ -114,7 +128,7 @@ export function useActivitiesByMonth(month: number, year: number) {
     isBackendAvailable() ? key : null,
     safeFetcher(() => activitiesService.getByMonth(month, year))
   );
-  
+
   return {
     activities: stableList(data),
     isLoading,
@@ -129,7 +143,7 @@ export function useActivitiesByDateRange(startDate: string, endDate: string) {
     isBackendAvailable() ? key : null,
     safeFetcher(() => activitiesService.getByDateRange(startDate, endDate))
   );
-  
+
   return {
     activities: stableList(data),
     isLoading,
@@ -226,7 +240,7 @@ export function useVerifications() {
     isBackendAvailable() ? 'verifications' : null,
     safeFetcher(verificationsService.getAll)
   );
-  
+
   return {
     verifications: stableList(data),
     isLoading,
@@ -241,7 +255,7 @@ export function useVerification(expertId: string | null, month: string | null, y
     key && isBackendAvailable() ? key : null,
     safeFetcher(() => verificationsService.getByExpertAndMonth(expertId!, month!, year!))
   );
-  
+
   return {
     verification: data,
     isLoading,
@@ -280,7 +294,7 @@ export function useNeconformitati(verificationId: string | null) {
     key && isBackendAvailable() ? key : null,
     safeFetcher(() => neconformitatiService.getByVerification(verificationId!))
   );
-  
+
   return {
     neconformitati: stableList(data),
     isLoading,
@@ -318,7 +332,7 @@ export function useNotes(verificationId: string | null) {
     key && isBackendAvailable() ? key : null,
     safeFetcher(() => notesService.getByVerification(verificationId!))
   );
-  
+
   return {
     notes: stableList(data),
     isLoading,
@@ -355,7 +369,7 @@ export function useSettings() {
     isBackendAvailable() ? 'settings' : null,
     safeFetcher(settingsService.get)
   );
-  
+
   return {
     settings: data || {
       claudeApiKey: '',
@@ -414,7 +428,7 @@ export function useActivityCatalog() {
     isBackendAvailable() ? 'activity-catalog' : null,
     safeFetcher(activityCatalogService.getAll)
   );
-  
+
   return {
     catalog: stableList(data),
     isLoading,
@@ -427,7 +441,7 @@ export function useActivityCatalogBySa(saCode: string | null) {
     saCode && isBackendAvailable() ? `activity-catalog-${saCode}` : null,
     safeFetcher(() => activityCatalogService.getBySaCode(saCode!))
   );
-  
+
   return {
     activities: stableList(data),
     isLoading,
@@ -444,7 +458,7 @@ export function useWorkingGroups() {
     isBackendAvailable() ? 'working-groups' : null,
     safeFetcher(workingGroupsService.getAll)
   );
-  
+
   return {
     groups: stableList(data),
     isLoading,
@@ -457,7 +471,7 @@ export function useWorkingGroupsByType(type: string | null) {
     type && isBackendAvailable() ? `working-groups-${type}` : null,
     safeFetcher(() => workingGroupsService.getByType(type!))
   );
-  
+
   return {
     groups: stableList(data),
     isLoading,
@@ -607,7 +621,7 @@ export function useReportStatusByMonth(month: number, year: number) {
     isBackendAvailable() ? key : null,
     safeFetcher(() => reportStatusService.getAllByMonth(month, year))
   );
-  
+
   return {
     statuses: stableList(data),
     isLoading,
@@ -653,7 +667,7 @@ export function useGrupTintaStats(month: number, year: number) {
     isBackendAvailable() ? key : null,
     safeFetcher(() => grupTintaService.getMonthlyStats(month, year))
   );
-  
+
   return {
     stats: stableList(data),
     isLoading,

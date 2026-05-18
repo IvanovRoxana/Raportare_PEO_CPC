@@ -5,6 +5,7 @@ import { getSignedInUser } from '@/lib/aws/auth';
 import outputs from '@/amplify_outputs.json';
 import { peoUsersAsExperts } from '@/lib/peo-users';
 import {
+  buildCollaborationExpertOptions,
   canAccessExpertId,
   filterActivitiesForScope,
   filterAuditLogsForScope,
@@ -821,6 +822,13 @@ async function createActivityUnchecked(
 }
 
 export const expertsService = {
+  async getCollaborationOptions(): Promise<Expert[]> {
+    const client = getAwsDataClient() as any;
+    await getCurrentDataAccessScope(client);
+    const experts = await listActiveExpertsFromBackend(client);
+    return buildCollaborationExpertOptions(mergeExpertLists(experts, peoUsersAsExperts()));
+  },
+
   async getAll(): Promise<Expert[]> {
     const client = getAwsDataClient() as any;
     const fallbackExperts = peoUsersAsExperts();
