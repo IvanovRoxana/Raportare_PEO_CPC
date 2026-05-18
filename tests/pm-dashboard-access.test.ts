@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { getDashboardDestinationsForRoles, getDashboardPathForRoleSet } from '../lib/dashboard-routing.ts';
+
 import {
   buildPmDashboardSummary,
   canAccessExpertModule,
@@ -159,4 +161,13 @@ test('checkCrossAlignment detecteaza activitati similare intre experti diferiti'
   assert.equal(issues[0].firstActivityId, 'a1');
   assert.equal(issues[0].secondActivityId, 'a2');
   assert.equal(issues.some((issue) => issue.firstActivityId === 'a1' && issue.secondActivityId === 'a3'), false);
+});
+
+test('Ivanov Roxana vede selectorul de rol cu Admin inclus', () => {
+  const roxana = experts.find((expert) => expert.email === 'roxana.ivanov@confederatia-concordia.ro')!;
+  const roles = mergeRolesWithExpertProfile([], roxana).sort();
+
+  assert.deepEqual(roles, ['admin', 'expert', 'pm']);
+  assert.equal(getDashboardPathForRoleSet(roles), '/auth/select-dashboard');
+  assert.deepEqual(getDashboardDestinationsForRoles(roles).map((destination) => destination.path), ['/expert', '/pm', '/admin']);
 });
