@@ -649,6 +649,9 @@ export function ActivityForm({
             docTitle: d.docTitle || undefined,
             docText: d.docText || undefined,
             suggestedTitle: d.suggestedTitle || undefined,
+            titleSuggestionConfidence: d.titleSuggestionConfidence,
+            titleSuggestionAlternatives: d.titleSuggestionAlternatives,
+            titleSuggestionReason: d.titleSuggestionReason,
             firstPageText: d.firstPageText || undefined,
             titleSource: d.titleSource,
             titleMatch: d.titleMatch,
@@ -663,6 +666,7 @@ export function ActivityForm({
                   ? 'review'
                   : undefined,
             aiReason: d.aiCheck?.reason,
+            eligibilityCheck: d.eligibilityCheck || undefined,
             fileData: d.fileData,
           })),
         location,
@@ -1008,6 +1012,18 @@ export function ActivityForm({
                         apiKey={apiKey}
                         subActivity={saCode}
                         activityTitle={activityTitle}
+                        selectedActivityId={selectedCatalogItem?.id}
+                        catalogDescription={selectedCatalogItem?.description}
+                        catalogObjectives={selectedCatalogItem?.objectives}
+                        catalogComponent={selectedCatalogItem?.serviceComponent}
+                        catalogBeneficiaries={selectedCatalogItem?.beneficiaries}
+                        catalogExpectedResults={selectedCatalogItem?.expectedResults}
+                        catalogDeliverables={selectedCatalogItem?.deliverables}
+                        catalogIndicators={selectedCatalogItem?.indicators}
+                        projectCode={expert?.projectCode}
+                        month={month}
+                        year={year}
+                        expertName={expertName}
                         onUpdate={(patch) => updateDeliverable(d.id, patch)}
                         onRemove={() => removeDeliverable(d.id)}
                         deliverableOptions={deliverableOptions}
@@ -1192,6 +1208,18 @@ export function ActivityForm({
                         apiKey={apiKey}
                         subActivity={saCode}
                         activityTitle={activityTitle}
+                        selectedActivityId={selectedCatalogItem?.id}
+                        catalogDescription={selectedCatalogItem?.description}
+                        catalogObjectives={selectedCatalogItem?.objectives}
+                        catalogComponent={selectedCatalogItem?.serviceComponent}
+                        catalogBeneficiaries={selectedCatalogItem?.beneficiaries}
+                        catalogExpectedResults={selectedCatalogItem?.expectedResults}
+                        catalogDeliverables={selectedCatalogItem?.deliverables}
+                        catalogIndicators={selectedCatalogItem?.indicators}
+                        projectCode={expert?.projectCode}
+                        month={month}
+                        year={year}
+                        expertName={expertName}
                         onUpdate={(patch) => updateDeliverable(d.id, patch)}
                         onRemove={() => removeDeliverable(d.id)}
                         required={false}

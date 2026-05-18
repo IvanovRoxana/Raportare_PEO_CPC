@@ -240,6 +240,9 @@ function withSupportedDeliverableFields(payload: Record<string, unknown>, delive
   const extendedFields: Record<string, unknown> = {
     docText: deliverable.docText,
     suggestedTitle: deliverable.suggestedTitle,
+    titleSuggestionConfidence: deliverable.titleSuggestionConfidence,
+    titleSuggestionAlternatives: deliverable.titleSuggestionAlternatives,
+    titleSuggestionReason: deliverable.titleSuggestionReason,
     firstPageText: deliverable.firstPageText,
     titleSource: deliverable.titleSource,
     titleConfirmed: deliverable.titleConfirmed,
@@ -264,6 +267,7 @@ function withSupportedDeliverableFields(payload: Record<string, unknown>, delive
     sharedWithExpertIds: deliverable.sharedWithExpertIds,
     possibleDuplicateOfDocumentId: deliverable.possibleDuplicateOfDocumentId,
     duplicateStatus: deliverable.duplicateStatus,
+    eligibilityCheck: deliverable.eligibilityCheck,
   };
 
   Object.entries(extendedFields).forEach(([field, value]) => {
@@ -369,6 +373,9 @@ function mapDeliverable(item: any): Deliverable {
     docTitle: item.docTitle ?? undefined,
     docText: item.docText ?? undefined,
     suggestedTitle: item.suggestedTitle ?? undefined,
+    titleSuggestionConfidence: item.titleSuggestionConfidence ?? undefined,
+    titleSuggestionAlternatives: item.titleSuggestionAlternatives ?? undefined,
+    titleSuggestionReason: item.titleSuggestionReason ?? undefined,
     firstPageText: item.firstPageText ?? undefined,
     titleSource: item.titleSource ?? undefined,
     titleMatch: item.titleMatch ?? null,
@@ -377,6 +384,7 @@ function mapDeliverable(item: any): Deliverable {
     titleCheckMessage: item.titleCheckMessage ?? undefined,
     aiStatus: item.aiStatus ?? undefined,
     aiReason: item.aiReason ?? undefined,
+    eligibilityCheck: item.eligibilityCheck ?? undefined,
   };
 }
 
@@ -402,10 +410,14 @@ function mapDocument(item: any): DocumentMetadata {
     deliverableType: item.deliverableType ?? undefined,
     declaredTitle: item.declaredTitle ?? undefined,
     suggestedTitle: item.suggestedTitle ?? undefined,
+    titleSuggestionConfidence: item.titleSuggestionConfidence ?? undefined,
+    titleSuggestionAlternatives: item.titleSuggestionAlternatives ?? undefined,
+    titleSuggestionReason: item.titleSuggestionReason ?? undefined,
     extractedTitle: item.extractedTitle ?? undefined,
     extractedTitleNormalized: item.extractedTitleNormalized ?? undefined,
     titleMatch: item.titleMatch ?? null,
     titleCheckStatus: item.titleCheckStatus ?? undefined,
+    eligibilityCheck: item.eligibilityCheck ?? undefined,
     isCommonDeliverable: item.isCommonDeliverable ?? false,
     possibleDuplicateOfDocumentId: item.possibleDuplicateOfDocumentId ?? undefined,
     duplicateStatus: item.duplicateStatus ?? undefined,
@@ -516,6 +528,10 @@ async function createDocumentMetadataForDeliverable(
     extractedTitleNormalized: normalizeTitleForMatch(deliverable.suggestedTitle || deliverable.docTitle || deliverable.declaredTitle || ''),
     titleMatch: deliverable.titleMatch ?? undefined,
     titleCheckStatus: deliverable.titleCheckStatus,
+    titleSuggestionConfidence: deliverable.titleSuggestionConfidence,
+    titleSuggestionAlternatives: deliverable.titleSuggestionAlternatives,
+    titleSuggestionReason: deliverable.titleSuggestionReason,
+    eligibilityCheck: deliverable.eligibilityCheck,
     isCommonDeliverable: deliverable.isCommonDeliverable ?? false,
     possibleDuplicateOfDocumentId: duplicate?.document.id || deliverable.possibleDuplicateOfDocumentId,
     duplicateStatus,

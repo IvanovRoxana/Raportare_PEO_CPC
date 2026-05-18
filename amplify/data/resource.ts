@@ -122,6 +122,9 @@ const schema = a.schema({
       docTitle: a.string(),
       docText: a.string(),
       suggestedTitle: a.string(),
+      titleSuggestionConfidence: a.string(),
+      titleSuggestionAlternatives: a.string().array(),
+      titleSuggestionReason: a.string(),
       firstPageText: a.string(),
       titleSource: a.string(),
       titleMatch: a.boolean(),
@@ -130,6 +133,7 @@ const schema = a.schema({
       titleCheckMessage: a.string(),
       aiStatus: a.string(),
       aiReason: a.string(),
+      eligibilityCheck: a.json(),
     })
     .secondaryIndexes((index) => [index("activityId")])
     .authorization((allow) => [
@@ -158,10 +162,14 @@ const schema = a.schema({
       deliverableType: a.string(),
       declaredTitle: a.string(),
       suggestedTitle: a.string(),
+      titleSuggestionConfidence: a.string(),
+      titleSuggestionAlternatives: a.string().array(),
+      titleSuggestionReason: a.string(),
       extractedTitle: a.string(),
       extractedTitleNormalized: a.string(),
       titleMatch: a.boolean(),
       titleCheckStatus: a.string(),
+      eligibilityCheck: a.json(),
       isCommonDeliverable: a.boolean().default(false),
       possibleDuplicateOfDocumentId: a.id(),
       duplicateStatus: a.string(),

@@ -8,13 +8,25 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ALL_DELIVERABLE_TYPES, DOCUMENT_STADIU_OPTIONS, type DeliverableSlot } from '@/lib/deliverable-types';
 import { extractDocxFirstPageText, extractDocxText, extractPdfFirstPageText, isImageFile } from '@/lib/document-utils';
-import { applyAutomaticTitleSuggestion, detectSuggestedTitleFromText, validateDeclaredTitleOnFirstPage } from '@/lib/title-suggestion';
+import { applyAutomaticTitleSuggestion, suggestTitleFromFirstPage, validateDeclaredTitleOnFirstPage } from '@/lib/title-suggestion';
 
 interface DeliverableItemProps {
   deliverable: DeliverableSlot;
   apiKey: string | null;
   subActivity: string;
   activityTitle: string;
+  selectedActivityId?: string;
+  catalogDescription?: string;
+  catalogObjectives?: string;
+  catalogComponent?: string;
+  catalogBeneficiaries?: string;
+  catalogExpectedResults?: string;
+  catalogDeliverables?: string;
+  catalogIndicators?: string;
+  projectCode?: string;
+  month?: number;
+  year?: number;
+  expertName?: string;
   onUpdate: (patch: Partial<DeliverableSlot>) => void;
   onRemove?: () => void;
   showSteps?: boolean;
@@ -29,6 +41,18 @@ export function DeliverableItem({
   apiKey,
   subActivity,
   activityTitle,
+  selectedActivityId,
+  catalogDescription,
+  catalogObjectives,
+  catalogComponent,
+  catalogBeneficiaries,
+  catalogExpectedResults,
+  catalogDeliverables,
+  catalogIndicators,
+  projectCode,
+  month,
+  year,
+  expertName,
   onUpdate,
   onRemove,
   showSteps = true,
@@ -61,14 +85,17 @@ export function DeliverableItem({
     let docTitle: string | null = null;
     let docText: string | null = null;
     let firstPageText: string | null = null;
+    let titleSuggestion = suggestTitleFromFirstPage(null);
 
     if (!isPhoto && isDocx) {
       firstPageText = await extractDocxFirstPageText(file);
-      docTitle = detectSuggestedTitleFromText(firstPageText);
+      titleSuggestion = suggestTitleFromFirstPage(firstPageText);
+      docTitle = titleSuggestion.suggestedTitle;
       docText = await extractDocxText(file);
     } else if (!isPhoto && isPdf) {
       firstPageText = await extractPdfFirstPageText(file);
-      docTitle = detectSuggestedTitleFromText(firstPageText);
+      titleSuggestion = suggestTitleFromFirstPage(firstPageText);
+      docTitle = titleSuggestion.suggestedTitle;
       docText = firstPageText;
     }
 
@@ -98,46 +125,83 @@ export function DeliverableItem({
       docText,
       firstPageText,
       suggestedTitle: docTitle,
+      titleSuggestionConfidence: titleSuggestion.confidence,
+      titleSuggestionAlternatives: titleSuggestion.alternatives,
+      titleSuggestionReason: titleSuggestion.reason,
       titleSource: suggestion.titleSource,
       titleMatch: validation?.titleMatch ?? null,
       titleCheckStatus: validation?.titleCheckStatus,
       titleCheckMessage: validation?.titleCheckMessage,
       aiCheck: null,
+      eligibilityCheck: null,
       titleConfirmed: false,
       declaredTitle: suggestion.declaredTitle,
     });
   };
 
   const handleAiCheck = async () => {
-    if (!apiKey) {
-      alert('Configureaza cheia API Claude din setari.');
-      return;
-    }
-
     setAiLoading(true);
     try {
-      const response = await fetch('/api/ai/verify-title', {
+      const extractedText = (deliverable.docText || deliverable.firstPageText || '').slice(0, 12000);
+      const response = await fetch('/api/ai/check-deliverable-eligibility', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          apiKey,
-          subActivity,
-          activityTitle,
-          deliverableType: deliverable.type,
-          declaredTitle: deliverable.declaredTitle,
-          docText: deliverable.docText,
+          documentTitle: deliverable.declaredTitle || deliverable.suggestedTitle || deliverable.docTitle,
+          fileName: deliverable.filename || deliverable.name,
+          extractedText,
+          selectedActivityId: selectedActivityId || subActivity,
+          selectedActivityName: activityTitle,
+          deliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
+          catalogDescription,
+          catalogObjectives,
+          catalogComponent,
+          catalogBeneficiaries,
+          catalogExpectedResults,
+          catalogDeliverables,
+          catalogIndicators,
+          projectCode,
+          month,
+          year,
+          expertName,
+          textScope: deliverable.docText && deliverable.docText !== deliverable.firstPageText
+            ? 'Text extras disponibil din document'
+            : 'Prima pagină / începutul documentului',
         }),
       });
 
-      if (!response.ok) throw new Error('AI verification failed');
       const result = await response.json();
-      onUpdate({ aiCheck: result });
+      if (!response.ok) throw new Error(result.error || 'Verificarea eligibilității a eșuat');
+
+      onUpdate({
+        eligibilityCheck: {
+          ...result,
+          checkedAt: new Date().toISOString(),
+          checkedBy: expertName,
+          modelAuditId: result.modelAuditId,
+        },
+        aiCheck: {
+          eligible: result.status === 'eligibil' || result.status === 'eligibil_cu_observatii'
+            ? true
+            : result.status === 'neeligibil'
+              ? false
+              : null,
+          reason: result.summary || 'Verificare eligibilitate finalizată.',
+          issues: [...(result.missingElements || []), ...(result.riskFlags || [])],
+        },
+      });
     } catch (error) {
       onUpdate({
-        aiCheck: {
-          eligible: null,
-          reason: 'Eroare: ' + (error instanceof Error ? error.message : 'Unknown error'),
-          issues: [],
+        eligibilityCheck: {
+          status: 'neconcludent',
+          score: 0,
+          summary: 'Eroare: ' + (error instanceof Error ? error.message : 'Eroare necunoscută'),
+          checks: [],
+          missingElements: [],
+          recommendations: ['Reîncearcă verificarea sau validează manual livrabilul.'],
+          riskFlags: ['Verificarea API nu a putut fi finalizată.'],
+          checkedAt: new Date().toISOString(),
+          checkedBy: expertName,
         },
       });
     } finally {
@@ -215,7 +279,11 @@ export function DeliverableItem({
       titleMatch: null,
       titleCheckStatus: undefined,
       titleCheckMessage: undefined,
+      titleSuggestionConfidence: undefined,
+      titleSuggestionAlternatives: [],
+      titleSuggestionReason: undefined,
       aiCheck: null,
+      eligibilityCheck: null,
       titleConfirmed: false,
     });
     if (fileRef.current) fileRef.current.value = '';
@@ -262,7 +330,7 @@ export function DeliverableItem({
         ) : (
           <Select
             value={deliverable.type}
-            onValueChange={(value: string) => onUpdate({ type: value, aiCheck: null })}
+            onValueChange={(value: string) => onUpdate({ type: value, aiCheck: null, eligibilityCheck: null })}
           >
             <SelectTrigger className="flex-1 text-xs">
               <SelectValue placeholder="Tip livrabil" />
@@ -336,8 +404,18 @@ export function DeliverableItem({
             <div className="rounded border border-blue-200 bg-blue-50 p-2 text-[10px] text-blue-900">
               <div className="flex items-start justify-between gap-2">
                 <div>
-                  <div className="font-medium">Titlu sugerat automat</div>
+                  <div className="font-medium">Titlu sugerat automat{deliverable.titleSuggestionConfidence ? ` (${deliverable.titleSuggestionConfidence})` : ''}</div>
                   <div className="mt-0.5">{deliverable.suggestedTitle}</div>
+                  {deliverable.titleSuggestionConfidence === 'low' && (
+                    <div className="mt-1 text-amber-700">
+                      Nu am putut identifica sigur titlul documentului. Te rugăm să îl verifici manual.
+                    </div>
+                  )}
+                  {(deliverable.titleSuggestionAlternatives?.length ?? 0) > 0 && (
+                    <div className="mt-1 text-blue-700">
+                      Alternative: {deliverable.titleSuggestionAlternatives?.join(' · ')}
+                    </div>
+                  )}
                 </div>
                 {deliverable.suggestedTitle !== deliverable.declaredTitle && (
                   <Button
@@ -432,8 +510,8 @@ export function DeliverableItem({
         </Select>
       )}
 
-      {deliverable.uploaded && apiKey && (
-        <div className="flex gap-2 items-center">
+      {deliverable.uploaded && !deliverable.isPhoto && (
+        <div className="space-y-2">
           <Button
             variant="outline"
             size="sm"
@@ -446,23 +524,11 @@ export function DeliverableItem({
             ) : (
               <Sparkles className="h-3 w-3 mr-1" />
             )}
-            {aiLoading ? 'Verific...' : 'Verifica eligibilitate AI'}
+            {aiLoading ? 'Se verifică...' : 'Verifică eligibilitatea livrabilului'}
           </Button>
 
-          {deliverable.aiCheck && (
-            <div className={`flex-1 text-[10px] p-1.5 rounded ${
-              deliverable.aiCheck.eligible === true
-                ? 'bg-green-100 text-green-700'
-                : deliverable.aiCheck.eligible === false
-                  ? 'bg-red-100 text-red-700'
-                  : 'bg-slate-100 text-slate-600'
-            }`}>
-              {deliverable.aiCheck.eligible === true
-                ? 'Eligibil'
-                : deliverable.aiCheck.eligible === false
-                  ? 'Neeligibil'
-                  : '?'} - {deliverable.aiCheck.reason}
-            </div>
+          {deliverable.eligibilityCheck && (
+            <EligibilityResultCard check={deliverable.eligibilityCheck} />
           )}
         </div>
       )}
@@ -479,6 +545,64 @@ function StepBadge({ ok, n, label }: { ok: boolean; n: number; label: string }) 
         {ok ? <Check className="h-3 w-3" /> : n}
       </div>
       {label}
+    </div>
+  );
+}
+
+
+function getEligibilityLabel(status: string) {
+  if (status === 'eligibil') return 'Eligibil';
+  if (status === 'eligibil_cu_observatii') return 'Eligibil cu observații';
+  if (status === 'neeligibil') return 'Neeligibil';
+  return 'Neconcludent';
+}
+
+function getEligibilityClass(status: string) {
+  if (status === 'eligibil') return 'bg-green-100 text-green-800 border-green-300';
+  if (status === 'eligibil_cu_observatii') return 'bg-amber-100 text-amber-800 border-amber-300';
+  if (status === 'neeligibil') return 'bg-red-100 text-red-800 border-red-300';
+  return 'bg-slate-100 text-slate-700 border-slate-300';
+}
+
+function EligibilityResultCard({ check }: { check: NonNullable<DeliverableSlot['eligibilityCheck']> }) {
+  const warning = check.status === 'neeligibil' || check.status === 'neconcludent';
+
+  return (
+    <div className={`rounded border p-2 text-[10px] ${getEligibilityClass(check.status)}`}>
+      <div className="flex items-center justify-between gap-2">
+        <div className="font-semibold">{getEligibilityLabel(check.status)}</div>
+        <div className="font-medium">Scor: {check.score}/100</div>
+      </div>
+      <div className="mt-1">{check.summary}</div>
+      {warning && (
+        <div className="mt-1 font-medium">
+          Verifică manual livrabilul înainte de validare.
+        </div>
+      )}
+      {check.checks.length > 0 && (
+        <ul className="mt-2 space-y-1">
+          {check.checks.map((item, index) => (
+            <li key={`${item.criterion}-${index}`}>
+              <span className="font-medium">{item.criterion}</span> ({item.status}): {item.explanation}
+            </li>
+          ))}
+        </ul>
+      )}
+      {check.missingElements.length > 0 && (
+        <div className="mt-2">
+          <span className="font-medium">Elemente lipsă:</span> {check.missingElements.join('; ')}
+        </div>
+      )}
+      {check.recommendations.length > 0 && (
+        <div className="mt-1">
+          <span className="font-medium">Recomandări:</span> {check.recommendations.join('; ')}
+        </div>
+      )}
+      {check.riskFlags.length > 0 && (
+        <div className="mt-1">
+          <span className="font-medium">Riscuri:</span> {check.riskFlags.join('; ')}
+        </div>
+      )}
     </div>
   );
 }
