@@ -13,12 +13,10 @@ import {
   FileSpreadsheet,
   FileText,
   GitBranch,
-  GraduationCap,
   HardDrive,
   LineChart,
   LockKeyhole,
   PieChart,
-  Plug,
   Server,
   ShieldCheck,
   WalletCards,
@@ -159,18 +157,6 @@ const applications: ApplicationCost[] = [
     iconClassName: 'bg-violet-50 text-violet-700',
   },
   {
-    name: 'Moodle / Concordia Learning Hub',
-    provider: 'Moodle local plugin + SCORM',
-    area: 'Invatare si cursuri',
-    status: 'Pregatit',
-    monthlyEstimate: 'Depinde de hosting',
-    costModel: 'Gazduire Moodle si mentenanta plugin',
-    usage: 'Plugin local, raport curs si pachet SCORM in workspace',
-    nextStep: 'Conectare rapoarte curs cu profilurile proiectului',
-    icon: GraduationCap,
-    iconClassName: 'bg-amber-50 text-amber-700',
-  },
-  {
     name: 'GitHub / GitHub Desktop',
     provider: 'GitHub',
     area: 'Versionare',
@@ -229,13 +215,6 @@ const integrationSteps: IntegrationStep[] = [
     financialImpact: 'Scade timpul manual de operare si erorile de raportare',
     status: 'Pregatit pentru import',
     icon: CheckCircle2,
-  },
-  {
-    title: 'Moodle raportare curs',
-    owner: 'Learning Hub',
-    financialImpact: 'Leaga participarea la cursuri de activitatile proiectului',
-    status: 'Integrare urmatoare',
-    icon: Plug,
   },
   {
     title: 'AWS Budgets + tag-uri cost',
@@ -419,7 +398,7 @@ export default function FinancialDashboardPage() {
           </Card>
         </section>
 
-        <section className="grid gap-4 lg:grid-cols-2 xl:grid-cols-5">
+        <section className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
           {integrationSteps.map((step) => {
             const Icon = step.icon;
             return (
