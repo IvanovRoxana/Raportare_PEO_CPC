@@ -3,7 +3,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Settings,
   ArrowLeft,
   Save,
   Loader2,
@@ -25,7 +24,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
@@ -44,7 +42,6 @@ import {
   useNeconformitateMutations,
   useNotes,
   useNoteMutations,
-  useApiKey,
   useActivityMutations,
   useReportStatus,
   useReportStatusByMonth,
@@ -114,8 +111,6 @@ export default function PMDashboard() {
   const [selectedExpertId, setSelectedExpertId] = useState<string | null>(null);
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-  const [localApiKey, setLocalApiKey] = useState('');
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [dossierExpert, setDossierExpert] = useState<Expert | null>(null);
   const [dossierOpen, setDossierOpen] = useState(false);
@@ -136,7 +131,6 @@ export default function PMDashboard() {
 
   // Data hooks
   const { experts, isLoading: expertsLoading } = useExperts();
-  const { apiKey, setApiKey, isLoading: apiKeyLoading } = useApiKey();
   const dataAccessScope = useMemo(
     () => resolveDataAccessScope({ user: currentUser, experts }),
     [currentUser, experts]
@@ -238,13 +232,6 @@ export default function PMDashboard() {
       return visibleExperts[0].id;
     });
   }, [dataAccessScope.canUsePmDashboard, visibleExperts]);
-
-  // Load API key
-  useEffect(() => {
-    if (apiKey) {
-      setLocalApiKey(apiKey);
-    }
-  }, [apiKey]);
 
   // Load verification data when it changes
   useEffect(() => {
@@ -417,15 +404,6 @@ export default function PMDashboard() {
     }
   };
 
-  const handleSaveSettings = async () => {
-    try {
-      await setApiKey(localApiKey);
-      setSettingsOpen(false);
-    } catch (error) {
-      console.error('Error saving settings:', error);
-    }
-  };
-
   // Handle neconformitati changes
   const handleNeconformitatiChange = async (newData: Neconformitate[]) => {
     setLocalNeconformitati(newData);
@@ -523,7 +501,7 @@ export default function PMDashboard() {
   }));
 
   const isAccessDenied = !isAuthLoading && !expertsLoading && !dataAccessScope.canUsePmDashboard;
-  const isLoading = isAuthLoading || expertsLoading || apiKeyLoading;
+  const isLoading = isAuthLoading || expertsLoading;
   const hasError = !isLoading && experts.length === 0;
 
   if (isLoading) {
@@ -668,39 +646,6 @@ export default function PMDashboard() {
                     )}
                     Salvează
                   </Button>
-                )}
-
-                {canManagePmReview && (
-                  <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
-                    <DialogTrigger asChild>
-                      <Button variant="outline" size="icon">
-                        <Settings className="h-5 w-5" />
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                      <DialogHeader>
-                        <DialogTitle>Setari</DialogTitle>
-                      </DialogHeader>
-                      <div className="space-y-4 py-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="apiKey">Claude API Key</Label>
-                          <Input
-                            id="apiKey"
-                            type="password"
-                            value={localApiKey}
-                            onChange={(e) => setLocalApiKey(e.target.value)}
-                            placeholder="sk-ant-..."
-                          />
-                          <p className="text-xs text-muted-foreground">
-                            Necesar pentru functiile AI (comparare documente, asistent Ramona)
-                          </p>
-                        </div>
-                        <Button onClick={handleSaveSettings} className="w-full">
-                          Salveaza
-                        </Button>
-                      </div>
-                    </DialogContent>
-                  </Dialog>
                 )}
 
                 <UserMenu />

@@ -95,9 +95,9 @@ export default function SelectDashboardPage() {
 
                 {canUseAdmin && (
                   <Button asChild size="lg" variant="default" className="h-24 flex-col gap-2">
-                    <Link href="/admin">
+                    <Link href="/super-admin">
                       <ShieldCheck className="h-6 w-6" />
-                      Dashboard Admin
+                      Super admin / tehnic
                     </Link>
                   </Button>
                 )}
