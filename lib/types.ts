@@ -385,6 +385,159 @@ export interface ConcurrentProjectTimesheetEntry {
   updatedAt?: string;
 }
 
+export type HistoricalImportSourceType = 'historical_import' | 'platform_entry' | 'manual_admin_entry' | string;
+
+export type HistoricalImportBatchStatus =
+  | 'draft'
+  | 'processing'
+  | 'completed'
+  | 'completed_with_errors'
+  | 'cancelled'
+  | string;
+
+export interface HistoricalImportBatch {
+  id: string;
+  projectCode: string;
+  label: string;
+  reportingYear: number;
+  monthsIncluded?: number[];
+  importedBy: string;
+  importedAt: string;
+  totalExperts?: number;
+  totalTimesheets?: number;
+  totalActivityReports?: number;
+  totalFiles?: number;
+  status: HistoricalImportBatchStatus;
+  notes?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type MonthlyExpertReportStatus =
+  | 'imported'
+  | 'needs_review'
+  | 'pending_pm_review'
+  | 'validated'
+  | 'validated_with_observations'
+  | 'rejected'
+  | string;
+
+export type HistoricalPmReviewStatus =
+  | 'not_reviewed'
+  | 'in_review'
+  | 'valid'
+  | 'valid_with_observations'
+  | 'needs_correction'
+  | 'invalid'
+  | string;
+
+export interface MonthlyExpertReport {
+  id: string;
+  expertId: string;
+  expertName: string;
+  projectCode: string;
+  projectTitle?: string;
+  positionInProject?: string;
+  reportingYear: number;
+  reportingMonth: number;
+  reportingMonthLabel?: string;
+  sourceType: HistoricalImportSourceType;
+  importBatchId?: string;
+  activityReportFileId?: string;
+  timesheetWorkbookFileId?: string;
+  totalPeoHours?: number;
+  totalOtherHours?: number;
+  leaveHours?: number;
+  subactivities?: string[];
+  status: MonthlyExpertReportStatus;
+  pmReviewStatus?: HistoricalPmReviewStatus;
+  pmReviewedBy?: string;
+  pmReviewedAt?: string;
+  pmObservations?: string[];
+  validationIssues?: unknown;
+  createdBy: string;
+  updatedBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type UploadedReportingFileType =
+  | 'monthly_activity_report_pdf'
+  | 'timesheet_excel'
+  | 'supporting_deliverable'
+  | 'generated_report'
+  | 'unknown'
+  | string;
+
+export interface UploadedReportingFile {
+  id: string;
+  expertId?: string;
+  monthlyReportId?: string;
+  importBatchId?: string;
+  originalFileName: string;
+  storagePath: string;
+  s3Bucket?: string;
+  s3Key?: string;
+  fileType: UploadedReportingFileType;
+  extension: 'pdf' | 'xlsx' | 'xls' | 'docx' | 'png' | 'jpg' | 'other' | string;
+  mimeType?: string;
+  fileSize?: number;
+  reportingYear?: number;
+  reportingMonth?: number;
+  detectedExpertName?: string;
+  detectedProjectCode?: string;
+  uploadStatus?: 'uploaded' | 'parsed' | 'parsed_with_warnings' | 'manual_review_needed' | 'failed' | string;
+  parsingStatus?: 'not_parsed' | 'parsed' | 'failed' | 'manual_review_needed' | string;
+  extractedMetadata?: Record<string, unknown>;
+  checksum?: string;
+  uploadedAt: string;
+  uploadedBy: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface MonthlyActivityItem {
+  id: string;
+  monthlyReportId: string;
+  expertId: string;
+  activityNumber?: string;
+  subactivityCode?: string;
+  subactivityTitle?: string;
+  activityTitle: string;
+  activityDescription?: string;
+  resultDescription?: string;
+  deliverableTitle?: string;
+  isCommonDeliverable?: boolean;
+  collaborators?: string[];
+  hours?: number;
+  sourcePage?: number;
+  sourceFileId?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface HistoricalTimesheetDayEntry {
+  id: string;
+  monthlyReportId: string;
+  expertId: string;
+  date: string;
+  day: number;
+  reportingMonth: number;
+  reportingYear: number;
+  hourlyRate?: number;
+  peoHours?: number;
+  otherHours?: number;
+  leaveCode?: 'CO' | 'CM' | 'DE' | string | null;
+  activityCode?: string;
+  subactivityCode?: string;
+  activityTitle?: string;
+  activityDescription?: string;
+  source?: 'pdf_timesheet' | 'excel_timesheet' | 'manual' | 'historical_import' | string;
+  sourceFileId?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface VerificationData {
   id?: string;
   expertId: string;

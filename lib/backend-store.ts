@@ -18,6 +18,7 @@ export const concurrentProjectsService = awsStore.concurrentProjectsService;
 export const concurrentProjectTimesheetService = awsStore.concurrentProjectTimesheetService;
 export const reportStatusService = awsStore.reportStatusService;
 export const grupTintaService = awsStore.grupTintaService;
+export const historicalImportService = awsStore.historicalImportService;
 export const auditLogsService = awsStore.auditLogsService;
 export const documentsService = awsStore.documentsService;
 export const sharedDeliverablesService = awsStore.sharedDeliverablesService;

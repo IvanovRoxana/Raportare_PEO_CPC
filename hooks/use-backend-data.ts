@@ -17,9 +17,10 @@ import {
   grupTintaService,
   auditLogsService,
   documentsService,
+  historicalImportService,
   sharedDeliverablesService,
 } from '@/lib/backend-store';
-import type { Activity, Expert, VerificationData, Neconformitate, VerificationNote, AppSettings, ActivityCatalog, WorkingGroup, ConcurrentProject, ConcurrentProjectTimesheetEntry, ReportStatus, GrupTintaEntry, AuditLog, AdminInterventionRequest } from '@/lib/types';
+import type { Activity, Expert, VerificationData, Neconformitate, VerificationNote, AppSettings, ActivityCatalog, WorkingGroup, ConcurrentProject, ConcurrentProjectTimesheetEntry, ReportStatus, GrupTintaEntry, AuditLog, AdminInterventionRequest, HistoricalImportBatch, HistoricalTimesheetDayEntry, MonthlyActivityItem, MonthlyExpertReport, UploadedReportingFile } from '@/lib/types';
 
 const EMPTY_LIST: readonly never[] = Object.freeze([]);
 
@@ -724,4 +725,117 @@ export function useAuditLogMutations() {
   };
 
   return { create };
+}
+
+// ============================================
+// HISTORICAL REPORTING IMPORT HOOKS
+// ============================================
+export function useHistoricalImportBatches() {
+  const { data, error, isLoading } = useSWR(
+    isBackendAvailable() ? 'historical-import-batches' : null,
+    safeFetcher(historicalImportService.getBatches)
+  );
+
+  return {
+    batches: stableList(data),
+    isLoading,
+    error,
+    mutate: () => mutate('historical-import-batches'),
+  };
+}
+
+export function useHistoricalReports(filters?: { expertId?: string; month?: number; year?: number; status?: string }) {
+  const key = filters
+    ? `historical-reports-${filters.expertId ?? 'all'}-${filters.year ?? 'all'}-${filters.month ?? 'all'}-${filters.status ?? 'all'}`
+    : 'historical-reports';
+  const { data, error, isLoading } = useSWR(
+    isBackendAvailable() ? key : null,
+    safeFetcher(() => historicalImportService.getReports(filters))
+  );
+
+  return {
+    reports: stableList(data),
+    isLoading,
+    error,
+    mutate: () => mutate(key),
+  };
+}
+
+export function useHistoricalReportFiles(monthlyReportId?: string) {
+  const key = monthlyReportId ? `historical-report-files-${monthlyReportId}` : 'historical-report-files';
+  const { data, error, isLoading } = useSWR(
+    isBackendAvailable() ? key : null,
+    safeFetcher(() => historicalImportService.getFiles(monthlyReportId))
+  );
+
+  return {
+    files: stableList(data),
+    isLoading,
+    error,
+    mutate: () => mutate(key),
+  };
+}
+
+export function useHistoricalReportDetails(monthlyReportId: string | null) {
+  const activityKey = monthlyReportId ? `historical-activity-items-${monthlyReportId}` : null;
+  const daysKey = monthlyReportId ? `historical-timesheet-days-${monthlyReportId}` : null;
+  const { data: activityData, error: activityError, isLoading: isLoadingActivities } = useSWR(
+    activityKey && isBackendAvailable() ? activityKey : null,
+    safeFetcher(() => historicalImportService.getActivityItems(monthlyReportId!))
+  );
+  const { data: daysData, error: daysError, isLoading: isLoadingDays } = useSWR(
+    daysKey && isBackendAvailable() ? daysKey : null,
+    safeFetcher(() => historicalImportService.getTimesheetDays(monthlyReportId!))
+  );
+
+  return {
+    activityItems: stableList(activityData),
+    timesheetDays: stableList(daysData),
+    isLoading: isLoadingActivities || isLoadingDays,
+    error: activityError ?? daysError,
+    mutate: () => {
+      if (activityKey) mutate(activityKey);
+      if (daysKey) mutate(daysKey);
+    },
+  };
+}
+
+export function useHistoricalImportMutations() {
+  const createBatch = async (batch: Omit<HistoricalImportBatch, 'id' | 'createdAt' | 'updatedAt'>) => {
+    const created = await historicalImportService.createBatch(batch);
+    mutate('historical-import-batches');
+    return created;
+  };
+
+  const createReport = async (report: Omit<MonthlyExpertReport, 'id' | 'createdAt' | 'updatedAt'>) => {
+    const created = await historicalImportService.createReport(report);
+    mutate((key: string) => typeof key === 'string' && key.startsWith('historical-reports'), undefined, { revalidate: true });
+    return created;
+  };
+
+  const updateReport = async (id: string, updates: Partial<MonthlyExpertReport>) => {
+    const updated = await historicalImportService.updateReport(id, updates);
+    mutate((key: string) => typeof key === 'string' && key.startsWith('historical-reports'), undefined, { revalidate: true });
+    return updated;
+  };
+
+  const createFile = async (file: Omit<UploadedReportingFile, 'id' | 'createdAt' | 'updatedAt'>) => {
+    const created = await historicalImportService.createFile(file);
+    mutate((key: string) => typeof key === 'string' && key.startsWith('historical-report-files'), undefined, { revalidate: true });
+    return created;
+  };
+
+  const createActivityItem = async (item: Omit<MonthlyActivityItem, 'id' | 'createdAt' | 'updatedAt'>) => {
+    const created = await historicalImportService.createActivityItem(item);
+    mutate(`historical-activity-items-${item.monthlyReportId}`);
+    return created;
+  };
+
+  const createTimesheetDay = async (day: Omit<HistoricalTimesheetDayEntry, 'id' | 'createdAt' | 'updatedAt'>) => {
+    const created = await historicalImportService.createTimesheetDay(day);
+    mutate(`historical-timesheet-days-${day.monthlyReportId}`);
+    return created;
+  };
+
+  return { createBatch, createReport, updateReport, createFile, createActivityItem, createTimesheetDay };
 }

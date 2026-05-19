@@ -65,6 +65,10 @@ const sourceFiles = {
     "C:\\Users\\RoxanaIvanov\\Confederatia Concordia\\PEO 2024-2028 - Documents\\General\\RAPORTARE_TEHNICA\\SA1.1_Grup Tinta\\IVANOV ROXANA\\Robotei\\Etapa 2\\PEO_Experti_v2.xlsx",
 };
 
+const defaultProjectCode = "302141";
+const defaultProjectTitle = "Consolidarea capacității Concordia pentru dialog social";
+const defaultBeneficiary = "CONFEDERATIA PATRONALA CONCORDIA";
+
 function clean(value) {
   if (value === undefined || value === null) return undefined;
   const text = repairMojibake(String(value)).replace(/\s+/g, " ").trim();
@@ -144,6 +148,7 @@ function normalizeCategory(value) {
   if (text.includes("gdpr")) return "gdpr";
   if (text.includes("recrut") || text === "cr") return "cr";
   if (text.includes("resch") || text.includes("research") || text.includes("cercetare")) return "cercetare";
+  if (text.includes("admin") || text === "adm") return "pm";
   if (text === "pm") return "pm";
   return text;
 }
@@ -165,7 +170,16 @@ function roleGroups(value) {
   const roles = new Set();
   if (text.includes("expert")) roles.add("expert");
   if (text.includes("pm")) roles.add("pm");
+  if (text.includes("admin")) roles.add("admin");
   return Array.from(roles);
+}
+
+function normalizeRole(value) {
+  const groups = roleGroups(value);
+  if (groups.includes("expert") && groups.includes("pm")) return "Expert/PM";
+  if (groups.includes("pm")) return "PM";
+  if (groups.includes("expert")) return "Expert";
+  return clean(value) || "Expert";
 }
 
 function splitSaCodes(value) {
@@ -364,13 +378,16 @@ function prepareExperts() {
     const name = clean(row["Numele şi prenumele expertului"]);
     if (!email || !name) return;
 
-    const role = clean(row["Rol"]) || "Expert";
+    const rawRole = clean(row["Rol"]) || "Expert";
+    const role = normalizeRole(rawRole);
     const normType = normalizeNormType(row["Tip Norma"]);
     const rawHours = numberValue(row["Ore zi"]);
     const projectInfo = clean(row["Cod / titlu proiect 1:"]);
     const oreZi = normType === "project" ? undefined : rawHours;
     const projectMonthlyNorm = normType === "project" ? rawHours : undefined;
     const norma = normType === "manual_adjusted" && rawHours === undefined ? 0 : oreZi ?? 8;
+    const cognitoGroups = roleGroups(rawRole);
+    const saCodes = splitSaCodes(row["Sauri"]);
 
     byEmail.set(email, {
       id: idFor("expert", [email]),
@@ -384,12 +401,12 @@ function prepareExperts() {
       dailyHours: oreZi,
       projectMonthlyNorm,
       positionInProject: clean(row["Poziția în proiect"]),
-      projectCode: extractProjectCode(projectInfo),
-      projectTitle: extractProjectTitle(projectInfo),
-      beneficiary: clean(row["Denumire Beneficiar (Lider de parteneriat)/Partener"]),
-      saCodes: splitSaCodes(row["Sauri"]),
-      hasPmAccess: roleGroups(role).includes("pm"),
-      cognitoGroups: roleGroups(role),
+      projectCode: extractProjectCode(projectInfo) || defaultProjectCode,
+      projectTitle: extractProjectTitle(projectInfo) || defaultProjectTitle,
+      beneficiary: clean(row["Denumire Beneficiar (Lider de parteneriat)/Partener"]) || defaultBeneficiary,
+      saCodes: saCodes.length > 0 ? saCodes : cognitoGroups.includes("pm") ? ["SA6.1"] : [],
+      hasPmAccess: cognitoGroups.includes("pm"),
+      cognitoGroups,
       isActive: true,
     });
   });

@@ -1009,7 +1009,8 @@ export function ActivityForm({
                       <DeliverableItem
                         key={d.id}
                         deliverable={d}
-                            subActivity={saCode}
+                        apiKey={apiKey}
+                        subActivity={saCode}
                         activityTitle={activityTitle}
                         selectedActivityId={selectedCatalogItem?.id}
                         catalogDescription={selectedCatalogItem?.description}
@@ -1204,7 +1205,8 @@ export function ActivityForm({
                       <DeliverableItem
                         key={d.id}
                         deliverable={d}
-                            subActivity={saCode}
+                        apiKey={apiKey}
+                        subActivity={saCode}
                         activityTitle={activityTitle}
                         selectedActivityId={selectedCatalogItem?.id}
                         catalogDescription={selectedCatalogItem?.description}

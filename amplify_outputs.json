@@ -206,6 +206,22 @@
                 ]
               }
             },
+            "historicalReports": {
+              "name": "historicalReports",
+              "isArray": true,
+              "type": {
+                "model": "MonthlyExpertReport"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "expertId"
+                ]
+              }
+            },
             "createdAt": {
               "name": "createdAt",
               "isArray": false,
@@ -402,6 +418,28 @@
               "isRequired": false,
               "attributes": []
             },
+            "shareStatus": {
+              "name": "shareStatus",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "originActivityId": {
+              "name": "originActivityId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "takenByExperts": {
+              "name": "takenByExperts",
+              "isArray": true,
+              "type": "String",
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true
+            },
             "projectCode": {
               "name": "projectCode",
               "isArray": false,
@@ -516,6 +554,27 @@
               }
             },
             {
+              "type": "key",
+              "properties": {
+                "name": "activitiesByShareStatusAndDate",
+                "queryField": "listActivityByShareStatusAndDate",
+                "fields": [
+                  "shareStatus",
+                  "date"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "activitiesByOriginActivityId",
+                "queryField": "listActivityByOriginActivityId",
+                "fields": [
+                  "originActivityId"
+                ]
+              }
+            },
+            {
               "type": "auth",
               "properties": {
                 "rules": [
@@ -528,6 +587,159 @@
                       "create",
                       "update",
                       "delete",
+                      "read"
+                    ]
+                  },
+                  {
+                    "groupClaim": "cognito:groups",
+                    "provider": "userPools",
+                    "allow": "groups",
+                    "operations": [
+                      "create",
+                      "read",
+                      "update",
+                      "delete"
+                    ],
+                    "groups": [
+                      "pm",
+                      "admin"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "LegalHoliday": {
+          "name": "LegalHoliday",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "countryCode": {
+              "name": "countryCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "date": {
+              "name": "date",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": true,
+              "attributes": []
+            },
+            "year": {
+              "name": "year",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "name": {
+              "name": "name",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "type": {
+              "name": "type",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "source": {
+              "name": "source",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "sourceUrl": {
+              "name": "sourceUrl",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "notes": {
+              "name": "notes",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "isActive": {
+              "name": "isActive",
+              "isArray": false,
+              "type": "Boolean",
+              "isRequired": false,
+              "attributes": []
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "LegalHolidays",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "legalHolidaysByDate",
+                "queryField": "listLegalHolidayByDate",
+                "fields": [
+                  "date"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "legalHolidaysByYearAndDate",
+                "queryField": "listLegalHolidayByYearAndDate",
+                "fields": [
+                  "year",
+                  "date"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "allow": "private",
+                    "operations": [
                       "read"
                     ]
                   },
@@ -792,6 +1004,28 @@
               "isRequired": false,
               "attributes": []
             },
+            "titleSuggestionConfidence": {
+              "name": "titleSuggestionConfidence",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "titleSuggestionAlternatives": {
+              "name": "titleSuggestionAlternatives",
+              "isArray": true,
+              "type": "String",
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true
+            },
+            "titleSuggestionReason": {
+              "name": "titleSuggestionReason",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
             "firstPageText": {
               "name": "firstPageText",
               "isArray": false,
@@ -845,6 +1079,13 @@
               "name": "aiReason",
               "isArray": false,
               "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "eligibilityCheck": {
+              "name": "eligibilityCheck",
+              "isArray": false,
+              "type": "AWSJSON",
               "isRequired": false,
               "attributes": []
             },
@@ -1066,6 +1307,28 @@
               "isRequired": false,
               "attributes": []
             },
+            "titleSuggestionConfidence": {
+              "name": "titleSuggestionConfidence",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "titleSuggestionAlternatives": {
+              "name": "titleSuggestionAlternatives",
+              "isArray": true,
+              "type": "String",
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true
+            },
+            "titleSuggestionReason": {
+              "name": "titleSuggestionReason",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
             "extractedTitle": {
               "name": "extractedTitle",
               "isArray": false,
@@ -1091,6 +1354,13 @@
               "name": "titleCheckStatus",
               "isArray": false,
               "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "eligibilityCheck": {
+              "name": "eligibilityCheck",
+              "isArray": false,
+              "type": "AWSJSON",
               "isRequired": false,
               "attributes": []
             },
@@ -1930,6 +2200,20 @@
               "isRequired": false,
               "attributes": []
             },
+            "expertAccessApproved": {
+              "name": "expertAccessApproved",
+              "isArray": false,
+              "type": "Boolean",
+              "isRequired": false,
+              "attributes": []
+            },
+            "expertAccessApprovedAt": {
+              "name": "expertAccessApprovedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": []
+            },
             "pmNotes": {
               "name": "pmNotes",
               "isArray": false,
@@ -2455,6 +2739,13 @@
               "isRequired": true,
               "attributes": []
             },
+            "expertName": {
+              "name": "expertName",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
             "projectName": {
               "name": "projectName",
               "isArray": false,
@@ -2464,6 +2755,13 @@
             },
             "projectCode": {
               "name": "projectCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "expertProjectRole": {
+              "name": "expertProjectRole",
               "isArray": false,
               "type": "String",
               "isRequired": false,
@@ -2562,6 +2860,1493 @@
                       "expert"
                     ]
                   },
+                  {
+                    "groupClaim": "cognito:groups",
+                    "provider": "userPools",
+                    "allow": "groups",
+                    "operations": [
+                      "create",
+                      "read",
+                      "update",
+                      "delete"
+                    ],
+                    "groups": [
+                      "pm",
+                      "admin"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "ConcurrentProjectTimesheetEntry": {
+          "name": "ConcurrentProjectTimesheetEntry",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "concurrentProjectId": {
+              "name": "concurrentProjectId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "expertId": {
+              "name": "expertId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "date": {
+              "name": "date",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": true,
+              "attributes": []
+            },
+            "month": {
+              "name": "month",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "year": {
+              "name": "year",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "wp": {
+              "name": "wp",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "hours": {
+              "name": "hours",
+              "isArray": false,
+              "type": "Float",
+              "isRequired": true,
+              "attributes": []
+            },
+            "taskName": {
+              "name": "taskName",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "relevantDeliverable": {
+              "name": "relevantDeliverable",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "dayType": {
+              "name": "dayType",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "notes": {
+              "name": "notes",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "source": {
+              "name": "source",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "createdBy": {
+              "name": "createdBy",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "updatedBy": {
+              "name": "updatedBy",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "ConcurrentProjectTimesheetEntries",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "concurrentProjectTimesheetEntriesByConcurrentProjectId",
+                "queryField": "listConcurrentProjectTimesheetEntryByConcurrentProjectId",
+                "fields": [
+                  "concurrentProjectId"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "concurrentProjectTimesheetEntriesByExpertId",
+                "queryField": "listConcurrentProjectTimesheetEntryByExpertId",
+                "fields": [
+                  "expertId"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "concurrentProjectTimesheetEntriesByMonth",
+                "queryField": "listConcurrentProjectTimesheetEntryByMonth",
+                "fields": [
+                  "month"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "concurrentProjectTimesheetEntriesByYear",
+                "queryField": "listConcurrentProjectTimesheetEntryByYear",
+                "fields": [
+                  "year"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "groupClaim": "cognito:groups",
+                    "provider": "userPools",
+                    "allow": "groups",
+                    "operations": [
+                      "create",
+                      "read",
+                      "update"
+                    ],
+                    "groups": [
+                      "expert"
+                    ]
+                  },
+                  {
+                    "groupClaim": "cognito:groups",
+                    "provider": "userPools",
+                    "allow": "groups",
+                    "operations": [
+                      "create",
+                      "read",
+                      "update",
+                      "delete"
+                    ],
+                    "groups": [
+                      "pm",
+                      "admin"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "HistoricalImportBatch": {
+          "name": "HistoricalImportBatch",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "projectCode": {
+              "name": "projectCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "label": {
+              "name": "label",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "reportingYear": {
+              "name": "reportingYear",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "monthsIncluded": {
+              "name": "monthsIncluded",
+              "isArray": true,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true
+            },
+            "importedBy": {
+              "name": "importedBy",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "importedAt": {
+              "name": "importedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": true,
+              "attributes": []
+            },
+            "totalExperts": {
+              "name": "totalExperts",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "totalTimesheets": {
+              "name": "totalTimesheets",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "totalActivityReports": {
+              "name": "totalActivityReports",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "totalFiles": {
+              "name": "totalFiles",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "notes": {
+              "name": "notes",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "monthlyReports": {
+              "name": "monthlyReports",
+              "isArray": true,
+              "type": {
+                "model": "MonthlyExpertReport"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "importBatchId"
+                ]
+              }
+            },
+            "uploadedFiles": {
+              "name": "uploadedFiles",
+              "isArray": true,
+              "type": {
+                "model": "UploadedReportingFile"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "importBatchId"
+                ]
+              }
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "HistoricalImportBatches",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "historicalImportBatchesByReportingYear",
+                "queryField": "listHistoricalImportBatchByReportingYear",
+                "fields": [
+                  "reportingYear"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "historicalImportBatchesByStatus",
+                "queryField": "listHistoricalImportBatchByStatus",
+                "fields": [
+                  "status"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "groupClaim": "cognito:groups",
+                    "provider": "userPools",
+                    "allow": "groups",
+                    "operations": [
+                      "create",
+                      "read",
+                      "update",
+                      "delete"
+                    ],
+                    "groups": [
+                      "pm",
+                      "admin"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "MonthlyExpertReport": {
+          "name": "MonthlyExpertReport",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "expertId": {
+              "name": "expertId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "expert": {
+              "name": "expert",
+              "isArray": false,
+              "type": {
+                "model": "Expert"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "expertId"
+                ]
+              }
+            },
+            "expertName": {
+              "name": "expertName",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "projectCode": {
+              "name": "projectCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "projectTitle": {
+              "name": "projectTitle",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "positionInProject": {
+              "name": "positionInProject",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "reportingYear": {
+              "name": "reportingYear",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "reportingMonth": {
+              "name": "reportingMonth",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "reportingMonthLabel": {
+              "name": "reportingMonthLabel",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "sourceType": {
+              "name": "sourceType",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "importBatchId": {
+              "name": "importBatchId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "importBatch": {
+              "name": "importBatch",
+              "isArray": false,
+              "type": {
+                "model": "HistoricalImportBatch"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "importBatchId"
+                ]
+              }
+            },
+            "activityReportFileId": {
+              "name": "activityReportFileId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "timesheetWorkbookFileId": {
+              "name": "timesheetWorkbookFileId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "totalPeoHours": {
+              "name": "totalPeoHours",
+              "isArray": false,
+              "type": "Float",
+              "isRequired": false,
+              "attributes": []
+            },
+            "totalOtherHours": {
+              "name": "totalOtherHours",
+              "isArray": false,
+              "type": "Float",
+              "isRequired": false,
+              "attributes": []
+            },
+            "leaveHours": {
+              "name": "leaveHours",
+              "isArray": false,
+              "type": "Float",
+              "isRequired": false,
+              "attributes": []
+            },
+            "subactivities": {
+              "name": "subactivities",
+              "isArray": true,
+              "type": "String",
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "pmReviewStatus": {
+              "name": "pmReviewStatus",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "pmReviewedBy": {
+              "name": "pmReviewedBy",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "pmReviewedAt": {
+              "name": "pmReviewedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": []
+            },
+            "pmObservations": {
+              "name": "pmObservations",
+              "isArray": true,
+              "type": "String",
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true
+            },
+            "validationIssues": {
+              "name": "validationIssues",
+              "isArray": false,
+              "type": "AWSJSON",
+              "isRequired": false,
+              "attributes": []
+            },
+            "createdBy": {
+              "name": "createdBy",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "updatedBy": {
+              "name": "updatedBy",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "files": {
+              "name": "files",
+              "isArray": true,
+              "type": {
+                "model": "UploadedReportingFile"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "monthlyReportId"
+                ]
+              }
+            },
+            "activityItems": {
+              "name": "activityItems",
+              "isArray": true,
+              "type": {
+                "model": "MonthlyActivityItem"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "monthlyReportId"
+                ]
+              }
+            },
+            "timesheetDays": {
+              "name": "timesheetDays",
+              "isArray": true,
+              "type": {
+                "model": "HistoricalTimesheetDayEntry"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "monthlyReportId"
+                ]
+              }
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "MonthlyExpertReports",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "monthlyExpertReportsByExpertIdAndReportingYearAndReportingMonth",
+                "queryField": "listMonthlyExpertReportByExpertIdAndReportingYearAndReportingMonth",
+                "fields": [
+                  "expertId",
+                  "reportingYear",
+                  "reportingMonth"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "monthlyExpertReportsByReportingYearAndReportingMonth",
+                "queryField": "listMonthlyExpertReportByReportingYearAndReportingMonth",
+                "fields": [
+                  "reportingYear",
+                  "reportingMonth"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "monthlyExpertReportsByImportBatchId",
+                "queryField": "listMonthlyExpertReportByImportBatchId",
+                "fields": [
+                  "importBatchId"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "monthlyExpertReportsByStatus",
+                "queryField": "listMonthlyExpertReportByStatus",
+                "fields": [
+                  "status"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "groupClaim": "cognito:groups",
+                    "provider": "userPools",
+                    "allow": "groups",
+                    "operations": [
+                      "create",
+                      "read",
+                      "update",
+                      "delete"
+                    ],
+                    "groups": [
+                      "pm",
+                      "admin"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "UploadedReportingFile": {
+          "name": "UploadedReportingFile",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "expertId": {
+              "name": "expertId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "monthlyReportId": {
+              "name": "monthlyReportId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "monthlyReport": {
+              "name": "monthlyReport",
+              "isArray": false,
+              "type": {
+                "model": "MonthlyExpertReport"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "monthlyReportId"
+                ]
+              }
+            },
+            "importBatchId": {
+              "name": "importBatchId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "importBatch": {
+              "name": "importBatch",
+              "isArray": false,
+              "type": {
+                "model": "HistoricalImportBatch"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "importBatchId"
+                ]
+              }
+            },
+            "originalFileName": {
+              "name": "originalFileName",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "storagePath": {
+              "name": "storagePath",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "s3Bucket": {
+              "name": "s3Bucket",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "s3Key": {
+              "name": "s3Key",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "fileType": {
+              "name": "fileType",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "extension": {
+              "name": "extension",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "mimeType": {
+              "name": "mimeType",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "fileSize": {
+              "name": "fileSize",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "reportingYear": {
+              "name": "reportingYear",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "reportingMonth": {
+              "name": "reportingMonth",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "detectedExpertName": {
+              "name": "detectedExpertName",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "detectedProjectCode": {
+              "name": "detectedProjectCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "uploadStatus": {
+              "name": "uploadStatus",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "parsingStatus": {
+              "name": "parsingStatus",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "extractedMetadata": {
+              "name": "extractedMetadata",
+              "isArray": false,
+              "type": "AWSJSON",
+              "isRequired": false,
+              "attributes": []
+            },
+            "checksum": {
+              "name": "checksum",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "uploadedAt": {
+              "name": "uploadedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": true,
+              "attributes": []
+            },
+            "uploadedBy": {
+              "name": "uploadedBy",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "UploadedReportingFiles",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "uploadedReportingFilesByExpertIdAndReportingYearAndReportingMonth",
+                "queryField": "listUploadedReportingFileByExpertIdAndReportingYearAndReportingMonth",
+                "fields": [
+                  "expertId",
+                  "reportingYear",
+                  "reportingMonth"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "uploadedReportingFilesByMonthlyReportId",
+                "queryField": "listUploadedReportingFileByMonthlyReportId",
+                "fields": [
+                  "monthlyReportId"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "uploadedReportingFilesByImportBatchId",
+                "queryField": "listUploadedReportingFileByImportBatchId",
+                "fields": [
+                  "importBatchId"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "uploadedReportingFilesByFileType",
+                "queryField": "listUploadedReportingFileByFileType",
+                "fields": [
+                  "fileType"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "groupClaim": "cognito:groups",
+                    "provider": "userPools",
+                    "allow": "groups",
+                    "operations": [
+                      "create",
+                      "read",
+                      "update",
+                      "delete"
+                    ],
+                    "groups": [
+                      "pm",
+                      "admin"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "MonthlyActivityItem": {
+          "name": "MonthlyActivityItem",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "monthlyReportId": {
+              "name": "monthlyReportId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "monthlyReport": {
+              "name": "monthlyReport",
+              "isArray": false,
+              "type": {
+                "model": "MonthlyExpertReport"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "monthlyReportId"
+                ]
+              }
+            },
+            "expertId": {
+              "name": "expertId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "activityNumber": {
+              "name": "activityNumber",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "subactivityCode": {
+              "name": "subactivityCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "subactivityTitle": {
+              "name": "subactivityTitle",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "activityTitle": {
+              "name": "activityTitle",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "activityDescription": {
+              "name": "activityDescription",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "resultDescription": {
+              "name": "resultDescription",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "deliverableTitle": {
+              "name": "deliverableTitle",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "isCommonDeliverable": {
+              "name": "isCommonDeliverable",
+              "isArray": false,
+              "type": "Boolean",
+              "isRequired": false,
+              "attributes": []
+            },
+            "collaborators": {
+              "name": "collaborators",
+              "isArray": true,
+              "type": "String",
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true
+            },
+            "hours": {
+              "name": "hours",
+              "isArray": false,
+              "type": "Float",
+              "isRequired": false,
+              "attributes": []
+            },
+            "sourcePage": {
+              "name": "sourcePage",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "sourceFileId": {
+              "name": "sourceFileId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "MonthlyActivityItems",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "monthlyActivityItemsByMonthlyReportId",
+                "queryField": "listMonthlyActivityItemByMonthlyReportId",
+                "fields": [
+                  "monthlyReportId"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "monthlyActivityItemsByExpertId",
+                "queryField": "listMonthlyActivityItemByExpertId",
+                "fields": [
+                  "expertId"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "monthlyActivityItemsBySubactivityCode",
+                "queryField": "listMonthlyActivityItemBySubactivityCode",
+                "fields": [
+                  "subactivityCode"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "groupClaim": "cognito:groups",
+                    "provider": "userPools",
+                    "allow": "groups",
+                    "operations": [
+                      "create",
+                      "read",
+                      "update",
+                      "delete"
+                    ],
+                    "groups": [
+                      "pm",
+                      "admin"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "HistoricalTimesheetDayEntry": {
+          "name": "HistoricalTimesheetDayEntry",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "monthlyReportId": {
+              "name": "monthlyReportId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "monthlyReport": {
+              "name": "monthlyReport",
+              "isArray": false,
+              "type": {
+                "model": "MonthlyExpertReport"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "monthlyReportId"
+                ]
+              }
+            },
+            "expertId": {
+              "name": "expertId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "date": {
+              "name": "date",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": true,
+              "attributes": []
+            },
+            "day": {
+              "name": "day",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "reportingMonth": {
+              "name": "reportingMonth",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "reportingYear": {
+              "name": "reportingYear",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "hourlyRate": {
+              "name": "hourlyRate",
+              "isArray": false,
+              "type": "Float",
+              "isRequired": false,
+              "attributes": []
+            },
+            "peoHours": {
+              "name": "peoHours",
+              "isArray": false,
+              "type": "Float",
+              "isRequired": false,
+              "attributes": []
+            },
+            "otherHours": {
+              "name": "otherHours",
+              "isArray": false,
+              "type": "Float",
+              "isRequired": false,
+              "attributes": []
+            },
+            "leaveCode": {
+              "name": "leaveCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "activityCode": {
+              "name": "activityCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "subactivityCode": {
+              "name": "subactivityCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "activityTitle": {
+              "name": "activityTitle",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "activityDescription": {
+              "name": "activityDescription",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "source": {
+              "name": "source",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "sourceFileId": {
+              "name": "sourceFileId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "HistoricalTimesheetDayEntries",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "historicalTimesheetDayEntriesByMonthlyReportIdAndDate",
+                "queryField": "listHistoricalTimesheetDayEntryByMonthlyReportIdAndDate",
+                "fields": [
+                  "monthlyReportId",
+                  "date"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "historicalTimesheetDayEntriesByExpertIdAndDate",
+                "queryField": "listHistoricalTimesheetDayEntryByExpertIdAndDate",
+                "fields": [
+                  "expertId",
+                  "date"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "historicalTimesheetDayEntriesByReportingYearAndReportingMonth",
+                "queryField": "listHistoricalTimesheetDayEntryByReportingYearAndReportingMonth",
+                "fields": [
+                  "reportingYear",
+                  "reportingMonth"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
                   {
                     "groupClaim": "cognito:groups",
                     "provider": "userPools",
@@ -2750,6 +4535,7 @@
                     "provider": "userPools",
                     "allow": "groups",
                     "operations": [
+                      "create",
                       "read"
                     ],
                     "groups": [

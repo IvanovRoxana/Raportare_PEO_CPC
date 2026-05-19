@@ -21,6 +21,7 @@ const schema = a.schema({
       isActive: a.boolean().default(true),
       activities: a.hasMany("Activity", "expertId"),
       grupTintaEntries: a.hasMany("GrupTintaEntry", "expertId"),
+      historicalReports: a.hasMany("MonthlyExpertReport", "expertId"),
     })
     .authorization((allow) => [
       allow.authenticated().to(["read"]),
@@ -376,6 +377,165 @@ const schema = a.schema({
     .secondaryIndexes((index) => [index("concurrentProjectId"), index("expertId"), index("month"), index("year")])
     .authorization((allow) => [
       allow.groups(["expert"]).to(["create", "read", "update"]),
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
+  HistoricalImportBatch: a
+    .model({
+      projectCode: a.string().required(),
+      label: a.string().required(),
+      reportingYear: a.integer().required(),
+      monthsIncluded: a.integer().array(),
+      importedBy: a.string().required(),
+      importedAt: a.datetime().required(),
+      totalExperts: a.integer().default(0),
+      totalTimesheets: a.integer().default(0),
+      totalActivityReports: a.integer().default(0),
+      totalFiles: a.integer().default(0),
+      status: a.string().default("draft"),
+      notes: a.string(),
+      monthlyReports: a.hasMany("MonthlyExpertReport", "importBatchId"),
+      uploadedFiles: a.hasMany("UploadedReportingFile", "importBatchId"),
+    })
+    .secondaryIndexes((index) => [
+      index("reportingYear"),
+      index("status"),
+    ])
+    .authorization((allow) => [
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
+  MonthlyExpertReport: a
+    .model({
+      expertId: a.id().required(),
+      expert: a.belongsTo("Expert", "expertId"),
+      expertName: a.string().required(),
+      projectCode: a.string().required(),
+      projectTitle: a.string(),
+      positionInProject: a.string(),
+      reportingYear: a.integer().required(),
+      reportingMonth: a.integer().required(),
+      reportingMonthLabel: a.string(),
+      sourceType: a.string().default("historical_import"),
+      importBatchId: a.id(),
+      importBatch: a.belongsTo("HistoricalImportBatch", "importBatchId"),
+      activityReportFileId: a.id(),
+      timesheetWorkbookFileId: a.id(),
+      totalPeoHours: a.float().default(0),
+      totalOtherHours: a.float(),
+      leaveHours: a.float(),
+      subactivities: a.string().array(),
+      status: a.string().default("imported"),
+      pmReviewStatus: a.string().default("not_reviewed"),
+      pmReviewedBy: a.string(),
+      pmReviewedAt: a.datetime(),
+      pmObservations: a.string().array(),
+      validationIssues: a.json(),
+      createdBy: a.string().required(),
+      updatedBy: a.string(),
+      files: a.hasMany("UploadedReportingFile", "monthlyReportId"),
+      activityItems: a.hasMany("MonthlyActivityItem", "monthlyReportId"),
+      timesheetDays: a.hasMany("HistoricalTimesheetDayEntry", "monthlyReportId"),
+    })
+    .secondaryIndexes((index) => [
+      index("expertId").sortKeys(["reportingYear", "reportingMonth"]),
+      index("reportingYear").sortKeys(["reportingMonth"]),
+      index("status"),
+      index("importBatchId"),
+    ])
+    .authorization((allow) => [
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
+  UploadedReportingFile: a
+    .model({
+      expertId: a.id(),
+      monthlyReportId: a.id(),
+      monthlyReport: a.belongsTo("MonthlyExpertReport", "monthlyReportId"),
+      importBatchId: a.id(),
+      importBatch: a.belongsTo("HistoricalImportBatch", "importBatchId"),
+      originalFileName: a.string().required(),
+      storagePath: a.string().required(),
+      s3Bucket: a.string(),
+      s3Key: a.string(),
+      fileType: a.string().required(),
+      extension: a.string().required(),
+      mimeType: a.string(),
+      fileSize: a.integer(),
+      reportingYear: a.integer(),
+      reportingMonth: a.integer(),
+      detectedExpertName: a.string(),
+      detectedProjectCode: a.string(),
+      uploadStatus: a.string().default("uploaded"),
+      parsingStatus: a.string().default("not_parsed"),
+      extractedMetadata: a.json(),
+      checksum: a.string(),
+      uploadedAt: a.datetime().required(),
+      uploadedBy: a.string().required(),
+    })
+    .secondaryIndexes((index) => [
+      index("expertId").sortKeys(["reportingYear", "reportingMonth"]),
+      index("monthlyReportId"),
+      index("importBatchId"),
+      index("fileType"),
+    ])
+    .authorization((allow) => [
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
+  MonthlyActivityItem: a
+    .model({
+      monthlyReportId: a.id().required(),
+      monthlyReport: a.belongsTo("MonthlyExpertReport", "monthlyReportId"),
+      expertId: a.id().required(),
+      activityNumber: a.string(),
+      subactivityCode: a.string(),
+      subactivityTitle: a.string(),
+      activityTitle: a.string().required(),
+      activityDescription: a.string(),
+      resultDescription: a.string(),
+      deliverableTitle: a.string(),
+      isCommonDeliverable: a.boolean().default(false),
+      collaborators: a.string().array(),
+      hours: a.float().default(0),
+      sourcePage: a.integer(),
+      sourceFileId: a.id(),
+    })
+    .secondaryIndexes((index) => [
+      index("monthlyReportId"),
+      index("expertId"),
+      index("subactivityCode"),
+    ])
+    .authorization((allow) => [
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
+  HistoricalTimesheetDayEntry: a
+    .model({
+      monthlyReportId: a.id().required(),
+      monthlyReport: a.belongsTo("MonthlyExpertReport", "monthlyReportId"),
+      expertId: a.id().required(),
+      date: a.date().required(),
+      day: a.integer().required(),
+      reportingMonth: a.integer().required(),
+      reportingYear: a.integer().required(),
+      hourlyRate: a.float(),
+      peoHours: a.float().default(0),
+      otherHours: a.float(),
+      leaveCode: a.string(),
+      activityCode: a.string(),
+      subactivityCode: a.string(),
+      activityTitle: a.string(),
+      activityDescription: a.string(),
+      source: a.string().default("historical_import"),
+      sourceFileId: a.id(),
+    })
+    .secondaryIndexes((index) => [
+      index("monthlyReportId").sortKeys(["date"]),
+      index("expertId").sortKeys(["date"]),
+      index("reportingYear").sortKeys(["reportingMonth"]),
+    ])
+    .authorization((allow) => [
       allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
     ]),
 

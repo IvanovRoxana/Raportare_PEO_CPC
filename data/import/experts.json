@@ -1,5 +1,50 @@
 [
   {
+    "id": "expert_f379a9f524e3b171",
+    "name": "Adelina Andrei",
+    "role": "PM",
+    "email": "adelina.ciobanu@confederatia-concordia.ro",
+    "category": "pm",
+    "norma": 8,
+    "normType": "calculated",
+    "oreZi": 8,
+    "dailyHours": 8,
+    "positionInProject": "Asistent Manager",
+    "projectCode": "302141",
+    "projectTitle": "Consolidarea capacității Concordia pentru dialog social",
+    "beneficiary": "CONFEDERATIA PATRONALA CONCORDIA",
+    "saCodes": [
+      "SA6.1"
+    ],
+    "hasPmAccess": true,
+    "cognitoGroups": [
+      "pm"
+    ],
+    "isActive": true
+  },
+  {
+    "id": "expert_0c0b8577c6908309",
+    "name": "Bogdana Diaconu",
+    "role": "PM",
+    "email": "bogdana.diaconu@confederatia-concordia.ro",
+    "category": "pm",
+    "norma": 8,
+    "normType": "calculated",
+    "positionInProject": "Director Adjunct",
+    "projectCode": "302141",
+    "projectTitle": "Consolidarea capacității Concordia pentru dialog social",
+    "beneficiary": "CONFEDERATIA PATRONALA CONCORDIA",
+    "saCodes": [
+      "SA6.1"
+    ],
+    "hasPmAccess": true,
+    "cognitoGroups": [
+      "pm",
+      "admin"
+    ],
+    "isActive": true
+  },
+  {
     "id": "expert_583ff32b3538e3cc",
     "name": "Cojocaru Andreea",
     "role": "Expert",
@@ -249,7 +294,7 @@
     "norma": 8,
     "normType": "project",
     "projectMonthlyNorm": 126,
-    "positionInProject": "Manager Proiect",
+    "positionInProject": "Expert Financiar",
     "projectCode": "302141",
     "projectTitle": "Consolidarea capacității Concordia pentru dialog social",
     "beneficiary": "CONFEDERATIA PATRONALA CONCORDIA",
@@ -297,7 +342,7 @@
     "normType": "calculated",
     "oreZi": 8,
     "dailyHours": 8,
-    "positionInProject": "Manager Proiect",
+    "positionInProject": "Expert Achizitii",
     "projectCode": "302141",
     "projectTitle": "Consolidarea capacității Concordia pentru dialog social",
     "beneficiary": "CONFEDERATIA PATRONALA CONCORDIA",
@@ -345,7 +390,7 @@
     "normType": "calculated",
     "oreZi": 4,
     "dailyHours": 4,
-    "positionInProject": "Manager Proiect",
+    "positionInProject": "Expert Financiar 2",
     "projectCode": "302141",
     "projectTitle": "Consolidarea capacității Concordia pentru dialog social",
     "beneficiary": "CONFEDERATIA PATRONALA CONCORDIA",

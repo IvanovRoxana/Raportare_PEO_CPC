@@ -39,9 +39,14 @@ import type {
   DocumentMetadata,
   Expert,
   GrupTintaEntry,
+  HistoricalImportBatch,
+  HistoricalTimesheetDayEntry,
+  MonthlyActivityItem,
+  MonthlyExpertReport,
   Neconformitate,
   ReportStatus,
   SharedDeliverable,
+  UploadedReportingFile,
   VerificationData,
   VerificationNote,
   WorkingGroup,
@@ -343,6 +348,133 @@ function mapAuditLog(item: any): AuditLog {
     newValue: item.newValue ?? undefined,
     justification: item.justification ?? undefined,
     source: item.source,
+  };
+}
+
+function mapHistoricalImportBatch(item: any): HistoricalImportBatch {
+  return {
+    id: item.id,
+    projectCode: item.projectCode,
+    label: item.label,
+    reportingYear: item.reportingYear,
+    monthsIncluded: item.monthsIncluded ?? [],
+    importedBy: item.importedBy,
+    importedAt: item.importedAt,
+    totalExperts: item.totalExperts ?? undefined,
+    totalTimesheets: item.totalTimesheets ?? undefined,
+    totalActivityReports: item.totalActivityReports ?? undefined,
+    totalFiles: item.totalFiles ?? undefined,
+    status: item.status,
+    notes: item.notes ?? undefined,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+  };
+}
+
+function mapMonthlyExpertReport(item: any): MonthlyExpertReport {
+  return {
+    id: item.id,
+    expertId: item.expertId,
+    expertName: item.expertName,
+    projectCode: item.projectCode,
+    projectTitle: item.projectTitle ?? undefined,
+    positionInProject: item.positionInProject ?? undefined,
+    reportingYear: item.reportingYear,
+    reportingMonth: item.reportingMonth,
+    reportingMonthLabel: item.reportingMonthLabel ?? undefined,
+    sourceType: item.sourceType,
+    importBatchId: item.importBatchId ?? undefined,
+    activityReportFileId: item.activityReportFileId ?? undefined,
+    timesheetWorkbookFileId: item.timesheetWorkbookFileId ?? undefined,
+    totalPeoHours: item.totalPeoHours ?? undefined,
+    totalOtherHours: item.totalOtherHours ?? undefined,
+    leaveHours: item.leaveHours ?? undefined,
+    subactivities: item.subactivities ?? [],
+    status: item.status,
+    pmReviewStatus: item.pmReviewStatus ?? undefined,
+    pmReviewedBy: item.pmReviewedBy ?? undefined,
+    pmReviewedAt: item.pmReviewedAt ?? undefined,
+    pmObservations: item.pmObservations ?? [],
+    validationIssues: item.validationIssues ?? undefined,
+    createdBy: item.createdBy,
+    updatedBy: item.updatedBy ?? undefined,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+  };
+}
+
+function mapUploadedReportingFile(item: any): UploadedReportingFile {
+  return {
+    id: item.id,
+    expertId: item.expertId ?? undefined,
+    monthlyReportId: item.monthlyReportId ?? undefined,
+    importBatchId: item.importBatchId ?? undefined,
+    originalFileName: item.originalFileName,
+    storagePath: item.storagePath,
+    s3Bucket: item.s3Bucket ?? undefined,
+    s3Key: item.s3Key ?? undefined,
+    fileType: item.fileType,
+    extension: item.extension,
+    mimeType: item.mimeType ?? undefined,
+    fileSize: item.fileSize ?? undefined,
+    reportingYear: item.reportingYear ?? undefined,
+    reportingMonth: item.reportingMonth ?? undefined,
+    detectedExpertName: item.detectedExpertName ?? undefined,
+    detectedProjectCode: item.detectedProjectCode ?? undefined,
+    uploadStatus: item.uploadStatus ?? undefined,
+    parsingStatus: item.parsingStatus ?? undefined,
+    extractedMetadata: item.extractedMetadata ?? undefined,
+    checksum: item.checksum ?? undefined,
+    uploadedAt: item.uploadedAt,
+    uploadedBy: item.uploadedBy,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+  };
+}
+
+function mapMonthlyActivityItem(item: any): MonthlyActivityItem {
+  return {
+    id: item.id,
+    monthlyReportId: item.monthlyReportId,
+    expertId: item.expertId,
+    activityNumber: item.activityNumber ?? undefined,
+    subactivityCode: item.subactivityCode ?? undefined,
+    subactivityTitle: item.subactivityTitle ?? undefined,
+    activityTitle: item.activityTitle,
+    activityDescription: item.activityDescription ?? undefined,
+    resultDescription: item.resultDescription ?? undefined,
+    deliverableTitle: item.deliverableTitle ?? undefined,
+    isCommonDeliverable: item.isCommonDeliverable ?? undefined,
+    collaborators: item.collaborators ?? [],
+    hours: item.hours ?? undefined,
+    sourcePage: item.sourcePage ?? undefined,
+    sourceFileId: item.sourceFileId ?? undefined,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+  };
+}
+
+function mapHistoricalTimesheetDayEntry(item: any): HistoricalTimesheetDayEntry {
+  return {
+    id: item.id,
+    monthlyReportId: item.monthlyReportId,
+    expertId: item.expertId,
+    date: item.date,
+    day: item.day,
+    reportingMonth: item.reportingMonth,
+    reportingYear: item.reportingYear,
+    hourlyRate: item.hourlyRate ?? undefined,
+    peoHours: item.peoHours ?? undefined,
+    otherHours: item.otherHours ?? undefined,
+    leaveCode: item.leaveCode ?? undefined,
+    activityCode: item.activityCode ?? undefined,
+    subactivityCode: item.subactivityCode ?? undefined,
+    activityTitle: item.activityTitle ?? undefined,
+    activityDescription: item.activityDescription ?? undefined,
+    source: item.source ?? undefined,
+    sourceFileId: item.sourceFileId ?? undefined,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
   };
 }
 
@@ -1906,6 +2038,111 @@ function mapReportStatus(item: any): ReportStatus {
     updatedAt: item.updatedAt,
   };
 }
+
+async function assertCanManageHistoricalImport(client: any) {
+  const scope = await getCurrentDataAccessScope(client);
+  if (!scope.canUsePmDashboard) {
+    throw new Error('Acces interzis: doar PM sau admin poate gestiona importul istoric.');
+  }
+  return scope;
+}
+
+export const historicalImportService = {
+  async getBatches(): Promise<HistoricalImportBatch[]> {
+    const client = getAwsDataClient() as any;
+    await assertCanManageHistoricalImport(client);
+    const data = await listModel<any>(client.models.HistoricalImportBatch);
+    return data.map(mapHistoricalImportBatch).sort((a, b) => b.importedAt.localeCompare(a.importedAt));
+  },
+
+  async createBatch(batch: Omit<HistoricalImportBatch, 'id' | 'createdAt' | 'updatedAt'>): Promise<HistoricalImportBatch> {
+    const client = getAwsDataClient() as any;
+    await assertCanManageHistoricalImport(client);
+    const result = await client.models.HistoricalImportBatch.create(batch);
+    assertNoErrors(result, 'AWS create historical import batch');
+    return mapHistoricalImportBatch(result.data);
+  },
+
+  async getReports(filters?: { expertId?: string; month?: number; year?: number; status?: string }): Promise<MonthlyExpertReport[]> {
+    const client = getAwsDataClient() as any;
+    const scope = await assertCanManageHistoricalImport(client);
+    const filter: Record<string, unknown> = {
+      ...(filters?.expertId ? { expertId: { eq: filters.expertId } } : {}),
+      ...(filters?.year ? { reportingYear: { eq: filters.year } } : {}),
+      ...(filters?.month ? { reportingMonth: { eq: filters.month } } : {}),
+      ...(filters?.status ? { status: { eq: filters.status } } : {}),
+      ...(scope.canAccessAllExperts ? {} : { expertId: { eq: scope.currentExpertId } }),
+    };
+    const data = await listModel<any>(client.models.MonthlyExpertReport, filter);
+    return data
+      .map(mapMonthlyExpertReport)
+      .sort((a, b) => b.reportingYear - a.reportingYear || b.reportingMonth - a.reportingMonth || a.expertName.localeCompare(b.expertName));
+  },
+
+  async createReport(report: Omit<MonthlyExpertReport, 'id' | 'createdAt' | 'updatedAt'>): Promise<MonthlyExpertReport> {
+    const client = getAwsDataClient() as any;
+    await assertCanManageHistoricalImport(client);
+    const result = await client.models.MonthlyExpertReport.create(report);
+    assertNoErrors(result, 'AWS create monthly expert report');
+    return mapMonthlyExpertReport(result.data);
+  },
+
+  async updateReport(id: string, updates: Partial<MonthlyExpertReport>): Promise<MonthlyExpertReport> {
+    const client = getAwsDataClient() as any;
+    await assertCanManageHistoricalImport(client);
+    const result = await client.models.MonthlyExpertReport.update({ id, ...updates });
+    assertNoErrors(result, 'AWS update monthly expert report');
+    return mapMonthlyExpertReport(result.data);
+  },
+
+  async getFiles(monthlyReportId?: string): Promise<UploadedReportingFile[]> {
+    const client = getAwsDataClient() as any;
+    await assertCanManageHistoricalImport(client);
+    const data = await listModel<any>(
+      client.models.UploadedReportingFile,
+      monthlyReportId ? { monthlyReportId: { eq: monthlyReportId } } : undefined
+    );
+    return data.map(mapUploadedReportingFile).sort((a, b) => b.uploadedAt.localeCompare(a.uploadedAt));
+  },
+
+  async createFile(file: Omit<UploadedReportingFile, 'id' | 'createdAt' | 'updatedAt'>): Promise<UploadedReportingFile> {
+    const client = getAwsDataClient() as any;
+    await assertCanManageHistoricalImport(client);
+    const result = await client.models.UploadedReportingFile.create(file);
+    assertNoErrors(result, 'AWS create uploaded reporting file');
+    return mapUploadedReportingFile(result.data);
+  },
+
+  async getActivityItems(monthlyReportId: string): Promise<MonthlyActivityItem[]> {
+    const client = getAwsDataClient() as any;
+    await assertCanManageHistoricalImport(client);
+    const data = await listModel<any>(client.models.MonthlyActivityItem, { monthlyReportId: { eq: monthlyReportId } });
+    return data.map(mapMonthlyActivityItem);
+  },
+
+  async createActivityItem(item: Omit<MonthlyActivityItem, 'id' | 'createdAt' | 'updatedAt'>): Promise<MonthlyActivityItem> {
+    const client = getAwsDataClient() as any;
+    await assertCanManageHistoricalImport(client);
+    const result = await client.models.MonthlyActivityItem.create(item);
+    assertNoErrors(result, 'AWS create monthly activity item');
+    return mapMonthlyActivityItem(result.data);
+  },
+
+  async getTimesheetDays(monthlyReportId: string): Promise<HistoricalTimesheetDayEntry[]> {
+    const client = getAwsDataClient() as any;
+    await assertCanManageHistoricalImport(client);
+    const data = await listModel<any>(client.models.HistoricalTimesheetDayEntry, { monthlyReportId: { eq: monthlyReportId } });
+    return data.map(mapHistoricalTimesheetDayEntry).sort((a, b) => a.date.localeCompare(b.date));
+  },
+
+  async createTimesheetDay(day: Omit<HistoricalTimesheetDayEntry, 'id' | 'createdAt' | 'updatedAt'>): Promise<HistoricalTimesheetDayEntry> {
+    const client = getAwsDataClient() as any;
+    await assertCanManageHistoricalImport(client);
+    const result = await client.models.HistoricalTimesheetDayEntry.create(day);
+    assertNoErrors(result, 'AWS create historical timesheet day');
+    return mapHistoricalTimesheetDayEntry(result.data);
+  },
+};
 
 export const grupTintaService = {
   async getAllByMonth(month: number, year: number): Promise<GrupTintaEntry[]> {
