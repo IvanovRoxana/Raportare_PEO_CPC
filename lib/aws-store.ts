@@ -967,6 +967,16 @@ export const auditLogsService = {
       justification: audit.justification,
       source: audit.source,
     });
+
+    const unauthorizedError = result.errors?.some((error: any) =>
+      error?.errorType === 'Unauthorized'
+      || String(error?.message || '').toLowerCase().includes('not authorized'),
+    );
+    if (unauthorizedError) {
+      console.warn('Skipping audit log persistence due to Unauthorized on createAuditLog.');
+      return audit;
+    }
+
     assertNoErrors(result, 'AWS create audit log');
     return mapAuditLog(result.data);
   },
