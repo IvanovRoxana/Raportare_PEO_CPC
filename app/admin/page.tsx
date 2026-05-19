@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import {
   AlertTriangle,
+  ArrowRight,
   Archive,
   Bot,
   CalendarClock,
@@ -17,13 +18,11 @@ import {
   SlidersHorizontal,
   UsersRound,
 } from 'lucide-react';
-import { ViewAsExpertPanel } from '@/components/admin/view-as-expert-panel';
-import { UsersRolesManagementPanel } from '@/components/admin/users-roles-management-panel';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { adminMenuItems, adminRoles, buildAdminDashboardSnapshot, protectedAdminBoundaries, ruleSeverityLevels } from '@/lib/admin-module';
+import { adminMenuItems, buildAdminDashboardSnapshot, protectedAdminBoundaries, ruleSeverityLevels } from '@/lib/admin-module';
 import activities from '@/data/import/sample-activities.json';
 import activityCatalog from '@/data/import/activity-catalog.json';
 import experts from '@/data/import/experts.json';
@@ -70,12 +69,12 @@ const dashboardStats = [
   { label: 'Validate', value: snapshot.validatedReports, hint: 'conforme' },
 ];
 
-
 const adminCoreModules = [
   {
     title: 'Utilizatori și roluri',
     description: 'Administrare utilizatori, roluri și permisiuni pe module (expert, PM, financiar, audit).',
     controls: ['Invitare utilizator', 'Atribuire rol', 'Dezactivare cont'],
+    href: '/admin/users',
   },
   {
     title: 'Experți',
@@ -206,9 +205,6 @@ export default function AdminPage() {
             </CardContent>
           </Card>
 
-
-          <UsersRolesManagementPanel />
-
           <Card id="nucleu-dashboard-admin" className="rounded-lg scroll-mt-24">
             <CardHeader>
               <CardTitle className="text-xl">Nucleu Dashboard Admin</CardTitle>
@@ -218,17 +214,39 @@ export default function AdminPage() {
             </CardHeader>
             <CardContent>
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {adminCoreModules.map((module) => (
-                  <article key={module.title} className="rounded-lg border bg-background p-4">
-                    <h2 className="font-semibold text-foreground">{module.title}</h2>
-                    <p className="mt-2 text-sm leading-6 text-muted-foreground">{module.description}</p>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {module.controls.map((control) => (
-                        <Badge key={control} variant="secondary" className="font-normal">{control}</Badge>
-                      ))}
-                    </div>
-                  </article>
-                ))}
+                {adminCoreModules.map((module) => {
+                  const moduleContent = (
+                    <>
+                      <h2 className="font-semibold text-foreground">{module.title}</h2>
+                      <p className="mt-2 text-sm leading-6 text-muted-foreground">{module.description}</p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {module.controls.map((control) => (
+                          <Badge key={control} variant="secondary" className="font-normal">{control}</Badge>
+                        ))}
+                      </div>
+                      {'href' in module && module.href ? (
+                        <span className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-primary">
+                          Deschide pagina
+                          <ArrowRight className="h-4 w-4" />
+                        </span>
+                      ) : null}
+                    </>
+                  );
+
+                  return 'href' in module && module.href ? (
+                    <Link
+                      key={module.title}
+                      href={module.href}
+                      className="block rounded-lg border bg-background p-4 transition-colors hover:border-primary/40 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    >
+                      {moduleContent}
+                    </Link>
+                  ) : (
+                    <article key={module.title} className="rounded-lg border bg-background p-4">
+                      {moduleContent}
+                    </article>
+                  );
+                })}
               </div>
             </CardContent>
           </Card>
@@ -244,25 +262,43 @@ export default function AdminPage() {
               <div className="grid gap-4 md:grid-cols-2">
                 {adminMenuItems.map((item, index) => {
                   const Icon = menuIcons[index] ?? Settings2;
-                  return (
-                    <article key={item.id} className="rounded-lg border bg-background p-4">
-                      <div className="flex items-start gap-3">
-                        <div className="rounded-md bg-primary/10 p-2 text-primary">
-                          <Icon className="h-4 w-4" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <h2 className="font-semibold text-foreground">{index + 1}. {item.title}</h2>
-                            <Badge variant="outline">{item.phase}</Badge>
-                          </div>
-                          <p className="mt-2 text-sm leading-6 text-muted-foreground">{item.description}</p>
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            {item.controls.slice(0, 4).map((control) => (
-                              <Badge key={control} variant="secondary" className="font-normal">{control}</Badge>
-                            ))}
-                          </div>
-                        </div>
+                  const menuContent = (
+                    <div className="flex items-start gap-3">
+                      <div className="rounded-md bg-primary/10 p-2 text-primary">
+                        <Icon className="h-4 w-4" />
                       </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h2 className="font-semibold text-foreground">{index + 1}. {item.title}</h2>
+                          <Badge variant="outline">{item.phase}</Badge>
+                        </div>
+                        <p className="mt-2 text-sm leading-6 text-muted-foreground">{item.description}</p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {item.controls.slice(0, 4).map((control) => (
+                            <Badge key={control} variant="secondary" className="font-normal">{control}</Badge>
+                          ))}
+                        </div>
+                        {item.href ? (
+                          <span className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-primary">
+                            Deschide pagina
+                            <ArrowRight className="h-4 w-4" />
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+
+                  return item.href ? (
+                    <Link
+                      key={item.id}
+                      href={item.href}
+                      className="block rounded-lg border bg-background p-4 transition-colors hover:border-primary/40 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    >
+                      {menuContent}
+                    </Link>
+                  ) : (
+                    <article key={item.id} className="rounded-lg border bg-background p-4">
+                      {menuContent}
                     </article>
                   );
                 })}
@@ -272,26 +308,6 @@ export default function AdminPage() {
         </div>
 
         <aside className="space-y-6">
-          <ViewAsExpertPanel experts={experts as Expert[]} />
-
-          <Card className="rounded-lg">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <ShieldCheck className="h-5 w-5 text-primary" />
-                Roluri minime
-              </CardTitle>
-              <CardDescription>Arhitectura permite mai mult decât expert / PM / admin.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {adminRoles.map((role) => (
-                <div key={role.role} className="rounded-md border bg-background p-3">
-                  <p className="font-medium text-foreground">{role.label}</p>
-                  <p className="mt-1 text-sm leading-6 text-muted-foreground">{role.description}</p>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-
           <Card className="rounded-lg">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">

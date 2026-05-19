@@ -5,6 +5,7 @@ import type { Activity, Expert, ReportStatus } from '../lib/types.ts';
 
 test('meniul admin acopera zonele minim viabile si avansate', () => {
   assert.ok(adminMenuItems.some((item) => item.id === 'users' && item.phase === 'Etapa 1'));
+  assert.equal(adminMenuItems.find((item) => item.id === 'users')?.href, '/admin/users');
   assert.ok(adminMenuItems.some((item) => item.id === 'ai' && item.phase === 'Etapa 3'));
   assert.ok(adminMenuItems.some((item) => item.id === 'audit' && item.phase === 'Etapa 2'));
 });
