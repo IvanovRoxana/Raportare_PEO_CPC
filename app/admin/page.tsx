@@ -129,6 +129,9 @@ export default function AdminPage() {
                 <Link href="/">Înapoi la aplicație</Link>
               </Button>
               <Button asChild>
+                <a href="#nucleu-dashboard-admin">Nucleu Dashboard Admin</a>
+              </Button>
+              <Button asChild variant="secondary">
                 <a href="#prioritizare">Vezi etapele</a>
               </Button>
             </div>
@@ -203,7 +206,7 @@ export default function AdminPage() {
           </Card>
 
 
-          <Card className="rounded-lg">
+          <Card id="nucleu-dashboard-admin" className="rounded-lg scroll-mt-24">
             <CardHeader>
               <CardTitle className="text-xl">Nucleu Dashboard Admin</CardTitle>
               <CardDescription>
