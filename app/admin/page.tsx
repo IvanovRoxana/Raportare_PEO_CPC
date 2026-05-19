@@ -69,6 +69,35 @@ const dashboardStats = [
   { label: 'Validate', value: snapshot.validatedReports, hint: 'conforme' },
 ];
 
+
+const adminCoreModules = [
+  {
+    title: 'Utilizatori și roluri',
+    description: 'Administrare utilizatori, roluri și permisiuni pe module (expert, PM, financiar, audit).',
+    controls: ['Invitare utilizator', 'Atribuire rol', 'Dezactivare cont'],
+  },
+  {
+    title: 'Experți',
+    description: 'Profiluri experți, date contractuale, stări active/inactive și eligibilitate pe proiect.',
+    controls: ['Date expert', 'Status colaborare', 'Validare eligibilitate'],
+  },
+  {
+    title: 'Proiecte',
+    description: 'Configurare proiecte, luni active, reguli de raportare și echipele aferente fiecărui proiect.',
+    controls: ['Calendar raportare', 'Echipă proiect', 'Reguli proiect'],
+  },
+  {
+    title: 'Subactivități',
+    description: 'Gestionarea subactivităților pentru fiecare activitate principală și condiții de raportare.',
+    controls: ['Mapare activitate-SA', 'Condiții ore', 'Reguli validare'],
+  },
+  {
+    title: 'Catalog activități',
+    description: 'Catalog central pentru activități, coduri, tipuri de livrabile și clasificări operaționale.',
+    controls: ['Adăugare activitate', 'Coduri și etichete', 'Arhivare activitate'],
+  },
+] as const;
+
 const phaseDescriptions = {
   'Etapa 1': 'Admin minim viabil: elimină modificările în cod pentru configurările de bază.',
   'Etapa 2': 'Admin operațional complet: verificare, exporturi, audit, import și arhivare.',
@@ -100,6 +129,9 @@ export default function AdminPage() {
                 <Link href="/">Înapoi la aplicație</Link>
               </Button>
               <Button asChild>
+                <a href="#nucleu-dashboard-admin">Nucleu Dashboard Admin</a>
+              </Button>
+              <Button asChild variant="secondary">
                 <a href="#prioritizare">Vezi etapele</a>
               </Button>
             </div>
@@ -169,6 +201,31 @@ export default function AdminPage() {
                     <li>• Grupuri de lucru: {snapshot.referenceData.workingGroupsCount} intrări.</li>
                   </ul>
                 </div>
+              </div>
+            </CardContent>
+          </Card>
+
+
+          <Card id="nucleu-dashboard-admin" className="rounded-lg scroll-mt-24">
+            <CardHeader>
+              <CardTitle className="text-xl">Nucleu Dashboard Admin</CardTitle>
+              <CardDescription>
+                Zonele cerute pentru administrarea operațională: utilizatori, experți, proiecte, subactivități și catalog.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {adminCoreModules.map((module) => (
+                  <article key={module.title} className="rounded-lg border bg-background p-4">
+                    <h2 className="font-semibold text-foreground">{module.title}</h2>
+                    <p className="mt-2 text-sm leading-6 text-muted-foreground">{module.description}</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {module.controls.map((control) => (
+                        <Badge key={control} variant="secondary" className="font-normal">{control}</Badge>
+                      ))}
+                    </div>
+                  </article>
+                ))}
               </div>
             </CardContent>
           </Card>
