@@ -18,6 +18,7 @@ import {
   UsersRound,
 } from 'lucide-react';
 import { ViewAsExpertPanel } from '@/components/admin/view-as-expert-panel';
+import { UsersRolesManagementPanel } from '@/components/admin/users-roles-management-panel';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -205,6 +206,8 @@ export default function AdminPage() {
             </CardContent>
           </Card>
 
+
+          <UsersRolesManagementPanel />
 
           <Card id="nucleu-dashboard-admin" className="rounded-lg scroll-mt-24">
             <CardHeader>
