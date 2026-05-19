@@ -1,6 +1,6 @@
 import { Suspense } from 'react';
 import Link from 'next/link';
-import { ArrowRight, Building2, CalendarDays, CheckCircle2, CircleDollarSign, FileText, Settings } from 'lucide-react';
+import { ArrowRight, Building2, CalendarDays, CheckCircle2, CircleDollarSign, FileText, LayoutPanelTop, Settings } from 'lucide-react';
 import { LoginCard, LoginCardFallback } from '@/components/auth/login-card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -92,6 +92,22 @@ export default function HomePage() {
                   <p className="text-sm leading-6 text-foreground">{objective}</p>
                 </div>
               ))}
+            </CardContent>
+          </Card>
+
+
+          <Card className="rounded-lg border-primary/20 bg-primary/5">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-xl">
+                <LayoutPanelTop className="h-5 w-5 text-primary" />
+                Admin Dashboard · Nucleu
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm leading-6 text-foreground">
+              <p>Acces rapid către zona "Nucleu Dashboard Admin" pentru managementul Utilizatori și roluri, Experți, Proiecte, Subactivități și Catalog activități.</p>
+              <Button asChild>
+                <Link href="/admin#nucleu-dashboard-admin">Deschide Nucleu Dashboard Admin</Link>
+              </Button>
             </CardContent>
           </Card>
 
