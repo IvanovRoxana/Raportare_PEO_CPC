@@ -401,7 +401,7 @@ const schema = a.schema({
       index("actionType"),
     ])
     .authorization((allow) => [
-      allow.groups(["pm"]).to(["read"]),
+      allow.groups(["pm"]).to(["create", "read"]),
       allow.groups(["admin"]).to(["create", "read", "update", "delete"]),
     ]),
 
