@@ -180,6 +180,7 @@ export const adminMenuItems: AdminMenuItem[] = [
     phase: 'Etapa 2',
     owners: ['project_admin', 'technical_super_admin'],
     controls: ['experți', 'catalog activități', 'grupuri lucru', 'statusuri', 'restaurare fișier'],
+    href: '/admin/historical-import',
   },
   {
     id: 'audit',

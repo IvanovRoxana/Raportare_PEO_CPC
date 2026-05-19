@@ -96,6 +96,12 @@ const adminCoreModules = [
     description: 'Catalog central pentru activități, coduri, tipuri de livrabile și clasificări operaționale.',
     controls: ['Adăugare activitate', 'Coduri și etichete', 'Arhivare activitate'],
   },
+  {
+    title: 'Import istoric raportare',
+    description: 'Incarcare dosare lunare istorice: PDF raport, Excel pontaj, metadate si sursa auditabila.',
+    controls: ['PDF Anexa 10', 'Pontaj Excel', 'Istoric PM'],
+    href: '/admin/historical-import',
+  },
 ] as const;
 
 const phaseDescriptions = {

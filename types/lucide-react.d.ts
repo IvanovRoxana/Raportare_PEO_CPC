@@ -49,6 +49,7 @@ declare module 'lucide-react' {
   export const Edit2: LucideIcon;
   export const Eye: LucideIcon;
   export const File: LucideIcon;
+  export const FileArchive: LucideIcon;
   export const FileSpreadsheet: LucideIcon;
   export const FileText: LucideIcon;
   export const FileType: LucideIcon;
