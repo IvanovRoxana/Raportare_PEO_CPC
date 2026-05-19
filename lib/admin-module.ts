@@ -11,6 +11,7 @@ export interface AdminMenuItem {
   phase: AdminPhase;
   owners: AdminRole[];
   controls: string[];
+  href?: string;
 }
 
 export interface AdminDashboardSnapshotInput {
@@ -82,6 +83,7 @@ export const adminMenuItems: AdminMenuItem[] = [
     phase: 'Etapa 1',
     owners: ['project_admin', 'technical_super_admin'],
     controls: ['expert', 'pm', 'admin proiect', 'super admin', 'permisiuni granularizate'],
+    href: '/admin/users',
   },
   {
     id: 'experts',
