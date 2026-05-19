@@ -15,6 +15,9 @@ export const storage = defineStorage({
       allow.entity("identity").to(["read", "write", "delete"]),
       allow.groups(["pm", "admin"]).to(["read", "write", "delete"]),
     ],
+    "historical-import/*": [
+      allow.groups(["pm", "admin"]).to(["read", "write", "delete"]),
+    ],
     "project-assets/*": [
       allow.authenticated.to(["read"]),
       allow.groups(["pm", "admin"]).to(["read", "write", "delete"]),

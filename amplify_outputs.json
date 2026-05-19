@@ -4782,6 +4782,20 @@
               "delete"
             ]
           },
+          "historical-import/*": {
+            "groupspm": [
+              "get",
+              "list",
+              "write",
+              "delete"
+            ],
+            "groupsadmin": [
+              "get",
+              "list",
+              "write",
+              "delete"
+            ]
+          },
           "project-assets/*": {
             "authenticated": [
               "get",
