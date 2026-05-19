@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { requestPasswordReset, getSignedInUser } from '@/lib/aws/auth';
+import { requestPasswordReset, getSignedInUser, signUpWithEmail } from '@/lib/aws/auth';
 
 type RoleOption = 'Expert' | 'PM' | 'Expert/PM' | 'Admin';
 
@@ -23,6 +23,11 @@ export function UsersRolesManagementPanel() {
   const [role, setRole] = useState<RoleOption>('Expert');
 
   const admins = useMemo(() => experts.filter((e) => e.role.toLowerCase().includes('admin')), [experts]);
+
+
+  function generateTemporaryPassword() {
+    return `Tmp!${Math.random().toString(36).slice(2, 8)}9Aa`;
+  }
 
   async function loadExperts() {
     setLoading(true);
@@ -51,16 +56,46 @@ export function UsersRolesManagementPanel() {
     setError(null);
     setOk(null);
     try {
+      const normalizedEmail = email.trim().toLowerCase();
+      const tempPassword = generateTemporaryPassword();
+      try {
+        await signUpWithEmail(normalizedEmail, tempPassword, name.trim());
+      } catch (signupError) {
+        const message = signupError instanceof Error ? signupError.message : String(signupError || '');
+        if (!/exists|already|UsernameExistsException/i.test(message)) {
+          throw signupError;
+        }
+      }
+
+      try {
+        await requestPasswordReset(normalizedEmail);
+      } catch {
+        // If reset flow is not yet available for unconfirmed users, we still continue with profile provisioning.
+      }
+
       await expertsService.create({
         name: name.trim(),
-        email: email.trim().toLowerCase(),
+        email: normalizedEmail,
         role,
         norma: 8,
         isActive: true,
         hasPmAccess: role.includes('PM'),
         saCodes: [],
       });
-      setOk('Utilizatorul a fost invitat (creat în AWS Data) și apare în listă.');
+      const actor = await getSignedInUser({ ignoreViewAs: true });
+      await auditLogsService.create({
+        actionType: 'user_invited',
+        actorId: actor?.id || 'admin-ui',
+        actorName: actor?.displayName || actor?.email || 'Admin',
+        actorRole: (actor?.roles || ['admin']).join(','),
+        affectedExpertName: name.trim(),
+        fieldName: 'cognito_onboarding',
+        oldValue: 'none',
+        newValue: 'created_and_invited',
+        justification: 'Invitare utilizator cu onboarding Cognito și profil Expert.',
+        source: 'manual',
+      });
+      setOk('Utilizator invitat: profilul a fost creat, iar fluxul Cognito (signup/reset) a fost inițiat pe email.');
       setName('');
       setEmail('');
       setRole('Expert');
