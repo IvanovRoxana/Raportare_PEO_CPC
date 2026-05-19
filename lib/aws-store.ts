@@ -973,8 +973,14 @@ export const auditLogsService = {
       || String(error?.message || '').toLowerCase().includes('not authorized'),
     );
     if (unauthorizedError) {
-      console.warn('Skipping audit log persistence due to Unauthorized on createAuditLog.');
-      return audit;
+      const allowUnauthorizedAuditFallback =
+        process.env.NODE_ENV !== 'production'
+        || process.env.NEXT_PUBLIC_ALLOW_UNAUTHORIZED_AUDITLOG_FALLBACK === 'true';
+
+      if (allowUnauthorizedAuditFallback) {
+        console.warn('Skipping audit log persistence due to Unauthorized on createAuditLog.');
+        return audit;
+      }
     }
 
     assertNoErrors(result, 'AWS create audit log');
