@@ -158,6 +158,11 @@ async function listActiveExpertsFromBackend(client: any) {
   return data.map(mapExpert);
 }
 
+async function listAllExpertsFromBackend(client: any) {
+  const data = await listModel<any>(client.models.Expert);
+  return data.map(mapExpert);
+}
+
 async function findCurrentExpertFromBackend(client: any, user: AccessUser | null) {
   if (!user) return undefined;
 
@@ -845,13 +850,16 @@ export const expertsService = {
     return buildCollaborationExpertOptions(mergeExpertLists(experts, peoUsersAsExperts()));
   },
 
-  async getAll(): Promise<Expert[]> {
+  async getAll(options?: { includeInactive?: boolean }): Promise<Expert[]> {
     const client = getAwsDataClient() as any;
     const fallbackExperts = peoUsersAsExperts();
     const scope = await getCurrentDataAccessScope(client);
+    const includeInactive = options?.includeInactive === true;
 
     if (scope.canAccessAllExperts) {
-      const experts = await listActiveExpertsFromBackend(client);
+      const experts = includeInactive
+        ? await listAllExpertsFromBackend(client)
+        : await listActiveExpertsFromBackend(client);
       return mergeExpertLists(experts, fallbackExperts);
     }
 
