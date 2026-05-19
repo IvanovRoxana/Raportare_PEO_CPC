@@ -506,7 +506,7 @@ export function ActivityForm({
     const fileHash = await sha256Hex(await blob.arrayBuffer());
     const firstPageTextHash = await hashFirstPageText(deliverable.firstPageText || deliverable.docText);
     const contentFingerprint = normalizeDocumentTextForFingerprint(deliverable.firstPageText || deliverable.docText).slice(0, 500);
-    const projectId = expert?.projectCode || '302151';
+    const projectId = expert?.projectCode || '302141';
     const projectName = expert?.projectTitle || 'Consolidarea capacitatii Concordia pentru dialog social';
     const s3Key = buildDocumentS3Key({
       projectId,
@@ -1009,8 +1009,7 @@ export function ActivityForm({
                       <DeliverableItem
                         key={d.id}
                         deliverable={d}
-                        apiKey={apiKey}
-                        subActivity={saCode}
+                            subActivity={saCode}
                         activityTitle={activityTitle}
                         selectedActivityId={selectedCatalogItem?.id}
                         catalogDescription={selectedCatalogItem?.description}
@@ -1205,8 +1204,7 @@ export function ActivityForm({
                       <DeliverableItem
                         key={d.id}
                         deliverable={d}
-                        apiKey={apiKey}
-                        subActivity={saCode}
+                            subActivity={saCode}
                         activityTitle={activityTitle}
                         selectedActivityId={selectedCatalogItem?.id}
                         catalogDescription={selectedCatalogItem?.description}
@@ -1278,7 +1276,6 @@ export function ActivityForm({
                     activityTitle={activityTitle}
                     date={selectedDates[0] || ''}
                     description={description}
-                    apiKey={apiKey}
                     onUpdateDeliverable={updateDeliverable}
                     onUpsertSlot={upsertEventSlot}
                   />

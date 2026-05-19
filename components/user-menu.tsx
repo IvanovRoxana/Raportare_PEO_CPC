@@ -29,7 +29,7 @@ const roleDestinations: Array<{
 }> = [
   { role: 'expert', label: 'Lucrează ca Expert', href: '/expert', icon: LayoutDashboard },
   { role: 'pm', label: 'Lucrează ca PM', href: '/pm', icon: BriefcaseBusiness },
-  { role: 'admin', label: 'Lucrează ca Admin', href: '/admin', icon: ShieldCheck },
+  { role: 'admin', label: 'Lucrează ca Super admin / tehnic', href: '/super-admin', icon: ShieldCheck },
 ]
 
 export function UserMenu() {
