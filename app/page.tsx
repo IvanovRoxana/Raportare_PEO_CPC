@@ -56,9 +56,9 @@ export default function HomePage() {
                 </Link>
               </Button>
               <Button asChild variant="outline">
-                <Link href="/admin">
+                <Link href="/super-admin">
                   <Settings className="h-4 w-4" />
-                  Modul admin
+                  Super admin / tehnic
                 </Link>
               </Button>
             </div>
@@ -106,7 +106,7 @@ export default function HomePage() {
             <CardContent className="space-y-3 text-sm leading-6 text-foreground">
               <p>Acces rapid către zona "Nucleu Dashboard Admin" pentru managementul Utilizatori și roluri, Experți, Proiecte, Subactivități și Catalog activități.</p>
               <Button asChild>
-                <Link href="/admin#nucleu-dashboard-admin">Deschide Nucleu Dashboard Admin</Link>
+                <Link href="/super-admin#nucleu-dashboard-admin">Deschide Nucleu Dashboard Admin</Link>
               </Button>
             </CardContent>
           </Card>

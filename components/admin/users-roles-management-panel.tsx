@@ -28,7 +28,7 @@ export function UsersRolesManagementPanel() {
     setLoading(true);
     setError(null);
     try {
-      const data = await expertsService.getAll();
+      const data = await expertsService.getAll({ includeInactive: true });
       setExperts(data);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Nu am putut încărca utilizatorii.');
@@ -186,7 +186,9 @@ export function UsersRolesManagementPanel() {
               </div>
             ))}
           </div>
-          <p className="mt-3 text-xs text-muted-foreground">Admini detectați: {admins.length}. Schimbările sunt persistate în AWS Data (model Expert).</p>
+          <p className="mt-3 text-xs text-muted-foreground">
+            Utilizatori listați: {experts.length}. Admini detectați: {admins.length}. Schimbările sunt persistate în AWS Data (model Expert).
+          </p>
         </div>
       </CardContent>
     </Card>

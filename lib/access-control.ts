@@ -17,7 +17,9 @@ export type DataAccessScope = {
 };
 
 // Expert/PM users are self-scoped by default. Add an email here only after a documented PM/Admin decision.
-export const EXPERT_PM_EXTENDED_ACCESS_EMAILS: readonly string[] = [];
+export const EXPERT_PM_EXTENDED_ACCESS_EMAILS: readonly string[] = [
+  'roxana.ivanov@confederatia-concordia.ro',
+];
 
 export function normalizeIdentity(value?: string | null) {
   return String(value || '').trim().toLowerCase();
