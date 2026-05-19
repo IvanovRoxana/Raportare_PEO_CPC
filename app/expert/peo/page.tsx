@@ -1,12 +1,10 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { Settings, ArrowLeft, Loader2, Plus, Send, Lock, AlertTriangle, CheckCircle } from 'lucide-react';
+import { ArrowLeft, Loader2, Plus, Send, Lock, AlertTriangle, CheckCircle } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
@@ -14,13 +12,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { MultiSelectCalendar } from '@/components/expert/multi-select-calendar';
@@ -33,7 +24,6 @@ import { getMonthName } from '@/lib/backend-store';
 import {
   useActivitiesByMonth,
   useActivityMutations,
-  useApiKey,
   useCollaborationExperts,
   useConcurrentProjects,
   useExperts,
@@ -94,8 +84,6 @@ export default function ExpertDashboard() {
   const [showForm, setShowForm] = useState(false);
   const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
   const [selectedExpertId, setSelectedExpertId] = useState<string | null>(null);
-  const [localApiKey, setLocalApiKey] = useState('');
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -106,7 +94,6 @@ export default function ExpertDashboard() {
   const { experts: collaborationExperts } = useCollaborationExperts();
   const { activities: allMonthActivities, isLoading: activitiesLoading, mutate: refreshActivities } = useActivitiesByMonth(currentMonth, currentYear);
   const { createBatch, update: updateActivity, remove: removeActivity } = useActivityMutations();
-  const { apiKey, setApiKey, isLoading: apiKeyLoading } = useApiKey();
   const { status: reportStatus, updateStatus: updateReportStatus, isLoading: reportStatusLoading } = useReportStatus(selectedExpertId, currentMonth, currentYear);
   const previousMonthDate = useMemo(() => new Date(baseYear, baseMonth - 1, 1), [baseMonth, baseYear]);
   const nextMonthDate = useMemo(() => new Date(baseYear, baseMonth + 1, 1), [baseMonth, baseYear]);
@@ -135,13 +122,6 @@ export default function ExpertDashboard() {
     setSelectedExpertId((matchingExpert ?? experts[0]).id);
   }, [experts, userEmail, selectedExpertId]);
 
-
-  // Load API key when it changes
-  useEffect(() => {
-    if (apiKey) {
-      setLocalApiKey(apiKey);
-    }
-  }, [apiKey]);
 
   // Get selected expert
   const selectedExpert = useMemo(() => {
@@ -436,15 +416,6 @@ export default function ExpertDashboard() {
     });
   };
 
-  const handleSaveSettings = async () => {
-    try {
-      await setApiKey(localApiKey);
-      setSettingsOpen(false);
-    } catch (error) {
-      console.error('Error saving settings:', error);
-    }
-  };
-
   const getFirstWorkingDateInMonth = () => {
     const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
     for (let day = 1; day <= daysInMonth; day += 1) {
@@ -545,7 +516,7 @@ export default function ExpertDashboard() {
     }
   };
 
-  const isLoading = expertsLoading || activitiesLoading || apiKeyLoading;
+  const isLoading = expertsLoading || activitiesLoading;
 
   if (isLoading && experts.length === 0) {
     return (
@@ -595,37 +566,6 @@ export default function ExpertDashboard() {
                   ))}
                 </SelectContent>
               </Select>
-
-              <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
-                <DialogTrigger asChild>
-                  <Button variant="outline" size="icon">
-                    <Settings className="h-5 w-5" />
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Setări</DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-4 py-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="apiKey">Claude API Key</Label>
-                      <Input
-                        id="apiKey"
-                        type="password"
-                        value={localApiKey}
-                        onChange={(e) => setLocalApiKey(e.target.value)}
-                        placeholder="sk-ant-..."
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        Necesar pentru funcțiile AI (generare rapoarte, verificare titluri)
-                      </p>
-                    </div>
-                    <Button onClick={handleSaveSettings} className="w-full">
-                      Salvează
-                    </Button>
-                  </div>
-                </DialogContent>
-              </Dialog>
 
               <UserMenu />
             </div>
@@ -792,7 +732,7 @@ export default function ExpertDashboard() {
                     allActivities={allMonthActivities}
                     month={currentMonth}
                     year={currentYear}
-                    apiKey={localApiKey || null}
+                    apiKey={null}
                     onSave={handleSaveActivities}
                     onCancel={() => {
                       setShowForm(false);

@@ -1009,8 +1009,7 @@ export function ActivityForm({
                       <DeliverableItem
                         key={d.id}
                         deliverable={d}
-                        apiKey={apiKey}
-                        subActivity={saCode}
+                            subActivity={saCode}
                         activityTitle={activityTitle}
                         selectedActivityId={selectedCatalogItem?.id}
                         catalogDescription={selectedCatalogItem?.description}
@@ -1205,8 +1204,7 @@ export function ActivityForm({
                       <DeliverableItem
                         key={d.id}
                         deliverable={d}
-                        apiKey={apiKey}
-                        subActivity={saCode}
+                            subActivity={saCode}
                         activityTitle={activityTitle}
                         selectedActivityId={selectedCatalogItem?.id}
                         catalogDescription={selectedCatalogItem?.description}
@@ -1278,7 +1276,6 @@ export function ActivityForm({
                     activityTitle={activityTitle}
                     date={selectedDates[0] || ''}
                     description={description}
-                    apiKey={apiKey}
                     onUpdateDeliverable={updateDeliverable}
                     onUpsertSlot={upsertEventSlot}
                   />

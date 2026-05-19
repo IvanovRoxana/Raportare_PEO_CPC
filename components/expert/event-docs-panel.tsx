@@ -18,7 +18,6 @@ interface EventDocsPanelProps {
   activityTitle: string;
   date: string;
   description: string;
-  apiKey: string | null;
   onUpdateDeliverable: (id: string, patch: Partial<DeliverableSlot>) => void;
   onUpsertSlot: (slotType: 'event_mom' | 'event_proof', name: string, patch: Partial<DeliverableSlot>) => void;
 }
@@ -29,7 +28,6 @@ export function EventDocsPanel({
   activityTitle,
   date,
   description,
-  apiKey,
   onUpdateDeliverable,
   onUpsertSlot,
 }: EventDocsPanelProps) {
@@ -50,10 +48,6 @@ export function EventDocsPanel({
   const missingEventProof = !eventProof?.uploaded;
 
   const generateReport = async () => {
-    if (!apiKey) {
-      setGenErr('API key nedefinit - apasa butonul Setari din header');
-      return;
-    }
     if (genDesc.trim().length < 20) {
       setGenErr('Descrierea trebuie sa aiba minim 20 caractere');
       return;
@@ -67,7 +61,6 @@ export function EventDocsPanel({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          apiKey,
           subActivity,
           activityTitle,
           date,
@@ -192,7 +185,7 @@ export function EventDocsPanel({
           {hasMOM && (
             <DeliverableItem
               deliverable={eventMOM || createDeliverableSlot('event_mom', 'Minute intalnire / MOM')}
-              apiKey={apiKey}
+              apiKey={null}
               subActivity={subActivity}
               activityTitle={activityTitle}
               onUpdate={(patch) => onUpsertSlot('event_mom', 'MOM / Minut / Proces verbal eveniment', patch)}
@@ -203,7 +196,7 @@ export function EventDocsPanel({
             />
           )}
 
-          {/* Generate with Claude */}
+          {/* Generate with OpenAI */}
           {!hasMOM && (
             <div className="flex flex-col gap-2">
               {!confirmed && (
@@ -233,9 +226,6 @@ export function EventDocsPanel({
                     </Button>
                     {genDesc.trim().length < 20 && genDesc.length > 0 && (
                       <span className="text-[10px] text-slate-500">{genDesc.trim().length}/20 min.</span>
-                    )}
-                    {!apiKey && (
-                      <span className="text-[10px] text-amber-700">API key nedefinit - apasa ⚙</span>
                     )}
                   </div>
                   {genErr && (
