@@ -173,6 +173,18 @@ test('checkCrossAlignment detecteaza activitati similare intre experti diferiti'
   assert.equal(issues.some((issue) => issue.firstActivityId === 'a1' && issue.secondActivityId === 'a3'), false);
 });
 
+
+
+test('Mihaela Grigoras are acces la Dashboard PM si Admin', () => {
+  const mihaela = experts.find((expert) => expert.email === 'mihaela.grigoras@confederatia-concordia.ro')!;
+  const roles = mergeRolesWithExpertProfile([], mihaela).sort();
+
+  assert.deepEqual(mihaela.cognitoGroups, ['pm', 'admin']);
+  assert.deepEqual(roles, ['admin', 'pm']);
+  assert.equal(getDashboardPathForRoleSet(roles), '/auth/select-dashboard');
+  assert.deepEqual(getDashboardDestinationsForRoles(roles).map((destination) => destination.path), ['/pm', '/admin']);
+});
+
 test('Ivanov Roxana vede selectorul de rol cu Admin inclus', () => {
   const roxana = experts.find((expert) => expert.email === 'roxana.ivanov@confederatia-concordia.ro')!;
   const roles = mergeRolesWithExpertProfile([], roxana).sort();

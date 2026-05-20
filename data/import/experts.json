@@ -39,8 +39,7 @@
     ],
     "hasPmAccess": true,
     "cognitoGroups": [
-      "pm",
-      "admin"
+      "pm"
     ],
     "isActive": true
   },
@@ -257,7 +256,8 @@
     ],
     "hasPmAccess": true,
     "cognitoGroups": [
-      "pm"
+      "pm",
+      "admin"
     ],
     "isActive": true
   },
