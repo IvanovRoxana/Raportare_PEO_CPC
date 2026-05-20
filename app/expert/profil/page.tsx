@@ -5,7 +5,6 @@ import {
   Clock3,
   KeyRound,
   Mail,
-  Save,
   Settings,
   User,
 } from 'lucide-react';
@@ -28,16 +27,12 @@ export default function ExpertProfilePage() {
       title="Profil"
       description="Actualizează informațiile personale și preferințele contului."
       actions={
-        <>
-          <Button variant="outline">
+        <Button asChild variant="outline">
+          <Link href="/auth/forgot-password">
             <KeyRound className="h-4 w-4" />
             Schimbă parolă
-          </Button>
-          <Button>
-            <Save className="h-4 w-4" />
-            Salvează modificări
-          </Button>
-        </>
+          </Link>
+        </Button>
       }
       aside={
         <>
@@ -89,19 +84,34 @@ export default function ExpertProfilePage() {
       }
     >
       <Card className="rounded-[1.5rem] py-0">
-        <CardContent className="flex flex-col gap-6 p-7 md:flex-row md:items-center">
-          <div className="relative flex h-32 w-32 shrink-0 items-center justify-center rounded-full bg-[#eaf3fb] text-primary">
-            <User className="h-16 w-16" />
-            <span className="absolute bottom-2 right-2 flex h-10 w-10 items-center justify-center rounded-full bg-primary text-white shadow-sm">
-              <Settings className="h-5 w-5" />
-            </span>
+        <CardContent className="grid gap-6 p-7 lg:grid-cols-[1fr_320px] lg:items-center">
+          <div className="flex flex-col gap-6 md:flex-row md:items-center">
+            <div className="relative flex h-32 w-32 shrink-0 items-center justify-center rounded-full bg-[#eaf3fb] text-primary">
+              <User className="h-16 w-16" />
+              <span className="absolute bottom-2 right-2 flex h-10 w-10 items-center justify-center rounded-full bg-primary text-white shadow-sm">
+                <Settings className="h-5 w-5" />
+              </span>
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Poză profil</p>
+              <h2 className="mt-2 text-2xl font-bold text-slate-950">Andreea Popescu</h2>
+              <p className="mt-1 text-sm text-muted-foreground">Expert PEO</p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <StatusBadge status="verificat">Expert</StatusBadge>
+                <StatusBadge status="conform">Membru Concordia</StatusBadge>
+              </div>
+            </div>
           </div>
-          <div>
-            <h2 className="text-2xl font-bold text-slate-950">Andreea Popescu</h2>
-            <p className="mt-1 text-sm text-muted-foreground">Expert PEO</p>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <StatusBadge status="verificat">Expert</StatusBadge>
-              <StatusBadge status="conform">Membru Concordia</StatusBadge>
+          <div className="rounded-[1.25rem] border border-amber-200 bg-[#fff7e6] p-5">
+            <p className="text-xs font-semibold uppercase tracking-wide text-[#b7791f]">Badge recunoaștere</p>
+            <div className="mt-3 flex items-center gap-3">
+              <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-[#b7791f] shadow-sm">
+                <CheckCircle2 className="h-6 w-6" />
+              </span>
+              <div>
+                <p className="text-lg font-bold text-slate-950">Hero of the month</p>
+                <p className="mt-1 text-sm text-muted-foreground">Spațiu pentru badge lunar acordat de echipa PM/Admin.</p>
+              </div>
             </div>
           </div>
         </CardContent>
@@ -119,27 +129,26 @@ export default function ExpertProfilePage() {
             <div className="grid gap-5 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="name">Nume complet *</Label>
-                <Input id="name" defaultValue="Andreea Popescu" />
+                <Input id="name" defaultValue="Andreea Popescu" readOnly />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="role">Rol în platformă *</Label>
-                <Select defaultValue="expert">
-                  <SelectTrigger id="role">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="expert">Expert PEO</SelectItem>
-                    <SelectItem value="pm">PM</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div
+                  id="role"
+                  className="flex h-10 items-center rounded-xl border border-input bg-slate-50 px-3 text-sm font-medium text-slate-700"
+                  aria-label="Rol în platformă"
+                >
+                  Expert PEO
+                </div>
+                <p className="text-xs text-muted-foreground">Rolul este gestionat de administrator.</p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="org">Organizație *</Label>
-                <Input id="org" defaultValue="Concordia" />
+                <Input id="org" defaultValue="Concordia" readOnly />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="county">Județ *</Label>
-                <Select defaultValue="bucuresti">
+                <Select defaultValue="bucuresti" disabled>
                   <SelectTrigger id="county">
                     <SelectValue />
                   </SelectTrigger>
@@ -162,11 +171,11 @@ export default function ExpertProfilePage() {
             <div className="grid gap-5 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="email">Email *</Label>
-                <Input id="email" defaultValue="andreea.popescu@concordia.ro" />
+                <Input id="email" defaultValue="andreea.popescu@concordia.ro" readOnly />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="phone">Telefon *</Label>
-                <Input id="phone" defaultValue="+40 721 123 456" />
+                <Input id="phone" defaultValue="+40 721 123 456" readOnly />
               </div>
             </div>
           </section>
@@ -193,7 +202,7 @@ export default function ExpertProfilePage() {
                       <p className="text-sm text-muted-foreground">{description}</p>
                     </div>
                   </div>
-                  <Switch defaultChecked />
+                  <Switch defaultChecked disabled />
                 </div>
               ))}
             </div>
@@ -209,7 +218,7 @@ export default function ExpertProfilePage() {
             <div className="grid gap-5 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="language">Limbă interfață</Label>
-                <Select defaultValue="ro">
+                <Select defaultValue="ro" disabled>
                   <SelectTrigger id="language">
                     <SelectValue />
                   </SelectTrigger>
@@ -221,7 +230,7 @@ export default function ExpertProfilePage() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="timezone">Fus orar</Label>
-                <Select defaultValue="bucharest">
+                <Select defaultValue="bucharest" disabled>
                   <SelectTrigger id="timezone">
                     <SelectValue />
                   </SelectTrigger>
