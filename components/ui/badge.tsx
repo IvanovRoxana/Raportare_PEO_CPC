@@ -17,6 +17,13 @@ const badgeVariants = cva(
           'border-transparent bg-destructive text-white [a&]:hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60',
         outline:
           'text-foreground [a&]:hover:bg-accent [a&]:hover:text-accent-foreground',
+        conform: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+        cu_observatii: 'border-amber-200 bg-amber-50 text-amber-700',
+        neconform: 'border-rose-200 bg-rose-50 text-rose-700',
+        in_lucru: 'border-sky-200 bg-sky-50 text-sky-700',
+        verificat: 'border-teal-200 bg-teal-50 text-teal-700',
+        gata_export: 'border-cyan-200 bg-cyan-50 text-cyan-700',
+        lipsa_documente: 'border-orange-200 bg-orange-50 text-orange-700',
       },
     },
     defaultVariants: {
