@@ -19,9 +19,12 @@ import {
   UsersRound,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { DashboardShell } from '@/components/layout/dashboard-shell';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ViewAsExpertPanel } from '@/components/admin/view-as-expert-panel';
 import { adminMenuItems, buildAdminDashboardSnapshot, protectedAdminBoundaries, ruleSeverityLevels } from '@/lib/admin-module';
 import activities from '@/data/import/sample-activities.json';
 import activityCatalog from '@/data/import/activity-catalog.json';
@@ -104,6 +107,14 @@ const adminCoreModules = [
   },
 ] as const;
 
+
+const adminNavItems = [
+  { label: 'Dashboard', href: '/', icon: Gauge },
+  { label: 'Admin', href: '/admin', icon: Settings2, active: true },
+  { label: 'Utilizatori', href: '/admin/users', icon: UsersRound },
+  { label: 'Import istoric', href: '/admin/historical-import', icon: DatabaseBackup },
+];
+
 const phaseDescriptions = {
   'Etapa 1': 'Admin minim viabil: elimină modificările în cod pentru configurările de bază.',
   'Etapa 2': 'Admin operațional complet: verificare, exporturi, audit, import și arhivare.',
@@ -112,7 +123,12 @@ const phaseDescriptions = {
 
 export default function AdminPage() {
   return (
-    <main className="min-h-screen bg-muted/30">
+    <DashboardShell
+      title="Control operațional fără modificări în cod"
+      subtitle="Administrare utilizatori, reguli, conformitate și audit într-un dashboard modern și unificat."
+      roleLabel="Admin"
+      navItems={adminNavItems}
+    >
       <section className="border-b bg-card">
         <div className="mx-auto flex max-w-screen-2xl flex-col gap-6 px-4 py-8 sm:px-6 lg:px-8">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -154,6 +170,20 @@ export default function AdminPage() {
             </CardContent>
           </Card>
         </div>
+      </section>
+
+      <section className="mx-auto max-w-screen-2xl px-4 pt-6 sm:px-6 lg:px-8">
+        <Tabs defaultValue="dashboard">
+          <TabsList className="h-auto w-full flex-wrap justify-start gap-2 rounded-2xl bg-slate-100 p-2">
+            <TabsTrigger value="dashboard" asChild><a href="#nucleu-dashboard-admin">Dashboard</a></TabsTrigger>
+            <TabsTrigger value="prioritizare" asChild><a href="#prioritizare">Prioritizare</a></TabsTrigger>
+            <TabsTrigger value="control" asChild><a href="#granite">Control & Audit</a></TabsTrigger>
+          </TabsList>
+        </Tabs>
+      </section>
+
+      <section className="mx-auto max-w-screen-2xl px-4 pt-2 sm:px-6 lg:px-8">
+        <ViewAsExpertPanel experts={experts as Expert[]} />
       </section>
 
       <section className="mx-auto grid max-w-screen-2xl gap-6 px-4 py-8 sm:px-6 lg:grid-cols-[minmax(0,1fr)_380px] lg:px-8">
@@ -377,6 +407,6 @@ export default function AdminPage() {
           </CardContent>
         </Card>
       </section>
-    </main>
+    </DashboardShell>
   );
 }

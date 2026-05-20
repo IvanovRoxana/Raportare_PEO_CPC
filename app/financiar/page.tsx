@@ -23,6 +23,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { DashboardShell } from '@/components/layout/dashboard-shell';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -61,6 +62,14 @@ type IntegrationStep = {
   status: string;
   icon: LucideIcon;
 };
+
+
+const financiarNavItems = [
+  { label: 'Dashboard', href: '/', icon: BarChart3 },
+  { label: 'PM', href: '/pm', icon: ShieldCheck },
+  { label: 'Admin', href: '/admin', icon: Database },
+  { label: 'Financiar', href: '/financiar', icon: CircleDollarSign, active: true },
+];
 
 const projectBudget = {
   total: 37101208.87,
@@ -251,8 +260,13 @@ export default function FinancialDashboardPage() {
   const plannedApps = applications.filter((application) => application.status !== 'Activ').length;
 
   return (
-    <main className="min-h-screen bg-background">
-      <header className="border-b bg-card">
+    <DashboardShell
+      title="Aplicatii folosite si integrari urmatoare"
+      subtitle="Vedere de control pentru ecosistemul tehnic al proiectului PEO 302141, cu impact financiar estimativ si pasi de integrare."
+      roleLabel="Financiar"
+      navItems={financiarNavItems}
+    >
+      <header className="border-b bg-card rounded-2xl">
         <div className="mx-auto flex max-w-screen-2xl flex-wrap items-center justify-between gap-4 px-4 py-5 sm:px-6 lg:px-8">
           <div>
             <p className="text-sm font-medium text-primary">Dashboard financiar</p>
@@ -481,6 +495,6 @@ export default function FinancialDashboardPage() {
           </CardContent>
         </Card>
       </div>
-    </main>
+    </DashboardShell>
   );
 }

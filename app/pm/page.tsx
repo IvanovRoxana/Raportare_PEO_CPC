@@ -7,6 +7,12 @@ import {
   Save,
   Loader2,
   AlertCircle,
+  BarChart3,
+  CalendarDays,
+  FileText,
+  Settings,
+  Upload,
+  Users,
 } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -82,6 +88,7 @@ import type {
   Expert,
 } from '@/lib/types';
 import { UserMenu } from '@/components/user-menu';
+import { DashboardShell } from '@/components/layout/dashboard-shell';
 import { ProgressReportTab } from '@/components/pm/progress-report-tab';
 import { GTProgressTab } from '@/components/pm/gt-progress-tab';
 import { DosarExpertModal } from '@/components/pm/dosar-expert-modal';
@@ -738,7 +745,7 @@ export default function PMDashboard() {
       </Dialog>
 
       {/* Main Content */}
-      <main className="container mx-auto px-4 py-6">
+      <main className="container mx-auto px-0 py-0">
         <PmDashboardKpiCards
           hasExtendedExpertAccess={hasExtendedExpertAccess}
           pmSummary={pmSummary}
