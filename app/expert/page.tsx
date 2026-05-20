@@ -12,6 +12,10 @@ import {
   Globe2,
   Save,
   Users,
+  BarChart3,
+  FileText,
+  Settings,
+  Upload,
 } from 'lucide-react';
 import { AdminViewAsBanner } from '@/components/admin/admin-view-as-banner';
 import { Badge } from '@/components/ui/badge';
@@ -21,6 +25,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { UserMenu } from '@/components/user-menu';
+import { DashboardShell } from '@/components/layout/dashboard-shell';
 import { useActivitiesByMonth, useConcurrentProjects, useConcurrentProjectTimesheetByMonth, useConcurrentProjectTimesheetMutations, useDocuments, useExperts, useSharedDeliverableMutations, useSharedDeliverables } from '@/hooks/use-backend-data';
 import type { AppRole } from '@/lib/aws/auth';
 import { getSignedInUser } from '@/lib/aws/auth';
@@ -417,10 +422,19 @@ export default function ExpertHomeDashboard() {
     hasPmAccess: currentExpert?.hasPmAccess,
   });
 
+  const expertNavItems = [
+    { label: 'Dashboard', href: '/', icon: BarChart3 },
+    { label: 'Pontaj lunar', href: '/expert', icon: CalendarDays, active: true },
+    { label: 'Rapoarte', href: '/expert/peo', icon: FileText },
+    { label: 'Livrabile', href: '/expert', icon: Upload },
+    { label: 'Experți', href: '/expert', icon: Users },
+    { label: 'Administrare', href: '/admin', icon: Settings },
+  ];
+
   return (
-    <div className="min-h-screen bg-background">
+    <DashboardShell title={`Bine ai venit - ${expertName} -!`} subtitle="Pontaj, livrabile și activități comune într-un flux unificat." roleLabel="Expert" navItems={expertNavItems}>
       <AdminViewAsBanner />
-      <header className="border-b bg-card">
+      <header className="border-b bg-card rounded-2xl">
         <div className="mx-auto flex max-w-screen-2xl flex-wrap items-center justify-between gap-4 px-4 py-5 sm:px-6 lg:px-8">
           <div>
             <p className="text-sm font-medium text-primary">Dashboard expert</p>
@@ -665,6 +679,6 @@ export default function ExpertHomeDashboard() {
           </Card>
         </section>
       </main>
-    </div>
+    </DashboardShell>
   );
 }
