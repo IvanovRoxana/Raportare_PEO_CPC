@@ -1,7 +1,10 @@
 import type { Metadata } from 'next'
+import { Inter } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { ProjectIdentityBanner } from '@/components/project-identity-banner'
 import './globals.css'
+
+const inter = Inter({ subsets: ['latin'], display: 'swap', variable: '--font-inter' })
 
 export const metadata: Metadata = {
   title: 'Proiect PEO 302141 - Raportare',
@@ -33,7 +36,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ro" className="bg-background">
-      <body className="font-sans antialiased min-h-screen bg-background text-foreground">
+      <body className={`${inter.variable} font-sans antialiased min-h-screen bg-background text-foreground`}>
         <ProjectIdentityBanner />
         {children}
         {process.env.NODE_ENV === 'production' && <Analytics />}
