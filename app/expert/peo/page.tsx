@@ -1,8 +1,10 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { ArrowLeft, Loader2, Plus, Send, Lock, AlertTriangle, CheckCircle } from 'lucide-react';
+import { ArrowLeft, CalendarDays, CheckCircle, ClipboardList, Clock3, FileText, Loader2, Plus, Send, Lock, AlertTriangle, Upload } from 'lucide-react';
 import Link from 'next/link';
+import { DashboardShell, expertNavItems } from '@/components/layout/dashboard-shell';
+import { ProgressBar, RightInfoCard } from '@/components/layout/dashboard-primitives';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -530,51 +532,103 @@ export default function ExpertDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <>
       <AdminViewAsBanner />
-      {/* Header */}
-      <header className="border-b bg-card">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
+      <DashboardShell
+        activeHref="/expert/peo"
+        navItems={expertNavItems}
+        eyebrow="Modul Expert"
+        title={showForm ? 'Adaugă activitate' : 'Activitățile mele'}
+        description={
+          showForm
+            ? 'Completează datele activității pentru pontaj și raportarea lunară.'
+            : 'Vizualizează, filtrează și gestionează activitățile raportate.'
+        }
+        actions={
+          <>
+            <Button asChild variant="outline">
               <Link href="/expert">
-                <Button variant="ghost" size="icon">
-                  <ArrowLeft className="h-5 w-5" />
-                </Button>
+                <ArrowLeft className="h-4 w-4" />
+                Înapoi la pontaj
               </Link>
-              <div>
-                <h1 className="text-xl font-bold text-foreground">Pontaj Experți</h1>
-                <p className="text-sm text-muted-foreground">
-                  {getMonthName(currentMonth)} {currentYear} - Cod Proiect: 302141
-                </p>
+            </Button>
+            <Select value={selectedExpertId || ''} onValueChange={(id) => setSelectedExpertId(id)}>
+              <SelectTrigger className="w-[210px]">
+                <SelectValue placeholder="Selectează expert" />
+              </SelectTrigger>
+              <SelectContent>
+                {experts.map((expert) => (
+                  <SelectItem key={expert.id} value={expert.id}>
+                    {expert.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {!showForm && (
+              <Button onClick={handleAddActivity} disabled={!selectedExpert.id || isApproved || monthlyBlocking.isBlocked}>
+                <Plus className="h-4 w-4" />
+                Adaugă activitate
+              </Button>
+            )}
+            <UserMenu />
+          </>
+        }
+        quickTabs={[
+          { label: 'Activități', href: '#activitati', icon: ClipboardList, active: true },
+          { label: 'Calendar', href: '#calendar', icon: CalendarDays },
+          { label: 'Livrabile', href: '#livrabile', icon: Upload },
+          { label: 'Rapoarte', href: '#rapoarte', icon: FileText },
+        ]}
+        aside={
+          <>
+            <RightInfoCard title="Rezumat zi" icon={Clock3}>
+              <p className="text-sm font-semibold text-muted-foreground">Luni, 12 mai 2026</p>
+              <div className="mt-5 flex items-end justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Total ore introduse</p>
+                  <p className="mt-1 text-4xl font-bold text-slate-950">
+                    {selectedDates.reduce((sum, date) => sum + (Number(selectedHours[date]) || 0), 0)}h
+                  </p>
+                </div>
+                <span className="text-sm text-muted-foreground">din 8h disponibile</span>
               </div>
-            </div>
+              <ProgressBar value={Math.min(100, selectedDates.reduce((sum, date) => sum + (Number(selectedHours[date]) || 0), 0) * 12.5)} className="mt-4" />
+              <Link href="#calendar" className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-primary">
+                Vezi detaliile zilei
+              </Link>
+            </RightInfoCard>
 
-            <div className="flex items-center gap-4">
-              <Select
-                value={selectedExpertId || ''}
-                onValueChange={(id) => setSelectedExpertId(id)}
-              >
-                <SelectTrigger className="w-[200px]">
-                  <SelectValue placeholder="Selectează expert" />
-                </SelectTrigger>
-                <SelectContent>
-                  {experts.map((expert) => (
-                    <SelectItem key={expert.id} value={expert.id}>
-                      {expert.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <RightInfoCard title="Status raportare" icon={ClipboardList}>
+              <div className="space-y-4 text-sm">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <span className="text-muted-foreground">Luna curentă</span>
+                  <Badge variant="conform">Deschisă</Badge>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Pontaj</span>
+                  <Badge variant={isApproved ? 'conform' : 'in_lucru'}>{isApproved ? 'Aprobat' : 'În lucru'}</Badge>
+                </div>
+              </div>
+            </RightInfoCard>
 
-              <UserMenu />
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="container mx-auto px-4 py-6">
+            <RightInfoCard title="Sfaturi completare" icon={CheckCircle}>
+              <div className="space-y-3 text-sm leading-6">
+                {[
+                  'Completează date, titlu și descrierea activității.',
+                  'Atașează documente relevante, dacă este cazul.',
+                  'Asigură-te că activitatea se încadrează în subactivitatea selectată.',
+                  'Maximum 8 ore raportate pe zi.',
+                ].map((tip) => (
+                  <div key={tip} className="flex items-start gap-2 text-muted-foreground">
+                    <CheckCircle className="mt-1 h-4 w-4 shrink-0 text-[#36c2a0]" />
+                    {tip}
+                  </div>
+                ))}
+              </div>
+            </RightInfoCard>
+          </>
+        }
+      >
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-4">
           <div className="space-y-1">
             <div className="flex flex-wrap items-center gap-2">
@@ -656,6 +710,7 @@ export default function ExpertDashboard() {
           </CardContent>
         </Card>
 
+        <div id="livrabile" className="scroll-mt-24" />
         <Tabs defaultValue="activitati" className="space-y-6">
           <TabsList className={`grid w-full ${isGtExpert ? 'grid-cols-4' : 'grid-cols-3'}`}>
             <TabsTrigger value="activitati">Activitati</TabsTrigger>
@@ -665,7 +720,7 @@ export default function ExpertDashboard() {
           </TabsList>
 
           {/* Tab: Activitati - pentru adaugare/editare activitati */}
-          <TabsContent value="activitati" className="space-y-6">
+          <TabsContent id="activitati" value="activitati" className="space-y-6 scroll-mt-24">
             {pendingSharedActivityRelationId && (
               <div className="flex items-start gap-2 rounded-lg border border-blue-300 bg-blue-50 p-3 text-sm text-blue-800">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -771,7 +826,7 @@ export default function ExpertDashboard() {
           </TabsContent>
 
           {/* Tab: Calendar - vizualizare calendar cu statistici si detalii pe zi */}
-          <TabsContent value="calendar" className="space-y-6">
+          <TabsContent id="calendar" value="calendar" className="space-y-6 scroll-mt-24">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-4">
                 <Select
@@ -843,7 +898,7 @@ export default function ExpertDashboard() {
           )}
 
           {/* Tab: Export RA - generare raport si export */}
-          <TabsContent value="export">
+          <TabsContent id="rapoarte" value="export" className="scroll-mt-24">
             <div className="space-y-4">
               <div className="flex justify-end">
                 <MonthlyReportExport
@@ -863,7 +918,7 @@ export default function ExpertDashboard() {
             </div>
           </TabsContent>
         </Tabs>
-      </main>
-    </div>
+      </DashboardShell>
+    </>
   );
 }

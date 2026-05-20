@@ -23,8 +23,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 const moduleCards = [
   {
-    title: 'Pontaj experti',
-    desc: 'Ore, zile, locatie si activitati validate lunar.',
+    title: 'Pontaj experți',
+    desc: 'Ore, zile, locație și activități validate lunar.',
     href: '/expert',
     icon: CalendarDays,
     status: 'Actualizat',
@@ -32,15 +32,15 @@ const moduleCards = [
   },
   {
     title: 'Livrabile',
-    desc: 'Incarcare documente, OPIS si verificare rapida.',
+    desc: 'Încărcare documente, OPIS și verificare rapidă.',
     href: '/expert/peo',
     icon: Upload,
     status: '12 fisiere',
     tone: 'bg-emerald-50 text-emerald-700',
   },
   {
-    title: 'Verificari PM',
-    desc: 'Conformitate, observatii si traseu de aprobare.',
+    title: 'Verificări PM',
+    desc: 'Conformitate, observații și traseu de aprobare.',
     href: '/pm',
     icon: SearchIcon,
     status: 'In lucru',
@@ -48,7 +48,7 @@ const moduleCards = [
   },
   {
     title: 'Rapoarte Anexa 10',
-    desc: 'Generare, revizuire si export pentru raportare.',
+    desc: 'Generare, revizuire și export pentru raportare.',
     href: '/expert/peo',
     icon: FileText,
     status: 'Gata export',
@@ -57,26 +57,26 @@ const moduleCards = [
 ];
 
 const kpiStats = [
-  { label: 'Conformitate lunara', value: '74%', status: 'conform' as const },
+  { label: 'Conformitate lunară', value: '74%', status: 'conform' as const },
   { label: 'Rapoarte verificate', value: '18', status: 'verificat' as const },
-  { label: 'Cu observatii', value: '6', status: 'cu_observatii' as const },
-  { label: 'Lipsa documente', value: '3', status: 'lipsa_documente' as const },
+  { label: 'Cu observații', value: '6', status: 'cu_observatii' as const },
+  { label: 'Lipsă documente', value: '3', status: 'lipsa_documente' as const },
   { label: 'Pontaj incomplet', value: '5', status: 'in_lucru' as const },
   { label: 'Gata export', value: '12', status: 'gata_export' as const },
 ];
 
 const monthlyRows = [
-  ['SA1.1', 'Analiza documente proiect', '8h', 'Conform', 'Verificat'],
-  ['SA3.2', 'Raport activitate expert', '6h', 'Cu observatii', 'Revizie'],
-  ['SA3.5', 'Livrabile suport membri', '4h', 'In analiza', 'PM'],
+  ['SA1.1', 'Analiză documente proiect', '8h', 'Conform', 'Verificat'],
+  ['SA3.2', 'Raport activitate expert', '6h', 'Cu observații', 'Revizie'],
+  ['SA3.5', 'Livrabile suport membri', '4h', 'În analiză', 'PM'],
 ];
 
 const projectDetails = [
   ['Cod MySMIS', '302141'],
-  ['Beneficiar', 'Confederatia Patronala Concordia'],
-  ['Valoarea totala', '37.101.208,87 Lei'],
-  ['Cofinantare UE', '28.346.990,99 Lei'],
-  ['Buget national', '8.754.217,88 Lei'],
+  ['Beneficiar', 'Confederația Patronală Concordia'],
+  ['Valoarea totală', '37.101.208,87 Lei'],
+  ['Cofinanțare UE', '28.346.990,99 Lei'],
+  ['Buget național', '8.754.217,88 Lei'],
   ['Perioada', '60 de luni'],
 ];
 
@@ -85,8 +85,8 @@ export default function HomePage() {
     <DashboardShell
       activeHref="/"
       eyebrow="Proiect PEO 302141"
-      title="Consolidarea capacitatii Concordia pentru dialog social"
-      description="Platforma interna pentru pontaj, livrabile, rapoarte de activitate si verificari de conformitate."
+      title="Consolidarea capacității Concordia pentru dialog social"
+      description="Platformă internă pentru pontaj, livrabile, rapoarte de activitate și verificări de conformitate."
       actions={
         <>
           <Button asChild variant="outline">
@@ -94,7 +94,7 @@ export default function HomePage() {
           </Button>
           <Button asChild>
             <Link href="/expert/peo">
-              Adauga raport
+              Adaugă raport
               <ArrowRight className="h-4 w-4" />
             </Link>
           </Button>
@@ -115,7 +115,7 @@ export default function HomePage() {
               </div>
               <h2 className="mt-5 text-lg font-bold">Intra in aplicatie</h2>
               <p className="mt-2 text-sm leading-6 text-white/75">
-                Acces securizat pentru experti, PM si administratori tehnici.
+                Acces securizat pentru experți, PM și administratori tehnici.
               </p>
               <div id="autentificare" className="mt-5 scroll-mt-28">
                 <Suspense fallback={<LoginCardFallback />}>
@@ -137,7 +137,7 @@ export default function HomePage() {
                 </div>
                 <div>
                   <p className="font-bold text-slate-950">Checklist PM</p>
-                  <p className="text-sm text-muted-foreground">5 observatii ramase</p>
+                  <p className="text-sm text-muted-foreground">5 observații rămase</p>
                 </div>
               </div>
             </CardContent>
@@ -196,9 +196,9 @@ export default function HomePage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between border-b border-border/70 px-6 py-5">
             <div>
-              <CardTitle className="text-lg font-bold text-slate-950">Situatie raportare lunara</CardTitle>
+              <CardTitle className="text-lg font-bold text-slate-950">Situație raportare lunară</CardTitle>
               <p className="mt-1 text-sm text-muted-foreground">
-                Privire rapida asupra activitatilor, orelor si verificarilor.
+                Privire rapidă asupra activităților, orelor și verificărilor.
               </p>
             </div>
             <Button asChild variant="outline" className="hidden md:inline-flex">
@@ -224,7 +224,7 @@ export default function HomePage() {
                       <td className="px-6 py-4 text-slate-700">{row[1]}</td>
                       <td className="px-6 py-4 font-medium text-slate-900">{row[2]}</td>
                       <td className="px-6 py-4">
-                        <StatusBadge status={row[3] === 'Cu observatii' ? 'cu_observatii' : row[3] === 'In analiza' ? 'in_lucru' : 'conform'}>
+                        <StatusBadge status={row[3] === 'Cu observații' ? 'cu_observatii' : row[3] === 'În analiză' ? 'in_lucru' : 'conform'}>
                           {row[3]}
                         </StatusBadge>
                       </td>
@@ -241,7 +241,7 @@ export default function HomePage() {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Conformitate lunara</p>
+                <p className="text-sm font-medium text-muted-foreground">Conformitate lunară</p>
                 <p className="mt-2 text-4xl font-bold tracking-tight text-slate-950">74%</p>
               </div>
               <div className="flex h-14 w-14 items-center justify-center rounded-3xl bg-emerald-50 text-emerald-700">
@@ -252,7 +252,7 @@ export default function HomePage() {
               <div className="h-3 w-[74%] rounded-full bg-emerald-400" />
             </div>
             <p className="mt-4 text-sm leading-6 text-muted-foreground">
-              18 rapoarte verificate, 6 cu observatii, 3 in curs de completare.
+              18 rapoarte verificate, 6 cu observații, 3 în curs de completare.
             </p>
           </CardContent>
         </Card>
@@ -279,8 +279,8 @@ export default function HomePage() {
             <TabsContent value="alerte" className="grid gap-3 md:grid-cols-3">
               {([
                 ['Critic', '2 activitati fara livrabile obligatorii', 'neconform' as const],
-                ['Important', '6 rapoarte cu observatii PM', 'cu_observatii' as const],
-                ['Informativ', '12 exporturi pregatite pentru luna curenta', 'gata_export' as const],
+                ['Important', '6 rapoarte cu observații PM', 'cu_observatii' as const],
+                ['Informativ', '12 exporturi pregătite pentru luna curentă', 'gata_export' as const],
               ] as const).map(([label, text, status]) => (
                 <div key={label} className="rounded-2xl border bg-secondary/40 p-4">
                   <StatusBadge status={status}>{label}</StatusBadge>
@@ -304,7 +304,7 @@ export default function HomePage() {
                 <div key={expert} className="rounded-2xl border bg-white p-4">
                   <Users className="h-5 w-5 text-primary" />
                   <p className="mt-3 font-semibold">{expert}</p>
-                  <p className="text-sm text-muted-foreground">{index === 1 ? '2 observatii PM' : 'Status conform'}</p>
+                  <p className="text-sm text-muted-foreground">{index === 1 ? '2 observații PM' : 'Status conform'}</p>
                 </div>
               ))}
             </TabsContent>
@@ -321,14 +321,14 @@ export default function HomePage() {
             <TabsContent value="anexa" id="export" className="rounded-2xl border bg-emerald-50 p-4 text-emerald-900">
               <p className="font-semibold">Scor ready for export: 74%</p>
               <p className="mt-2 text-sm leading-6">
-                Checklist-ul evidentiaza campuri lipsa, incoerente ore/activitati si titluri de livrabile de corectat.
+                Checklist-ul evidențiază câmpuri lipsă, incoerențe ore/activități și titluri de livrabile de corectat.
               </p>
             </TabsContent>
 
             <TabsContent value="audit" className="rounded-2xl border bg-white p-4">
               <p className="font-semibold">Istoric & audit</p>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                Modificarile de pontaj, livrabile si verificari PM raman urmaribile pe luna si expert.
+                Modificările de pontaj, livrabile și verificări PM rămân urmăribile pe lună și expert.
               </p>
             </TabsContent>
           </Tabs>

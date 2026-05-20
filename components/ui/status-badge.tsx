@@ -4,22 +4,40 @@ import { cn } from '@/lib/utils';
 
 export type OperationalStatus =
   | 'conform'
+  | 'aprobat'
   | 'cu_observatii'
   | 'neconform'
+  | 'respins'
   | 'in_lucru'
+  | 'in_analiza'
+  | 'draft'
+  | 'in_revizie'
+  | 'partial'
   | 'verificat'
   | 'gata_export'
   | 'lipsa_documente'
+  | 'lipsa'
+  | 'deschisa'
+  | 'inchisa'
   | 'informativ';
 
 const statusClasses: Record<OperationalStatus, string> = {
-  conform: 'border-emerald-200 bg-emerald-50 text-emerald-800',
-  cu_observatii: 'border-amber-200 bg-amber-50 text-amber-800',
-  neconform: 'border-red-200 bg-red-50 text-red-700',
-  in_lucru: 'border-blue-200 bg-blue-50 text-blue-800',
-  verificat: 'border-teal-200 bg-teal-50 text-teal-800',
-  gata_export: 'border-indigo-200 bg-indigo-50 text-indigo-800',
-  lipsa_documente: 'border-orange-200 bg-orange-50 text-orange-800',
+  conform: 'border-emerald-200 bg-[#e9faf5] text-[#087a63]',
+  aprobat: 'border-emerald-200 bg-[#e9faf5] text-[#087a63]',
+  cu_observatii: 'border-amber-200 bg-[#fff7e6] text-[#b7791f]',
+  neconform: 'border-red-200 bg-[#fff1f2] text-[#dc2626]',
+  respins: 'border-red-200 bg-[#fff1f2] text-[#dc2626]',
+  in_lucru: 'border-blue-200 bg-[#eaf3fb] text-[#0b3a67]',
+  in_analiza: 'border-blue-200 bg-[#eaf3fb] text-[#0b3a67]',
+  draft: 'border-blue-200 bg-[#eaf3fb] text-[#0b3a67]',
+  in_revizie: 'border-amber-200 bg-[#fff7e6] text-[#b7791f]',
+  partial: 'border-amber-200 bg-[#fff7e6] text-[#b7791f]',
+  verificat: 'border-emerald-200 bg-[#e9faf5] text-[#087a63]',
+  gata_export: 'border-emerald-200 bg-[#e9faf5] text-[#087a63]',
+  lipsa_documente: 'border-red-200 bg-[#fff1f2] text-[#dc2626]',
+  lipsa: 'border-red-200 bg-[#fff1f2] text-[#dc2626]',
+  deschisa: 'border-emerald-200 bg-[#e9faf5] text-[#087a63]',
+  inchisa: 'border-slate-200 bg-slate-100 text-slate-600',
   informativ: 'border-slate-200 bg-slate-50 text-slate-700',
 };
 

@@ -1,479 +1,253 @@
 import Link from 'next/link';
-import type { LucideIcon } from 'lucide-react';
 import {
-  BadgeDollarSign,
-  Banknote,
+  AlertTriangle,
+  ArrowRight,
   BarChart3,
-  Brain,
   CheckCircle2,
   CircleDollarSign,
-  Cloud,
-  Database,
+  Download,
+  Eye,
   FileSpreadsheet,
   FileText,
-  GitBranch,
-  HardDrive,
-  LineChart,
-  LockKeyhole,
-  PieChart,
-  Server,
-  ShieldCheck,
+  Plus,
   WalletCards,
-  Zap,
 } from 'lucide-react';
-import { DashboardShell } from '@/components/layout/dashboard-shell';
-import { Badge } from '@/components/ui/badge';
+import { DashboardShell, financialNavItems } from '@/components/layout/dashboard-shell';
+import { DataTable, ProgressBar, RightInfoCard, StatCard } from '@/components/layout/dashboard-primitives';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { StatusBadge } from '@/components/ui/status-badge';
 
-type FundingSource = {
-  label: string;
-  amount: number;
-  share: number;
-  className: string;
-};
-
-type ApplicationCost = {
-  name: string;
-  provider: string;
-  area: string;
-  status: 'Activ' | 'Pregatit' | 'Partial' | 'Optional';
-  monthlyEstimate: string;
-  costModel: string;
-  usage: string;
-  nextStep: string;
-  icon: LucideIcon;
-  iconClassName: string;
-};
-
-type IntegrationStep = {
-  title: string;
-  owner: string;
-  financialImpact: string;
-  status: string;
-  icon: LucideIcon;
-};
-
-const projectBudget = {
-  total: 37101208.87,
-  eu: 28346990.99,
-  national: 8754217.88,
-};
-
-const fundingSources: FundingSource[] = [
-  {
-    label: 'Cofinantare UE',
-    amount: projectBudget.eu,
-    share: 76.4,
-    className: 'bg-primary',
-  },
-  {
-    label: 'Buget national',
-    amount: projectBudget.national,
-    share: 23.6,
-    className: 'bg-teal-500',
-  },
+const monthlySeries = [
+  { month: 'Ian', planned: 22000, eligible: 12000 },
+  { month: 'Feb', planned: 62000, eligible: 28000 },
+  { month: 'Mar', planned: 118000, eligible: 76000 },
+  { month: 'Apr', planned: 168000, eligible: 98000 },
+  { month: 'Mai', planned: 112000, eligible: 78000 },
+  { month: 'Iun', planned: 90000, eligible: 90000 },
+  { month: 'Iul', planned: 98000, eligible: 82000 },
+  { month: 'Aug', planned: 122000, eligible: 76000 },
+  { month: 'Sep', planned: 164000, eligible: 88000 },
+  { month: 'Oct', planned: 206000, eligible: 98000 },
+  { month: 'Noi', planned: 218000, eligible: 132000 },
+  { month: 'Dec', planned: 182000, eligible: 142000 },
 ];
 
-const applications: ApplicationCost[] = [
-  {
-    name: 'Aplicatia Raportare PEO',
-    provider: 'Next.js, React, Tailwind',
-    area: 'Front-end operational',
-    status: 'Activ',
-    monthlyEstimate: 'Efort intern',
-    costModel: 'Dezvoltare si mentenanta',
-    usage: 'Dashboard expert, dashboard PM, pontaj, rapoarte, livrabile',
-    nextStep: 'Stabilizare fluxuri critice si validari de date',
-    icon: Server,
-    iconClassName: 'bg-blue-50 text-blue-700',
-  },
-  {
-    name: 'AWS Amplify Hosting',
-    provider: 'Amazon Web Services',
-    area: 'Hosting aplicatie',
-    status: 'Activ',
-    monthlyEstimate: '80-250 lei',
-    costModel: 'Build, trafic si stocare deployment',
-    usage: 'Frontend public pe branch main, deploy static verificat',
-    nextStep: 'Monitorizare cost build si decizie static vs SSR',
-    icon: Cloud,
-    iconClassName: 'bg-sky-50 text-sky-700',
-  },
-  {
-    name: 'Amazon Cognito',
-    provider: 'Amazon Web Services',
-    area: 'Autentificare',
-    status: 'Activ',
-    monthlyEstimate: '0-100 lei',
-    costModel: 'Cost in functie de utilizatori activi',
-    usage: 'Login email, grupuri expert, pm si admin',
-    nextStep: 'Testare resetare parola si utilizatori importati',
-    icon: LockKeyhole,
-    iconClassName: 'bg-indigo-50 text-indigo-700',
-  },
-  {
-    name: 'AppSync + DynamoDB',
-    provider: 'Amazon Web Services',
-    area: 'Date aplicatie',
-    status: 'Activ',
-    monthlyEstimate: '80-300 lei',
-    costModel: 'Request-uri API si citiri/scrieri DynamoDB',
-    usage: 'Experti, activitati, verificari, status rapoarte, audit',
-    nextStep: 'Seed initial pentru catalog activitati si grupuri de lucru',
-    icon: Database,
-    iconClassName: 'bg-teal-50 text-teal-700',
-  },
-  {
-    name: 'Amazon S3 Storage',
-    provider: 'Amazon Web Services',
-    area: 'Documente',
-    status: 'Pregatit',
-    monthlyEstimate: '20-100 lei',
-    costModel: 'Spatiu, trafic si lifecycle pentru fisiere',
-    usage: 'Bucket pregatit pentru livrabile, rapoarte si justificative',
-    nextStep: 'Mutare upload livrabile din baza de date catre S3',
-    icon: HardDrive,
-    iconClassName: 'bg-emerald-50 text-emerald-700',
-  },
-  {
-    name: 'Rute AI / OpenAI',
-    provider: 'OpenAI API prin server',
-    area: 'Asistenta raportare',
-    status: 'Partial',
-    monthlyEstimate: '150-500 lei',
-    costModel: 'Consum tokeni si compute server-side',
-    usage: 'Verificare titluri, date, livrabile si generare raport',
-    nextStep: 'Mutare pe SSR/compute sau Lambda cu secrete server-side',
-    icon: Brain,
-    iconClassName: 'bg-violet-50 text-violet-700',
-  },
-  {
-    name: 'GitHub / GitHub Desktop',
-    provider: 'GitHub',
-    area: 'Versionare',
-    status: 'Activ',
-    monthlyEstimate: '0 lei / cont existent',
-    costModel: 'Repository, istoric si colaborare',
-    usage: 'Baza initiala Next.js si flux de publicare cod',
-    nextStep: 'Branching controlat pentru schimbari de productie',
-    icon: GitBranch,
-    iconClassName: 'bg-slate-50 text-slate-700',
-  },
-  {
-    name: 'Export documente si tabele',
-    provider: 'docx, xlsx, pdfjs, mammoth',
-    area: 'Raportare financiara',
-    status: 'Activ',
-    monthlyEstimate: '0 lei licente',
-    costModel: 'Biblioteci incluse in aplicatie',
-    usage: 'Generare rapoarte, OPIS, exporturi si citire documente',
-    nextStep: 'Export sumar financiar lunar pentru PM/admin',
-    icon: FileSpreadsheet,
-    iconClassName: 'bg-orange-50 text-orange-700',
-  },
-  {
-    name: 'Vercel Analytics',
-    provider: 'Vercel',
-    area: 'Analitice',
-    status: 'Optional',
-    monthlyEstimate: 'Optional',
-    costModel: 'Activ doar daca ramane necesar in productie',
-    usage: 'Dependinta existenta, randata doar in productie',
-    nextStep: 'Decizie daca pastram analytics separat de AWS',
-    icon: LineChart,
-    iconClassName: 'bg-cyan-50 text-cyan-700',
-  },
-];
+const transactions = [
+  ['12 mai 2026', 'Plată factură 1245 – Furnizor A', 'Servicii externe', '24.800,00 lei', 'Plătit'],
+  ['09 mai 2026', 'Rambursare cheltuieli deplasare', 'Deplasări', '1.250,00 lei', 'În curs'],
+  ['06 mai 2026', 'Achiziție echipamente IT', 'Echipamente', '18.900,00 lei', 'Validat'],
+  ['02 mai 2026', 'Servicii consultanță - aprilie', 'Servicii externe', '12.000,00 lei', 'În așteptare'],
+  ['29 apr. 2026', 'Abonament software lunar', 'Alte cheltuieli', '350,00 lei', 'Plătit'],
+] as const;
 
-const integrationSteps: IntegrationStep[] = [
-  {
-    title: 'Upload livrabile in S3',
-    owner: 'PM + dezvoltare',
-    financialImpact: 'Reduce presiunea pe baza de date si separa costul documentelor',
-    status: 'Urmatorul sprint',
-    icon: HardDrive,
-  },
-  {
-    title: 'AI in Lambda sau SSR compute',
-    owner: 'Dezvoltare',
-    financialImpact: 'Permite control pe consum tokeni si pastreaza cheile in server',
-    status: 'Necesita decizie hosting',
-    icon: Zap,
-  },
-  {
-    title: 'Seed catalog si grupuri de lucru',
-    owner: 'PM',
-    financialImpact: 'Scade timpul manual de operare si erorile de raportare',
-    status: 'Pregatit pentru import',
-    icon: CheckCircle2,
-  },
-  {
-    title: 'AWS Budgets + tag-uri cost',
-    owner: 'Admin financiar',
-    financialImpact: 'Alerta lunara inainte de depasirea pragurilor aprobate',
-    status: 'Propus',
-    icon: ShieldCheck,
-  },
-];
+function BudgetChart() {
+  const max = 250000;
+  const points = monthlySeries
+    .map((item, index) => {
+      const x = 35 + index * 64;
+      const y = 210 - (item.eligible / max) * 170;
+      return `${x},${y}`;
+    })
+    .join(' ');
 
-const costMix = [
-  { label: 'Infrastructura AWS', value: 38, className: 'bg-primary' },
-  { label: 'Date si API', value: 24, className: 'bg-teal-500' },
-  { label: 'AI si automatizari', value: 20, className: 'bg-violet-500' },
-  { label: 'Documente si stocare', value: 12, className: 'bg-amber-500' },
-  { label: 'Analitice optionale', value: 6, className: 'bg-orange-500' },
-];
-
-const statusTone: Record<ApplicationCost['status'], string> = {
-  Activ: 'border-teal-200 bg-teal-50 text-teal-800',
-  Pregatit: 'border-blue-200 bg-blue-50 text-blue-800',
-  Partial: 'border-amber-200 bg-amber-50 text-amber-800',
-  Optional: 'border-slate-200 bg-slate-50 text-slate-700',
-};
-
-const formatLei = new Intl.NumberFormat('ro-RO', {
-  style: 'currency',
-  currency: 'RON',
-  maximumFractionDigits: 0,
-});
+  return (
+    <div className="mt-6 overflow-x-auto">
+      <svg viewBox="0 0 760 250" className="h-[250px] min-w-[760px]">
+        {[0, 50000, 100000, 150000, 200000, 250000].map((tick) => {
+          const y = 210 - (tick / max) * 170;
+          return (
+            <g key={tick}>
+              <line x1="34" x2="735" y1={y} y2={y} stroke="#dce5ef" strokeDasharray="4 5" />
+              <text x="0" y={y + 4} fill="#60718d" fontSize="11">
+                {tick === 0 ? '0' : `${tick / 1000}.000`}
+              </text>
+            </g>
+          );
+        })}
+        {monthlySeries.map((item, index) => {
+          const x = 25 + index * 64;
+          const plannedHeight = (item.planned / max) * 170;
+          return (
+            <g key={item.month}>
+              <rect x={x} y={210 - plannedHeight} width="18" height={plannedHeight} rx="5" fill="#d7ebfa" />
+              <text x={x + 3} y="236" fill="#60718d" fontSize="11">
+                {item.month}
+              </text>
+            </g>
+          );
+        })}
+        <polyline points={points} fill="none" stroke="#36c2a0" strokeWidth="3" />
+        {monthlySeries.map((item, index) => {
+          const x = 35 + index * 64;
+          const y = 210 - (item.eligible / max) * 170;
+          return <circle key={item.month} cx={x} cy={y} r="5" fill="#36c2a0" stroke="#ffffff" strokeWidth="2" />;
+        })}
+      </svg>
+    </div>
+  );
+}
 
 export default function FinancialDashboardPage() {
-  const activeApps = applications.filter((application) => application.status === 'Activ').length;
-  const plannedApps = applications.filter((application) => application.status !== 'Activ').length;
-
   return (
     <DashboardShell
       activeHref="/financiar"
-      eyebrow="Dashboard financiar · PEO 302141"
-      title="Aplicatii folosite si integrari urmatoare"
-      description="Vedere de control pentru ecosistemul tehnic al proiectului PEO 302141, cu impact financiar estimativ si pasi de integrare."
+      navItems={financialNavItems}
+      eyebrow="Modul Financiar"
+      title="Dashboard financiar"
+      description="Monitorizează bugetele, cheltuielile și situația financiară a proiectului."
       actions={
         <>
-          <Button asChild variant="outline">
-            <Link href="/">Acasa</Link>
+          <Button variant="outline">
+            <FileSpreadsheet className="h-4 w-4" />
+            Export Excel
           </Button>
-          <Button asChild>
-            <Link href="/pm">Dashboard PM</Link>
+          <Button>
+            Adaugă înregistrare
+            <Plus className="h-4 w-4" />
           </Button>
         </>
       }
-      quickTabs={[
-        { label: 'Buget', href: '#buget', icon: WalletCards, active: true },
-        { label: 'Costuri', href: '#costuri', icon: PieChart },
-        { label: 'Integrari', href: '#integrari', icon: Zap },
-        { label: 'Inventar', href: '#inventar', icon: FileText },
-      ]}
-    >
-      <div className="space-y-6">
-        <section id="buget" className="grid gap-4 md:grid-cols-2 xl:grid-cols-4 scroll-mt-24">
-          <Card className="rounded-lg">
-            <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                <WalletCards className="h-4 w-4 text-primary" />
-                Valoare proiect
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{formatLei.format(projectBudget.total)}</div>
-              <p className="mt-1 text-xs text-muted-foreground">Buget total PEO 302141</p>
-            </CardContent>
-          </Card>
-
-          <Card className="rounded-lg">
-            <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                <CircleDollarSign className="h-4 w-4 text-primary" />
-                Aplicatii active
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{activeApps}</div>
-              <p className="mt-1 text-xs text-muted-foreground">{plannedApps} pregatite, partiale sau optionale</p>
-            </CardContent>
-          </Card>
-
-          <Card className="rounded-lg">
-            <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                <Banknote className="h-4 w-4 text-primary" />
-                Cofinantare UE
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{fundingSources[0].share}%</div>
-              <p className="mt-1 text-xs text-muted-foreground">{formatLei.format(projectBudget.eu)}</p>
-            </CardContent>
-          </Card>
-
-          <Card className="rounded-lg">
-            <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                <BadgeDollarSign className="h-4 w-4 text-primary" />
-                Buget national
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{fundingSources[1].share}%</div>
-              <p className="mt-1 text-xs text-muted-foreground">{formatLei.format(projectBudget.national)}</p>
-            </CardContent>
-          </Card>
-        </section>
-
-        <section id="costuri" className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px] scroll-mt-24">
-          <Card className="rounded-lg">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-xl">
-                <PieChart className="h-5 w-5 text-primary" />
-                Structura finantarii
-              </CardTitle>
-              <CardDescription>
-                Valori preluate din datele proiectului. Costurile aplicatiilor sunt estimari de planificare.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="h-4 overflow-hidden rounded-md bg-muted">
-                <div className="flex h-full w-full">
-                  {fundingSources.map((source) => (
-                    <div
-                      key={source.label}
-                      className={source.className}
-                      style={{ width: `${source.share}%` }}
-                      title={`${source.label}: ${source.share}%`}
-                    />
-                  ))}
-                </div>
+      aside={
+        <>
+          <RightInfoCard title="Execuție bugetară" icon={BarChart3}>
+            <div className="flex items-center justify-between gap-5">
+              <div>
+                <p className="text-4xl font-bold tracking-tight text-slate-950">67,39%</p>
+                <p className="mt-1 text-sm text-muted-foreground">Progres general al execuției</p>
               </div>
+              <div className="grid h-20 w-20 place-items-center rounded-full border-[8px] border-[#36c2a0] text-[#087a63]">
+                <BarChart3 className="h-7 w-7" />
+              </div>
+            </div>
+            <ProgressBar value={67} className="mt-5" />
+            <p className="mt-4 text-sm text-muted-foreground">842.350,45 lei din 1.250.000,00 lei</p>
+            <Link href="#tranzactii" className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-primary">
+              Vezi detalii execuție
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </RightInfoCard>
 
-              <div className="grid gap-3 sm:grid-cols-2">
-                {fundingSources.map((source) => (
-                  <div key={source.label} className="rounded-md border bg-background p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-sm font-medium">{source.label}</span>
-                      <Badge variant="outline">{source.share}%</Badge>
+          <RightInfoCard title="Alerte financiare" icon={AlertTriangle}>
+            <div className="space-y-3">
+              {[
+                ['Plata către Furnizor A depășește termenul scadent', 'Scadență: 15 mai 2026', 'warning'],
+                ['Limită categorie „Deplasări” depășită cu 12%', 'Limită: 50.000,00 lei', 'warning'],
+                ['Raport financiar lunar pentru aprilie este validat', 'Data validării: 8 mai 2026', 'success'],
+              ].map(([title, meta, tone]) => (
+                <div key={title} className="flex items-start justify-between gap-3 rounded-xl border border-slate-100 p-3">
+                  <div className="flex gap-3">
+                    {tone === 'success' ? (
+                      <CheckCircle2 className="mt-0.5 h-5 w-5 text-[#36c2a0]" />
+                    ) : (
+                      <AlertTriangle className="mt-0.5 h-5 w-5 text-[#f5a524]" />
+                    )}
+                    <div>
+                      <p className="text-sm font-medium text-slate-700">{title}</p>
+                      <p className="text-xs text-muted-foreground">{meta}</p>
                     </div>
-                    <p className="mt-2 text-lg font-semibold">{formatLei.format(source.amount)}</p>
                   </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="rounded-lg">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-xl">
-                <BarChart3 className="h-5 w-5 text-primary" />
-                Mix estimativ costuri tehnice
-              </CardTitle>
-              <CardDescription>Orientare interna pentru prioritizarea cheltuielilor lunare.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {costMix.map((item) => (
-                <div key={item.label}>
-                  <div className="mb-2 flex items-center justify-between gap-3 text-sm">
-                    <span className="font-medium">{item.label}</span>
-                    <span className="text-muted-foreground">{item.value}%</span>
-                  </div>
-                  <div className="h-2 overflow-hidden rounded-full bg-muted">
-                    <div className={`h-full ${item.className}`} style={{ width: `${item.value}%` }} />
-                  </div>
+                  <ArrowRight className="h-4 w-4 text-primary" />
                 </div>
               ))}
-            </CardContent>
-          </Card>
-        </section>
+            </div>
+            <Link href="#alerte" className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-primary">
+              Vezi toate alertele
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </RightInfoCard>
 
-        <section id="integrari" className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4 scroll-mt-24">
-          {integrationSteps.map((step) => {
-            const Icon = step.icon;
-            return (
-              <Card key={step.title} className="rounded-lg">
-                <CardHeader className="space-y-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary/10 text-primary">
-                    <Icon className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <CardTitle className="text-base">{step.title}</CardTitle>
-                    <CardDescription>{step.owner}</CardDescription>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <Badge variant="outline" className="rounded-md">
-                    {step.status}
-                  </Badge>
-                  <p className="text-sm leading-6 text-muted-foreground">{step.financialImpact}</p>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </section>
+          <RightInfoCard title="Documente justificative" icon={FileText}>
+            <div className="space-y-4 text-sm">
+              {[
+                ['În așteptare validare', 4, 'cu_observatii'],
+                ['Validat', 18, 'conform'],
+                ['Arhivate', 27, 'inchisa'],
+              ].map(([label, value, status]) => (
+                <div key={label as string} className="flex items-center justify-between">
+                  <span className="text-muted-foreground">{label as string}</span>
+                  <StatusBadge status={status as 'cu_observatii' | 'conform' | 'inchisa'}>{value}</StatusBadge>
+                </div>
+              ))}
+            </div>
+            <Link href="#documente" className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-primary">
+              Gestionează documente
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </RightInfoCard>
+        </>
+      }
+    >
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <StatCard icon={WalletCards} label="Buget total" value="1.250.000,00 lei" description="Valoare totală aprobată" progress={100} tone="blue" />
+        <StatCard icon={FileSpreadsheet} label="Cheltuieli eligibile" value="842.350,45 lei" description="67,39% din buget total" progress={67} tone="success" />
+        <StatCard icon={CircleDollarSign} label="Plăți efectuate" value="612.780,30 lei" description="48,99% din buget total" progress={49} tone="success" />
+        <StatCard icon={WalletCards} label="Sold disponibil" value="407.649,55 lei" description="32,61% din buget total" progress={33} tone="success" />
+      </section>
 
-        <Card id="inventar" className="rounded-lg scroll-mt-24">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-xl">
-              <FileText className="h-5 w-5 text-primary" />
-              Aplicatii si platforme folosite
-            </CardTitle>
-            <CardDescription>
-              Inventar financiar pentru instrumentele deja folosite in proiect si pentru cele pregatite.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Aplicatie</TableHead>
-                  <TableHead>Zona</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Estimare lunara</TableHead>
-                  <TableHead>Model cost</TableHead>
-                  <TableHead>Urmatorul pas</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {applications.map((application) => {
-                  const Icon = application.icon;
-                  return (
-                    <TableRow key={application.name}>
-                      <TableCell className="min-w-64">
-                        <div className="flex items-center gap-3">
-                          <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-md ${application.iconClassName}`}>
-                            <Icon className="h-5 w-5" />
-                          </div>
-                          <div>
-                            <div className="font-medium text-foreground">{application.name}</div>
-                            <div className="text-xs text-muted-foreground">{application.provider}</div>
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>{application.area}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className={`rounded-md ${statusTone[application.status]}`}>
-                          {application.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="font-medium">{application.monthlyEstimate}</TableCell>
-                      <TableCell className="max-w-72 whitespace-normal text-muted-foreground">
-                        {application.costModel}
-                        <div className="mt-1 text-xs">{application.usage}</div>
-                      </TableCell>
-                      <TableCell className="max-w-72 whitespace-normal">{application.nextStep}</TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      </div>
+      <Card className="rounded-[1.5rem] py-0">
+        <CardHeader className="flex flex-row items-start justify-between gap-4 px-6 pt-6">
+          <div>
+            <CardTitle className="text-xl font-bold text-slate-950">Cheltuieli lunare vs. buget</CardTitle>
+            <p className="mt-2 text-sm text-muted-foreground">Comparație cheltuieli eligibile cu bugetul planificat</p>
+          </div>
+          <Select defaultValue="2026">
+            <SelectTrigger className="w-36">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="2026">Anul 2026</SelectItem>
+              <SelectItem value="2025">Anul 2025</SelectItem>
+            </SelectContent>
+          </Select>
+        </CardHeader>
+        <CardContent>
+          <div className="flex justify-center gap-8 text-xs text-muted-foreground">
+            <span className="flex items-center gap-2">
+              <span className="h-0.5 w-7 border-t-2 border-dashed border-blue-400" />
+              Buget planificat (lei)
+            </span>
+            <span className="flex items-center gap-2">
+              <span className="h-0.5 w-7 bg-[#36c2a0]" />
+              Cheltuieli eligibile (lei)
+            </span>
+          </div>
+          <BudgetChart />
+        </CardContent>
+      </Card>
+
+      <section id="tranzactii" className="scroll-mt-24">
+        <DataTable
+          columns={['Data', 'Descriere', 'Categorie', 'Valoare', 'Status', 'Acțiuni']}
+          rows={transactions.map(([date, description, category, value, status]) => [
+            date,
+            description,
+            category,
+            <span key={`${description}-value`} className="font-semibold text-slate-900">{value}</span>,
+            <StatusBadge
+              key={`${description}-status`}
+              status={status === 'În așteptare' ? 'cu_observatii' : status === 'În curs' ? 'in_lucru' : 'conform'}
+            >
+              {status}
+            </StatusBadge>,
+            <div key={`${description}-actions`} className="flex gap-2">
+              <Button variant="outline" size="icon-sm" aria-label={`Vezi ${description}`}>
+                <Eye className="h-4 w-4" />
+              </Button>
+              <Button variant="outline" size="icon-sm" aria-label={`Descarcă ${description}`}>
+                <Download className="h-4 w-4" />
+              </Button>
+            </div>,
+          ])}
+          footer={
+            <Link href="#tranzactii" className="inline-flex items-center gap-2 text-sm font-semibold text-primary">
+              Vezi toate tranzacțiile
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          }
+        />
+      </section>
     </DashboardShell>
   );
 }

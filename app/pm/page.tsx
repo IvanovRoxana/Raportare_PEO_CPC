@@ -3,19 +3,25 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
+  ArrowRight,
   CalendarDays,
+  CheckCircle2,
   ClipboardList,
+  Download,
   FileText,
   Save,
   Loader2,
   AlertCircle,
+  AlertTriangle,
   SearchIcon,
   ShieldCheck,
   Upload,
 } from 'lucide-react';
 import Link from 'next/link';
-import { DashboardShell } from '@/components/layout/dashboard-shell';
+import { DashboardShell, pmNavItems } from '@/components/layout/dashboard-shell';
+import { RightInfoCard } from '@/components/layout/dashboard-primitives';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -559,82 +565,24 @@ export default function PMDashboard() {
   return (
     <DashboardShell
       activeHref="/pm"
-      eyebrow={`Control center PEO · ${getMonthName(selectedMonth)} ${selectedYear}`}
-      title={hasExtendedExpertAccess ? 'Dashboard PM - Raportare PEO 302141' : 'Raportarea mea - Verificare'}
-      description={`Verificari, conformitate si export pentru ${getMonthName(selectedMonth)} ${selectedYear}. Cod proiect 302141.`}
+      navItems={pmNavItems}
+      eyebrow="Modul PM"
+      title="Verificări PM"
+      description="Revizuiește activitățile, livrabilele și rapoartele transmise de experți."
       actions={
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-          <div className="rounded-2xl border bg-background/70 p-3 shadow-sm">
-            <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Filtre raportare
-            </div>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <Select
-                value={selectedExpertId || ''}
-                onValueChange={(id) => setSelectedExpertId(id)}
-                disabled={!hasExtendedExpertAccess}
-              >
-                <SelectTrigger className="w-full sm:w-[190px]">
-                  <SelectValue placeholder="Expert" />
-                </SelectTrigger>
-                <SelectContent>
-                  {visibleExperts.map((expert) => (
-                    <SelectItem key={expert.id} value={expert.id}>
-                      {expert.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              <Select
-                value={selectedMonth.toString()}
-                onValueChange={(v) => setSelectedMonth(parseInt(v))}
-              >
-                <SelectTrigger className="w-full sm:w-[140px]">
-                  <SelectValue placeholder="Luna" />
-                </SelectTrigger>
-                <SelectContent>
-                  {months.map((m) => (
-                    <SelectItem key={m.value} value={m.value.toString()}>
-                      {m.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              <Select
-                value={selectedYear.toString()}
-                onValueChange={(v) => setSelectedYear(parseInt(v))}
-              >
-                <SelectTrigger className="w-full sm:w-[100px]">
-                  <SelectValue placeholder="An" />
-                </SelectTrigger>
-                <SelectContent>
-                  {years.map((y) => (
-                    <SelectItem key={y.value} value={y.value.toString()}>
-                      {y.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 self-start lg:self-center">
-            {canManagePmReview && (
-              <Button onClick={saveVerificationData} disabled={isSaving}>
-                {isSaving ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                ) : (
-                  <Save className="h-4 w-4 mr-2" />
-                )}
-                Salveaza
-              </Button>
-            )}
-
-            <UserMenu />
-          </div>
-        </div>
+        <>
+          <Button variant="outline">
+            <Download className="h-4 w-4" />
+            Export situație
+          </Button>
+          <Button asChild>
+            <a href="#pm-tabs">
+              Deschide verificare
+              <ArrowRight className="h-4 w-4" />
+            </a>
+          </Button>
+          <UserMenu />
+        </>
       }
       quickTabs={[
         { label: 'KPI', href: '#pm-kpi', icon: ShieldCheck, active: true },
@@ -644,7 +592,148 @@ export default function PMDashboard() {
         { label: 'Neconformitati', href: '#pm-tabs', icon: SearchIcon },
         { label: 'Note', href: '#pm-tabs', icon: ClipboardList },
       ]}
+      aside={
+        <>
+          <RightInfoCard title="Rezumat verificări" icon={CalendarDays}>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-semibold text-muted-foreground">Luna curentă</p>
+                <p className="mt-3 text-4xl font-bold text-slate-950">{pmSummary.totalExperts}</p>
+                <p className="text-sm text-muted-foreground">experți monitorizați</p>
+              </div>
+              <span className="rounded-full bg-[#e9faf5] px-3 py-1 text-xs font-semibold text-[#087a63]">
+                {getMonthName(selectedMonth)} {selectedYear}
+              </span>
+            </div>
+            <div className="mt-5 grid h-2 grid-cols-[1fr_0.45fr_1.25fr_0.3fr] overflow-hidden rounded-full">
+              <span className="bg-primary" />
+              <span className="bg-amber-400" />
+              <span className="bg-[#36c2a0]" />
+              <span className="bg-red-400" />
+            </div>
+            <div className="mt-5 space-y-3 text-sm">
+              {[
+                ['De verificat', pmSummary.statusCounts.sent, 'bg-primary'],
+                ['Cu observații', unresolvedIssues, 'bg-amber-400'],
+                ['Aprobate', pmSummary.statusCounts.approved, 'bg-[#36c2a0]'],
+                ['Neconforme', localNeconformitati.filter((item) => !item.resolved).length, 'bg-red-400'],
+              ].map(([label, value, color]) => (
+                <div key={label as string} className="flex items-center justify-between">
+                  <span className="flex items-center gap-2 text-muted-foreground">
+                    <span className={`h-2.5 w-2.5 rounded-full ${color}`} />
+                    {label as string}
+                  </span>
+                  <span className="font-semibold text-slate-950">{value}</span>
+                </div>
+              ))}
+            </div>
+            <Link href="#pm-tabs" className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-primary">
+              Vezi raport detaliat
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </RightInfoCard>
+
+          <RightInfoCard title="Reguli conformitate" icon={ShieldCheck}>
+            <div className="space-y-3 text-sm leading-6">
+              {[
+                'Verifică conformitatea cu cerințele proiectului.',
+                'Asigură-te că observațiile sunt clare și argumentate.',
+                'Solicită clarificări în termen de 3 zile lucrătoare.',
+                'Marchează ca neconform doar cu justificare.',
+              ].map((rule, index) => (
+                <div key={rule} className="flex items-start gap-2 text-muted-foreground">
+                  {index === 3 ? (
+                    <AlertTriangle className="mt-1 h-4 w-4 shrink-0 text-amber-500" />
+                  ) : (
+                    <CheckCircle2 className="mt-1 h-4 w-4 shrink-0 text-[#36c2a0]" />
+                  )}
+                  {rule}
+                </div>
+              ))}
+            </div>
+          </RightInfoCard>
+
+          <RightInfoCard title="Activitate recentă" icon={ClipboardList}>
+            <div className="space-y-4">
+              {visibleExperts.slice(0, 3).map((expert, index) => (
+                <div key={expert.id} className="flex items-start justify-between gap-3">
+                  <div className="flex gap-3">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#eaf3fb] text-xs font-bold text-primary">
+                      {expert.name.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase()}
+                    </span>
+                    <div>
+                      <p className="font-semibold text-slate-800">{expert.name}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {index === 0 ? 'a aprobat livrabil SA1.1' : index === 1 ? 'a trimis raport SA3.2' : 'a răspuns la observații'}
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-xs text-muted-foreground">Acum {index + 1}h</span>
+                </div>
+              ))}
+            </div>
+            <Link href="#pm-tabs" className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-primary">
+              Vezi toată activitatea
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </RightInfoCard>
+        </>
+      }
     >
+      <Card className="rounded-[1.5rem] py-0">
+        <CardContent className="grid gap-3 p-5 lg:grid-cols-[1fr_1fr_1fr_auto]">
+          <Select
+            value={selectedExpertId || ''}
+            onValueChange={(id) => setSelectedExpertId(id)}
+            disabled={!hasExtendedExpertAccess}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Toți experții" />
+            </SelectTrigger>
+            <SelectContent>
+              {visibleExperts.map((expert) => (
+                <SelectItem key={expert.id} value={expert.id}>
+                  {expert.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={selectedMonth.toString()} onValueChange={(v) => setSelectedMonth(parseInt(v))}>
+            <SelectTrigger>
+              <SelectValue placeholder="Luna" />
+            </SelectTrigger>
+            <SelectContent>
+              {months.map((m) => (
+                <SelectItem key={m.value} value={m.value.toString()}>
+                  {m.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={selectedYear.toString()} onValueChange={(v) => setSelectedYear(parseInt(v))}>
+            <SelectTrigger>
+              <SelectValue placeholder="An" />
+            </SelectTrigger>
+            <SelectContent>
+              {years.map((y) => (
+                <SelectItem key={y.value} value={y.value.toString()}>
+                  {y.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {canManagePmReview && (
+            <Button onClick={saveVerificationData} disabled={isSaving}>
+              {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              Salvează
+            </Button>
+          )}
+        </CardContent>
+      </Card>
+
       <PmStatusPanel
         statusMeta={currentReportStatusMeta}
         reportStatus={reportStatus}

@@ -9,12 +9,14 @@ import {
   CalendarDays,
   CheckCircle2,
   ClipboardList,
+  Clock3,
   Globe2,
   Save,
   Users,
 } from 'lucide-react';
 import { AdminViewAsBanner } from '@/components/admin/admin-view-as-banner';
-import { DashboardShell } from '@/components/layout/dashboard-shell';
+import { DashboardShell, expertNavItems } from '@/components/layout/dashboard-shell';
+import { ProgressBar, RightInfoCard, StatCard } from '@/components/layout/dashboard-primitives';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -423,13 +425,23 @@ export default function ExpertHomeDashboard() {
       <AdminViewAsBanner />
       <DashboardShell
         activeHref="/expert"
-        eyebrow="Dashboard expert · PEO 302141"
-        title={`Bine ai venit, ${expertName}`}
-        description="Spatiu de lucru pentru pontaj lunar, livrabile, proiecte paralele si raportare consolidata."
+        navItems={expertNavItems}
+        eyebrow="Modul Expert"
+        title="Pontaj lunar"
+        description="Centralizează activitățile și orele raportate pentru luna curentă."
         actions={
           <>
+            <Button asChild variant="outline">
+              <Link href="/api/export/pontaj">Export pontaj</Link>
+            </Button>
+            <Button asChild>
+              <Link href="/expert/peo">
+                Adaugă activitate
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </Button>
             {canOpenPmDashboard && (
-              <Button asChild>
+              <Button asChild variant="outline">
                 <Link href="/pm">Dashboard PM</Link>
               </Button>
             )}
@@ -437,11 +449,73 @@ export default function ExpertHomeDashboard() {
           </>
         }
         quickTabs={[
-          { label: 'Raportare', href: '/expert/peo', icon: ClipboardList, active: true },
-          { label: 'Calendar ore', href: '#calendar-ore', icon: CalendarDays },
-          { label: 'Pontaj consolidat', href: '#pontaj-consolidat', icon: CheckCircle2 },
-          { label: 'Proiecte paralele', href: '#proiecte-paralele', icon: BriefcaseBusiness },
+          { label: 'Pontaj lunar', href: '#calendar-ore', icon: CalendarDays, active: true },
+          { label: 'Activitățile mele', href: '/expert/peo', icon: ClipboardList },
+          { label: 'Livrabile', href: '/expert/peo#livrabile', icon: CheckCircle2 },
+          { label: 'Rapoarte', href: '/expert/peo#rapoarte', icon: BriefcaseBusiness },
         ]}
+        aside={
+          <>
+            <RightInfoCard title="Rezumat lună" icon={CalendarDays}>
+              <p className="text-sm font-semibold text-muted-foreground">{getMonthName(currentMonth)} {currentYear}</p>
+              <div className="mt-4 flex items-end justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Total ore raportate</p>
+                  <p className="mt-1 text-4xl font-bold text-slate-950">{totalMonthHours}h</p>
+                </div>
+                <span className="text-sm text-muted-foreground">din 160h planificate</span>
+              </div>
+              <ProgressBar value={Math.min(100, Math.round((totalMonthHours / 160) * 100))} className="mt-4" />
+              <div className="mt-5 space-y-3 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Ore disponibile</span>
+                  <span className="font-semibold text-[#087a63]">{Math.max(0, 160 - totalMonthHours)}h</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Limita lunară</span>
+                  <span className="font-semibold">160h</span>
+                </div>
+              </div>
+              <Link href="#pontaj-consolidat" className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-primary">
+                Vezi detalii complete
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </RightInfoCard>
+
+            <RightInfoCard title="Reguli pontaj" icon={CheckCircle2}>
+              <div className="space-y-3 text-sm leading-6">
+                {[
+                  'Pontajul se raportează zilnic, până la ora 23:59.',
+                  'Orele trebuie alocate pe subactivități.',
+                  'Documentele justificative se atașează la activități.',
+                  'Minimum 8h / zi lucrată.',
+                ].map((rule) => (
+                  <div key={rule} className="flex items-start gap-2 text-muted-foreground">
+                    <CheckCircle2 className="mt-1 h-4 w-4 shrink-0 text-[#36c2a0]" />
+                    {rule}
+                  </div>
+                ))}
+              </div>
+            </RightInfoCard>
+
+            <RightInfoCard title="Status raportare" icon={ClipboardList}>
+              <div className="space-y-4 text-sm">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <span className="text-muted-foreground">Luna curentă</span>
+                  <span className="rounded-full bg-[#e9faf5] px-3 py-1 text-xs font-semibold text-[#087a63]">Deschisă</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Pontaj</span>
+                  <span className="rounded-full bg-[#eaf3fb] px-3 py-1 text-xs font-semibold text-primary">În lucru</span>
+                </div>
+              </div>
+              <Link href="/expert/peo" className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-primary">
+                Vezi istoricul raportărilor
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </RightInfoCard>
+          </>
+        }
       >
 
         {pendingActivityAlerts.length > 0 && (
@@ -528,7 +602,42 @@ export default function ExpertHomeDashboard() {
           </section>
         )}
 
-        <section className="grid gap-3 rounded-lg border bg-card p-3 md:grid-cols-4">
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <StatCard
+            icon={Clock3}
+            label="Total ore raportate"
+            value={`${totalMonthHours}h`}
+            description="din 160h planificate"
+            progress={Math.min(100, Math.round((totalMonthHours / 160) * 100))}
+            tone="blue"
+          />
+          <StatCard
+            icon={CalendarDays}
+            label="Zile lucrate"
+            value={Array.from(dayTotals.values()).filter((day) => day.total > 0).length}
+            description="zile cu pontaj în luna curentă"
+            progress={55}
+            tone="success"
+          />
+          <StatCard
+            icon={AlertTriangle}
+            label="Activități în curs"
+            value={peoActivities.filter((activity) => activity.status !== 'approved').length}
+            description={`${peoActivities.length} activități PEO`}
+            progress={43}
+            tone="warning"
+          />
+          <StatCard
+            icon={ClipboardList}
+            label="Livrabile atașate"
+            value={documents.length}
+            description="documente disponibile"
+            progress={44}
+            tone="violet"
+          />
+        </section>
+
+        <section className="grid gap-3 rounded-[1.5rem] border bg-card p-3 md:grid-cols-4">
           {WORK_TABS.map((tab) => {
             const Icon = tab.icon;
             const content = (

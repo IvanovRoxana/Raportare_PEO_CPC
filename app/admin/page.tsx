@@ -1,54 +1,38 @@
 import Link from 'next/link';
 import {
-  AlertTriangle,
-  Archive,
-  Bot,
-  CalendarClock,
+  ArrowRight,
+  Building2,
   CheckCircle2,
-  ClipboardCheck,
-  DatabaseBackup,
-  FileSpreadsheet,
-  FileText,
-  Gauge,
+  Database,
+  Filter,
   History,
+  KeyRound,
   Lock,
-  Settings2,
+  MoreHorizontal,
+  Plus,
+  SearchIcon,
+  Settings,
   ShieldCheck,
-  SlidersHorizontal,
+  Upload,
+  Users,
   UsersRound,
 } from 'lucide-react';
-import { DashboardShell } from '@/components/layout/dashboard-shell';
+import { DashboardShell, adminNavItems } from '@/components/layout/dashboard-shell';
+import { DataTable, ProgressBar, RightInfoCard, StatCard } from '@/components/layout/dashboard-primitives';
 import { ViewAsExpertPanel } from '@/components/admin/view-as-expert-panel';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Separator } from '@/components/ui/separator';
-import { adminMenuItems, buildAdminDashboardSnapshot, protectedAdminBoundaries, ruleSeverityLevels } from '@/lib/admin-module';
+import { Card, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { StatusBadge } from '@/components/ui/status-badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import activities from '@/data/import/sample-activities.json';
 import activityCatalog from '@/data/import/activity-catalog.json';
 import experts from '@/data/import/experts.json';
 import reportStatuses from '@/data/import/report-statuses.json';
 import workingGroups from '@/data/import/working-groups.json';
+import { buildAdminDashboardSnapshot } from '@/lib/admin-module';
 import type { Expert } from '@/lib/types';
-
-const menuIcons = [
-  Gauge,
-  UsersRound,
-  ShieldCheck,
-  FileText,
-  ClipboardCheck,
-  FileSpreadsheet,
-  CalendarClock,
-  SlidersHorizontal,
-  Archive,
-  CheckCircle2,
-  FileText,
-  FileSpreadsheet,
-  Bot,
-  DatabaseBackup,
-  History,
-  Settings2,
-];
 
 const snapshot = buildAdminDashboardSnapshot({
   experts: experts as Expert[],
@@ -59,315 +43,289 @@ const snapshot = buildAdminDashboardSnapshot({
   workingGroupsCount: workingGroups.length,
 });
 
-const dashboardStats = [
-  { label: 'Experti in proiect', value: snapshot.totalExperts, hint: `${snapshot.activeExperts} activi` },
-  { label: 'Au raportat in seed', value: snapshot.reportedExperts, hint: 'activitati importate' },
-  { label: 'Pontaje detectate', value: snapshot.completeTimesheets, hint: 'cu ore inregistrate' },
-  { label: 'Activitati incomplete', value: snapshot.incompleteActivities, hint: 'draft sau fara SA' },
-  { label: 'Livrabile lipsa', value: snapshot.missingDeliverables, hint: 'de verificat la PM' },
-  { label: 'Rapoarte draft', value: snapshot.draftReports, hint: 'netrimise inca' },
-  { label: 'Trimise catre PM', value: snapshot.sentReports, hint: 'in verificare' },
-  { label: 'Validate', value: snapshot.validatedReports, hint: 'conforme' },
-];
-
-const adminCoreModules = [
-  {
-    title: 'Utilizatori si roluri',
-    description: 'Administrare utilizatori, roluri si permisiuni pe module (expert, PM, financiar, audit).',
-    controls: ['Invitare utilizator', 'Atribuire rol', 'Dezactivare cont'],
-    href: '/admin/users',
-  },
-  {
-    title: 'Experti',
-    description: 'Profiluri experti, date contractuale, stari active/inactive si eligibilitate pe proiect.',
-    controls: ['Date expert', 'Status colaborare', 'Validare eligibilitate'],
-  },
-  {
-    title: 'Proiecte',
-    description: 'Configurare proiecte, luni active, reguli de raportare si echipele aferente fiecarui proiect.',
-    controls: ['Calendar raportare', 'Echipa proiect', 'Reguli proiect'],
-  },
-  {
-    title: 'Subactivitati',
-    description: 'Gestionarea subactivitatilor pentru fiecare activitate principala si conditii de raportare.',
-    controls: ['Mapare activitate-SA', 'Conditii ore', 'Reguli validare'],
-  },
-  {
-    title: 'Catalog activitati',
-    description: 'Catalog central pentru activitati, coduri, tipuri de livrabile si clasificari operationale.',
-    controls: ['Adaugare activitate', 'Coduri si etichete', 'Arhivare activitate'],
-  },
-  {
-    title: 'Import istoric raportare',
-    description: 'Incarcare dosare lunare istorice: PDF raport, Excel pontaj, metadate si sursa auditabila.',
-    controls: ['PDF Anexa 10', 'Pontaj Excel', 'Istoric PM'],
-    href: '/admin/historical-import',
-  },
+const fallbackUsers = [
+  ['Andrei Dumitrescu', 'andrei.d@concordia.ro', 'Administrator', 'Concordia', 'Activ', '12 mai 2026, 09:42'],
+  ['Maria Curea', 'maria.c@concordia.ro', 'Manager', 'Concordia', 'Activ', '12 mai 2026, 08:15'],
+  ['Ionuț Radu', 'ionut.r@concordia.ro', 'Expert', 'CPC', 'Activ', '11 mai 2026, 16:33'],
+  ['Laura Stoica', 'laura.s@concordia.ro', 'PM', 'Concordia', 'Activ', '11 mai 2026, 11:06'],
+  ['Vlad Bălan', 'vlad.b@concordia.ro', 'Expert', 'CPC', 'Inactiv', '7 mai 2026, 14:20'],
+  ['Alexandra Antonescu', 'alexandra.a@concordia.ro', 'Utilizator', 'CPC', 'Activ', '12 mai 2026, 10:01'],
 ] as const;
 
-const phaseDescriptions = {
-  'Etapa 1': 'Admin minim viabil: elimina modificarile in cod pentru configurarile de baza.',
-  'Etapa 2': 'Admin operational complet: verificare, exporturi, audit, import si arhivare.',
-  'Etapa 3': 'Admin avansat: AI governance, reguli complexe, template builder si multi-proiect.',
+const users = fallbackUsers.map(([name, email, role, organization, status, lastAccess]) => ({
+  name,
+  email,
+  role,
+  organization,
+  status,
+  lastAccess,
+  initials: name
+    .split(' ')
+    .map((part) => part[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase(),
+}));
+
+const roleStatus = {
+  Administrator: 'in_lucru',
+  Manager: 'verificat',
+  Expert: 'draft',
+  PM: 'cu_observatii',
+  Utilizator: 'informativ',
 } as const;
 
 export default function AdminPage() {
+  const statCards = [
+    {
+      label: 'Utilizatori activi',
+      value: 128,
+      description: '+12 față de luna trecută',
+      icon: UsersRound,
+      tone: 'blue' as const,
+    },
+    {
+      label: 'Roluri definite',
+      value: 6,
+      description: 'Nicio modificare recentă',
+      icon: ShieldCheck,
+      tone: 'navy' as const,
+    },
+    {
+      label: 'Experți activi',
+      value: snapshot.activeExperts || 27,
+      description: '+3 față de luna trecută',
+      icon: Users,
+      tone: 'blue' as const,
+    },
+    {
+      label: 'Proiecte active',
+      value: 4,
+      description: 'PEO și proiecte asociate',
+      icon: Building2,
+      tone: 'success' as const,
+    },
+  ];
+
   return (
     <DashboardShell
       activeHref="/admin"
-      eyebrow="Modul admin · PEO 302141"
-      title="Control operational fara modificari in cod"
-      description="Adminul gestioneaza continutul, regulile si fluxurile: utilizatori, experti, proiecte, subactivitati, luni de raportare, statusuri, livrabile, exporturi, notificari, template-uri si guvernanta AI."
+      navItems={adminNavItems}
+      eyebrow="Modul Admin"
+      title="Administrare"
+      description="Gestionează utilizatori, roluri, experți și catalogul de activități."
       actions={
         <>
           <Button asChild variant="outline">
-            <Link href="/">Inapoi la aplicatie</Link>
+            <Link href="/admin/historical-import">
+              <Upload className="h-4 w-4" />
+              Import utilizatori
+            </Link>
           </Button>
           <Button asChild>
-            <a href="#nucleu-dashboard-admin">Nucleu Admin</a>
+            <Link href="/admin/users">
+              Adaugă utilizator
+              <Plus className="h-4 w-4" />
+            </Link>
           </Button>
         </>
       }
-      quickTabs={[
-        { label: 'Dashboard', href: '#dashboard-admin', icon: Gauge, active: true },
-        { label: 'Prioritizare', href: '#prioritizare', icon: ClipboardCheck },
-        { label: 'Control & audit', href: '#granite', icon: Lock },
-        { label: 'Utilizatori', href: '/admin/users', icon: UsersRound },
-        { label: 'Import istoric', href: '/admin/historical-import', icon: Archive },
-      ]}
-    >
-      <Card className="border-primary/20 bg-primary/5">
-        <CardContent className="pt-6">
-          <p className="text-sm font-medium uppercase tracking-wide text-primary">Regula de aur</p>
-          <p className="mt-2 text-lg leading-8 text-foreground">
-            Orice lista, regula, status, text, subactivitate, tip de livrabil, template sau limita
-            care se poate schimba in timp trebuie stocata configurabil si administrata din modulul
-            de admin, nu scrisa fix in cod.
-          </p>
-        </CardContent>
-      </Card>
-
-      <section id="dashboard-admin" className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
-        <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-xl">
-                <Gauge className="h-5 w-5 text-primary" />
-                Dashboard admin
-              </CardTitle>
-              <CardDescription>
-                Panou de avertizare pentru luna curenta si pentru datele de referinta existente.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                {dashboardStats.map((stat) => (
-                  <div key={stat.label} className="rounded-2xl border bg-secondary/35 p-4">
-                    <p className="text-sm text-muted-foreground">{stat.label}</p>
-                    <p className="mt-2 text-3xl font-semibold text-foreground">{stat.value}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">{stat.hint}</p>
-                  </div>
-                ))}
-              </div>
-
-              <div className="mt-5 grid gap-4 lg:grid-cols-2">
-                <div className="rounded-2xl border bg-background p-4">
-                  <p className="font-medium text-foreground">Luni de raportare active</p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {snapshot.activeReportingMonths.map((month) => (
-                      <Badge key={month} variant="secondary">
-                        {month}
-                      </Badge>
-                    ))}
-                  </div>
-                  <p className="mt-3 text-sm leading-6 text-muted-foreground">
-                    Luna mai 2026 este deschisa pentru completare pana la deadline-ul stabilit de admin,
-                    apoi intra in verificare PM.
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-950">
-                  <div className="flex items-center gap-2 font-medium">
-                    <AlertTriangle className="h-4 w-4" />
-                    Alerte de configurare
-                  </div>
-                  <ul className="mt-3 space-y-2 text-sm leading-6">
-                    {snapshot.configurationErrors.length > 0 ? (
-                      snapshot.configurationErrors.slice(0, 4).map((error) => <li key={error}>• {error}</li>)
-                    ) : (
-                      <li>• Nu exista erori de configurare in datele importate.</li>
-                    )}
-                    <li>• Catalog activitati: {snapshot.referenceData.activityCatalogCount} intrari configurabile.</li>
-                    <li>• Grupuri de lucru: {snapshot.referenceData.workingGroupsCount} intrari.</li>
-                  </ul>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card id="nucleu-dashboard-admin" className="scroll-mt-24">
-            <CardHeader>
-              <CardTitle className="text-xl">Nucleu Dashboard Admin</CardTitle>
-              <CardDescription>
-                Zonele cerute pentru administrarea operationala: utilizatori, experti, proiecte, subactivitati si catalog.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {adminCoreModules.map((module) => {
-                  const moduleContent = (
-                    <>
-                      <h2 className="font-semibold text-foreground">{module.title}</h2>
-                      <p className="mt-2 text-sm leading-6 text-muted-foreground">{module.description}</p>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {module.controls.map((control) => (
-                          <Badge key={control} variant="secondary" className="font-normal">
-                            {control}
-                          </Badge>
-                        ))}
-                      </div>
-                    </>
-                  );
-
-                  return 'href' in module && module.href ? (
-                    <Link
-                      key={module.title}
-                      href={module.href}
-                      className="block rounded-2xl border bg-background p-4 transition hover:border-primary/40 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                    >
-                      {moduleContent}
-                    </Link>
-                  ) : (
-                    <article key={module.title} className="rounded-2xl border bg-background p-4">
-                      {moduleContent}
-                    </article>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-xl">Meniu admin propus</CardTitle>
-              <CardDescription>
-                Structura separa adminul minim viabil de functiile operationale si avansate.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-4 md:grid-cols-2">
-                {adminMenuItems.map((item, index) => {
-                  const Icon = menuIcons[index] ?? Settings2;
-                  const menuContent = (
-                    <div className="flex items-start gap-3">
-                      <div className="rounded-2xl bg-primary/10 p-2 text-primary">
-                        <Icon className="h-4 w-4" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h2 className="font-semibold text-foreground">
-                            {index + 1}. {item.title}
-                          </h2>
-                          <Badge variant="outline">{item.phase}</Badge>
-                        </div>
-                        <p className="mt-2 text-sm leading-6 text-muted-foreground">{item.description}</p>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {item.controls.slice(0, 4).map((control) => (
-                            <Badge key={control} variant="secondary" className="font-normal">
-                              {control}
-                            </Badge>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  );
-
-                  return item.href ? (
-                    <Link
-                      key={item.id}
-                      href={item.href}
-                      className="block rounded-2xl border bg-background p-4 transition hover:border-primary/40 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                    >
-                      {menuContent}
-                    </Link>
-                  ) : (
-                    <article key={item.id} className="rounded-2xl border bg-background p-4">
-                      {menuContent}
-                    </article>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        <aside className="space-y-6">
-          <ViewAsExpertPanel experts={experts as Expert[]} />
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <SlidersHorizontal className="h-5 w-5 text-primary" />
-                Severitate reguli
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {ruleSeverityLevels.map((rule) => (
-                <div key={rule.level} className="rounded-2xl border bg-background p-3">
-                  <p className="font-medium text-foreground">{rule.label}</p>
-                  <p className="mt-1 text-sm leading-6 text-muted-foreground">{rule.description}</p>
-                </div>
+      aside={
+        <>
+          <RightInfoCard title="Permisiuni rapide" icon={Lock}>
+            <div className="space-y-3">
+              {[
+                ['Gestionează roluri', UsersRound],
+                ['Setări permisiuni', ShieldCheck],
+                ['Asignare acces proiecte', KeyRound],
+                ['Vizualizare audit', History],
+              ].map(([label, Icon]) => (
+                <Link
+                  key={label as string}
+                  href="/admin/users"
+                  className="flex items-center justify-between rounded-xl px-1 py-1.5 text-sm font-medium text-slate-600 hover:text-primary"
+                >
+                  <span className="flex items-center gap-3">
+                    <Icon className="h-4 w-4 text-primary" />
+                    {label as string}
+                  </span>
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
               ))}
-            </CardContent>
-          </Card>
+            </div>
+          </RightInfoCard>
 
-          <Card id="granite" className="border-destructive/30 scroll-mt-24">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <Lock className="h-5 w-5 text-destructive" />
-                Zone protejate
-              </CardTitle>
-              <CardDescription>Adminul operational nu trebuie sa poata strica infrastructura.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ul className="space-y-2 text-sm leading-6 text-muted-foreground">
-                {protectedAdminBoundaries.map((boundary) => (
-                  <li key={boundary}>• {boundary}</li>
-                ))}
-              </ul>
-            </CardContent>
-          </Card>
-        </aside>
-      </section>
-
-      <section id="prioritizare" className="scroll-mt-24">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-xl">Prioritizare build</CardTitle>
-            <CardDescription>
-              Recomandarea este sa livram intai administrarea de baza, apoi operationalizarea completa si functiile avansate.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 lg:grid-cols-3">
-              {Object.entries(phaseDescriptions).map(([phase, description]) => (
-                <div key={phase} className="rounded-2xl border bg-background p-5">
-                  <Badge>{phase}</Badge>
-                  <p className="mt-3 text-sm leading-6 text-muted-foreground">{description}</p>
-                  <Separator className="my-4" />
-                  <ul className="space-y-2 text-sm text-foreground">
-                    {adminMenuItems
-                      .filter((item) => item.phase === phase)
-                      .slice(0, 6)
-                      .map((item) => (
-                        <li key={item.id}>• {item.title}</li>
-                      ))}
-                  </ul>
+          <RightInfoCard title="Audit activitate" icon={History}>
+            <p className="text-3xl font-bold text-slate-950">246</p>
+            <p className="mt-1 text-sm text-muted-foreground">Acțiuni în ultimele 7 zile</p>
+            <ProgressBar value={74} className="mt-4" />
+            <div className="mt-5 space-y-3 text-sm">
+              {[
+                ['Creări utilizatori', 18],
+                ['Actualizări roluri', 27],
+                ['Schimbări permisiuni', 96],
+                ['Încărcări / exporturi', 12],
+                ['Alte acțiuni', 93],
+              ].map(([label, value]) => (
+                <div key={label as string} className="flex items-center justify-between">
+                  <span className="flex items-center gap-2 text-muted-foreground">
+                    <CheckCircle2 className="h-4 w-4 text-[#36c2a0]" />
+                    {label as string}
+                  </span>
+                  <span className="font-semibold text-[#087a63]">{value}</span>
                 </div>
               ))}
             </div>
-          </CardContent>
-        </Card>
+            <Link href="#audit" className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-primary">
+              Vezi jurnal complet
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </RightInfoCard>
+
+          <RightInfoCard title="Sistem / sănătate" icon={Database}>
+            <div className="space-y-3 text-sm">
+              {['Bază de date', 'Servicii aplicație', 'Stocare fișiere', 'Cozi procesare'].map((item) => (
+                <div key={item} className="flex items-center justify-between">
+                  <span className="flex items-center gap-2 text-muted-foreground">
+                    <span className="h-2.5 w-2.5 rounded-full bg-[#36c2a0]" />
+                    {item}
+                  </span>
+                  <span className="font-semibold text-[#087a63]">Sănătos</span>
+                </div>
+              ))}
+            </div>
+            <Link href="/admin/users" className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-primary">
+              Vezi detalii sistem
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </RightInfoCard>
+
+          <ViewAsExpertPanel experts={experts as Expert[]} />
+        </>
+      }
+    >
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {statCards.map((stat) => (
+          <StatCard key={stat.label} {...stat} />
+        ))}
       </section>
+
+      <Card className="overflow-hidden rounded-[1.5rem] py-0">
+        <Tabs defaultValue="utilizatori">
+          <div className="border-b border-slate-100 px-6 pt-5">
+            <TabsList className="h-auto gap-8 bg-transparent p-0">
+              {[
+                ['utilizatori', 'Utilizatori', UsersRound],
+                ['roluri', 'Roluri', ShieldCheck],
+                ['subactivitati', 'Subactivități', Settings],
+                ['proiecte', 'Proiecte', Building2],
+              ].map(([value, label, Icon]) => (
+                <TabsTrigger
+                  key={value as string}
+                  value={value as string}
+                  className="rounded-none border-b-2 border-transparent bg-transparent px-0 pb-3 text-sm font-semibold text-slate-600 shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none"
+                >
+                  <Icon className="h-4 w-4" />
+                  {label as string}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </div>
+
+          <CardContent className="p-0">
+            <TabsContent value="utilizatori" className="m-0">
+              <div className="grid gap-3 border-b border-slate-100 p-6 lg:grid-cols-[1.4fr_0.85fr_0.85fr_auto]">
+                <div className="relative">
+                  <SearchIcon className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input className="pl-9" placeholder="Caută după nume, email sau organizație..." />
+                </div>
+                <Select defaultValue="all">
+                  <SelectTrigger>
+                    <SelectValue placeholder="Toate rolurile" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Toate rolurile</SelectItem>
+                    <SelectItem value="admin">Administrator</SelectItem>
+                    <SelectItem value="pm">PM</SelectItem>
+                    <SelectItem value="expert">Expert</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select defaultValue="all">
+                  <SelectTrigger>
+                    <SelectValue placeholder="Toate organizațiile" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Toate organizațiile</SelectItem>
+                    <SelectItem value="concordia">Concordia</SelectItem>
+                    <SelectItem value="cpc">CPC</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button variant="outline">
+                  <Filter className="h-4 w-4" />
+                  Filtrează
+                </Button>
+              </div>
+
+              <DataTable
+                className="rounded-none border-0 shadow-none"
+                columns={['Nume', 'Email', 'Rol', 'Organizație', 'Status', 'Ultima accesare', 'Acțiuni']}
+                rows={users.map((user, index) => [
+                  <div key={`${user.name}-name`} className="flex items-center gap-3 font-semibold text-primary">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#eaf3fb] text-xs">
+                      {user.initials}
+                    </span>
+                    {user.name}
+                  </div>,
+                  user.email,
+                  <StatusBadge key={`${user.name}-role`} status={roleStatus[user.role as keyof typeof roleStatus] ?? 'informativ'}>
+                    {user.role}
+                  </StatusBadge>,
+                  user.organization,
+                  <StatusBadge key={`${user.name}-status`} status={user.status === 'Activ' ? 'deschisa' : 'inchisa'}>
+                    {user.status}
+                  </StatusBadge>,
+                  user.lastAccess,
+                  <Button key={`${user.name}-action`} variant="ghost" size="icon" aria-label={`Acțiuni ${user.name}`}>
+                    <MoreHorizontal className="h-4 w-4" />
+                  </Button>,
+                ])}
+                footer={
+                  <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
+                    <span>Afișare 1-6 din 128 utilizatori</span>
+                    <div className="flex items-center gap-2">
+                      {[1, 2, 3].map((page) => (
+                        <Button key={page} variant={page === 1 ? 'default' : 'outline'} size="icon-sm">
+                          {page}
+                        </Button>
+                      ))}
+                      <Button variant="outline" size="icon-sm">
+                        <ArrowRight className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                }
+              />
+            </TabsContent>
+
+            {(['roluri', 'subactivitati', 'proiecte'] as const).map((tab) => (
+              <TabsContent key={tab} value={tab} className="m-0 p-6">
+                <div className="grid gap-4 md:grid-cols-3">
+                  {[
+                    ['Configurare', 'Reguli și valori administrabile fără modificări în cod.'],
+                    ['Validare', 'Stări, limite și permisiuni vizibile pentru PM/Admin.'],
+                    ['Audit', 'Istoric disponibil pentru controale și verificări interne.'],
+                  ].map(([title, description]) => (
+                    <div key={title} className="rounded-2xl border bg-slate-50/60 p-5">
+                      <p className="font-bold text-slate-950">{title}</p>
+                      <p className="mt-2 text-sm leading-6 text-muted-foreground">{description}</p>
+                    </div>
+                  ))}
+                </div>
+              </TabsContent>
+            ))}
+          </CardContent>
+        </Tabs>
+      </Card>
     </DashboardShell>
   );
 }
