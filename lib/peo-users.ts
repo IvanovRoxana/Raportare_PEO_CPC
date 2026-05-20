@@ -143,7 +143,7 @@ export const peoUsers: PeoUser[] = [
     category: 'PM',
     norma: 8,
     saCodes: ['SA6.1'],
-    roles: ['pm'],
+    roles: ['pm', 'admin'],
   },
 ];
 
