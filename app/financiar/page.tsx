@@ -1,7 +1,6 @@
 import Link from 'next/link';
 import type { LucideIcon } from 'lucide-react';
 import {
-  ArrowLeft,
   BadgeDollarSign,
   Banknote,
   BarChart3,
@@ -22,8 +21,8 @@ import {
   WalletCards,
   Zap,
 } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
 import { DashboardShell } from '@/components/layout/dashboard-shell';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -62,14 +61,6 @@ type IntegrationStep = {
   status: string;
   icon: LucideIcon;
 };
-
-
-const financiarNavItems = [
-  { label: 'Dashboard', href: '/', icon: BarChart3 },
-  { label: 'PM', href: '/pm', icon: ShieldCheck },
-  { label: 'Admin', href: '/admin', icon: Database },
-  { label: 'Financiar', href: '/financiar', icon: CircleDollarSign, active: true },
-];
 
 const projectBudget = {
   total: 37101208.87,
@@ -261,41 +252,29 @@ export default function FinancialDashboardPage() {
 
   return (
     <DashboardShell
+      activeHref="/financiar"
+      eyebrow="Dashboard financiar · PEO 302141"
       title="Aplicatii folosite si integrari urmatoare"
-      subtitle="Vedere de control pentru ecosistemul tehnic al proiectului PEO 302141, cu impact financiar estimativ si pasi de integrare."
-      roleLabel="Financiar"
-      navItems={financiarNavItems}
+      description="Vedere de control pentru ecosistemul tehnic al proiectului PEO 302141, cu impact financiar estimativ si pasi de integrare."
+      actions={
+        <>
+          <Button asChild variant="outline">
+            <Link href="/">Acasa</Link>
+          </Button>
+          <Button asChild>
+            <Link href="/pm">Dashboard PM</Link>
+          </Button>
+        </>
+      }
+      quickTabs={[
+        { label: 'Buget', href: '#buget', icon: WalletCards, active: true },
+        { label: 'Costuri', href: '#costuri', icon: PieChart },
+        { label: 'Integrari', href: '#integrari', icon: Zap },
+        { label: 'Inventar', href: '#inventar', icon: FileText },
+      ]}
     >
-      <header className="border-b bg-card rounded-2xl">
-        <div className="mx-auto flex max-w-screen-2xl flex-wrap items-center justify-between gap-4 px-4 py-5 sm:px-6 lg:px-8">
-          <div>
-            <p className="text-sm font-medium text-primary">Dashboard financiar</p>
-            <h1 className="text-2xl font-bold text-foreground sm:text-3xl">
-              Aplicatii folosite si integrari urmatoare
-            </h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-              Vedere de control pentru ecosistemul tehnic al proiectului PEO 302141, cu impact
-              financiar estimativ si pasi de integrare.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button asChild variant="outline">
-              <Link href="/">
-                <ArrowLeft className="h-4 w-4" />
-                Acasa
-              </Link>
-            </Button>
-            <Button asChild>
-              <Link href="/pm">
-                Dashboard PM
-              </Link>
-            </Button>
-          </div>
-        </div>
-      </header>
-
-      <div className="mx-auto max-w-screen-2xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="space-y-6">
+        <section id="buget" className="grid gap-4 md:grid-cols-2 xl:grid-cols-4 scroll-mt-24">
           <Card className="rounded-lg">
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
@@ -349,7 +328,7 @@ export default function FinancialDashboardPage() {
           </Card>
         </section>
 
-        <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
+        <section id="costuri" className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px] scroll-mt-24">
           <Card className="rounded-lg">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-xl">
@@ -412,7 +391,7 @@ export default function FinancialDashboardPage() {
           </Card>
         </section>
 
-        <section className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
+        <section id="integrari" className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4 scroll-mt-24">
           {integrationSteps.map((step) => {
             const Icon = step.icon;
             return (
@@ -437,7 +416,7 @@ export default function FinancialDashboardPage() {
           })}
         </section>
 
-        <Card className="rounded-lg">
+        <Card id="inventar" className="rounded-lg scroll-mt-24">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-xl">
               <FileText className="h-5 w-5 text-primary" />

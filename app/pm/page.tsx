@@ -3,18 +3,18 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  ArrowLeft,
+  CalendarDays,
+  ClipboardList,
+  FileText,
   Save,
   Loader2,
   AlertCircle,
-  BarChart3,
-  CalendarDays,
-  FileText,
-  Settings,
+  SearchIcon,
+  ShieldCheck,
   Upload,
-  Users,
 } from 'lucide-react';
 import Link from 'next/link';
+import { DashboardShell } from '@/components/layout/dashboard-shell';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -88,7 +88,6 @@ import type {
   Expert,
 } from '@/lib/types';
 import { UserMenu } from '@/components/user-menu';
-import { DashboardShell } from '@/components/layout/dashboard-shell';
 import { ProgressReportTab } from '@/components/pm/progress-report-tab';
 import { GTProgressTab } from '@/components/pm/gt-progress-tab';
 import { DosarExpertModal } from '@/components/pm/dosar-expert-modal';
@@ -558,110 +557,94 @@ export default function PMDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b bg-card/95">
-        <div className="container mx-auto px-4 py-5">
-          <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
-            <div className="flex items-start gap-4">
-              <Link href="/">
-                <Button variant="ghost" size="icon" className="mt-1 rounded-full">
-                  <ArrowLeft className="h-5 w-5" />
-                </Button>
-              </Link>
-              <div className="space-y-2">
-                <Badge variant="outline" className="border-primary/30 bg-primary/5 text-primary">
-                  Control center PEO
-                </Badge>
-                <div>
-                  <h1 className="text-2xl font-bold tracking-tight text-foreground md:text-3xl">
-                    {hasExtendedExpertAccess
-                      ? 'Dashboard PM — Raportare PEO 302141'
-                      : 'Raportarea mea — Verificare'}
-                  </h1>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {getMonthName(selectedMonth)} {selectedYear} • Cod proiect 302141
-                  </p>
-                </div>
-              </div>
+    <DashboardShell
+      activeHref="/pm"
+      eyebrow={`Control center PEO · ${getMonthName(selectedMonth)} ${selectedYear}`}
+      title={hasExtendedExpertAccess ? 'Dashboard PM - Raportare PEO 302141' : 'Raportarea mea - Verificare'}
+      description={`Verificari, conformitate si export pentru ${getMonthName(selectedMonth)} ${selectedYear}. Cod proiect 302141.`}
+      actions={
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+          <div className="rounded-2xl border bg-background/70 p-3 shadow-sm">
+            <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Filtre raportare
             </div>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <Select
+                value={selectedExpertId || ''}
+                onValueChange={(id) => setSelectedExpertId(id)}
+                disabled={!hasExtendedExpertAccess}
+              >
+                <SelectTrigger className="w-full sm:w-[190px]">
+                  <SelectValue placeholder="Expert" />
+                </SelectTrigger>
+                <SelectContent>
+                  {visibleExperts.map((expert) => (
+                    <SelectItem key={expert.id} value={expert.id}>
+                      {expert.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
 
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-              <div className="rounded-2xl border bg-background/70 p-3 shadow-sm">
-                <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Filtre raportare
-                </div>
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                  <Select
-                    value={selectedExpertId || ''}
-                    onValueChange={(id) => setSelectedExpertId(id)}
-                    disabled={!hasExtendedExpertAccess}
-                  >
-                    <SelectTrigger className="w-full sm:w-[190px]">
-                      <SelectValue placeholder="Expert" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {visibleExperts.map((expert) => (
-                        <SelectItem key={expert.id} value={expert.id}>
-                          {expert.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+              <Select
+                value={selectedMonth.toString()}
+                onValueChange={(v) => setSelectedMonth(parseInt(v))}
+              >
+                <SelectTrigger className="w-full sm:w-[140px]">
+                  <SelectValue placeholder="Luna" />
+                </SelectTrigger>
+                <SelectContent>
+                  {months.map((m) => (
+                    <SelectItem key={m.value} value={m.value.toString()}>
+                      {m.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
 
-                  <Select
-                    value={selectedMonth.toString()}
-                    onValueChange={(v) => setSelectedMonth(parseInt(v))}
-                  >
-                    <SelectTrigger className="w-full sm:w-[140px]">
-                      <SelectValue placeholder="Luna" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {months.map((m) => (
-                        <SelectItem key={m.value} value={m.value.toString()}>
-                          {m.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-
-                  <Select
-                    value={selectedYear.toString()}
-                    onValueChange={(v) => setSelectedYear(parseInt(v))}
-                  >
-                    <SelectTrigger className="w-full sm:w-[100px]">
-                      <SelectValue placeholder="An" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {years.map((y) => (
-                        <SelectItem key={y.value} value={y.value.toString()}>
-                          {y.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 self-start lg:self-center">
-                {canManagePmReview && (
-                  <Button onClick={saveVerificationData} disabled={isSaving}>
-                    {isSaving ? (
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    ) : (
-                      <Save className="h-4 w-4 mr-2" />
-                    )}
-                    Salvează
-                  </Button>
-                )}
-
-                <UserMenu />
-              </div>
+              <Select
+                value={selectedYear.toString()}
+                onValueChange={(v) => setSelectedYear(parseInt(v))}
+              >
+                <SelectTrigger className="w-full sm:w-[100px]">
+                  <SelectValue placeholder="An" />
+                </SelectTrigger>
+                <SelectContent>
+                  {years.map((y) => (
+                    <SelectItem key={y.value} value={y.value.toString()}>
+                      {y.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
-        </div>
-      </header>
 
+          <div className="flex items-center gap-2 self-start lg:self-center">
+            {canManagePmReview && (
+              <Button onClick={saveVerificationData} disabled={isSaving}>
+                {isSaving ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4 mr-2" />
+                )}
+                Salveaza
+              </Button>
+            )}
+
+            <UserMenu />
+          </div>
+        </div>
+      }
+      quickTabs={[
+        { label: 'KPI', href: '#pm-kpi', icon: ShieldCheck, active: true },
+        { label: 'Pontaj', href: '#pm-tabs', icon: CalendarDays },
+        { label: 'Rapoarte', href: '#pm-tabs', icon: FileText },
+        { label: 'Livrabile', href: '#pm-tabs', icon: Upload },
+        { label: 'Neconformitati', href: '#pm-tabs', icon: SearchIcon },
+        { label: 'Note', href: '#pm-tabs', icon: ClipboardList },
+      ]}
+    >
       <PmStatusPanel
         statusMeta={currentReportStatusMeta}
         reportStatus={reportStatus}
@@ -745,7 +728,7 @@ export default function PMDashboard() {
       </Dialog>
 
       {/* Main Content */}
-      <main className="container mx-auto px-0 py-0">
+      <div id="pm-kpi" className="space-y-6 scroll-mt-24">
         <PmDashboardKpiCards
           hasExtendedExpertAccess={hasExtendedExpertAccess}
           pmSummary={pmSummary}
@@ -772,7 +755,7 @@ export default function PMDashboard() {
           onOpenDossier={openDossier}
         />
 
-        <Tabs defaultValue="pontaj" className="space-y-6">
+        <Tabs id="pm-tabs" defaultValue="pontaj" className="space-y-6 scroll-mt-24">
           <TabsList className="flex h-auto flex-wrap">
             <TabsTrigger value="pontaj">Pontaj Excel</TabsTrigger>
             <TabsTrigger value="raport">Raport Activitate</TabsTrigger>
@@ -860,7 +843,7 @@ export default function PMDashboard() {
             <NotesTab data={localNotes} onDataChange={handleNotesChange} />
           </TabsContent>
         </Tabs>
-      </main>
+      </div>
       <DosarExpertModal
         open={dossierOpen}
         onOpenChange={setDossierOpen}
@@ -873,6 +856,6 @@ export default function PMDashboard() {
         projectCode="302141"
         projectTitle="Consolidarea capacității Concordia pentru dialog social"
       />
-    </div>
+    </DashboardShell>
   );
 }

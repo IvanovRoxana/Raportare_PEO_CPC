@@ -12,12 +12,9 @@ import {
   Globe2,
   Save,
   Users,
-  BarChart3,
-  FileText,
-  Settings,
-  Upload,
 } from 'lucide-react';
 import { AdminViewAsBanner } from '@/components/admin/admin-view-as-banner';
+import { DashboardShell } from '@/components/layout/dashboard-shell';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,7 +22,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { UserMenu } from '@/components/user-menu';
-import { DashboardShell } from '@/components/layout/dashboard-shell';
 import { useActivitiesByMonth, useConcurrentProjects, useConcurrentProjectTimesheetByMonth, useConcurrentProjectTimesheetMutations, useDocuments, useExperts, useSharedDeliverableMutations, useSharedDeliverables } from '@/hooks/use-backend-data';
 import type { AppRole } from '@/lib/aws/auth';
 import { getSignedInUser } from '@/lib/aws/auth';
@@ -119,7 +115,7 @@ function DashboardCalendar({
   const calendarDays = useMemo(() => getCalendarDays(year, month), [year, month]);
 
   return (
-    <section className="rounded-lg border bg-card">
+    <section id="calendar-ore" className="rounded-lg border bg-card scroll-mt-24">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
         <div>
           <h2 className="flex items-center gap-2 text-lg font-semibold">
@@ -422,38 +418,31 @@ export default function ExpertHomeDashboard() {
     hasPmAccess: currentExpert?.hasPmAccess,
   });
 
-  const expertNavItems = [
-    { label: 'Dashboard', href: '/', icon: BarChart3 },
-    { label: 'Pontaj lunar', href: '/expert', icon: CalendarDays, active: true },
-    { label: 'Rapoarte', href: '/expert/peo', icon: FileText },
-    { label: 'Livrabile', href: '/expert', icon: Upload },
-    { label: 'Experți', href: '/expert', icon: Users },
-    { label: 'Administrare', href: '/admin', icon: Settings },
-  ];
-
   return (
-    <DashboardShell title={`Bine ai venit - ${expertName} -!`} subtitle="Pontaj, livrabile și activități comune într-un flux unificat." roleLabel="Expert" navItems={expertNavItems}>
+    <>
       <AdminViewAsBanner />
-      <header className="border-b bg-card rounded-2xl">
-        <div className="mx-auto flex max-w-screen-2xl flex-wrap items-center justify-between gap-4 px-4 py-5 sm:px-6 lg:px-8">
-          <div>
-            <p className="text-sm font-medium text-primary">Dashboard expert</p>
-            <h1 className="text-2xl font-bold text-foreground sm:text-3xl">
-              Bine ai venit - {expertName} -!
-            </h1>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
+      <DashboardShell
+        activeHref="/expert"
+        eyebrow="Dashboard expert · PEO 302141"
+        title={`Bine ai venit, ${expertName}`}
+        description="Spatiu de lucru pentru pontaj lunar, livrabile, proiecte paralele si raportare consolidata."
+        actions={
+          <>
             {canOpenPmDashboard && (
-              <Button asChild className="h-10 rounded-md">
+              <Button asChild>
                 <Link href="/pm">Dashboard PM</Link>
               </Button>
             )}
             <UserMenu />
-          </div>
-        </div>
-      </header>
-
-      <main className="mx-auto max-w-screen-2xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+          </>
+        }
+        quickTabs={[
+          { label: 'Raportare', href: '/expert/peo', icon: ClipboardList, active: true },
+          { label: 'Calendar ore', href: '#calendar-ore', icon: CalendarDays },
+          { label: 'Pontaj consolidat', href: '#pontaj-consolidat', icon: CheckCircle2 },
+          { label: 'Proiecte paralele', href: '#proiecte-paralele', icon: BriefcaseBusiness },
+        ]}
+      >
 
         {pendingActivityAlerts.length > 0 && (
           <section className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-950">
@@ -571,7 +560,7 @@ export default function ExpertHomeDashboard() {
         <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
           <DashboardCalendar projects={projects} month={currentMonth} year={currentYear} />
 
-          <Card className="h-fit rounded-lg">
+          <Card id="pontaj-consolidat" className="h-fit rounded-lg scroll-mt-24">
             <CardHeader className="border-b">
               <CardTitle className="text-lg">Panou proiecte</CardTitle>
             </CardHeader>
@@ -678,7 +667,7 @@ export default function ExpertHomeDashboard() {
             </CardContent>
           </Card>
         </section>
-      </main>
-    </DashboardShell>
+      </DashboardShell>
+    </>
   );
 }
