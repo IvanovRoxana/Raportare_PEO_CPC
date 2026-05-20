@@ -23,6 +23,7 @@ import { DashboardShell } from '@/components/layout/dashboard-shell';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ViewAsExpertPanel } from '@/components/admin/view-as-expert-panel';
 import { adminMenuItems, buildAdminDashboardSnapshot, protectedAdminBoundaries, ruleSeverityLevels } from '@/lib/admin-module';
 import activities from '@/data/import/sample-activities.json';
@@ -172,6 +173,16 @@ export default function AdminPage() {
       </section>
 
       <section className="mx-auto max-w-screen-2xl px-4 pt-6 sm:px-6 lg:px-8">
+        <Tabs defaultValue="dashboard">
+          <TabsList className="h-auto w-full flex-wrap justify-start gap-2 rounded-2xl bg-slate-100 p-2">
+            <TabsTrigger value="dashboard" asChild><a href="#nucleu-dashboard-admin">Dashboard</a></TabsTrigger>
+            <TabsTrigger value="prioritizare" asChild><a href="#prioritizare">Prioritizare</a></TabsTrigger>
+            <TabsTrigger value="control" asChild><a href="#granite">Control & Audit</a></TabsTrigger>
+          </TabsList>
+        </Tabs>
+      </section>
+
+      <section className="mx-auto max-w-screen-2xl px-4 pt-2 sm:px-6 lg:px-8">
         <ViewAsExpertPanel experts={experts as Expert[]} />
       </section>
 
