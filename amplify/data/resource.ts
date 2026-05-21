@@ -55,6 +55,10 @@ const schema = a.schema({
       generatedAt: a.datetime(),
       generatedBy: a.string(),
       pmNotes: a.string(),
+      gdprTemplateCode: a.string(),
+      gdprMetaJson: a.string(),
+      gdprGeneratedText: a.string(),
+      gdprConclusionCode: a.string(),
       deliverables: a.hasMany("Deliverable", "activityId"),
       grupTinta: a.hasMany("GrupTintaEntry", "activityId"),
     })

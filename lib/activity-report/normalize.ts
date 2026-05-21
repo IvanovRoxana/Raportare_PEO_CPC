@@ -103,7 +103,7 @@ function normalizeActivity(activity: unknown, originalIndex: number): Normalized
   const date = requiredString(record.date, `Activitatea #${originalIndex + 1} nu are date`);
   const hours = requiredNumber(record.hours, `Activitatea #${originalIndex + 1} nu are hours valid`);
   const title = requiredString(record.title ?? record.activityTitle ?? record.taskName, `Activitatea #${originalIndex + 1} nu are title`);
-  const description = requiredString(record.description ?? record.notes ?? record.context, `Activitatea #${originalIndex + 1} nu are description`);
+  const description = requiredString(record.gdprGeneratedText ?? record.description ?? record.notes ?? record.context, `Activitatea #${originalIndex + 1} nu are description`);
 
   return {
     date,
@@ -117,6 +117,9 @@ function normalizeActivity(activity: unknown, originalIndex: number): Normalized
     deliverables: normalizeStringArray(record.deliverables ?? record.relevantDeliverable),
     beneficiaries: normalizeStringArray(record.beneficiaries),
     indicatorImpact: normalizeOptionalString(record.indicatorImpact),
+    gdprTemplateCode: normalizeOptionalString(record.gdprTemplateCode),
+    gdprGeneratedText: normalizeOptionalString(record.gdprGeneratedText),
+    gdprConclusionCode: normalizeOptionalString(record.gdprConclusionCode),
     originalIndex,
   };
 }

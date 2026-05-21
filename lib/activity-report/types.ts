@@ -24,6 +24,9 @@ export type ActivityInput = {
   deliverables?: string[];
   beneficiaries?: string[];
   indicatorImpact?: string;
+  gdprTemplateCode?: string;
+  gdprGeneratedText?: string;
+  gdprConclusionCode?: string;
 };
 
 export type NormalizedActivity = Required<Pick<ActivityInput, 'date' | 'hours' | 'title' | 'description'>> & {
@@ -34,6 +37,9 @@ export type NormalizedActivity = Required<Pick<ActivityInput, 'date' | 'hours' |
   deliverables: string[];
   beneficiaries: string[];
   indicatorImpact?: string;
+  gdprTemplateCode?: string;
+  gdprGeneratedText?: string;
+  gdprConclusionCode?: string;
   originalIndex: number;
 };
 

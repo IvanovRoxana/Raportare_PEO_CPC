@@ -10,6 +10,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Download, FileText, Calendar, Clock, Users, CheckCircle, AlertTriangle, Building2 } from 'lucide-react';
 import type { Activity, Expert, VerificationData, Neconformitate } from '@/lib/types';
 import { generateOpisDocument, downloadOpis } from '@/lib/opis-generator';
+import { GDPR_CONCLUSION_OPTIONS, getGdprTemplate, parseGdprMetaJson, validateGdprActivityDraft } from '@/lib/gdpr-reporting';
 
 interface DosarExpertModalProps {
   open: boolean;
@@ -22,6 +23,46 @@ interface DosarExpertModalProps {
   year: number;
   projectCode?: string;
   projectTitle?: string;
+}
+
+function GdprPmSummary({ activity }: { activity: Activity }) {
+  const template = getGdprTemplate(activity.gdprTemplateCode);
+  const meta = parseGdprMetaJson(activity.gdprMetaJson);
+  const validation = validateGdprActivityDraft({
+    templateCode: activity.gdprTemplateCode,
+    meta,
+    description: activity.gdprGeneratedText || activity.description,
+    hasDeliverable: (activity.deliverables ?? []).length > 0,
+  });
+  const conclusion = GDPR_CONCLUSION_OPTIONS.find((option) => option.code === activity.gdprConclusionCode)?.label
+    || GDPR_CONCLUSION_OPTIONS.find((option) => option.code === meta.concluzie)?.label
+    || 'Concluzie neprecizata';
+
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-1 pl-12">
+      <Badge variant="outline" className="border-emerald-300 bg-emerald-50 text-[10px] text-emerald-800">
+        {template?.code || activity.gdprTemplateCode}
+      </Badge>
+      <Badge variant="secondary" className="text-[10px]">
+        {conclusion}
+      </Badge>
+      {template?.deliverableTitle && (
+        <span className="max-w-[360px] truncate text-[10px] text-slate-500">
+          Livrabil: {template.deliverableTitle}
+        </span>
+      )}
+      {!validation.ok && (
+        <Badge variant="destructive" className="text-[10px]">
+          lipsa: {validation.missingFields.join(', ')}
+        </Badge>
+      )}
+      {(meta.incidente === true || meta.concluzie === 'neconform_cu_remediere') && (
+        <Badge variant="outline" className="border-amber-300 bg-amber-50 text-[10px] text-amber-800">
+          risc / recomandari
+        </Badge>
+      )}
+    </div>
+  );
 }
 
 export function DosarExpertModal({
@@ -176,10 +217,15 @@ export function DosarExpertModal({
                               const dt = new Date(act.date);
                               const ds = isNaN(dt.getTime()) ? '' : dt.toLocaleDateString('ro-RO', { day: '2-digit', month: '2-digit' });
                               return (
-                                <div key={act.id} className="flex justify-between items-start text-xs py-1">
-                                  <div className="flex gap-2">
+                                <div key={act.id} className="flex justify-between items-start gap-3 text-xs py-1">
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex gap-2">
                                     <span className="text-slate-400 w-10">{ds}</span>
                                     <span className="text-slate-700">{act.title || 'Activitate'}</span>
+                                    </div>
+                                    {act.gdprTemplateCode && (
+                                      <GdprPmSummary activity={act} />
+                                    )}
                                   </div>
                                   <span className="text-slate-500">{act.hours}h</span>
                                 </div>

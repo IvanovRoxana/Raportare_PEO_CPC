@@ -49,6 +49,10 @@ export interface Activity {
   generatedAt?: string;
   generatedBy?: string;
   pmNotes?: string;
+  gdprTemplateCode?: string;
+  gdprMetaJson?: string;
+  gdprGeneratedText?: string;
+  gdprConclusionCode?: string;
   grupTinta?: GrupTintaEntry[];
   createdAt?: string;
   updatedAt?: string;

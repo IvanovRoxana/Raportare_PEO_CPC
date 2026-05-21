@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { Upload, X, FileText, Loader2, Users, Plus, AlertTriangle, CheckCircle } from 'lucide-react';
+import { Upload, X, FileText, Loader2, Users, Plus, AlertTriangle, CheckCircle, Sparkles } from 'lucide-react';
 import { uploadData } from 'aws-amplify/storage';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -24,8 +24,6 @@ import { DeliverableItem } from './deliverable-item';
 import { createDeliverableSlot, type DeliverableSlot } from '@/lib/deliverable-types';
 import { 
   ACTS, 
-  DELIVS, 
-  EXCEPTIONS, 
   isEventActivity, 
   isExceptionActivity,
   getActivityOptions,
@@ -36,6 +34,20 @@ import type { Activity, Deliverable, GrupTintaEntry, Expert, ActivityCatalog } f
 import { isGtExpertCategory, normalizePeoCategory } from '@/lib/peo-category';
 import { buildDocumentS3Key, hashFirstPageText, normalizeDocumentTextForFingerprint, sha256Hex } from '@/lib/document-sharing';
 import { validateActivitiesBeforeCreate, type ActivityDraftForValidation } from '@/lib/pontaj-rules';
+import {
+  GDPR_CONCLUSION_OPTIONS,
+  GDPR_TEMPLATES,
+  buildGdprActivityDescription,
+  buildGdprDeliverableDocx,
+  createGeneratedGdprDeliverableSlot,
+  getGdprFieldDefinitions,
+  getGdprTemplate,
+  parseGdprMetaJson,
+  serializeGdprMeta,
+  validateGdprActivityDraft,
+  type GdprFieldDefinition,
+  type GdprMeta,
+} from '@/lib/gdpr-reporting';
 
 interface ActivityFormProps {
   selectedDates: string[];
@@ -97,6 +109,7 @@ export function ActivityForm({
   const expertSaCodes = expert?.saCodes || [];
   const expertCategory = normalizePeoCategory(expert?.category);
   const isGtExpert = isGtExpertCategory(expert?.category);
+  const isGdprExpert = expertCategory === 'gdpr';
   
   // Filter catalog by expert category from PEO_Experti and then by assigned SA codes.
   const filteredCatalog = useMemo(() => {
@@ -172,6 +185,14 @@ export function ActivityForm({
   const [description, setDescription] = useState(initialActivity?.description || '');
   const [location, setLocation] = useState(initialActivity?.location || 'Birou');
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [gdprTemplateCode, setGdprTemplateCode] = useState(initialActivity?.gdprTemplateCode || '');
+  const [gdprMeta, setGdprMeta] = useState<GdprMeta>(() => parseGdprMetaJson(initialActivity?.gdprMetaJson));
+  const [gdprGeneratedText, setGdprGeneratedText] = useState(initialActivity?.gdprGeneratedText || '');
+  const [gdprConclusionCode, setGdprConclusionCode] = useState(
+    initialActivity?.gdprConclusionCode || String(parseGdprMetaJson(initialActivity?.gdprMetaJson).concluzie || 'conform_fara_neconformitati')
+  );
+  const [isGeneratingGdprDocx, setIsGeneratingGdprDocx] = useState(false);
+  const [isImprovingGdprText, setIsImprovingGdprText] = useState(false);
   
   // Deliverables state with slots
   const [deliverables, setDeliverables] = useState<DeliverableSlot[]>(
@@ -199,6 +220,7 @@ export function ActivityForm({
       deliverableType: d.deliverableType,
       isCommonDeliverable: d.isCommonDeliverable,
       sharedWithExpertIds: d.sharedWithExpertIds,
+      common: Boolean(d.isCommonDeliverable),
       possibleDuplicateOfDocumentId: d.possibleDuplicateOfDocumentId,
       duplicateStatus: d.duplicateStatus,
       fileData: d.fileData,
@@ -206,7 +228,7 @@ export function ActivityForm({
       uploaded: true,
       isPhoto: d.fileType?.startsWith('image/') || false,
       declaredTitle: d.declaredTitle || '',
-      titleConfirmed: false,
+      titleConfirmed: d.titleConfirmed ?? false,
       stadiu: '',
       aiCheck: d.aiStatus || d.aiReason
         ? {
@@ -334,6 +356,12 @@ export function ActivityForm({
   const deliverableOptions = useMemo(() => {
     return getDeliverableOptions(expertCategory || 'ap');
   }, [expertCategory]);
+
+  const selectedGdprTemplate = useMemo(() => getGdprTemplate(gdprTemplateCode), [gdprTemplateCode]);
+  const gdprFieldDefinitions = useMemo(
+    () => getGdprFieldDefinitions(gdprTemplateCode, gdprMeta),
+    [gdprTemplateCode, gdprMeta]
+  );
   
   // Check if current activity is exception (no deliverable required)
   const isException = isExceptionActivity(activityTitle);
@@ -564,6 +592,23 @@ export function ActivityForm({
       return;
     }
 
+    if (isGdprExpert && !isLeave) {
+      const gdprValidation = validateGdprActivityDraft({
+        templateCode: gdprTemplateCode,
+        meta: {
+          ...gdprMeta,
+          concluzie: gdprConclusionCode,
+        },
+        description,
+        hasDeliverable: true,
+      });
+
+      if (!gdprValidation.ok) {
+        setValidationError(`Completeaza campurile GDPR obligatorii: ${gdprValidation.missingFields.join(', ')}.`);
+        return;
+      }
+    }
+
     const newActivityDrafts: ActivityDraftForValidation[] = selectedDates.map((date) => ({
       id: initialActivity?.id,
       expertId,
@@ -673,6 +718,10 @@ export function ActivityForm({
         dayType,
         shareStatus: activityCommon ? 'shared' : 'private',
         takenByExperts: activityCommon ? collaborators : [],
+        gdprTemplateCode: isGdprExpert ? gdprTemplateCode : undefined,
+        gdprMetaJson: isGdprExpert ? serializeGdprMeta({ ...gdprMeta, concluzie: gdprConclusionCode }) : undefined,
+        gdprGeneratedText: isGdprExpert ? (gdprGeneratedText || description) : undefined,
+        gdprConclusionCode: isGdprExpert ? gdprConclusionCode : undefined,
         grupTinta,
         createdAt: initialActivity?.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -704,10 +753,283 @@ export function ActivityForm({
     ])));
   };
 
+  const updateGdprMeta = (key: string, value: string | number | boolean | string[]) => {
+    setGdprMeta((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const handleGdprConclusionChange = (code: string) => {
+    setGdprConclusionCode(code);
+    updateGdprMeta('concluzie', code);
+  };
+
+  const handleGdprTemplateChange = (code: string) => {
+    const template = getGdprTemplate(code);
+    setGdprTemplateCode(code);
+    setGdprGeneratedText('');
+
+    if (!template) return;
+
+    setSaCode(template.saCode);
+    setActivityTitle(template.activityTitle);
+    setGdprMeta((prev) => ({
+      ...prev,
+      concluzie: gdprConclusionCode || 'conform_fara_neconformitati',
+    }));
+
+    const templateHours = Math.min(template.defaultHours, defaultHours).toString();
+    setHours(templateHours);
+    setHoursPerDay((prev) => {
+      const next = { ...prev };
+      selectedDates.forEach((date) => {
+        next[date] = templateHours;
+      });
+      onSelectedHoursChange?.(next);
+      return next;
+    });
+  };
+
+  const buildGdprInput = () => {
+    if (!selectedGdprTemplate) return null;
+    return {
+      templateCode: selectedGdprTemplate.code,
+      meta: {
+        ...gdprMeta,
+        concluzie: gdprConclusionCode,
+      },
+      date: selectedDates[0] || '',
+      expertName,
+      expertRole: expert?.positionInProject || expert?.role,
+      projectCode: expert?.projectCode,
+      projectTitle: expert?.projectTitle,
+    };
+  };
+
+  const generateGdprDescription = () => {
+    const input = buildGdprInput();
+    if (!input) {
+      setValidationError('Selecteaza mai intai tipul de activitate GDPR.');
+      return;
+    }
+    const generated = buildGdprActivityDescription(input);
+    setDescription(generated);
+    setGdprGeneratedText(generated);
+    setValidationError(null);
+  };
+
+  const improveGdprDescriptionWithAI = async () => {
+    const input = buildGdprInput();
+    const textToImprove = gdprGeneratedText || description || (input ? buildGdprActivityDescription(input) : '');
+    if (!input || !textToImprove.trim()) {
+      setValidationError('Genereaza descrierea GDPR inainte de imbunatatirea cu AI.');
+      return;
+    }
+
+    setIsImprovingGdprText(true);
+    setValidationError(null);
+    try {
+      const response = await fetch('/api/ai/improve-gdpr-text', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: textToImprove,
+          templateLabel: selectedGdprTemplate?.label,
+          expertName,
+          month,
+          year,
+          projectCode: expert?.projectCode,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok || data.error) {
+        throw new Error(data.error || 'Nu am putut imbunatati textul cu AI.');
+      }
+      setDescription(data.text);
+      setGdprGeneratedText(data.text);
+    } catch (error) {
+      setValidationError(error instanceof Error ? error.message : 'Eroare la imbunatatirea textului GDPR.');
+    } finally {
+      setIsImprovingGdprText(false);
+    }
+  };
+
+  const blobToDataUrl = (blob: Blob) =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(blob);
+    });
+
+  const generateGdprDeliverable = async () => {
+    const input = buildGdprInput();
+    if (!input) {
+      setValidationError('Selecteaza mai intai tipul de activitate GDPR.');
+      return;
+    }
+
+    const draftValidation = validateGdprActivityDraft({
+      templateCode: gdprTemplateCode,
+      meta: input.meta,
+      description,
+      hasDeliverable: true,
+    });
+    if (draftValidation.missingFields.length > 0) {
+      setValidationError(`Completeaza campurile GDPR obligatorii: ${draftValidation.missingFields.join(', ')}.`);
+      return;
+    }
+
+    setIsGeneratingGdprDocx(true);
+    setValidationError(null);
+    try {
+      const blob = await buildGdprDeliverableDocx(input);
+      const fileData = await blobToDataUrl(blob);
+      const generatedSlot = createGeneratedGdprDeliverableSlot({
+        ...input,
+        fileData,
+        fileSize: blob.size,
+      });
+
+      setDeliverables((prev) => [
+        ...prev.filter((deliverable) => deliverable.declaredTitle !== generatedSlot.declaredTitle || !deliverable.documentId?.startsWith('doc_gdpr_')),
+        generatedSlot,
+      ]);
+
+      const generated = gdprGeneratedText || buildGdprActivityDescription(input);
+      setDescription(generated);
+      setGdprGeneratedText(generated);
+    } catch (error) {
+      setValidationError(error instanceof Error ? error.message : 'Eroare la generarea livrabilului GDPR.');
+    } finally {
+      setIsGeneratingGdprDocx(false);
+    }
+  };
+
   // Filter deliverables by type
   const mainDeliverables = deliverables.filter(d => !d.slotType || d.slotType === 'livrabil');
   const prelimDeliverables = deliverables.filter(d => d.slotType === 'raport_preliminar');
   const justifDeliverables = deliverables.filter(d => d.slotType === 'justificativ');
+
+  const renderGdprField = (field: GdprFieldDefinition) => {
+    const value = gdprMeta[field.key];
+    const label = (
+      <FieldLabel htmlFor={`gdpr-${field.key}`}>
+        {field.label}
+        {field.required && <span className="ml-1 text-red-600">*</span>}
+      </FieldLabel>
+    );
+
+    if (field.type === 'boolean') {
+      return (
+        <div key={field.key} className="flex items-center gap-2 rounded-md border bg-white p-3">
+          <Checkbox
+            id={`gdpr-${field.key}`}
+            checked={value === true}
+            onCheckedChange={(checked) => updateGdprMeta(field.key, checked === true)}
+          />
+          <label htmlFor={`gdpr-${field.key}`} className="cursor-pointer text-sm">
+            {field.label}
+          </label>
+        </div>
+      );
+    }
+
+    if (field.type === 'select') {
+      return (
+        <Field key={field.key}>
+          {label}
+          <Select value={typeof value === 'string' ? value : ''} onValueChange={(next) => updateGdprMeta(field.key, next)}>
+            <SelectTrigger id={`gdpr-${field.key}`}>
+              <SelectValue placeholder="Selecteaza" />
+            </SelectTrigger>
+            <SelectContent>
+              {(field.options || []).map((option) => (
+                <SelectItem key={option} value={option}>{option}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+      );
+    }
+
+    if (field.type === 'multi' && field.options?.length) {
+      const selected = Array.isArray(value) ? value : [];
+      return (
+        <Field key={field.key} className="space-y-2">
+          {label}
+          <div className="flex flex-wrap gap-2">
+            {field.options.map((option) => {
+              const isSelected = selected.includes(option);
+              return (
+                <label
+                  key={option}
+                  className={`flex cursor-pointer items-center gap-2 rounded-md border px-3 py-1.5 text-xs ${
+                    isSelected ? 'border-emerald-400 bg-emerald-50 text-emerald-900' : 'bg-white text-slate-700'
+                  }`}
+                >
+                  <Checkbox
+                    checked={isSelected}
+                    onCheckedChange={(checked) => {
+                      updateGdprMeta(
+                        field.key,
+                        checked === true
+                          ? Array.from(new Set([...selected, option]))
+                          : selected.filter((item) => item !== option)
+                      );
+                    }}
+                    className="h-3 w-3"
+                  />
+                  {option}
+                </label>
+              );
+            })}
+          </div>
+        </Field>
+      );
+    }
+
+    if (field.type === 'multi') {
+      const selectedText = Array.isArray(value) ? value.join(', ') : (typeof value === 'string' ? value : '');
+      return (
+        <Field key={field.key}>
+          {label}
+          <Input
+            id={`gdpr-${field.key}`}
+            value={selectedText}
+            onChange={(event) => updateGdprMeta(field.key, event.target.value.split(',').map((item) => item.trim()).filter(Boolean))}
+            placeholder={field.placeholder || 'Valori separate prin virgula'}
+          />
+        </Field>
+      );
+    }
+
+    if (field.type === 'textarea') {
+      return (
+        <Field key={field.key}>
+          {label}
+          <Textarea
+            id={`gdpr-${field.key}`}
+            value={typeof value === 'string' ? value : ''}
+            onChange={(event) => updateGdprMeta(field.key, event.target.value)}
+            placeholder={field.placeholder}
+            rows={3}
+          />
+        </Field>
+      );
+    }
+
+    return (
+      <Field key={field.key}>
+        {label}
+        <Input
+          id={`gdpr-${field.key}`}
+          type={field.type === 'number' ? 'number' : 'text'}
+          value={typeof value === 'number' || typeof value === 'string' ? value : ''}
+          onChange={(event) => updateGdprMeta(field.key, field.type === 'number' ? Number(event.target.value) || 0 : event.target.value)}
+          placeholder={field.placeholder}
+        />
+      </Field>
+    );
+  };
 
   return (
     <Card>
@@ -804,24 +1126,136 @@ export function ActivityForm({
 
         {!isLeave && (
           <>
+            {isGdprExpert && (
+              <div className="space-y-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold text-emerald-950">Asistent raportare GDPR</div>
+                    <p className="text-xs text-emerald-800">
+                      Alege tipul activitatii, completeaza campurile scurte, apoi genereaza descrierea si livrabilul DOCX.
+                    </p>
+                  </div>
+                  {selectedGdprTemplate && (
+                    <Badge variant="outline" className="border-emerald-300 bg-white text-emerald-800">
+                      {selectedGdprTemplate.deliverableType}
+                    </Badge>
+                  )}
+                </div>
+
+                <Field>
+                  <FieldLabel htmlFor="gdprTemplate">Ce tip de activitate GDPR ai desfasurat?</FieldLabel>
+                  <Select value={gdprTemplateCode} onValueChange={handleGdprTemplateChange}>
+                    <SelectTrigger id="gdprTemplate" className="bg-white">
+                      <SelectValue placeholder="Selecteaza activitatea GDPR" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {GDPR_TEMPLATES.map((template) => (
+                        <SelectItem key={template.code} value={template.code}>
+                          {template.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+
+                {selectedGdprTemplate && (
+                  <>
+                    <div className="grid gap-3 rounded-md border border-emerald-200 bg-white/70 p-3 text-xs text-emerald-950 md:grid-cols-3">
+                      <div>
+                        <span className="font-medium">Subactivitate</span>
+                        <div>{selectedGdprTemplate.saCode}</div>
+                      </div>
+                      <div>
+                        <span className="font-medium">Activitate</span>
+                        <div>{selectedGdprTemplate.activityTitle}</div>
+                      </div>
+                      <div>
+                        <span className="font-medium">Livrabil recomandat</span>
+                        <div>{selectedGdprTemplate.deliverableTitle}</div>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <Field>
+                        <FieldLabel htmlFor="gdprConclusion">Concluzie conformitate *</FieldLabel>
+                        <Select value={gdprConclusionCode} onValueChange={handleGdprConclusionChange}>
+                          <SelectTrigger id="gdprConclusion" className="bg-white">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {GDPR_CONCLUSION_OPTIONS.map((option) => (
+                              <SelectItem key={option.code} value={option.code}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </Field>
+                      {gdprFieldDefinitions.slice(0, 1).map(renderGdprField)}
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      {gdprFieldDefinitions.slice(1).map(renderGdprField)}
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 border-t border-emerald-200 pt-3">
+                      <Button type="button" variant="outline" onClick={generateGdprDescription}>
+                        <FileText className="h-4 w-4 mr-2" />
+                        Genereaza descriere
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={improveGdprDescriptionWithAI}
+                        disabled={isImprovingGdprText}
+                      >
+                        {isImprovingGdprText ? (
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        ) : (
+                          <Sparkles className="h-4 w-4 mr-2" />
+                        )}
+                        Imbunatateste cu AI
+                      </Button>
+                      <Button
+                        type="button"
+                        onClick={generateGdprDeliverable}
+                        disabled={isGeneratingGdprDocx}
+                      >
+                        {isGeneratingGdprDocx ? (
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        ) : (
+                          <Upload className="h-4 w-4 mr-2" />
+                        )}
+                        Genereaza livrabil DOCX si ataseaza
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
             {/* Sub-activity and Activity */}
             <div className="grid grid-cols-2 gap-4">
               <Field>
                 <FieldLabel htmlFor="saCode">Subactivitate (Rol: {expert?.role})</FieldLabel>
-                <Select value={saCode} onValueChange={setSaCode} disabled={catalogLoading && catalog.length === 0}>
-                  <SelectTrigger id="saCode">
-                    <SelectValue placeholder={catalogLoading && catalog.length === 0 ? "Se incarca..." : "Selecteaza SA"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableSaCodes.length === 0 ? (
-                      <div className="px-2 py-1.5 text-sm text-muted-foreground">Nicio subactivitate disponibila</div>
-                    ) : (
-                      availableSaCodes.map((sa) => (
-                        <SelectItem key={sa} value={sa}>{sa}</SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
+                {isGdprExpert ? (
+                  <Input id="saCode" value={saCode || selectedGdprTemplate?.saCode || 'SA1.1'} disabled />
+                ) : (
+                  <Select value={saCode} onValueChange={setSaCode} disabled={catalogLoading && catalog.length === 0}>
+                    <SelectTrigger id="saCode">
+                      <SelectValue placeholder={catalogLoading && catalog.length === 0 ? "Se incarca..." : "Selecteaza SA"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableSaCodes.length === 0 ? (
+                        <div className="px-2 py-1.5 text-sm text-muted-foreground">Nicio subactivitate disponibila</div>
+                      ) : (
+                        availableSaCodes.map((sa) => (
+                          <SelectItem key={sa} value={sa}>{sa}</SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                )}
                 {availableSaCodes.length === 0 && !catalogLoading && (
                   <p className="text-xs text-amber-600 mt-1">
                     Nu exista subactivitati alocate pentru rolul tau. Contacteaza PM.
@@ -846,6 +1280,7 @@ export function ActivityForm({
             </div>
 
             {/* Activity from catalog */}
+            {!isGdprExpert && (
             <Field>
               <div className="flex items-center justify-between">
                 <FieldLabel htmlFor="activity">Activitate</FieldLabel>
@@ -893,6 +1328,7 @@ export function ActivityForm({
                 </p>
               )}
             </Field>
+            )}
 
             {/* Description */}
             <Field>

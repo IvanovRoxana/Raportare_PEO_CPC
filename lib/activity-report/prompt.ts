@@ -153,12 +153,14 @@ function formatGroupedActivities(groups: Record<string, NormalizedActivity[]>) {
         `Tip: ${activity.activityType || 'tip neprecizat'}`,
         `Titlu: ${activity.title}`,
         `Descriere: ${activity.description}`,
+        activity.gdprTemplateCode ? `Cod GDPR: ${activity.gdprTemplateCode}` : null,
+        activity.gdprConclusionCode ? `Concluzie GDPR: ${activity.gdprConclusionCode}` : null,
         `Locație: ${activity.location}`,
         `Colaboratori: ${activity.collaborators.join(', ') || 'nu sunt precizați'}`,
         `Livrabile: ${activity.deliverables.join(', ') || 'nu sunt precizate'}`,
         `Beneficiari: ${activity.beneficiaries.join(', ') || 'nu sunt precizați'}`,
         `Indicator/Impact: ${activity.indicatorImpact || 'neprecizat'}`,
-      ].join('; '));
+      ].filter(Boolean).join('; '));
 
       return `${saCode}\n${rows.join('\n')}`;
     })

@@ -9,11 +9,20 @@ export const ACTS: Record<string, string[]> = {
     "Monitorizare eveniment GT",
     "Recrutare / sesiune informare GT",
     "Actualizare registru GT",
-    "Verificare conformitate GDPR",
-    "Actualizare documente GDPR",
-    "Sedinta interna de status",
-    "Verificare planning",
-    "Elaborare RA / OPIS"
+    "Monitorizare GDPR Grup Tinta",
+    "Verificare documente inscriere GT",
+    "Verificare GDPR publicare online",
+    "Verificare GDPR intalniri online",
+    "Verificare GDPR Business HUB",
+    "Verificare GDPR lansare achizitie",
+    "Verificare GDPR evaluare oferte",
+    "Verificare GDPR incheiere contract",
+    "Verificare GDPR facturare plata receptie",
+    "Checklist GDPR organizare eveniment",
+    "Nota interna pre-eveniment GDPR",
+    "Monitorizare implementare eveniment GDPR",
+    "Sedinta status PEO GDPR",
+    "Elaborare raport lunar GDPR"
   ],
   "SA2.1": [
     "Elaborare caiet de sarcini achizitie servicii de analize",
@@ -163,11 +172,20 @@ export const DELIVS: Record<string, string[]> = {
     "Metodologie actualizata"
   ],
   gdpr: [
-    "Raport verificare GDPR",
-    "Lista de control GDPR",
-    "Document GDPR actualizat",
-    "Proces verbal verificare",
-    "Nota instruire GDPR"
+    "Raport de verificare GDPR privind monitorizarea activitatilor grupului tinta",
+    "Raport preliminar verificare documente inscriere GT",
+    "Raport preliminar privind verificarea respectarii GDPR in publicarea online",
+    "Raport preliminar privind protectia datelor in intalniri online",
+    "Raport privind evenimentele desfasurate in Business HUB - protectia datelor",
+    "Raport preliminar verificare GDPR lansare procedura competitiva",
+    "Raport preliminar verificare GDPR evaluare oferte si rezultate licitatie",
+    "Raport preliminar verificare GDPR incheiere contract",
+    "Raport preliminar verificare GDPR facturare si plata",
+    "Checklist GDPR pentru organizarea evenimentului",
+    "Nota interna de verificare si completare checklist pre-eveniment",
+    "Raport preliminar monitorizare implementare eveniment",
+    "Minuta / nota de participare status PEO",
+    "Raport de activitate lunar - Anexa 10"
   ],
   cercetare: [
     "Caiet de sarcini achizitie servicii analize",
@@ -324,7 +342,11 @@ export const EVENT_ACTS = [
 export const EXCEPTIONS = [
   "Elaborare RA / OPIS",
   "Sedinta interna de status",
-  "Verificare planning"
+  "Verificare planning",
+  "Sedinta status PEO GDPR",
+  "Sedinta status PEO - aspecte GDPR",
+  "Elaborare raport lunar GDPR",
+  "Elaborare raport lunar GDPR - Anexa 10"
 ];
 
 // Month names in Romanian

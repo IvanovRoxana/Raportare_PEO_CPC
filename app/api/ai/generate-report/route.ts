@@ -14,8 +14,8 @@ export async function POST(req: Request) {
     }
 
     const activitiesSummary = activities
-      .map((a: { date: string; hours: number; activityType: string; title: string; description: string }) =>
-        `- Data: ${a.date}, Ore: ${a.hours}, Tip: ${a.activityType}, Titlu: ${a.title}, Descriere: ${a.description}`
+      .map((a: { date: string; hours: number; activityType: string; title: string; description: string; gdprGeneratedText?: string; gdprTemplateCode?: string; gdprConclusionCode?: string }) =>
+        `- Data: ${a.date}, Ore: ${a.hours}, Tip: ${a.activityType}, Titlu: ${a.title}, Descriere: ${a.gdprGeneratedText || a.description}${a.gdprTemplateCode ? `, Cod GDPR: ${a.gdprTemplateCode}` : ''}${a.gdprConclusionCode ? `, Concluzie GDPR: ${a.gdprConclusionCode}` : ''}`
       )
       .join('\n');
 

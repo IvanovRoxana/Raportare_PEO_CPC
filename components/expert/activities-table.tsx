@@ -24,6 +24,12 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { formatDateRo } from '@/lib/app-utils';
+import {
+  GDPR_CONCLUSION_OPTIONS,
+  getGdprTemplate,
+  parseGdprMetaJson,
+  validateGdprActivityDraft,
+} from '@/lib/gdpr-reporting';
 import type { Activity } from '@/lib/types';
 
 interface ActivitiesTableProps {
@@ -183,6 +189,7 @@ export function ActivitiesTable({ activities, onEdit, onDelete }: ActivitiesTabl
                               {activity.description || 'Fără descriere'}
                             </p>
                           </div>
+                          {activity.gdprTemplateCode && <GdprActivityDetails activity={activity} />}
                           {deliverables.length > 0 && (
                             <div>
                               <h4 className="text-sm font-medium mb-1">Livrabile:</h4>
@@ -215,6 +222,54 @@ export function ActivitiesTable({ activities, onEdit, onDelete }: ActivitiesTabl
           </TableBody>
         </Table>
       </div>
+    </div>
+  );
+}
+
+function GdprActivityDetails({ activity }: { activity: Activity }) {
+  const meta = parseGdprMetaJson(activity.gdprMetaJson);
+  const template = getGdprTemplate(activity.gdprTemplateCode);
+  const validation = validateGdprActivityDraft({
+    templateCode: activity.gdprTemplateCode,
+    meta,
+    conclusionCode: activity.gdprConclusionCode,
+    description: activity.gdprGeneratedText || activity.description,
+    hasDeliverable: Boolean(activity.deliverables?.length),
+  });
+  const conclusion = GDPR_CONCLUSION_OPTIONS.find(
+    (option) => option.code === (activity.gdprConclusionCode || meta.concluzie)
+  );
+  const generatedDeliverable = activity.deliverables?.find((deliverable) =>
+    deliverable.documentId?.startsWith('doc_gdpr_') || deliverable.declaredTitle === template?.deliverableTitle
+  );
+
+  return (
+    <div className="rounded-md border bg-background p-3 text-sm">
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <Badge variant="secondary">{activity.gdprTemplateCode}</Badge>
+        {template && <span className="font-medium">{template.label}</span>}
+        {conclusion && <Badge variant="outline">{conclusion.label}</Badge>}
+      </div>
+      <div className="grid gap-2 text-muted-foreground md:grid-cols-2">
+        <p>
+          <span className="font-medium text-foreground">Livrabil GDPR: </span>
+          {generatedDeliverable?.declaredTitle || generatedDeliverable?.fileName || template?.deliverableTitle || 'neatasat'}
+        </p>
+        <p>
+          <span className="font-medium text-foreground">Status completare: </span>
+          {validation.ok ? 'complet' : `lipsesc ${validation.missingFields.length} campuri`}
+        </p>
+      </div>
+      {!validation.ok && (
+        <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-destructive">
+          {validation.missingFields.map((field) => (
+            <li key={field}>Camp lipsa: {field}</li>
+          ))}
+          {validation.warnings.map((warning) => (
+            <li key={warning}>{warning}</li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

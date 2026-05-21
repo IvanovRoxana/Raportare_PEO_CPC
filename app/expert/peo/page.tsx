@@ -38,6 +38,7 @@ import { AdminViewAsBanner } from '@/components/admin/admin-view-as-banner';
 import { UserMenu } from '@/components/user-menu';
 import { getSignedInUser } from '@/lib/aws/auth';
 import { isGtExpertCategory } from '@/lib/peo-category';
+import { parseGdprMetaJson, validateGdprActivityDraft } from '@/lib/gdpr-reporting';
 import { assertCanLogHoursOnDate, getNonWorkingDayInfo } from '@/lib/non-working-days';
 import { formatDate } from '@/lib/app-utils';
 import { isExceptionActivity } from '@/lib/peo-constants';
@@ -337,6 +338,18 @@ export default function ExpertDashboard() {
     const aiReviewDeliverables = deliverables.filter((deliverable) =>
       deliverable.aiStatus === 'review' || deliverable.aiStatus === 'ineligible',
     );
+    const gdprActivitiesWithIssues = selectedExpert.category === 'gdpr'
+      ? activities.filter((activity) => {
+          if (isActivityException(activity)) return false;
+          const validation = validateGdprActivityDraft({
+            templateCode: activity.gdprTemplateCode,
+            meta: parseGdprMetaJson(activity.gdprMetaJson),
+            description: activity.gdprGeneratedText || activity.description,
+            hasDeliverable: hasUsableDeliverable(activity.deliverables),
+          });
+          return !validation.ok;
+        })
+      : [];
     const utilizationPercent = monthlyBlocking.monthlyNorm > 0
       ? Math.round((monthlyBlocking.totalHours / monthlyBlocking.monthlyNorm) * 100)
       : 0;
@@ -385,6 +398,15 @@ export default function ExpertDashboard() {
           : `${pendingSharedDeliverables.length} livrabile comune asteapta confirmare/inregistrare.`,
         severity: pendingSharedDeliverables.length === 0 ? 'ok' : 'warning',
       },
+      {
+        label: 'Reguli GDPR',
+        detail: selectedExpert.category !== 'gdpr'
+          ? 'Nu se aplica pentru categoria curenta.'
+          : gdprActivitiesWithIssues.length === 0
+            ? 'Toate activitatile GDPR au template, campuri obligatorii si livrabil acolo unde este necesar.'
+            : `${gdprActivitiesWithIssues.length} activitati GDPR au campuri/livrabile lipsa.`,
+        severity: selectedExpert.category !== 'gdpr' || gdprActivitiesWithIssues.length === 0 ? 'ok' : 'blocking',
+      },
     ];
 
     const blockingItems = items.filter((item) => item.severity === 'blocking');
@@ -396,7 +418,7 @@ export default function ExpertDashboard() {
         ? 'Adauga cel putin o activitate inainte de trimitere.'
         : blockingItems[0]?.detail || '',
     };
-  }, [activities, currentMonth, currentYear, monthlyBlocking, sharedDeliverables]);
+  }, [activities, currentMonth, currentYear, monthlyBlocking, selectedExpert.category, sharedDeliverables]);
 
   const handleSubmitMonth = async () => {
     if (!selectedExpertId || isApproved) return;

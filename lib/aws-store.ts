@@ -294,6 +294,10 @@ function withSupportedActivityShareFields(payload: Record<string, unknown>, acti
     shareStatus: activity.shareStatus,
     originActivityId: activity.originActivityId,
     takenByExperts: activity.takenByExperts,
+    gdprTemplateCode: activity.gdprTemplateCode,
+    gdprMetaJson: activity.gdprMetaJson,
+    gdprGeneratedText: activity.gdprGeneratedText,
+    gdprConclusionCode: activity.gdprConclusionCode,
   };
 
   Object.entries(shareFields).forEach(([field, value]) => {
@@ -814,6 +818,10 @@ async function attachActivityChildren(activity: any): Promise<Activity> {
     generatedAt: activity.generatedAt ?? undefined,
     generatedBy: activity.generatedBy ?? undefined,
     pmNotes: activity.pmNotes ?? undefined,
+    gdprTemplateCode: activity.gdprTemplateCode ?? undefined,
+    gdprMetaJson: activity.gdprMetaJson ?? undefined,
+    gdprGeneratedText: activity.gdprGeneratedText ?? undefined,
+    gdprConclusionCode: activity.gdprConclusionCode ?? undefined,
     deliverables: deliverables.map(mapDeliverable),
     grupTinta: grupTinta.map(mapGrupTinta),
     createdAt: activity.createdAt,
@@ -926,6 +934,10 @@ async function createActivityUnchecked(
     workingGroupId: activity.workingGroupId,
     status: activity.status ?? 'draft',
     pmNotes: activity.pmNotes,
+    gdprTemplateCode: activity.gdprTemplateCode,
+    gdprMetaJson: activity.gdprMetaJson,
+    gdprGeneratedText: activity.gdprGeneratedText,
+    gdprConclusionCode: activity.gdprConclusionCode,
   }, {
     shareStatus: activity.shareStatus ?? 'private',
     originActivityId: activity.originActivityId,
@@ -1387,6 +1399,10 @@ export const activitiesService = {
       dayType: updates.dayType,
       status: updates.status,
       pmNotes: updates.pmNotes,
+      gdprTemplateCode: updates.gdprTemplateCode,
+      gdprMetaJson: updates.gdprMetaJson,
+      gdprGeneratedText: updates.gdprGeneratedText,
+      gdprConclusionCode: updates.gdprConclusionCode,
     }, updates));
     assertNoErrors(result, 'AWS update activity');
 
