@@ -475,6 +475,34 @@
               "isRequired": false,
               "attributes": []
             },
+            "gdprTemplateCode": {
+              "name": "gdprTemplateCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "gdprMetaJson": {
+              "name": "gdprMetaJson",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "gdprGeneratedText": {
+              "name": "gdprGeneratedText",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "gdprConclusionCode": {
+              "name": "gdprConclusionCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
             "deliverables": {
               "name": "deliverables",
               "isArray": true,
