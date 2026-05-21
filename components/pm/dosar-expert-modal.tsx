@@ -10,7 +10,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Download, FileText, Calendar, Clock, Users, CheckCircle, AlertTriangle, Building2 } from 'lucide-react';
 import type { Activity, Expert, VerificationData, Neconformitate } from '@/lib/types';
 import { generateOpisDocument, downloadOpis } from '@/lib/opis-generator';
-import { GDPR_CONCLUSION_OPTIONS, getGdprTemplate, parseGdprMetaJson, validateGdprActivityDraft } from '@/lib/gdpr-reporting';
+import { GDPR_CONCLUSION_OPTIONS, getGdprDeliverableRequirementLabel, getGdprMinimumEvidenceLabels, getGdprTemplate, parseGdprMetaJson, validateGdprActivityDraft } from '@/lib/gdpr-reporting';
 
 interface DosarExpertModalProps {
   open: boolean;
@@ -46,7 +46,12 @@ function GdprPmSummary({ activity }: { activity: Activity }) {
       <Badge variant="secondary" className="text-[10px]">
         {conclusion}
       </Badge>
-      {template?.deliverableTitle && (
+      {template && (
+        <span className="text-[10px] text-slate-500">
+          {getGdprDeliverableRequirementLabel(template.deliverableRequirement)}; dovada: {getGdprMinimumEvidenceLabels(template.minimumEvidenceTypes).join(', ')}
+        </span>
+      )}
+      {template?.deliverableTitle && template.deliverableRequirement !== 'nu_este_necesar' && (
         <span className="max-w-[360px] truncate text-[10px] text-slate-500">
           Livrabil: {template.deliverableTitle}
         </span>

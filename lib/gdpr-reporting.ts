@@ -13,8 +13,12 @@ export type GdprTemplateCode =
   | 'GDPR_EVENT_CHECK'
   | 'GDPR_EVENT_PRE'
   | 'GDPR_EVENT_IMPL'
+  | 'GDPR_EVENT_POST'
+  | 'GDPR_PV_VALIDARE'
   | 'GDPR_STATUS_PEO'
-  | 'GDPR_RAPORT_LUNAR';
+  | 'GDPR_RAPORT_LUNAR'
+  | 'GDPR_CO'
+  | 'GDPR_ALTE_VERIFICARI';
 
 export type GdprConclusionCode =
   | 'conform_fara_neconformitati'
@@ -23,9 +27,39 @@ export type GdprConclusionCode =
   | 'neconform_cu_remediere'
   | 'fara_prelucrari_directe';
 
-export type GdprFieldType = 'text' | 'textarea' | 'number' | 'select' | 'multi' | 'boolean';
+export type GdprFieldType = 'text' | 'textarea' | 'number' | 'select' | 'multi' | 'boolean' | 'checkbox_with_other' | 'url';
 
-export type GdprMetaValue = string | number | boolean | string[] | undefined;
+export type GdprDeliverableRequirement =
+  | 'nu_este_necesar'
+  | 'optional'
+  | 'conditional'
+  | 'mandatory'
+  | 'auto_generated';
+
+export type GdprMinimumEvidenceType =
+  | 'link_publicare'
+  | 'referinta_document'
+  | 'upload_document'
+  | 'bifa_checklist'
+  | 'referinta_factura_pv'
+  | 'referinta_dosar_gt'
+  | 'calendar_meeting'
+  | 'inregistrare_bd'
+  | 'livrabil_generat'
+  | 'pontaj';
+
+export interface GdprSelectionValue {
+  selected: string[];
+  altele?: string;
+}
+
+export interface GdprOption {
+  key: string;
+  label: string;
+  requiresFreeText?: boolean;
+}
+
+export type GdprMetaValue = string | number | boolean | string[] | GdprSelectionValue | undefined;
 export type GdprMeta = Record<string, GdprMetaValue>;
 
 export interface GdprFieldDefinition {
@@ -34,7 +68,7 @@ export interface GdprFieldDefinition {
   type: GdprFieldType;
   required?: boolean;
   placeholder?: string;
-  options?: string[];
+  options?: Array<string | GdprOption>;
 }
 
 export interface GdprTemplate {
@@ -46,6 +80,11 @@ export interface GdprTemplate {
   deliverableTitle: string;
   deliverableType: string;
   requiresDeliverable: boolean;
+  deliverableRequirement: GdprDeliverableRequirement;
+  minimumEvidenceTypes: GdprMinimumEvidenceType[];
+  objectVerificationTemplate: string;
+  allowFreeTextObject?: boolean;
+  defaultLegalBasis?: string[];
   fields: GdprFieldDefinition[];
 }
 
@@ -80,6 +119,36 @@ const personalDataOptions = [
   'date acces / loguri',
 ];
 
+export const GDPR_MATERIAL_TYPES: GdprOption[] = [
+  { key: 'comunicate_media', label: 'Comunicate media' },
+  { key: 'anunturi', label: 'Anunturi' },
+  { key: 'documente_pozitie', label: 'Documente de pozitie' },
+  { key: 'stiri', label: 'Stiri' },
+  { key: 'evenimente', label: 'Evenimente' },
+  { key: 'invitatii', label: 'Invitatii' },
+  { key: 'formulare', label: 'Formulare' },
+  { key: 'materiale_foto_video', label: 'Materiale foto-video' },
+  { key: 'social_media', label: 'Materiale social media' },
+  { key: 'altele', label: 'Altele', requiresFreeText: true },
+];
+
+export const GDPR_DOCUMENT_TYPES: GdprOption[] = [
+  { key: 'pagina_web', label: 'Pagina web / link publicare' },
+  { key: 'comunicat_media', label: 'Comunicat media' },
+  { key: 'anunt_public', label: 'Anunt public' },
+  { key: 'document_pozitie', label: 'Document de pozitie' },
+  { key: 'formular_inscriere', label: 'Formular inscriere' },
+  { key: 'lista_participanti', label: 'Lista participanti' },
+  { key: 'proces_verbal', label: 'Proces-verbal' },
+  { key: 'factura', label: 'Factura' },
+  { key: 'contract', label: 'Contract' },
+  { key: 'caiet_sarcini', label: 'Caiet de sarcini' },
+  { key: 'oferta', label: 'Oferta' },
+  { key: 'nota_interna', label: 'Nota interna' },
+  { key: 'checklist', label: 'Checklist' },
+  { key: 'altele', label: 'Altele', requiresFreeText: true },
+];
+
 const gdprBasisOptions = [
   'consimtamant',
   'executarea unui contract',
@@ -88,6 +157,27 @@ const gdprBasisOptions = [
   'interes public / implementare proiect',
   'masuri precontractuale',
   'obligatii financiar-contabile',
+];
+
+export const GDPR_DELIVERABLE_REQUIREMENT_OPTIONS: Array<{ key: GdprDeliverableRequirement; label: string }> = [
+  { key: 'nu_este_necesar', label: 'Nu este necesar livrabil suplimentar' },
+  { key: 'optional', label: 'Livrabil optional' },
+  { key: 'conditional', label: 'Livrabil conditionat' },
+  { key: 'mandatory', label: 'Livrabil obligatoriu' },
+  { key: 'auto_generated', label: 'Livrabil generat automat' },
+];
+
+export const GDPR_MINIMUM_EVIDENCE_OPTIONS: Array<{ key: GdprMinimumEvidenceType; label: string }> = [
+  { key: 'link_publicare', label: 'Link publicare' },
+  { key: 'referinta_document', label: 'Referinta document intern' },
+  { key: 'upload_document', label: 'Document incarcat' },
+  { key: 'bifa_checklist', label: 'Checklist completat' },
+  { key: 'referinta_factura_pv', label: 'Referinta factura / proces-verbal' },
+  { key: 'referinta_dosar_gt', label: 'Referinta dosar grup tinta' },
+  { key: 'calendar_meeting', label: 'Invitatie / intalnire calendar' },
+  { key: 'inregistrare_bd', label: 'Inregistrare in baza de date' },
+  { key: 'livrabil_generat', label: 'Livrabil generat' },
+  { key: 'pontaj', label: 'Pontaj' },
 ];
 
 export const GDPR_CONCLUSION_OPTIONS: Array<{ code: GdprConclusionCode; label: string; text: string }> = [
@@ -120,7 +210,7 @@ export const GDPR_CONCLUSION_OPTIONS: Array<{ code: GdprConclusionCode; label: s
 
 const commonFields: GdprFieldDefinition[] = [
   { key: 'obiectVerificare', label: 'Obiect verificare', type: 'textarea', required: true, placeholder: 'Ex: comunicate, registru GT, eveniment, procedura de achizitie...' },
-  { key: 'documenteAnalizate', label: 'Documente analizate', type: 'multi', required: true, placeholder: 'Adauga documentele separate prin virgula' },
+  { key: 'documenteAnalizate', label: 'Documente analizate', type: 'checkbox_with_other', required: true, options: GDPR_DOCUMENT_TYPES },
   { key: 'datePersonale', label: 'Date personale implicate', type: 'multi', required: true, options: personalDataOptions },
   { key: 'temeiGdpr', label: 'Temei GDPR', type: 'multi', required: true, options: gdprBasisOptions },
   { key: 'recomandari', label: 'Recomandari', type: 'textarea', placeholder: 'Optional pentru activitati conforme; obligatoriu pentru neconformitati.' },
@@ -132,12 +222,17 @@ export const GDPR_TEMPLATES: GdprTemplate[] = [
     label: 'Monitorizare GDPR Grup Tinta',
     activityTitle: 'Monitorizare GDPR activitati Grup Tinta',
     saCode: 'SA1.1',
-    defaultHours: 4,
+    defaultHours: 8,
     deliverableTitle: 'Raport de verificare GDPR privind monitorizarea activitatilor grupului tinta',
     deliverableType: 'Raport verificare GDPR',
     requiresDeliverable: true,
+    deliverableRequirement: 'mandatory',
+    minimumEvidenceTypes: ['livrabil_generat', 'referinta_document'],
+    objectVerificationTemplate: 'Verificarea conformitatii GDPR pentru registrele, fisierele si operatiunile aferente grupului tinta din luna [luna].',
+    defaultLegalBasis: ['interes public / implementare proiect', 'obligatie legala'],
     fields: [
       { key: 'lunaAnalizata', label: 'Luna analizata', type: 'text', required: true },
+      { key: 'referintaDocument', label: 'Referinta registru/ficier GT', type: 'text', required: true },
       { key: 'operatiuniRealizate', label: 'Operatiuni realizate', type: 'multi', required: true, placeholder: 'validare, deduplicare, corelare, MySMIS' },
     ],
   },
@@ -150,9 +245,15 @@ export const GDPR_TEMPLATES: GdprTemplate[] = [
     deliverableTitle: 'Raport preliminar verificare documente inscriere GT',
     deliverableType: 'Raport verificare GDPR',
     requiresDeliverable: true,
+    deliverableRequirement: 'conditional',
+    minimumEvidenceTypes: ['referinta_dosar_gt'],
+    objectVerificationTemplate: 'Verificarea documentelor de inscriere in grupul tinta pentru [entitate], aferente dosarului [tipDosar].',
+    defaultLegalBasis: ['interes public / implementare proiect', 'obligatie legala'],
     fields: [
       { key: 'entitate', label: 'Entitate / dosar', type: 'text', required: true },
       { key: 'tipDosar', label: 'Tip dosar/documente', type: 'text', required: true },
+      { key: 'referintaDosarGt', label: 'Referinta dosar GT', type: 'text', required: true },
+      { key: 'produceValidareDosar', label: 'Produce validare/respingere dosar', type: 'boolean' },
       { key: 'dosarComplet', label: 'Dosar complet', type: 'boolean' },
     ],
   },
@@ -161,15 +262,22 @@ export const GDPR_TEMPLATES: GdprTemplate[] = [
     label: 'Verificare GDPR publicare online',
     activityTitle: 'Verificare GDPR publicare online',
     saCode: 'SA1.1',
-    defaultHours: 4,
+    defaultHours: 6,
     deliverableTitle: 'Raport preliminar privind verificarea respectarii GDPR in publicarea online',
     deliverableType: 'Raport verificare GDPR',
-    requiresDeliverable: true,
+    requiresDeliverable: false,
+    deliverableRequirement: 'nu_este_necesar',
+    minimumEvidenceTypes: ['link_publicare'],
+    objectVerificationTemplate: 'Verificarea respectarii cerintelor GDPR in cadrul procesului de publicare online a [tip_materiale] aferente lunii [luna].',
+    allowFreeTextObject: true,
+    defaultLegalBasis: ['interes legitim', 'interes public / implementare proiect'],
     fields: [
       { key: 'lunaAnalizata', label: 'Luna publicarii', type: 'text', required: true },
-      { key: 'tipMateriale', label: 'Tip materiale', type: 'multi', required: true, placeholder: 'comunicate, anunturi, stiri, evenimente' },
+      { key: 'tipMateriale', label: 'Tip materiale', type: 'checkbox_with_other', required: true, options: GDPR_MATERIAL_TYPES },
       { key: 'canalPublicare', label: 'Canal publicare', type: 'multi', required: true, placeholder: 'website, LinkedIn, email, parteneri' },
+      { key: 'linkPublicare', label: 'Link publicare / material', type: 'url', required: true },
       { key: 'includeImagini', label: 'Include imagini/foto-video', type: 'boolean' },
+      { key: 'doresteRaportSeparat', label: 'Doresc generarea unui raport separat', type: 'boolean' },
     ],
   },
   {
@@ -177,15 +285,21 @@ export const GDPR_TEMPLATES: GdprTemplate[] = [
     label: 'Verificare GDPR intalniri online',
     activityTitle: 'Verificare GDPR intalniri online',
     saCode: 'SA1.1',
-    defaultHours: 4,
+    defaultHours: 6,
     deliverableTitle: 'Raport preliminar privind protectia datelor in intalniri online',
     deliverableType: 'Raport verificare GDPR',
-    requiresDeliverable: true,
+    requiresDeliverable: false,
+    deliverableRequirement: 'optional',
+    minimumEvidenceTypes: ['calendar_meeting'],
+    objectVerificationTemplate: 'Verificarea respectarii cerintelor GDPR pentru intalnirile online desfasurate in perioada [perioada].',
+    defaultLegalBasis: ['interes legitim', 'interes public / implementare proiect'],
     fields: [
       { key: 'perioadaAnalizata', label: 'Perioada analizata', type: 'text', required: true },
       { key: 'platforma', label: 'Platforma', type: 'multi', required: true, placeholder: 'Teams, Zoom' },
+      { key: 'calendarMeetingRef', label: 'Link calendar / minuta / lista intalniri', type: 'text', required: true },
       { key: 'existaInregistrari', label: 'Au existat inregistrari', type: 'boolean' },
       { key: 'partajareEcran', label: 'A existat partajare ecran', type: 'boolean' },
+      { key: 'doresteRaportSeparat', label: 'Doresc generarea unui raport separat', type: 'boolean' },
     ],
   },
   {
@@ -196,12 +310,18 @@ export const GDPR_TEMPLATES: GdprTemplate[] = [
     defaultHours: 4,
     deliverableTitle: 'Raport privind evenimentele desfasurate in Business HUB - protectia datelor',
     deliverableType: 'Raport verificare GDPR',
-    requiresDeliverable: true,
+    requiresDeliverable: false,
+    deliverableRequirement: 'optional',
+    minimumEvidenceTypes: ['inregistrare_bd'],
+    objectVerificationTemplate: 'Verificarea respectarii cerintelor GDPR pentru evenimentele desfasurate in Business HUB in luna [luna].',
+    defaultLegalBasis: ['interes legitim', 'interes public / implementare proiect'],
     fields: [
       { key: 'lunaAnalizata', label: 'Luna analizata', type: 'text', required: true },
       { key: 'numarEvenimente', label: 'Numar evenimente', type: 'number', required: true },
+      { key: 'inregistrareBd', label: 'Referinta inregistrare BD evenimente HUB', type: 'text', required: true },
       { key: 'responsabilHub', label: 'Responsabil HUB', type: 'text', required: true },
-      { key: 'rolHub', label: 'Rol HUB', type: 'select', required: true, options: ['suport logistic', 'suport tehnic', 'prelucrare directa date', 'mixt'] },
+      { key: 'rolHub', label: 'Rol HUB', type: 'select', required: true, options: ['suport logistic', 'suport tehnic', 'prelucrare directa date', 'imputernicit', 'neclar'] },
+      { key: 'doresteRaportSeparat', label: 'Doresc generarea unui raport separat', type: 'boolean' },
     ],
   },
   {
@@ -212,10 +332,17 @@ export const GDPR_TEMPLATES: GdprTemplate[] = [
     defaultHours: 4,
     deliverableTitle: 'Raport preliminar verificare GDPR lansare procedura competitiva',
     deliverableType: 'Raport verificare GDPR',
-    requiresDeliverable: true,
+    requiresDeliverable: false,
+    deliverableRequirement: 'optional',
+    minimumEvidenceTypes: ['referinta_document'],
+    objectVerificationTemplate: 'Verificarea conformitatii GDPR in etapa de lansare a procedurii de achizitie [denumireAchizitie].',
+    defaultLegalBasis: ['masuri precontractuale', 'interes public / implementare proiect'],
     fields: [
       { key: 'denumireAchizitie', label: 'Denumire achizitie', type: 'text', required: true },
+      { key: 'referintaDocument', label: 'Referinta procedura / documentatie', type: 'text', required: true },
       { key: 'canalTransmitere', label: 'Canal transmitere/depunere', type: 'text', required: true },
+      { key: 'dateOfertanti', label: 'Include date ofertanti', type: 'boolean' },
+      { key: 'doresteRaportSeparat', label: 'Doresc generarea unui raport separat', type: 'boolean' },
     ],
   },
   {
@@ -227,10 +354,16 @@ export const GDPR_TEMPLATES: GdprTemplate[] = [
     deliverableTitle: 'Raport preliminar verificare GDPR evaluare oferte si rezultate licitatie',
     deliverableType: 'Raport verificare GDPR',
     requiresDeliverable: true,
+    deliverableRequirement: 'conditional',
+    minimumEvidenceTypes: ['referinta_document'],
+    objectVerificationTemplate: 'Verificarea conformitatii GDPR in etapa de evaluare a ofertelor pentru achizitia [denumireAchizitie].',
+    defaultLegalBasis: ['masuri precontractuale', 'interes public / implementare proiect'],
     fields: [
       { key: 'denumireAchizitie', label: 'Denumire achizitie', type: 'text', required: true },
+      { key: 'referintaDocument', label: 'Referinta PV evaluare / documentatie', type: 'text', required: true },
       { key: 'furnizorOfertanti', label: 'Ofertanti / furnizori', type: 'multi', required: true },
       { key: 'membriComisie', label: 'Membri comisie', type: 'multi' },
+      { key: 'includeDateOfertanti', label: 'Include date personale ale ofertantilor/reprezentantilor', type: 'boolean' },
     ],
   },
   {
@@ -242,11 +375,17 @@ export const GDPR_TEMPLATES: GdprTemplate[] = [
     deliverableTitle: 'Raport preliminar verificare GDPR incheiere contract',
     deliverableType: 'Raport verificare GDPR',
     requiresDeliverable: true,
+    deliverableRequirement: 'conditional',
+    minimumEvidenceTypes: ['referinta_document'],
+    objectVerificationTemplate: 'Verificarea conformitatii GDPR in etapa de contractare pentru furnizorul [furnizorOfertanti].',
+    defaultLegalBasis: ['executarea unui contract', 'obligatie legala'],
     fields: [
       { key: 'denumireAchizitie', label: 'Denumire achizitie / contract', type: 'text', required: true },
+      { key: 'referintaDocument', label: 'Referinta contract / clauze GDPR', type: 'text', required: true },
       { key: 'furnizorOfertanti', label: 'Furnizor', type: 'text', required: true },
       { key: 'rolFurnizor', label: 'Rol furnizor', type: 'select', required: true, options: ['operator', 'imputernicit', 'tert', 'neaplicabil'] },
       { key: 'clauzeGdpr', label: 'Exista clauze GDPR', type: 'boolean' },
+      { key: 'furnizorPrelucreazaDate', label: 'Furnizorul prelucreaza date personale', type: 'boolean' },
     ],
   },
   {
@@ -254,13 +393,19 @@ export const GDPR_TEMPLATES: GdprTemplate[] = [
     label: 'Facturare / plata / receptie',
     activityTitle: 'Verificare GDPR facturare, plata si receptie',
     saCode: 'SA1.1',
-    defaultHours: 4,
+    defaultHours: 2,
     deliverableTitle: 'Raport preliminar verificare GDPR facturare si plata',
     deliverableType: 'Raport verificare GDPR',
-    requiresDeliverable: true,
+    requiresDeliverable: false,
+    deliverableRequirement: 'nu_este_necesar',
+    minimumEvidenceTypes: ['referinta_factura_pv'],
+    objectVerificationTemplate: 'Verificarea conformitatii GDPR pentru documentele de facturare, plata si receptie aferente furnizorului [furnizorOfertanti].',
+    defaultLegalBasis: ['executarea unui contract', 'obligatie legala', 'obligatii financiar-contabile'],
     fields: [
       { key: 'furnizorOfertanti', label: 'Furnizor / prestator', type: 'text', required: true },
-      { key: 'documenteFinanciare', label: 'Documente financiar-contabile', type: 'multi', required: true, placeholder: 'factura, PV receptie, ordin plata' },
+      { key: 'referintaFacturaPv', label: 'Referinta factura / PV / contract', type: 'text', required: true },
+      { key: 'documenteFinanciare', label: 'Documente financiar-contabile', type: 'checkbox_with_other', required: true, options: GDPR_DOCUMENT_TYPES },
+      { key: 'doresteRaportSeparat', label: 'Doresc generarea unui raport separat', type: 'boolean' },
     ],
   },
   {
@@ -272,11 +417,17 @@ export const GDPR_TEMPLATES: GdprTemplate[] = [
     deliverableTitle: 'Checklist GDPR pentru organizarea evenimentului',
     deliverableType: 'Lista de control GDPR',
     requiresDeliverable: true,
+    deliverableRequirement: 'mandatory',
+    minimumEvidenceTypes: ['bifa_checklist'],
+    objectVerificationTemplate: 'Verificarea masurilor GDPR pentru organizarea evenimentului [numeEveniment].',
+    defaultLegalBasis: ['interes legitim', 'interes public / implementare proiect'],
     fields: [
       { key: 'numeEveniment', label: 'Nume eveniment', type: 'text', required: true },
       { key: 'locatieEveniment', label: 'Locatie', type: 'text', required: true },
       { key: 'listaPrezenta', label: 'Lista de prezenta', type: 'boolean' },
       { key: 'fotoVideo', label: 'Foto/video', type: 'boolean' },
+      { key: 'checklistCompletat', label: 'Checklist completat', type: 'boolean', required: true },
+      { key: 'informareParticipanti', label: 'Informare participanti realizata', type: 'boolean', required: true },
     ],
   },
   {
@@ -287,12 +438,18 @@ export const GDPR_TEMPLATES: GdprTemplate[] = [
     defaultHours: 3,
     deliverableTitle: 'Nota interna de verificare si completare checklist pre-eveniment',
     deliverableType: 'Nota instruire GDPR',
-    requiresDeliverable: true,
+    requiresDeliverable: false,
+    deliverableRequirement: 'optional',
+    minimumEvidenceTypes: ['bifa_checklist'],
+    objectVerificationTemplate: 'Verificarea pre-eveniment a checklistului GDPR asociat evenimentului [numeEveniment].',
+    defaultLegalBasis: ['interes legitim', 'interes public / implementare proiect'],
     fields: [
       { key: 'numeEveniment', label: 'Nume eveniment', type: 'text', required: true },
       { key: 'locatieEveniment', label: 'Locatie', type: 'text', required: true },
       { key: 'checklistAsociat', label: 'Checklist asociat', type: 'text', required: true },
+      { key: 'checklistCompletat', label: 'Checklist completat', type: 'boolean', required: true },
       { key: 'riscuriIdentificate', label: 'Riscuri identificate', type: 'textarea' },
+      { key: 'doresteRaportSeparat', label: 'Doresc generarea unei note separate', type: 'boolean' },
     ],
   },
   {
@@ -300,15 +457,63 @@ export const GDPR_TEMPLATES: GdprTemplate[] = [
     label: 'Eveniment - monitorizare implementare',
     activityTitle: 'Monitorizare implementare eveniment din perspectiva GDPR',
     saCode: 'SA1.1',
-    defaultHours: 4,
+    defaultHours: 8,
     deliverableTitle: 'Raport preliminar monitorizare implementare eveniment',
     deliverableType: 'Raport verificare GDPR',
     requiresDeliverable: true,
+    deliverableRequirement: 'conditional',
+    minimumEvidenceTypes: ['bifa_checklist'],
+    objectVerificationTemplate: 'Monitorizarea implementarii masurilor GDPR in cadrul evenimentului [numeEveniment].',
+    defaultLegalBasis: ['interes legitim', 'interes public / implementare proiect'],
     fields: [
       { key: 'numeEveniment', label: 'Nume eveniment', type: 'text', required: true },
       { key: 'locatieEveniment', label: 'Locatie', type: 'text', required: true },
       { key: 'masuriAplicate', label: 'Masuri aplicate', type: 'multi', required: true },
+      { key: 'checklistCompletat', label: 'Checklist completat', type: 'boolean', required: true },
+      { key: 'evenimentMajor', label: 'Eveniment major', type: 'boolean' },
       { key: 'incidente', label: 'Au existat incidente', type: 'boolean' },
+    ],
+  },
+  {
+    code: 'GDPR_EVENT_POST',
+    label: 'Eveniment - raport post-eveniment',
+    activityTitle: 'Raport post-eveniment privind conformitatea GDPR',
+    saCode: 'SA1.1',
+    defaultHours: 4,
+    deliverableTitle: 'Raport post-eveniment privind conformitatea GDPR',
+    deliverableType: 'Raport verificare GDPR',
+    requiresDeliverable: true,
+    deliverableRequirement: 'conditional',
+    minimumEvidenceTypes: ['link_publicare'],
+    objectVerificationTemplate: 'Verificarea post-eveniment a materialelor publicate, arhivarii si transmiterii documentelor pentru evenimentul [numeEveniment].',
+    defaultLegalBasis: ['interes legitim', 'interes public / implementare proiect'],
+    fields: [
+      { key: 'numeEveniment', label: 'Nume eveniment', type: 'text', required: true },
+      { key: 'materialePublicate', label: 'Materiale publicate', type: 'checkbox_with_other', required: true, options: GDPR_MATERIAL_TYPES },
+      { key: 'linkPublicare', label: 'Link publicare / arhiva', type: 'url' },
+      { key: 'transmitereMateriale', label: 'Au fost transmise materiale participantilor', type: 'boolean' },
+      { key: 'fotoVideo', label: 'Au fost publicate foto/video', type: 'boolean' },
+      { key: 'arhivareDocumente', label: 'Arhivare documente', type: 'text', required: true },
+    ],
+  },
+  {
+    code: 'GDPR_PV_VALIDARE',
+    label: 'Proces-verbal validare dosare',
+    activityTitle: 'Proces-verbal validare dosare',
+    saCode: 'SA1.1',
+    defaultHours: 2,
+    deliverableTitle: 'Proces-verbal validare dosare',
+    deliverableType: 'Proces verbal verificare',
+    requiresDeliverable: true,
+    deliverableRequirement: 'mandatory',
+    minimumEvidenceTypes: ['livrabil_generat'],
+    objectVerificationTemplate: 'Documentarea validarii dosarului [tipDosar] pentru entitatea [entitate].',
+    defaultLegalBasis: ['interes public / implementare proiect', 'obligatie legala'],
+    fields: [
+      { key: 'entitate', label: 'Entitate / dosar', type: 'text', required: true },
+      { key: 'tipDosar', label: 'Tip dosar', type: 'text', required: true },
+      { key: 'membriComisie', label: 'Comisie / semnatari', type: 'multi', required: true },
+      { key: 'rezultatValidare', label: 'Rezultat validare', type: 'select', required: true, options: ['validat', 'respins', 'necesita clarificari'] },
     ],
   },
   {
@@ -320,7 +525,12 @@ export const GDPR_TEMPLATES: GdprTemplate[] = [
     deliverableTitle: 'Minuta / nota de participare status PEO',
     deliverableType: 'Proces verbal verificare',
     requiresDeliverable: false,
+    deliverableRequirement: 'nu_este_necesar',
+    minimumEvidenceTypes: ['calendar_meeting'],
+    objectVerificationTemplate: 'Participarea la sedinta de status PEO privind aspectele GDPR din proiect.',
+    defaultLegalBasis: ['interes legitim', 'interes public / implementare proiect'],
     fields: [
+      { key: 'calendarMeetingRef', label: 'Invitatie calendar / minuta / referinta', type: 'text', required: true },
       { key: 'temaSedinta', label: 'Tema sedinta', type: 'text', required: true },
       { key: 'participanti', label: 'Participanti', type: 'multi' },
     ],
@@ -333,10 +543,49 @@ export const GDPR_TEMPLATES: GdprTemplate[] = [
     defaultHours: 2,
     deliverableTitle: 'Raport de activitate lunar - Anexa 10',
     deliverableType: 'Raport de monitorizare',
-    requiresDeliverable: false,
+    requiresDeliverable: true,
+    deliverableRequirement: 'mandatory',
+    minimumEvidenceTypes: ['livrabil_generat'],
+    objectVerificationTemplate: 'Elaborarea raportului lunar GDPR - Anexa 10 pentru luna [luna].',
+    defaultLegalBasis: [],
     fields: [
       { key: 'lunaAnalizata', label: 'Luna raportare', type: 'text', required: true },
       { key: 'totalOre', label: 'Total ore raportate', type: 'number' },
+    ],
+  },
+  {
+    code: 'GDPR_CO',
+    label: 'Concediu / zi nelucrata',
+    activityTitle: 'Concediu / zi nelucrata',
+    saCode: 'SA1.1',
+    defaultHours: 8,
+    deliverableTitle: 'Nu este necesar livrabil',
+    deliverableType: 'Pontaj',
+    requiresDeliverable: false,
+    deliverableRequirement: 'nu_este_necesar',
+    minimumEvidenceTypes: ['pontaj'],
+    objectVerificationTemplate: 'Inregistrare pontaj pentru concediu / zi nelucrata.',
+    defaultLegalBasis: [],
+    fields: [
+      { key: 'tipAbsenta', label: 'Tip absenta', type: 'select', required: true, options: ['CO', 'CM', 'zi nelucrata'] },
+    ],
+  },
+  {
+    code: 'GDPR_ALTE_VERIFICARI',
+    label: 'Alte verificari GDPR',
+    activityTitle: 'Alte verificari GDPR punctuale',
+    saCode: 'SA1.1',
+    defaultHours: 2,
+    deliverableTitle: 'Raport preliminar verificare GDPR punctuala',
+    deliverableType: 'Raport verificare GDPR',
+    requiresDeliverable: false,
+    deliverableRequirement: 'optional',
+    minimumEvidenceTypes: ['referinta_document'],
+    objectVerificationTemplate: 'Verificare GDPR punctuala privind [obiectVerificare].',
+    allowFreeTextObject: true,
+    defaultLegalBasis: ['interes legitim', 'interes public / implementare proiect'],
+    fields: [
+      { key: 'referintaDocument', label: 'Referinta document / nota / upload', type: 'text', required: true },
     ],
   },
 ];
@@ -355,6 +604,22 @@ export function getGdprConclusionText(code?: string | null) {
   return GDPR_CONCLUSION_OPTIONS.find((item) => item.code === code)?.text || GDPR_CONCLUSION_OPTIONS[0].text;
 }
 
+export function getGdprOptionValue(option: string | GdprOption) {
+  return typeof option === 'string' ? option : option.key;
+}
+
+export function getGdprOptionLabel(option: string | GdprOption) {
+  return typeof option === 'string' ? option : option.label;
+}
+
+export function getGdprDeliverableRequirementLabel(requirement?: GdprDeliverableRequirement) {
+  return GDPR_DELIVERABLE_REQUIREMENT_OPTIONS.find((item) => item.key === requirement)?.label || 'Regula livrabil neprecizata';
+}
+
+export function getGdprMinimumEvidenceLabels(types: GdprMinimumEvidenceType[] = []) {
+  return types.map((type) => GDPR_MINIMUM_EVIDENCE_OPTIONS.find((item) => item.key === type)?.label || type);
+}
+
 export function parseGdprMetaJson(value?: string | null): GdprMeta {
   if (!value) return {};
   try {
@@ -367,6 +632,67 @@ export function parseGdprMetaJson(value?: string | null): GdprMeta {
 
 export function serializeGdprMeta(meta: GdprMeta) {
   return JSON.stringify(meta);
+}
+
+export function buildDefaultGdprMeta(code?: string | null, existing: GdprMeta = {}, reportMonth?: string): GdprMeta {
+  const template = getGdprTemplate(code);
+  if (!template) return existing;
+  const meta: GdprMeta = {
+    ...existing,
+    concluzie: existing.concluzie || 'conform_fara_neconformitati',
+  };
+  if (template.defaultLegalBasis?.length && isEmptyMetaValue(meta.temeiGdpr)) {
+    meta.temeiGdpr = template.defaultLegalBasis;
+  }
+  if (reportMonth && isEmptyMetaValue(meta.lunaAnalizata)) {
+    meta.lunaAnalizata = reportMonth;
+  }
+  if (template.code === 'GDPR_PUBLICARE' && isEmptyMetaValue(meta.tipMateriale)) {
+    meta.tipMateriale = { selected: ['comunicate_media', 'anunturi', 'documente_pozitie', 'stiri', 'evenimente'] };
+  }
+  if (template.code === 'GDPR_PUBLICARE' && isEmptyMetaValue(meta.documenteAnalizate)) {
+    meta.documenteAnalizate = { selected: ['pagina_web', 'comunicat_media', 'anunt_public', 'document_pozitie'] };
+  }
+  if (isEmptyMetaValue(meta.obiectVerificare)) {
+    meta.obiectVerificare = buildGdprObjectVerification(template.code, meta);
+  }
+  return applyConditionalLegalBasis(template.code, meta);
+}
+
+export function buildGdprObjectVerification(code: GdprTemplateCode, meta: GdprMeta = {}) {
+  const template = getGdprTemplate(code);
+  if (!template) return '';
+  let value = template.objectVerificationTemplate;
+  const replacements: Record<string, string> = {
+    luna: text(meta.lunaAnalizata, text(meta.lunaPublicarii, 'lunii de raportare')),
+    tip_materiale: listText(meta.tipMateriale, 'materialelor selectate'),
+    perioada: text(meta.perioadaAnalizata, 'perioada analizata'),
+    entitate: text(meta.entitate, 'entitatea selectata'),
+    tipDosar: text(meta.tipDosar, 'dosarul selectat'),
+    denumireAchizitie: text(meta.denumireAchizitie, 'achizitia selectata'),
+    furnizorOfertanti: text(meta.furnizorOfertanti, 'furnizorul selectat'),
+    numeEveniment: text(meta.numeEveniment, 'evenimentul selectat'),
+    obiectVerificare: text(meta.obiectVerificare, 'obiectul verificarii'),
+  };
+  Object.entries(replacements).forEach(([key, replacement]) => {
+    value = value.replaceAll(`[${key}]`, replacement);
+  });
+  return value;
+}
+
+export function applyConditionalLegalBasis(code: GdprTemplateCode, meta: GdprMeta): GdprMeta {
+  const basis = new Set(selectedValues(meta.temeiGdpr));
+  if (code === 'GDPR_PUBLICARE' && (meta.includeImagini === true || hasSelected(meta.tipMateriale, 'materiale_foto_video'))) {
+    basis.add('consimtamant');
+    basis.add('interes legitim');
+  }
+  if (code === 'GDPR_ONLINE_MEET' && meta.existaInregistrari === true) {
+    basis.add('interes legitim');
+  }
+  if (basis.size > 0) {
+    return { ...meta, temeiGdpr: Array.from(basis) };
+  }
+  return meta;
 }
 
 export function getGdprRequiredFields(code: GdprTemplateCode, meta: GdprMeta = {}): string[] {
@@ -382,7 +708,7 @@ export function getGdprRequiredFields(code: GdprTemplateCode, meta: GdprMeta = {
     if (field.required) required.add(field.key);
   });
 
-  if (code === 'GDPR_PUBLICARE' && meta.includeImagini === true) {
+  if (code === 'GDPR_PUBLICARE' && (meta.includeImagini === true || hasSelected(meta.tipMateriale, 'materiale_foto_video'))) {
     required.add('informareParticipanti');
     required.add('temeiFotoVideo');
   }
@@ -467,8 +793,12 @@ export function validateGdprActivityDraft(input: {
     }
   });
 
-  if (template.requiresDeliverable && input.hasDeliverable === false) {
-    missingFields.push('livrabil');
+  const deliverableRequired = isGdprDeliverableRequired(template.code, meta);
+  const evidenceMissing = getMissingMinimumEvidence(template, meta, input.hasDeliverable === true);
+  evidenceMissing.forEach((field) => missingFields.push(field));
+
+  if (deliverableRequired && input.hasDeliverable === false) {
+    missingFields.push('livrabil_generat_sau_atasat');
   }
 
   if ((meta.incidente === true || meta.concluzie === 'neconform_cu_remediere') && isEmptyMetaValue(meta.recomandari)) {
@@ -481,6 +811,51 @@ export function validateGdprActivityDraft(input: {
 
   return { ok: missingFields.length === 0, missingFields: Array.from(new Set(missingFields)), warnings };
 }
+
+export function isGdprDeliverableRequired(code: GdprTemplateCode, meta: GdprMeta = {}) {
+  const template = getGdprTemplate(code);
+  if (!template) return false;
+  if (template.deliverableRequirement === 'mandatory' || template.deliverableRequirement === 'auto_generated') return true;
+  if (template.deliverableRequirement === 'nu_este_necesar' || template.deliverableRequirement === 'optional') {
+    return meta.doresteRaportSeparat === true
+      || meta.incidente === true
+      || meta.concluzie === 'neconform_cu_remediere'
+      || meta.concluzie === 'conform_partial';
+  }
+  if (template.deliverableRequirement !== 'conditional') return false;
+
+  if (meta.doresteRaportSeparat === true || meta.incidente === true || meta.concluzie === 'neconform_cu_remediere') return true;
+  if (code === 'GDPR_DOC_GT') return meta.produceValidareDosar === true || meta.dosarComplet === false;
+  if (code === 'GDPR_EVENT_IMPL') return meta.fotoVideo === true || meta.evenimentMajor === true || meta.transmitereMateriale === true;
+  if (code === 'GDPR_EVENT_POST') return meta.fotoVideo === true || meta.transmitereMateriale === true || hasSelected(meta.materialePublicate, 'materiale_foto_video');
+  if (code === 'GDPR_ACH_EVAL') return meta.includeDateOfertanti === true || !isEmptyMetaValue(meta.furnizorOfertanti);
+  if (code === 'GDPR_ACH_CONTRACT') return meta.furnizorPrelucreazaDate === true || meta.rolFurnizor === 'imputernicit';
+  return false;
+}
+
+export function getMissingMinimumEvidence(template: GdprTemplate, meta: GdprMeta, hasDeliverable: boolean) {
+  const missing: string[] = [];
+  template.minimumEvidenceTypes.forEach((type) => {
+    if (type === 'livrabil_generat' || type === 'upload_document') {
+      if (!hasDeliverable) missing.push(type);
+      return;
+    }
+    if (type === 'pontaj') return;
+    const key = evidenceFieldMap[type];
+    if (key && isEmptyMetaValue(meta[key])) missing.push(key);
+  });
+  return missing;
+}
+
+const evidenceFieldMap: Partial<Record<GdprMinimumEvidenceType, string>> = {
+  link_publicare: 'linkPublicare',
+  referinta_document: 'referintaDocument',
+  bifa_checklist: 'checklistCompletat',
+  referinta_factura_pv: 'referintaFacturaPv',
+  referinta_dosar_gt: 'referintaDosarGt',
+  calendar_meeting: 'calendarMeetingRef',
+  inregistrare_bd: 'inregistrareBd',
+};
 
 export function buildGdprActivityDescription(input: GdprGenerationInput) {
   const template = getGdprTemplate(input.templateCode);
@@ -499,7 +874,11 @@ export function buildGdprActivityDescription(input: GdprGenerationInput) {
   const opening = `In data de ${date}, in cadrul subactivitatii ${template.saCode}, in calitate de expert cu protectia datelor cu caracter personal, am desfasurat activitatea "${template.activityTitle}", avand ca obiect ${object}.`;
   const analysis = `Am analizat ${documents}, tipurile de date prelucrate (${personalData}) si temeiurile aplicabile (${basis}), verificand principiile GDPR privind legalitatea, transparenta, minimizarea datelor, limitarea scopului, exactitatea, securitatea, confidentialitatea si responsabilitatea.`;
   const specific = buildSpecificDescription(template.code, meta);
-  const closing = `In urma verificarii, ${conclusion}. Activitatea s-a finalizat cu livrabilul "${template.deliverableTitle}" si contribuie la conformitatea proiectului ${projectCode} - ${projectTitle}.`;
+  const deliverableRequired = isGdprDeliverableRequired(template.code, meta);
+  const evidence = getGdprMinimumEvidenceLabels(template.minimumEvidenceTypes).join(', ');
+  const closing = deliverableRequired
+    ? `In urma verificarii, ${conclusion}. Activitatea se documenteaza prin livrabilul "${template.deliverableTitle}" si contribuie la conformitatea proiectului ${projectCode} - ${projectTitle}.`
+    : `In urma verificarii, ${conclusion}. Activitatea este eligibila pe baza dovezii minime (${evidence || 'dovada interna'}) si se include in Anexa 10 fara livrabil suplimentar obligatoriu.`;
 
   return [opening, analysis, specific, closing].filter(Boolean).join('\n\n');
 }
@@ -641,12 +1020,16 @@ function buildSpecificDescription(code: GdprTemplateCode, meta: GdprMeta) {
 }
 
 function isEmptyMetaValue(value: GdprMetaValue) {
+  if (isSelectionValue(value)) {
+    return value.selected.length === 0 && !value.altele?.trim();
+  }
   if (Array.isArray(value)) return value.length === 0;
   if (typeof value === 'string') return value.trim().length === 0;
   return value === undefined || value === null;
 }
 
 function text(value: GdprMetaValue, fallback: string) {
+  if (isSelectionValue(value)) return listText(value, fallback);
   if (Array.isArray(value)) return value.filter(Boolean).join(', ') || fallback;
   if (typeof value === 'boolean') return value ? 'Da' : 'Nu';
   if (value === undefined || value === null || value === '') return fallback;
@@ -654,8 +1037,33 @@ function text(value: GdprMetaValue, fallback: string) {
 }
 
 function listText(value: GdprMetaValue, fallback: string) {
+  if (isSelectionValue(value)) {
+    const labels = value.selected.map((item) => optionLabelByKey(item));
+    if (value.altele?.trim()) labels.push(value.altele.trim());
+    return labels.filter(Boolean).join(', ') || fallback;
+  }
   if (Array.isArray(value)) return value.filter(Boolean).join(', ') || fallback;
   if (typeof value === 'string') return value.split(',').map((item) => item.trim()).filter(Boolean).join(', ') || fallback;
   if (value === undefined || value === null) return fallback;
   return String(value);
+}
+
+function isSelectionValue(value: GdprMetaValue): value is GdprSelectionValue {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value) && Array.isArray((value as GdprSelectionValue).selected));
+}
+
+function selectedValues(value: GdprMetaValue): string[] {
+  if (isSelectionValue(value)) return value.selected;
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string') return value.split(',').map((item) => item.trim()).filter(Boolean);
+  return [];
+}
+
+function hasSelected(value: GdprMetaValue, key: string) {
+  return selectedValues(value).includes(key);
+}
+
+function optionLabelByKey(key: string) {
+  const option = [...GDPR_MATERIAL_TYPES, ...GDPR_DOCUMENT_TYPES].find((item) => item.key === key);
+  return option?.label || key.replaceAll('_', ' ');
 }

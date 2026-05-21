@@ -331,7 +331,9 @@ export default function ExpertDashboard() {
     const activityDates = new Set(activities.map((activity) => activity.date));
     const missingWorkingDays = workingDays.filter((date) => !activityDates.has(date));
     const activitiesMissingDeliverables = activities.filter((activity) =>
-      !isActivityException(activity) && !hasUsableDeliverable(activity.deliverables),
+      !isActivityException(activity)
+      && !(selectedExpert.category === 'gdpr' && activity.gdprTemplateCode)
+      && !hasUsableDeliverable(activity.deliverables),
     );
     const deliverables = activities.flatMap((activity) => activity.deliverables ?? []);
     const unconfirmedTitles = deliverables.filter((deliverable) =>

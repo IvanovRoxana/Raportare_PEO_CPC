@@ -3,9 +3,11 @@ import test from 'node:test';
 import { normalizeAndGroupActivities } from '../lib/activity-report/normalize.ts';
 import { buildActivityReportPrompt, buildActivityReportPromptInput } from '../lib/activity-report/prompt.ts';
 import {
+  buildDefaultGdprMeta,
   buildGdprActivityDescription,
   buildGdprDeliverableText,
   getGdprRequiredFields,
+  isGdprDeliverableRequired,
   validateGdprActivityDraft,
 } from '../lib/gdpr-reporting.ts';
 import { isExceptionActivity } from '../lib/peo-constants.ts';
@@ -129,4 +131,59 @@ test('raportarea Anexa 10 foloseste textul GDPR specializat fara sa modifice tot
 test('activitatile GDPR fara livrabil obligatoriu raman exceptii in readiness', () => {
   assert.equal(isExceptionActivity('Sedinta status PEO - aspecte GDPR'), true);
   assert.equal(isExceptionActivity('Elaborare raport lunar GDPR - Anexa 10'), true);
+});
+
+test('publicarea online este eligibila fara livrabil cand exista link si concluzie', () => {
+  const meta = buildDefaultGdprMeta('GDPR_PUBLICARE', {
+    ...baseMeta,
+    lunaAnalizata: 'ianuarie 2026',
+    tipMateriale: { selected: ['comunicate_media', 'anunturi'] },
+    canalPublicare: ['website'],
+    linkPublicare: 'https://example.test/anunt',
+  }, 'ianuarie 2026');
+
+  const validation = validateGdprActivityDraft({
+    templateCode: 'GDPR_PUBLICARE',
+    meta,
+    description: 'Descriere GDPR generata.',
+    hasDeliverable: false,
+  });
+
+  assert.equal(validation.ok, true);
+  assert.equal(isGdprDeliverableRequired('GDPR_PUBLICARE', meta), false);
+});
+
+test('publicarea online fara link cere dovada minima, nu raport artificial', () => {
+  const validation = validateGdprActivityDraft({
+    templateCode: 'GDPR_PUBLICARE',
+    meta: {
+      ...baseMeta,
+      lunaAnalizata: 'ianuarie 2026',
+      tipMateriale: { selected: ['stiri'] },
+      canalPublicare: ['website'],
+    },
+    description: 'Descriere GDPR generata.',
+    hasDeliverable: false,
+  });
+
+  assert.equal(validation.ok, false);
+  assert.ok(validation.missingFields.includes('linkPublicare'));
+  assert.equal(validation.missingFields.includes('livrabil_generat_sau_atasat'), false);
+});
+
+test('monitorizarea GT ramane activitate cu livrabil obligatoriu', () => {
+  const validation = validateGdprActivityDraft({
+    templateCode: 'GDPR_GT_MON',
+    meta: {
+      ...baseMeta,
+      lunaAnalizata: 'ianuarie 2026',
+      referintaDocument: 'Registru GT ianuarie',
+      operatiuniRealizate: ['validare', 'deduplicare'],
+    },
+    description: 'Descriere GDPR generata.',
+    hasDeliverable: false,
+  });
+
+  assert.equal(validation.ok, false);
+  assert.ok(validation.missingFields.includes('livrabil_generat_sau_atasat'));
 });

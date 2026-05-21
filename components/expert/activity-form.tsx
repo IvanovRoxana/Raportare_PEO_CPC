@@ -38,15 +38,22 @@ import {
   GDPR_CONCLUSION_OPTIONS,
   GDPR_TEMPLATES,
   buildGdprActivityDescription,
+  buildDefaultGdprMeta,
+  buildGdprObjectVerification,
   buildGdprDeliverableDocx,
   createGeneratedGdprDeliverableSlot,
+  getGdprDeliverableRequirementLabel,
   getGdprFieldDefinitions,
+  getGdprMinimumEvidenceLabels,
+  getGdprOptionLabel,
+  getGdprOptionValue,
   getGdprTemplate,
   parseGdprMetaJson,
   serializeGdprMeta,
   validateGdprActivityDraft,
   type GdprFieldDefinition,
   type GdprMeta,
+  type GdprMetaValue,
 } from '@/lib/gdpr-reporting';
 
 interface ActivityFormProps {
@@ -110,6 +117,7 @@ export function ActivityForm({
   const expertCategory = normalizePeoCategory(expert?.category);
   const isGtExpert = isGtExpertCategory(expert?.category);
   const isGdprExpert = expertCategory === 'gdpr';
+  const reportMonthName = ['ianuarie', 'februarie', 'martie', 'aprilie', 'mai', 'iunie', 'iulie', 'august', 'septembrie', 'octombrie', 'noiembrie', 'decembrie'][month] || 'luna de raportare';
   
   // Filter catalog by expert category from PEO_Experti and then by assigned SA codes.
   const filteredCatalog = useMemo(() => {
@@ -186,7 +194,7 @@ export function ActivityForm({
   const [location, setLocation] = useState(initialActivity?.location || 'Birou');
   const [validationError, setValidationError] = useState<string | null>(null);
   const [gdprTemplateCode, setGdprTemplateCode] = useState(initialActivity?.gdprTemplateCode || '');
-  const [gdprMeta, setGdprMeta] = useState<GdprMeta>(() => parseGdprMetaJson(initialActivity?.gdprMetaJson));
+  const [gdprMeta, setGdprMeta] = useState<GdprMeta>(() => buildDefaultGdprMeta(initialActivity?.gdprTemplateCode, parseGdprMetaJson(initialActivity?.gdprMetaJson), `${reportMonthName} ${year}`));
   const [gdprGeneratedText, setGdprGeneratedText] = useState(initialActivity?.gdprGeneratedText || '');
   const [gdprConclusionCode, setGdprConclusionCode] = useState(
     initialActivity?.gdprConclusionCode || String(parseGdprMetaJson(initialActivity?.gdprMetaJson).concluzie || 'conform_fara_neconformitati')
@@ -753,8 +761,18 @@ export function ActivityForm({
     ])));
   };
 
-  const updateGdprMeta = (key: string, value: string | number | boolean | string[]) => {
-    setGdprMeta((prev) => ({ ...prev, [key]: value }));
+  const updateGdprMeta = (key: string, value: GdprMetaValue) => {
+    setGdprMeta((prev) => {
+      const next = { ...prev, [key]: value };
+      if (selectedGdprTemplate && key !== 'obiectVerificare') {
+        const previousGeneratedObject = buildGdprObjectVerification(selectedGdprTemplate.code, prev);
+        const currentObject = typeof prev.obiectVerificare === 'string' ? prev.obiectVerificare.trim() : '';
+        if (!currentObject || currentObject === previousGeneratedObject) {
+          next.obiectVerificare = buildGdprObjectVerification(selectedGdprTemplate.code, next);
+        }
+      }
+      return buildDefaultGdprMeta(gdprTemplateCode, next, `${reportMonthName} ${year}`);
+    });
   };
 
   const handleGdprConclusionChange = (code: string) => {
@@ -771,10 +789,10 @@ export function ActivityForm({
 
     setSaCode(template.saCode);
     setActivityTitle(template.activityTitle);
-    setGdprMeta((prev) => ({
+    setGdprMeta((prev) => buildDefaultGdprMeta(code, {
       ...prev,
       concluzie: gdprConclusionCode || 'conform_fara_neconformitati',
-    }));
+    }, `${reportMonthName} ${year}`));
 
     const templateHours = Math.min(template.defaultHours, defaultHours).toString();
     setHours(templateHours);
@@ -943,10 +961,61 @@ export function ActivityForm({
             </SelectTrigger>
             <SelectContent>
               {(field.options || []).map((option) => (
-                <SelectItem key={option} value={option}>{option}</SelectItem>
+                <SelectItem key={getGdprOptionValue(option)} value={getGdprOptionValue(option)}>{getGdprOptionLabel(option)}</SelectItem>
               ))}
             </SelectContent>
           </Select>
+        </Field>
+      );
+    }
+
+    if (field.type === 'checkbox_with_other') {
+      const selectedValue = value && typeof value === 'object' && !Array.isArray(value) && Array.isArray((value as { selected?: string[] }).selected)
+        ? value as { selected: string[]; altele?: string }
+        : { selected: Array.isArray(value) ? value : [], altele: '' };
+      const selected = selectedValue.selected || [];
+      const hasOther = selected.includes('altele');
+      const updateSelection = (nextSelected: string[], altele = selectedValue.altele || '') => {
+        updateGdprMeta(field.key, { selected: nextSelected, altele });
+      };
+      return (
+        <Field key={field.key} className="space-y-2">
+          {label}
+          <div className="flex flex-wrap gap-2">
+            {(field.options || []).map((option) => {
+              const optionValue = getGdprOptionValue(option);
+              const isSelected = selected.includes(optionValue);
+              return (
+                <label
+                  key={optionValue}
+                  className={`flex cursor-pointer items-center gap-2 rounded-md border px-3 py-1.5 text-xs ${
+                    isSelected ? 'border-emerald-400 bg-emerald-50 text-emerald-900' : 'bg-white text-slate-700'
+                  }`}
+                >
+                  <Checkbox
+                    checked={isSelected}
+                    onCheckedChange={(checked) => {
+                      updateSelection(
+                        checked === true
+                          ? Array.from(new Set([...selected, optionValue]))
+                          : selected.filter((item) => item !== optionValue)
+                      );
+                    }}
+                    className="h-3 w-3"
+                  />
+                  {getGdprOptionLabel(option)}
+                </label>
+              );
+            })}
+          </div>
+          {hasOther && (
+            <Input
+              value={selectedValue.altele || ''}
+              onChange={(event) => updateSelection(selected, event.target.value)}
+              placeholder="Descrie alte materiale/documente"
+              className="bg-white"
+            />
+          )}
         </Field>
       );
     }
@@ -958,10 +1027,11 @@ export function ActivityForm({
           {label}
           <div className="flex flex-wrap gap-2">
             {field.options.map((option) => {
-              const isSelected = selected.includes(option);
+              const optionValue = getGdprOptionValue(option);
+              const isSelected = selected.includes(optionValue);
               return (
                 <label
-                  key={option}
+                  key={optionValue}
                   className={`flex cursor-pointer items-center gap-2 rounded-md border px-3 py-1.5 text-xs ${
                     isSelected ? 'border-emerald-400 bg-emerald-50 text-emerald-900' : 'bg-white text-slate-700'
                   }`}
@@ -972,13 +1042,13 @@ export function ActivityForm({
                       updateGdprMeta(
                         field.key,
                         checked === true
-                          ? Array.from(new Set([...selected, option]))
-                          : selected.filter((item) => item !== option)
+                          ? Array.from(new Set([...selected, optionValue]))
+                          : selected.filter((item) => item !== optionValue)
                       );
                     }}
                     className="h-3 w-3"
                   />
-                  {option}
+                  {getGdprOptionLabel(option)}
                 </label>
               );
             })}
@@ -1170,9 +1240,22 @@ export function ActivityForm({
                         <div>{selectedGdprTemplate.activityTitle}</div>
                       </div>
                       <div>
-                        <span className="font-medium">Livrabil recomandat</span>
-                        <div>{selectedGdprTemplate.deliverableTitle}</div>
+                        <span className="font-medium">Regula livrabil</span>
+                        <div>{getGdprDeliverableRequirementLabel(selectedGdprTemplate.deliverableRequirement)}</div>
                       </div>
+                    </div>
+
+                    <div className="rounded-md border border-emerald-200 bg-white p-3 text-xs text-emerald-950">
+                      <div className="font-medium">Dovada minima acceptata</div>
+                      <div>{getGdprMinimumEvidenceLabels(selectedGdprTemplate.minimumEvidenceTypes).join(', ') || 'Nu este necesara dovada suplimentara'}</div>
+                      {selectedGdprTemplate.deliverableRequirement === 'nu_este_necesar' && (
+                        <p className="mt-1 text-emerald-800">
+                          Aceasta activitate este eligibila fara livrabil suplimentar daca exista dovada minima si concluzie de conformitate.
+                        </p>
+                      )}
+                      {selectedGdprTemplate.deliverableTitle && selectedGdprTemplate.deliverableRequirement !== 'nu_este_necesar' && (
+                        <p className="mt-1 text-emerald-800">Livrabil recomandat: {selectedGdprTemplate.deliverableTitle}</p>
+                      )}
                     </div>
 
                     <div className="grid gap-4 md:grid-cols-2">
