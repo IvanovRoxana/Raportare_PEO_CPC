@@ -122,7 +122,11 @@ export function MonthlyReportExport({ expert, activities, concurrentProjects = [
       const message = contentType.includes('application/json')
         ? ((await response.json().catch(() => ({}))) as { error?: string }).error
         : await response.text().catch(() => '');
-      throw new Error(message || `Exportul Excel a esuat. Status HTTP: ${response.status}`);
+      throw new Error(
+        contentType.includes('text/html')
+          ? `Exportul Excel a fost blocat de server. Status HTTP: ${response.status}. Reincarca pagina si incearca din nou.`
+          : message || `Exportul Excel a esuat. Status HTTP: ${response.status}`,
+      );
     }
 
     const blob = await response.blob();
