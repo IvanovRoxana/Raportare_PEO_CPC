@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import type { Activity, ConcurrentProject, Expert } from '@/lib/types';
+import type { Activity, ConcurrentProject, ConcurrentProjectTimesheetEntry, Expert } from '@/lib/types';
 import { getMonthName } from '@/lib/app-utils';
 import { getNonWorkingDayInfo } from '@/lib/non-working-days';
 import { getWorkingHoursInfo } from '@/lib/working-hours';
@@ -21,11 +21,12 @@ interface MonthlyReportExportProps {
   expert: Expert;
   activities: Activity[];
   concurrentProjects?: ConcurrentProject[];
+  concurrentTimesheetEntries?: ConcurrentProjectTimesheetEntry[];
   month: number;
   year: number;
 }
 
-export function MonthlyReportExport({ expert, activities, concurrentProjects = [], month, year }: MonthlyReportExportProps) {
+export function MonthlyReportExport({ expert, activities, concurrentProjects = [], concurrentTimesheetEntries = [], month, year }: MonthlyReportExportProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [includeOPIS, setIncludeOPIS] = useState(true);
@@ -110,6 +111,7 @@ export function MonthlyReportExport({ expert, activities, concurrentProjects = [
         expert,
         activities,
         concurrentProjects,
+        concurrentTimesheetEntries,
         month,
         year,
       }),

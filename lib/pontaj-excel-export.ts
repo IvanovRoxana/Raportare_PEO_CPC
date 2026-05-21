@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { deflateRawSync, inflateRawSync } from 'node:zlib';
-import type { Activity, ConcurrentProject, Expert } from './types';
+import type { Activity, ConcurrentProject, ConcurrentProjectTimesheetEntry, Expert } from './types';
 import {
   calculateMonthlyNormHours,
   getNonWorkingDayInfo,
@@ -15,6 +15,7 @@ export interface ExportPayload {
   expert: Partial<Expert> & { beneficiary?: string };
   activities: Partial<Activity>[];
   concurrentProjects?: Partial<ConcurrentProject>[];
+  concurrentTimesheetEntries?: Partial<ConcurrentProjectTimesheetEntry>[];
   month: number;
   year: number;
 }
@@ -182,8 +183,10 @@ async function generateConsolidatedWorkbook(payload: ExportPayload): Promise<Gen
   const daysInMonth = getDaysInMonth(payload.year, payload.month);
   const norm = calculateMonthlyNormHours({ month: payload.month, year: payload.year, dailyHours: 8 });
   const grouped = groupActivitiesByDate(payload.activities);
-  const goodworksByDate = getGoodworksHours(payload.concurrentProjects ?? [], payload.month, payload.year);
+  const goodworksEntries = getGoodworksEntries(payload.concurrentProjects ?? [], payload.concurrentTimesheetEntries ?? [], payload.month, payload.year);
+  const goodworksByDate = getGoodworksHours(payload.concurrentProjects ?? [], goodworksEntries, payload.month, payload.year);
   const peoSection = getPeoDetailSection(sheetXml, sharedStrings);
+  const goodworksSection = getGoodworksDetailSection(sheetXml, sharedStrings);
   const detailEnd = peoSection.totalRow - 1;
   const dailyHours = getExpertDailyHours(payload.expert);
   const monthEndSerial = excelSerial(payload.year, payload.month, daysInMonth);
@@ -202,18 +205,35 @@ async function generateConsolidatedWorkbook(payload: ExportPayload): Promise<Gen
     const dateKey = inMonth ? isoDate(payload.year, payload.month, day) : '';
     const info = inMonth ? getNonWorkingDayInfo(dateKey) : null;
     const isWorking = !!info && !info.isNonWorkingDay;
-    const goodworks = goodworksByDate.get(dateKey) ?? 0;
 
     sheetXml = setCell(sheetXml, `${col}13`, inMonth ? day : null);
     sheetXml = setCell(sheetXml, `${col}14`, inMonth ? WEEKDAYS_EN[new Date(payload.year, payload.month, day).getDay()] : null);
     sheetXml = setCell(sheetXml, `${col}15`, isWorking ? { formula: `MAX(0,8-SUM(${col}16:${col}17))` } : null);
-    sheetXml = setCell(sheetXml, `${col}16`, isWorking && goodworks > 0 ? goodworks : null);
     sheetXml = setCell(
       sheetXml,
       `${col}17`,
       isWorking ? { formula: `SUMIFS($AL$${peoSection.startRow}:$AL$${detailEnd},$A$${peoSection.startRow}:$A$${detailEnd},"="&DATE(${payload.year},${payload.month + 1},${col}13))` } : null,
     );
     sheetXml = setCell(sheetXml, `${col}18`, isWorking ? { formula: `SUM(${col}15:${col}17)` } : null);
+  }
+
+  for (let index = 0; index < goodworksSection.dayRows; index += 1) {
+    const day = index + 1;
+    const row = goodworksSection.startRow + index;
+    const inMonth = day <= daysInMonth;
+    const dateKey = inMonth ? isoDate(payload.year, payload.month, day) : '';
+    const info = inMonth ? getNonWorkingDayInfo(dateKey) : null;
+    const isWorking = !!info && !info.isNonWorkingDay;
+    const dayEntries = isWorking ? goodworksByDate.get(dateKey) ?? [] : [];
+    const hours = sumConcurrentHours(dayEntries);
+
+    sheetXml = setCell(sheetXml, `A${row}`, inMonth ? excelSerial(payload.year, payload.month, day) : null);
+    sheetXml = setCell(sheetXml, `B${row}`, null);
+    sheetXml = setCell(sheetXml, `C${row}`, hours > 0 ? joinUnique(dayEntries.map((entry) => entry.wp ?? '')) : null);
+    sheetXml = setCell(sheetXml, `D${row}`, null);
+    sheetXml = setCell(sheetXml, `E${row}`, hours > 0 ? hours : null);
+    sheetXml = setCell(sheetXml, `F${row}`, hours > 0 ? joinUnique(dayEntries.map((entry) => entry.taskName ?? '')) : null);
+    sheetXml = setCell(sheetXml, `AG${row}`, hours > 0 ? joinUnique(dayEntries.map((entry) => entry.relevantDeliverable ?? '')) : null);
   }
 
   sheetXml = setCell(sheetXml, `G${peoSection.headerRow - 5}`, stringValue(payload.expert.name));
@@ -298,10 +318,19 @@ function validateExportPayload(payload: ExportPayload) {
     if (!activity.date || !activity.hours) return false;
     return getNonWorkingDayInfo(activity.date).isNonWorkingDay;
   });
+  const invalidConcurrentEntries = (payload.concurrentTimesheetEntries ?? []).filter((entry) => {
+    if (!entry.date || !entry.hours) return false;
+    return getNonWorkingDayInfo(entry.date).isNonWorkingDay;
+  });
 
   if (invalidActivities.length > 0) {
     const dates = [...new Set(invalidActivities.map((activity) => activity.date).filter(Boolean))].join(', ');
     throw new Error(`Exportul a fost oprit: exista ore PEO pontate in zile nelucratoare (${dates}). Corecteaza activitatile inainte de export.`);
+  }
+
+  if (invalidConcurrentEntries.length > 0) {
+    const dates = [...new Set(invalidConcurrentEntries.map((entry) => entry.date).filter(Boolean))].join(', ');
+    throw new Error(`Exportul a fost oprit: exista ore pe proiecte paralele pontate in zile nelucratoare (${dates}). Corecteaza pontajele paralele inainte de export.`);
   }
 }
 
@@ -585,6 +614,33 @@ function getPeoDetailSection(sheetXml: string, sharedStrings: string[]) {
   };
 }
 
+function getGoodworksDetailSection(sheetXml: string, sharedStrings: string[]) {
+  const rowMatches = [...sheetXml.matchAll(/<row\b[^>]*\br="(\d+)"[^>]*>[\s\S]*?<\/row>/g)];
+  const header = rowMatches.find((row) => {
+    const rowNumber = Number(row[1]);
+    return (
+      getCellText(sheetXml, `A${rowNumber}`, sharedStrings) === 'DATE' &&
+      getCellText(sheetXml, `F${rowNumber}`, sharedStrings) === 'TASK NAME'
+    );
+  });
+  if (!header) {
+    throw new Error('Nu am gasit tabelul detaliat GOODWORKS4ALL in template-ul consolidat.');
+  }
+
+  const headerRow = Number(header[1]);
+  const nextHeader = rowMatches.find((row) => {
+    const rowNumber = Number(row[1]);
+    return rowNumber > headerRow && getCellText(sheetXml, `A${rowNumber}`, sharedStrings) === 'Ziua';
+  });
+  const totalRow = nextHeader ? Number(nextHeader[1]) : headerRow + 32;
+  return {
+    headerRow,
+    startRow: headerRow + 1,
+    totalRow,
+    dayRows: totalRow - headerRow - 1,
+  };
+}
+
 function readSharedStrings(files: Map<string, Buffer>) {
   const xml = files.get('xl/sharedStrings.xml')?.toString('utf8');
   if (!xml) return [];
@@ -608,13 +664,42 @@ function getCellText(sheetXml: string, ref: string, sharedStrings: string[]) {
   return value;
 }
 
-function getGoodworksHours(projects: Partial<ConcurrentProject>[], month: number, year: number) {
-  const hours = new Map<string, number>();
-  const daysInMonth = getDaysInMonth(year, month);
-  const matchingProjects = projects.filter((project) => {
-    const label = `${project.projectName ?? ''} ${project.projectCode ?? ''}`.toLowerCase();
-    return project.isActive !== false && (label.includes('goodworks') || label.includes('gw4all'));
+function getGoodworksEntries(
+  projects: Partial<ConcurrentProject>[],
+  entries: Partial<ConcurrentProjectTimesheetEntry>[],
+  month: number,
+  year: number,
+) {
+  const goodworksProjectIds = new Set(
+    projects
+      .filter(isGoodworksProject)
+      .map((project) => project.id)
+      .filter(Boolean),
+  );
+
+  return entries.filter((entry) => {
+    if (!entry.date || entry.month !== month || entry.year !== year || (Number(entry.hours) || 0) <= 0) return false;
+    if (entry.status === 'rejected') return false;
+    return goodworksProjectIds.size > 0 && goodworksProjectIds.has(entry.concurrentProjectId);
   });
+}
+
+function getGoodworksHours(
+  projects: Partial<ConcurrentProject>[],
+  entries: Partial<ConcurrentProjectTimesheetEntry>[],
+  month: number,
+  year: number,
+) {
+  const hours = new Map<string, Partial<ConcurrentProjectTimesheetEntry>[]>();
+
+  for (const entry of entries) {
+    const dateKey = toDateKey(entry.date!);
+    hours.set(dateKey, [...(hours.get(dateKey) ?? []), entry]);
+  }
+  if (entries.length > 0) return hours;
+
+  const daysInMonth = getDaysInMonth(year, month);
+  const matchingProjects = projects.filter(isGoodworksProject);
 
   for (let day = 1; day <= daysInMonth; day += 1) {
     const dateKey = isoDate(year, month, day);
@@ -626,11 +711,26 @@ function getGoodworksHours(projects: Partial<ConcurrentProject>[], month: number
     }, 0);
 
     if (dailyHours > 0) {
-      hours.set(dateKey, dailyHours);
+      hours.set(dateKey, [
+        {
+          date: dateKey,
+          month,
+          year,
+          hours: dailyHours,
+          wp: '',
+          taskName: '',
+          relevantDeliverable: '',
+        },
+      ]);
     }
   }
 
   return hours;
+}
+
+function isGoodworksProject(project: Partial<ConcurrentProject>) {
+  const label = `${project.projectName ?? ''} ${project.projectCode ?? ''}`.toLowerCase();
+  return project.isActive !== false && (label.includes('goodworks') || label.includes('gw4all'));
 }
 
 function projectIsActiveOn(project: Partial<ConcurrentProject>, dateKey: string) {
@@ -652,6 +752,10 @@ function groupActivitiesByDate(activities: Partial<Activity>[]) {
 
 function sumHours(activities: Partial<Activity>[]) {
   return roundNumber(activities.reduce((sum, activity) => sum + (Number(activity.hours) || 0), 0));
+}
+
+function sumConcurrentHours(entries: Partial<ConcurrentProjectTimesheetEntry>[]) {
+  return roundNumber(entries.reduce((sum, entry) => sum + (Number(entry.hours) || 0), 0));
 }
 
 function activityCode(activity: Partial<Activity>) {

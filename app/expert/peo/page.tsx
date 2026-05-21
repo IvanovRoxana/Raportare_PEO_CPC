@@ -28,6 +28,7 @@ import {
   useActivityMutations,
   useCollaborationExperts,
   useConcurrentProjects,
+  useConcurrentProjectTimesheetByMonth,
   useExperts,
   useReportStatus,
   useSharedDeliverableMutations,
@@ -103,6 +104,7 @@ export default function ExpertDashboard() {
   const { status: previousMonthStatus } = useReportStatus(selectedExpertId, previousMonthDate.getMonth(), previousMonthDate.getFullYear());
   const { status: nextMonthStatus } = useReportStatus(selectedExpertId, nextMonthDate.getMonth(), nextMonthDate.getFullYear());
   const { projects: concurrentProjects } = useConcurrentProjects(selectedExpertId);
+  const { entries: concurrentTimesheetEntries } = useConcurrentProjectTimesheetByMonth(currentMonth, currentYear);
   const { sharedDeliverables, mutate: refreshSharedDeliverables } = useSharedDeliverables(selectedExpertId || undefined);
   const { registerForActivity } = useSharedDeliverableMutations();
 
@@ -927,6 +929,7 @@ export default function ExpertDashboard() {
                   expert={selectedExpert as Expert}
                   activities={activities}
                   concurrentProjects={concurrentProjects}
+                  concurrentTimesheetEntries={concurrentTimesheetEntries.filter((entry) => entry.expertId === selectedExpertId)}
                   month={currentMonth}
                   year={currentYear}
                 />
