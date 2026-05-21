@@ -580,6 +580,7 @@ export function ActivityForm({
 
   const handleSave = async () => {
     setValidationError(null);
+    const reportingWarnings: string[] = [];
 
     const invalidTitleDeliverable = deliverables.find((d) => (
       d.uploaded
@@ -593,11 +594,10 @@ export function ActivityForm({
     ));
 
     if (invalidTitleDeliverable) {
-      alert(
+      reportingWarnings.push(
         invalidTitleDeliverable.titleCheckMessage
         || 'Titlul livrabilului trebuie confirmat si trebuie sa se regaseasca in prima pagina.',
       );
-      return;
     }
 
     if (isGdprExpert && !isLeave) {
@@ -608,12 +608,11 @@ export function ActivityForm({
           concluzie: gdprConclusionCode,
         },
         description,
-        hasDeliverable: true,
+        hasDeliverable: deliverables.some((deliverable) => deliverable.uploaded && (deliverable.filename || deliverable.name)),
       });
 
       if (!gdprValidation.ok) {
-        setValidationError(`Completeaza campurile GDPR obligatorii: ${gdprValidation.missingFields.join(', ')}.`);
-        return;
+        reportingWarnings.push(`Activitatea GDPR are campuri/dovezi lipsa: ${gdprValidation.missingFields.join(', ')}.`);
       }
     }
 
@@ -647,6 +646,17 @@ export function ActivityForm({
     if (!validation.ok) {
       setValidationError(validation.message || 'Activitatea nu respecta regulile de pontaj.');
       return;
+    }
+
+    if (reportingWarnings.length > 0) {
+      const message = [
+        'Activitatea se va salva, dar raportul de activitate nu va putea fi transmis pana la remedierea urmatoarelor probleme:',
+        ...reportingWarnings.map((warning) => `- ${warning}`),
+      ].join('\n');
+      setValidationError(message);
+      if (typeof window !== 'undefined') {
+        window.alert(message);
+      }
     }
 
     const uploadedDeliverables = await Promise.all(
