@@ -124,6 +124,16 @@ const SUBACTIVITY_TO_ACTIVITY_CODE = new Map([
   ['SA4.1', 'A4'],
   ['SA6.1', 'A6'],
 ]);
+const SUBACTIVITY_NAMES = new Map([
+  ['SA1.1', 'Informare, recrutare, selectie GT'],
+  ['SA2.1', 'Realizarea de analize cu privire la tendintele manifestate la nivel national'],
+  ['SA3.2', 'Asigurarea infrastructurii necesare in vederea unei functionari adecvate a structurilor reprezentative ale dialogului social pentru Confederatia Patronala Concordia si membrii sai'],
+  ['SA3.3', 'Realizarea unor campanii in vederea recrutarii de noi membri'],
+  ['SA3.4', 'Dezvoltarea si derularea de activitati si servicii suport si informare pentru membri'],
+  ['SA3.5', 'Schimb de bune practici la nivel European'],
+  ['SA4.1', 'Programe Formare'],
+  ['SA6.1', 'Managementul proiectului'],
+]);
 
 interface PeoDetailRow {
   day: number;
@@ -860,9 +870,13 @@ function activityCode(activity: Partial<Activity>, expert?: Partial<Expert>) {
 }
 
 function activitySubactivity(activity: Partial<Activity>) {
-  const code = stringValue(activity.saCode).trim();
+  const code = normalizeSaCode(activity.saCode);
+  const officialName = code ? SUBACTIVITY_NAMES.get(code) : undefined;
+  if (code && officialName) return `${code} ${officialName}`;
+
+  const rawCode = stringValue(activity.saCode).trim();
   const label = [activity.activityType, activity.title].map((value) => stringValue(value).trim()).find(Boolean);
-  return [code, label].filter(Boolean).join(' ') || activity.activityType || '';
+  return [rawCode, label].filter(Boolean).join(' ') || activity.activityType || '';
 }
 
 function expertCanReportSaCode(expert: Partial<Expert> | undefined, saCode: string) {

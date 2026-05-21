@@ -105,7 +105,7 @@ describe('export pontaj Excel', () => {
     assert.doesNotMatch(cellXml(sheet, 'A16'), /GOODWORKS4ALL/);
     assert.match(cellXml(sheet, 'V16'), /\$AL\$58:\$AL\$88/);
     assert.match(cellXml(sheet, 'B78'), /A1/);
-    assert.match(cellXml(sheet, 'D78'), /SA1\.1 Informare, recrutare, selectie grup tinta/);
+    assert.match(cellXml(sheet, 'D78'), /SA1\.1 Informare, recrutare, selectie GT/);
     assert.match(cellXml(sheet, 'AL78'), /<v>4<\/v>/);
     assert.match(cellXml(sheet, 'AO78'), /<v>46163<\/v>/);
     assert.match(cellXml(sheet, 'AP78'), /LEFT\(D78,6\)/);
@@ -133,7 +133,7 @@ describe('export pontaj Excel', () => {
     assert.match(cellXml(sheet, 'A79'), /<v>46163<\/v>/);
     assert.match(cellXml(sheet, 'B78'), /A1/);
     assert.match(cellXml(sheet, 'B79'), /A2/);
-    assert.match(cellXml(sheet, 'D79'), /SA2\.1 Activitate doi/);
+    assert.match(cellXml(sheet, 'D79'), /SA2\.1 Realizarea de analize cu privire la tendintele manifestate la nivel national/);
     assert.match(cellXml(sheet, 'AL78'), /<v>2<\/v>/);
     assert.match(cellXml(sheet, 'AL79'), /<v>2<\/v>/);
     assert.match(cellXml(sheet, 'AM79'), /COUNTIF\(AO:AO,A79\)/);
@@ -159,6 +159,26 @@ describe('export pontaj Excel', () => {
     assert.match(cellXml(sheet, 'B78'), /A3/);
     assert.doesNotMatch(cellXml(sheet, 'B79'), /A5|Activitate neeligibila/);
     assert.match(cellXml(sheet, 'D79'), /SA5\.1 Activitate neeligibila/);
+  });
+
+  it('foloseste denumirea oficiala a subactivitatii, nu titlul activitatii selectate', async () => {
+    const workbook = await generatePontajExcel({
+      kind: 'consolidated',
+      month: 4,
+      year: 2026,
+      expert: { id: 'expert-5', name: 'Expert GT', role: 'Expert PEO', category: 'Expert', oreZi: 8, saCodes: ['SA1.1'] },
+      activities: [
+        { date: '2026-05-21', hours: 2, activityType: 'Monitorizare GT — entitati', saCode: 'SA1.1', status: 'approved' },
+      ],
+      concurrentProjects: [],
+      concurrentTimesheetEntries: [],
+    });
+
+    const files = readXlsx(workbook.buffer);
+    const sheet = files.get('xl/worksheets/sheet5.xml')!.toString('utf8');
+
+    assert.match(cellXml(sheet, 'D78'), /SA1\.1 Informare, recrutare, selectie GT/);
+    assert.doesNotMatch(cellXml(sheet, 'D78'), /Monitorizare GT/);
   });
 });
 
