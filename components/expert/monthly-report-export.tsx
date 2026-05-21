@@ -118,8 +118,11 @@ export function MonthlyReportExport({ expert, activities, concurrentProjects = [
     });
 
     if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
-      throw new Error(data.error || 'Exportul Excel a esuat.');
+      const contentType = response.headers.get('Content-Type') || '';
+      const message = contentType.includes('application/json')
+        ? ((await response.json().catch(() => ({}))) as { error?: string }).error
+        : await response.text().catch(() => '');
+      throw new Error(message || `Exportul Excel a esuat. Status HTTP: ${response.status}`);
     }
 
     const blob = await response.blob();
