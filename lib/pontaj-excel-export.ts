@@ -45,6 +45,7 @@ interface ZipEntry {
 
 const PEO_TEMPLATE = path.join(process.cwd(), 'public', 'templates', 'pontaj-peo-template.xlsx');
 const CONSOLIDATED_TEMPLATE = path.join(process.cwd(), 'public', 'templates', 'pontaj-consolidat-template.xlsx');
+const CONSOLIDATED_NO_GOODWORKS_TEMPLATE = path.join(process.cwd(), 'public', 'templates', 'pontaj-consolidat-fara-goodworks-template.xlsx');
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DAY_COLUMNS = [
@@ -114,6 +115,14 @@ const MONTHS_EN = [
 const WEEKDAYS_EN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const CRC_TABLE = buildCrcTable();
 
+interface PeoDetailRow {
+  day: number;
+  dateKey: string;
+  dateSerial: number;
+  isWorking: boolean;
+  activity?: Partial<Activity>;
+}
+
 export async function generatePontajExcel(payload: ExportPayload): Promise<GeneratedWorkbook> {
   validateExportPayload(payload);
   return payload.kind === 'peo' ? generatePeoWorkbook(payload) : generateConsolidatedWorkbook(payload);
@@ -125,14 +134,19 @@ async function generatePeoWorkbook(payload: ExportPayload): Promise<GeneratedWor
   const sheetPath = 'xl/worksheets/sheet1.xml';
   let sheetXml = files.get(sheetPath)!.toString('utf8');
   const daysInMonth = getDaysInMonth(payload.year, payload.month);
-  const totalRow = daysInMonth === 31 ? 45 : 44;
-  const lastDayRow = 13 + Math.min(daysInMonth, 31);
+  let totalRow = daysInMonth === 31 ? 45 : 44;
   const monthEndSerial = excelSerial(payload.year, payload.month, daysInMonth);
   const grouped = groupActivitiesByDate(payload.activities);
+  const detailRows = buildPeoDetailRows(payload.year, payload.month, grouped);
+  const extraRows = Math.max(0, detailRows.length - daysInMonth);
   const dailyHours = getExpertDailyHours(payload.expert);
 
   if (daysInMonth === 31) {
     sheetXml = insertPeoDay31Row(sheetXml);
+  }
+  if (extraRows > 0) {
+    sheetXml = insertWorksheetRows(sheetXml, totalRow, extraRows);
+    totalRow += extraRows;
   }
 
   sheetXml = setCell(sheetXml, 'G8', stringValue(payload.expert.name));
@@ -141,23 +155,21 @@ async function generatePeoWorkbook(payload: ExportPayload): Promise<GeneratedWor
   sheetXml = setCell(sheetXml, 'G11', stringValue(payload.expert.beneficiary ?? 'CONFEDERATIA PATRONALA CONCORDIA'));
   sheetXml = setCell(sheetXml, 'G12', stringValue(getProjectTitle(payload.expert)));
 
-  for (let index = 0; index < 30 + (daysInMonth === 31 ? 1 : 0); index += 1) {
-    const day = index + 1;
+  const peoDayRows = 30 + (daysInMonth === 31 ? 1 : 0) + extraRows;
+  for (let index = 0; index < peoDayRows; index += 1) {
+    const detail = detailRows[index];
     const row = 14 + index;
-    const inMonth = day <= daysInMonth;
-    const dateKey = inMonth ? isoDate(payload.year, payload.month, day) : '';
-    const info = inMonth ? getNonWorkingDayInfo(dateKey) : null;
-    const dayActivities = dateKey ? grouped.get(dateKey) ?? [] : [];
-    const hours = sumHours(dayActivities);
+    const hours = detail?.isWorking && detail.activity ? Number(detail.activity.hours) || 0 : 0;
 
-    sheetXml = setCell(sheetXml, `A${row}`, inMonth ? excelSerial(payload.year, payload.month, day) : null);
-    sheetXml = setCell(sheetXml, `B${row}`, !info?.isNonWorkingDay && hours > 0 ? joinUnique(dayActivities.map(activityCode)) : null);
-    sheetXml = setCell(sheetXml, `D${row}`, !info?.isNonWorkingDay && hours > 0 ? joinUnique(dayActivities.map(activitySubactivity)) : null);
+    sheetXml = setCell(sheetXml, `A${row}`, detail ? detail.dateSerial : null);
+    sheetXml = setCell(sheetXml, `B${row}`, hours > 0 && detail?.activity ? activityCode(detail.activity) : null);
+    sheetXml = setCell(sheetXml, `D${row}`, hours > 0 && detail?.activity ? activitySubactivity(detail.activity) : null);
     sheetXml = setCell(sheetXml, `G${row}`, null);
-    sheetXml = setCell(sheetXml, `H${row}`, !info?.isNonWorkingDay && hours > 0 ? hours : null);
-    sheetXml = setCell(sheetXml, `I${row}`, !info?.isNonWorkingDay ? 0 : null);
+    sheetXml = setCell(sheetXml, `H${row}`, hours > 0 ? hours : null);
+    sheetXml = setCell(sheetXml, `I${row}`, detail?.isWorking ? 0 : null);
   }
 
+  const lastDayRow = 13 + detailRows.length;
   sheetXml = setCell(sheetXml, `A${totalRow}`, 'NR. TOTAL DE ORE');
   sheetXml = setCell(sheetXml, `H${totalRow}`, { formula: `SUM(H14:H${lastDayRow})+COUNTIF(H14:H${lastDayRow},"CO")*${dailyHours}` });
   sheetXml = setCell(sheetXml, `I${totalRow}`, { formula: `SUM(I14:I${lastDayRow})` });
@@ -173,7 +185,8 @@ async function generatePeoWorkbook(payload: ExportPayload): Promise<GeneratedWor
 }
 
 async function generateConsolidatedWorkbook(payload: ExportPayload): Promise<GeneratedWorkbook> {
-  const template = await readFile(CONSOLIDATED_TEMPLATE);
+  const hasGoodworks = hasGoodworksProject(payload.concurrentProjects ?? []);
+  const template = await readFile(hasGoodworks ? CONSOLIDATED_TEMPLATE : CONSOLIDATED_NO_GOODWORKS_TEMPLATE);
   const { entries, files } = readXlsx(template);
   const workbookXml = files.get('xl/workbook.xml')!.toString('utf8');
   const relsXml = files.get('xl/_rels/workbook.xml.rels')!.toString('utf8');
@@ -185,18 +198,29 @@ async function generateConsolidatedWorkbook(payload: ExportPayload): Promise<Gen
   const grouped = groupActivitiesByDate(payload.activities);
   const goodworksEntries = getGoodworksEntries(payload.concurrentProjects ?? [], payload.concurrentTimesheetEntries ?? [], payload.month, payload.year);
   const goodworksByDate = getGoodworksHours(payload.concurrentProjects ?? [], goodworksEntries, payload.month, payload.year);
-  const peoSection = getPeoDetailSection(sheetXml, sharedStrings);
-  const goodworksSection = getGoodworksDetailSection(sheetXml, sharedStrings);
+  let peoSection = getPeoDetailSection(sheetXml, sharedStrings);
+  const goodworksSection = hasGoodworks ? getGoodworksDetailSection(sheetXml, sharedStrings) : null;
+  const detailRows = buildPeoDetailRows(payload.year, payload.month, grouped);
+  const extraRows = Math.max(0, detailRows.length - peoSection.dayRows);
+  if (extraRows > 0) {
+    sheetXml = insertWorksheetRows(sheetXml, peoSection.totalRow, extraRows);
+    peoSection = { ...peoSection, totalRow: peoSection.totalRow + extraRows, dayRows: peoSection.dayRows + extraRows };
+  }
   const detailEnd = peoSection.totalRow - 1;
   const dailyHours = getExpertDailyHours(payload.expert);
   const monthEndSerial = excelSerial(payload.year, payload.month, daysInMonth);
+  const summaryRows = hasGoodworks
+    ? { concordia: 15, goodworks: 16, peo: 17, total: 18 }
+    : { concordia: 15, peo: 16, total: 17 };
 
   sheetXml = setCell(sheetXml, 'B8', `Timesheet   / Name: ${payload.expert.name ?? 'Expert'} / Position: ${getExpertPosition(payload.expert)}`);
   sheetXml = setCell(sheetXml, 'B11', 'Organisation: Concordia Employers Confederation');
   sheetXml = setCell(sheetXml, 'A12', `${MONTHS_EN[payload.month]} ${payload.year} - ${norm.normHours} working hours`);
-  sheetXml = setCell(sheetXml, 'A15', 'CONCORDIA');
-  sheetXml = setCell(sheetXml, 'A16', 'GOODWORKS4ALL');
-  sheetXml = setCell(sheetXml, 'A17', `PEO_${getExpertPosition(payload.expert)}`);
+  sheetXml = setCell(sheetXml, `A${summaryRows.concordia}`, 'CONCORDIA');
+  if (hasGoodworks) {
+    sheetXml = setCell(sheetXml, `A${summaryRows.goodworks}`, 'GOODWORKS4ALL');
+  }
+  sheetXml = setCell(sheetXml, `A${summaryRows.peo}`, `PEO_${getExpertPosition(payload.expert)}`);
 
   for (let index = 0; index < DAY_COLUMNS.length; index += 1) {
     const day = index + 1;
@@ -208,32 +232,34 @@ async function generateConsolidatedWorkbook(payload: ExportPayload): Promise<Gen
 
     sheetXml = setCell(sheetXml, `${col}13`, inMonth ? day : null);
     sheetXml = setCell(sheetXml, `${col}14`, inMonth ? WEEKDAYS_EN[new Date(payload.year, payload.month, day).getDay()] : null);
-    sheetXml = setCell(sheetXml, `${col}15`, isWorking ? { formula: `MAX(0,8-SUM(${col}16:${col}17))` } : null);
+    sheetXml = setCell(sheetXml, `${col}${summaryRows.concordia}`, isWorking ? { formula: `MAX(0,8-SUM(${col}${hasGoodworks ? summaryRows.goodworks : summaryRows.peo}:${col}${summaryRows.peo}))` } : null);
     sheetXml = setCell(
       sheetXml,
-      `${col}17`,
+      `${col}${summaryRows.peo}`,
       isWorking ? { formula: `SUMIFS($AL$${peoSection.startRow}:$AL$${detailEnd},$A$${peoSection.startRow}:$A$${detailEnd},"="&DATE(${payload.year},${payload.month + 1},${col}13))` } : null,
     );
-    sheetXml = setCell(sheetXml, `${col}18`, isWorking ? { formula: `SUM(${col}15:${col}17)` } : null);
+    sheetXml = setCell(sheetXml, `${col}${summaryRows.total}`, isWorking ? { formula: `SUM(${col}${summaryRows.concordia}:${col}${summaryRows.peo})` } : null);
   }
 
-  for (let index = 0; index < goodworksSection.dayRows; index += 1) {
-    const day = index + 1;
-    const row = goodworksSection.startRow + index;
-    const inMonth = day <= daysInMonth;
-    const dateKey = inMonth ? isoDate(payload.year, payload.month, day) : '';
-    const info = inMonth ? getNonWorkingDayInfo(dateKey) : null;
-    const isWorking = !!info && !info.isNonWorkingDay;
-    const dayEntries = isWorking ? goodworksByDate.get(dateKey) ?? [] : [];
-    const hours = sumConcurrentHours(dayEntries);
+  if (goodworksSection) {
+    for (let index = 0; index < goodworksSection.dayRows; index += 1) {
+      const day = index + 1;
+      const row = goodworksSection.startRow + index;
+      const inMonth = day <= daysInMonth;
+      const dateKey = inMonth ? isoDate(payload.year, payload.month, day) : '';
+      const info = inMonth ? getNonWorkingDayInfo(dateKey) : null;
+      const isWorking = !!info && !info.isNonWorkingDay;
+      const dayEntries = isWorking ? goodworksByDate.get(dateKey) ?? [] : [];
+      const hours = sumConcurrentHours(dayEntries);
 
-    sheetXml = setCell(sheetXml, `A${row}`, inMonth ? excelSerial(payload.year, payload.month, day) : null);
-    sheetXml = setCell(sheetXml, `B${row}`, null);
-    sheetXml = setCell(sheetXml, `C${row}`, hours > 0 ? joinUnique(dayEntries.map((entry) => entry.wp ?? '')) : null);
-    sheetXml = setCell(sheetXml, `D${row}`, null);
-    sheetXml = setCell(sheetXml, `E${row}`, hours > 0 ? hours : null);
-    sheetXml = setCell(sheetXml, `F${row}`, hours > 0 ? joinUnique(dayEntries.map((entry) => entry.taskName ?? '')) : null);
-    sheetXml = setCell(sheetXml, `AG${row}`, hours > 0 ? joinUnique(dayEntries.map((entry) => entry.relevantDeliverable ?? '')) : null);
+      sheetXml = setCell(sheetXml, `A${row}`, inMonth ? excelSerial(payload.year, payload.month, day) : null);
+      sheetXml = setCell(sheetXml, `B${row}`, null);
+      sheetXml = setCell(sheetXml, `C${row}`, hours > 0 ? joinUnique(dayEntries.map((entry) => entry.wp ?? '')) : null);
+      sheetXml = setCell(sheetXml, `D${row}`, null);
+      sheetXml = setCell(sheetXml, `E${row}`, hours > 0 ? hours : null);
+      sheetXml = setCell(sheetXml, `F${row}`, hours > 0 ? joinUnique(dayEntries.map((entry) => entry.taskName ?? '')) : null);
+      sheetXml = setCell(sheetXml, `AG${row}`, hours > 0 ? joinUnique(dayEntries.map((entry) => entry.relevantDeliverable ?? '')) : null);
+    }
   }
 
   sheetXml = setCell(sheetXml, `G${peoSection.headerRow - 5}`, stringValue(payload.expert.name));
@@ -243,32 +269,28 @@ async function generateConsolidatedWorkbook(payload: ExportPayload): Promise<Gen
   sheetXml = setCell(sheetXml, `G${peoSection.headerRow - 1}`, stringValue(getProjectTitle(payload.expert)));
 
   for (let index = 0; index < peoSection.dayRows; index += 1) {
-    const day = index + 1;
+    const detail = detailRows[index];
     const row = peoSection.startRow + index;
-    const inMonth = day <= daysInMonth;
-    const dateKey = inMonth ? isoDate(payload.year, payload.month, day) : '';
-    const info = inMonth ? getNonWorkingDayInfo(dateKey) : null;
-    const isWorking = !!info && !info.isNonWorkingDay;
-    const dayActivities = dateKey ? grouped.get(dateKey) ?? [] : [];
-    const hours = isWorking ? sumHours(dayActivities) : 0;
+    const activity = detail?.activity;
+    const hours = detail?.isWorking && activity ? Number(activity.hours) || 0 : 0;
 
-    sheetXml = setCell(sheetXml, `A${row}`, inMonth ? excelSerial(payload.year, payload.month, day) : null);
-    sheetXml = setCell(sheetXml, `B${row}`, isWorking && hours > 0 ? joinUnique(dayActivities.map(activityCode)) : null);
-    sheetXml = setCell(sheetXml, `D${row}`, isWorking && hours > 0 ? joinUnique(dayActivities.map(activitySubactivity)) : null);
+    sheetXml = setCell(sheetXml, `A${row}`, detail ? detail.dateSerial : null);
+    sheetXml = setCell(sheetXml, `B${row}`, hours > 0 && activity ? activityCode(activity) : null);
+    sheetXml = setCell(sheetXml, `D${row}`, hours > 0 && activity ? activitySubactivity(activity) : null);
     sheetXml = setCell(sheetXml, `AK${row}`, null);
-    sheetXml = setCell(sheetXml, `AL${row}`, isWorking && hours > 0 ? hours : null);
+    sheetXml = setCell(sheetXml, `AL${row}`, hours > 0 ? hours : null);
     sheetXml = setCell(
       sheetXml,
       `AM${row}`,
-      isWorking
+      detail?.isWorking
         ? {
             formula: `IF(AL${row}="CO","CO",IF(COUNTIF(AO:AO,A${row})=0,0,(8-SUMIF(AO:AO,A${row},AL:AL))/COUNTIF(AO:AO,A${row})))`,
           }
         : null,
     );
-    sheetXml = setCell(sheetXml, `AN${row}`, isWorking && hours > 0 ? joinUnique(dayActivities.map(activityDescription)) : null);
-    sheetXml = setCell(sheetXml, `AO${row}`, null);
-    sheetXml = setCell(sheetXml, `AP${row}`, null);
+    sheetXml = setCell(sheetXml, `AN${row}`, hours > 0 && activity ? activityDescription(activity) : null);
+    sheetXml = setCell(sheetXml, `AO${row}`, detail?.isWorking ? detail.dateSerial : null);
+    sheetXml = setCell(sheetXml, `AP${row}`, detail?.isWorking ? { formula: `LEFT(D${row},6)` } : null);
     sheetXml = setCell(sheetXml, `AQ${row}`, null);
     sheetXml = setCell(sheetXml, `AR${row}`, null);
     sheetXml = setCell(sheetXml, `AS${row}`, null);
@@ -280,7 +302,7 @@ async function generateConsolidatedWorkbook(payload: ExportPayload): Promise<Gen
     sheetXml = setCell(sheetXml, `AY${row}`, null);
     sheetXml = setCell(sheetXml, `AZ${row}`, null);
     sheetXml = setCell(sheetXml, `BA${row}`, null);
-    sheetXml = setCell(sheetXml, `BB${row}`, isWorking && hours > 0 ? joinUnique(dayActivities.flatMap(activityDeliverables)) : null);
+    sheetXml = setCell(sheetXml, `BB${row}`, hours > 0 && activity ? joinUnique(activityDeliverables(activity)) : null);
   }
 
   sheetXml = setCell(sheetXml, `AL${peoSection.totalRow}`, {
@@ -550,6 +572,40 @@ function insertPeoDay31Row(xml: string) {
   return shifted;
 }
 
+function insertWorksheetRows(xml: string, insertAtRow: number, count: number) {
+  let next = xml;
+  for (let index = 0; index < count; index += 1) {
+    const sourceRow = insertAtRow - 1;
+    const sourceXml = next.match(new RegExp(`<row\\b[^>]*\\br="${sourceRow}"[^>]*>[\\s\\S]*?<\\/row>`))?.[0];
+    if (!sourceXml) return next;
+
+    next = shiftRows(next, insertAtRow, 1);
+    const newRow = clearValues(shiftCellReferences(sourceXml, sourceRow, insertAtRow));
+    next = next.replace(new RegExp(`(<row\\b[^>]*\\br="${sourceRow}"[^>]*>[\\s\\S]*?<\\/row>)`), `$1${newRow}`);
+    next = copyMergedRegionsForInsertedRow(next, sourceRow, insertAtRow);
+  }
+  return next;
+}
+
+function copyMergedRegionsForInsertedRow(xml: string, sourceRow: number, targetRow: number) {
+  const refs = [...xml.matchAll(/<mergeCell\b[^>]*\bref="([^"]+)"[^>]*\/>/g)]
+    .map((match) => match[1])
+    .filter((ref) => mergeRefIsSingleRow(ref, sourceRow))
+    .map((ref) => ref.replace(new RegExp(`${sourceRow}\\b`, 'g'), String(targetRow)));
+
+  if (refs.length === 0) return xml;
+
+  const mergeXml = refs.map((ref) => `<mergeCell ref="${ref}"/>`).join('');
+  let next = xml.includes('</mergeCells>') ? xml.replace('</mergeCells>', `${mergeXml}</mergeCells>`) : xml.replace('</worksheet>', `<mergeCells count="0">${mergeXml}</mergeCells></worksheet>`);
+  next = next.replace(/<mergeCells\b[^>]*\bcount="(\d+)"/, (_match, count) => `<mergeCells count="${Number(count) + refs.length}"`);
+  return next;
+}
+
+function mergeRefIsSingleRow(ref: string, row: number) {
+  const match = ref.match(/^[A-Z]+(\d+):[A-Z]+(\d+)$/);
+  return !!match && Number(match[1]) === row && Number(match[2]) === row;
+}
+
 function shiftRows(xml: string, startRow: number, delta: number) {
   return xml.replace(/([A-Z]{1,3})(\d+)/g, (match, col, row) => {
     const rowNumber = Number(row);
@@ -733,10 +789,39 @@ function isGoodworksProject(project: Partial<ConcurrentProject>) {
   return project.isActive !== false && (label.includes('goodworks') || label.includes('gw4all'));
 }
 
+function hasGoodworksProject(projects: Partial<ConcurrentProject>[]) {
+  return projects.some(isGoodworksProject);
+}
+
 function projectIsActiveOn(project: Partial<ConcurrentProject>, dateKey: string) {
   const start = project.startDate ? toDateKey(project.startDate) : '0000-00-00';
   const end = project.endDate ? toDateKey(project.endDate) : '9999-12-31';
   return dateKey >= start && dateKey <= end;
+}
+
+function buildPeoDetailRows(year: number, month: number, grouped: Map<string, Partial<Activity>[]>) {
+  const rows: PeoDetailRow[] = [];
+  const daysInMonth = getDaysInMonth(year, month);
+
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const dateKey = isoDate(year, month, day);
+    const isWorking = !getNonWorkingDayInfo(dateKey).isNonWorkingDay;
+    const activities = isWorking ? grouped.get(dateKey) ?? [] : [];
+    const baseRow = {
+      day,
+      dateKey,
+      dateSerial: excelSerial(year, month, day),
+      isWorking,
+    };
+
+    if (activities.length === 0) {
+      rows.push(baseRow);
+    } else {
+      activities.forEach((activity) => rows.push({ ...baseRow, activity }));
+    }
+  }
+
+  return rows;
 }
 
 function groupActivitiesByDate(activities: Partial<Activity>[]) {
@@ -759,11 +844,18 @@ function sumConcurrentHours(entries: Partial<ConcurrentProjectTimesheetEntry>[])
 }
 
 function activityCode(activity: Partial<Activity>) {
-  return activity.activityType || activity.saCode || '';
+  return activityNumberFromSaCode(activity.saCode) || activity.activityType || '';
 }
 
 function activitySubactivity(activity: Partial<Activity>) {
-  return [activity.saCode, activity.title].filter(Boolean).join(' - ') || activity.activityType || '';
+  const code = stringValue(activity.saCode).trim();
+  const label = [activity.activityType, activity.title].map((value) => stringValue(value).trim()).find(Boolean);
+  return [code, label].filter(Boolean).join(' ') || activity.activityType || '';
+}
+
+function activityNumberFromSaCode(saCode?: string) {
+  const match = stringValue(saCode).match(/^SA\s*(\d+)/i);
+  return match ? `A${match[1]}` : '';
 }
 
 function activityDescription(activity: Partial<Activity>) {

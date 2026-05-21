@@ -76,6 +76,68 @@ describe('export pontaj Excel', () => {
       /proiecte paralele pontate in zile nelucratoare/,
     );
   });
+
+  it('foloseste template-ul fara GOODWORKS4ALL si exporta detaliile PEO pe activitate', async () => {
+    const workbook = await generatePontajExcel({
+      kind: 'consolidated',
+      month: 4,
+      year: 2026,
+      expert: { id: 'expert-2', name: 'Simona Khamissi', role: 'Expert Protectia Datelor', category: 'Expert', oreZi: 8 },
+      activities: [
+        {
+          date: '2026-05-21',
+          hours: 4,
+          activityType: 'Informare, recrutare, selectie grup tinta',
+          saCode: 'SA1.1',
+          title: 'Titlu ignorat cand exista activityType',
+          description: 'Activitate PEO pe 21 mai',
+          status: 'approved',
+        },
+      ],
+      concurrentProjects: [],
+      concurrentTimesheetEntries: [],
+    });
+
+    const files = readXlsx(workbook.buffer);
+    const sheet = files.get('xl/worksheets/sheet5.xml')!.toString('utf8');
+
+    assert.match(cellXml(sheet, 'A16'), /PEO_Expert Protectia Datelor/);
+    assert.doesNotMatch(cellXml(sheet, 'A16'), /GOODWORKS4ALL/);
+    assert.match(cellXml(sheet, 'V16'), /\$AL\$58:\$AL\$88/);
+    assert.match(cellXml(sheet, 'B78'), /A1/);
+    assert.match(cellXml(sheet, 'D78'), /SA1\.1 Informare, recrutare, selectie grup tinta/);
+    assert.match(cellXml(sheet, 'AL78'), /<v>4<\/v>/);
+    assert.match(cellXml(sheet, 'AO78'), /<v>46163<\/v>/);
+    assert.match(cellXml(sheet, 'AP78'), /LEFT\(D78,6\)/);
+  });
+
+  it('adauga rand separat cand exista mai multe activitati PEO in aceeasi zi', async () => {
+    const workbook = await generatePontajExcel({
+      kind: 'consolidated',
+      month: 4,
+      year: 2026,
+      expert: { id: 'expert-3', name: 'Expert Test', role: 'Expert PEO', category: 'Expert', oreZi: 8 },
+      activities: [
+        { date: '2026-05-21', hours: 2, activityType: 'Activitate unu', saCode: 'SA1.1', description: 'Prima activitate', status: 'approved' },
+        { date: '2026-05-21', hours: 2, activityType: 'Activitate doi', saCode: 'SA2.1', description: 'A doua activitate', status: 'approved' },
+      ],
+      concurrentProjects: [],
+      concurrentTimesheetEntries: [],
+    });
+
+    const files = readXlsx(workbook.buffer);
+    const sheet = files.get('xl/worksheets/sheet5.xml')!.toString('utf8');
+
+    assert.match(cellXml(sheet, 'V16'), /\$AL\$58:\$AL\$89/);
+    assert.match(cellXml(sheet, 'A78'), /<v>46163<\/v>/);
+    assert.match(cellXml(sheet, 'A79'), /<v>46163<\/v>/);
+    assert.match(cellXml(sheet, 'B78'), /A1/);
+    assert.match(cellXml(sheet, 'B79'), /A2/);
+    assert.match(cellXml(sheet, 'D79'), /SA2\.1 Activitate doi/);
+    assert.match(cellXml(sheet, 'AL78'), /<v>2<\/v>/);
+    assert.match(cellXml(sheet, 'AL79'), /<v>2<\/v>/);
+    assert.match(cellXml(sheet, 'AM79'), /COUNTIF\(AO:AO,A79\)/);
+  });
 });
 
 function readXlsx(buffer: Buffer) {
