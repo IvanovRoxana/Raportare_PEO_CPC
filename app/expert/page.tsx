@@ -31,7 +31,7 @@ import { getMonthName } from '@/lib/backend-store';
 import { buildConsolidatedTimesheet, filterActiveConcurrentProjectsForMonth, getConcurrentProjectMonthlyTotal, getConsolidatedWarnings } from '@/lib/concurrent-projects';
 import { buildPendingSharedActivityAlerts, buildPendingSharedDeliverableAlerts, buildReturnedSharedActivityAlerts } from '@/lib/document-sharing';
 import { canAccessPmDashboard } from '@/lib/pm-dashboard';
-import type { Activity, ConcurrentProject, ConcurrentProjectTimesheetEntry } from '@/lib/types';
+import type { Activity, ConcurrentProject, ConcurrentProjectTimesheetEntry, Expert } from '@/lib/types';
 import { getNonWorkingDayInfo } from '@/lib/non-working-days';
 import { cn } from '@/lib/utils';
 
@@ -101,6 +101,25 @@ function getProjectTotal(project: ProjectItem) {
   const peoHours = project.activities.reduce((sum, activity) => sum + (Number(activity.hours) || 0), 0);
   const concurrentHours = project.timesheetEntries?.reduce((sum, entry) => sum + (Number(entry.hours) || 0), 0) ?? 0;
   return peoHours + concurrentHours;
+}
+
+function getFilenameFromDisposition(disposition: string) {
+  const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match) return decodeURIComponent(utf8Match[1]);
+
+  const asciiMatch = disposition.match(/filename="?([^";]+)"?/i);
+  return asciiMatch?.[1];
+}
+
+function triggerDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }
 
 
@@ -414,6 +433,36 @@ export default function ExpertHomeDashboard() {
     setDraftConcurrentEntries(rest);
   };
 
+  const exportPontaj = async () => {
+    if (!currentExpert) return;
+
+    const response = await fetch('/api/export/pontaj', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kind: 'consolidated',
+        expert: currentExpert as Expert,
+        activities: peoActivities,
+        concurrentProjects: activeConcurrentProjects,
+        concurrentTimesheetEntries: expertConcurrentEntries,
+        month: currentMonth,
+        year: currentYear,
+      }),
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || 'Exportul pontajului a esuat.');
+    }
+
+    const blob = await response.blob();
+    const disposition = response.headers.get('Content-Disposition') || '';
+    const filename =
+      getFilenameFromDisposition(disposition) ||
+      `Pontaj_final_consolidat_${currentExpert.name}_${getMonthName(currentMonth)}_${currentYear}.xlsx`;
+    triggerDownload(blob, filename);
+  };
+
   const canOpenPmDashboard = canAccessPmDashboard({
     roles: signedInRoles,
     projectRole: currentExpert?.role,
@@ -431,8 +480,18 @@ export default function ExpertHomeDashboard() {
         description="Centralizează activitățile și orele raportate pentru luna curentă."
         actions={
           <>
-            <Button asChild variant="outline">
-              <Link href="/api/export/pontaj">Export pontaj</Link>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                exportPontaj().catch((error) => {
+                  console.error('Eroare export pontaj:', error);
+                  alert(error instanceof Error ? error.message : 'Exportul pontajului a esuat.');
+                });
+              }}
+              disabled={!currentExpert}
+            >
+              Export pontaj
             </Button>
             <Button asChild>
               <Link href="/expert/peo">
