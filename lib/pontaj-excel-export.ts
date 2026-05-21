@@ -114,6 +114,16 @@ const MONTHS_EN = [
 
 const WEEKDAYS_EN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const CRC_TABLE = buildCrcTable();
+const SUBACTIVITY_TO_ACTIVITY_CODE = new Map([
+  ['SA1.1', 'A1'],
+  ['SA2.1', 'A2'],
+  ['SA3.2', 'A3'],
+  ['SA3.3', 'A3'],
+  ['SA3.4', 'A3'],
+  ['SA3.5', 'A3'],
+  ['SA4.1', 'A4'],
+  ['SA6.1', 'A6'],
+]);
 
 interface PeoDetailRow {
   day: number;
@@ -162,7 +172,7 @@ async function generatePeoWorkbook(payload: ExportPayload): Promise<GeneratedWor
     const hours = detail?.isWorking && detail.activity ? Number(detail.activity.hours) || 0 : 0;
 
     sheetXml = setCell(sheetXml, `A${row}`, detail ? detail.dateSerial : null);
-    sheetXml = setCell(sheetXml, `B${row}`, hours > 0 && detail?.activity ? activityCode(detail.activity) : null);
+    sheetXml = setCell(sheetXml, `B${row}`, hours > 0 && detail?.activity ? activityCode(detail.activity, payload.expert) : null);
     sheetXml = setCell(sheetXml, `D${row}`, hours > 0 && detail?.activity ? activitySubactivity(detail.activity) : null);
     sheetXml = setCell(sheetXml, `G${row}`, null);
     sheetXml = setCell(sheetXml, `H${row}`, hours > 0 ? hours : null);
@@ -275,7 +285,7 @@ async function generateConsolidatedWorkbook(payload: ExportPayload): Promise<Gen
     const hours = detail?.isWorking && activity ? Number(activity.hours) || 0 : 0;
 
     sheetXml = setCell(sheetXml, `A${row}`, detail ? detail.dateSerial : null);
-    sheetXml = setCell(sheetXml, `B${row}`, hours > 0 && activity ? activityCode(activity) : null);
+    sheetXml = setCell(sheetXml, `B${row}`, hours > 0 && activity ? activityCode(activity, payload.expert) : null);
     sheetXml = setCell(sheetXml, `D${row}`, hours > 0 && activity ? activitySubactivity(activity) : null);
     sheetXml = setCell(sheetXml, `AK${row}`, null);
     sheetXml = setCell(sheetXml, `AL${row}`, hours > 0 ? hours : null);
@@ -843,8 +853,10 @@ function sumConcurrentHours(entries: Partial<ConcurrentProjectTimesheetEntry>[])
   return roundNumber(entries.reduce((sum, entry) => sum + (Number(entry.hours) || 0), 0));
 }
 
-function activityCode(activity: Partial<Activity>) {
-  return activityNumberFromSaCode(activity.saCode) || activity.activityType || '';
+function activityCode(activity: Partial<Activity>, expert?: Partial<Expert>) {
+  const saCode = normalizeSaCode(activity.saCode);
+  if (!saCode || !expertCanReportSaCode(expert, saCode)) return '';
+  return SUBACTIVITY_TO_ACTIVITY_CODE.get(saCode) ?? '';
 }
 
 function activitySubactivity(activity: Partial<Activity>) {
@@ -853,9 +865,14 @@ function activitySubactivity(activity: Partial<Activity>) {
   return [code, label].filter(Boolean).join(' ') || activity.activityType || '';
 }
 
-function activityNumberFromSaCode(saCode?: string) {
-  const match = stringValue(saCode).match(/^SA\s*(\d+)/i);
-  return match ? `A${match[1]}` : '';
+function expertCanReportSaCode(expert: Partial<Expert> | undefined, saCode: string) {
+  const eligibleSaCodes = (expert?.saCodes ?? []).map(normalizeSaCode).filter(Boolean);
+  return eligibleSaCodes.length === 0 || eligibleSaCodes.includes(saCode);
+}
+
+function normalizeSaCode(value: unknown) {
+  const match = stringValue(value).toUpperCase().match(/SA\s*(\d+)\s*\.\s*(\d+)/);
+  return match ? `SA${match[1]}.${match[2]}` : '';
 }
 
 function activityDescription(activity: Partial<Activity>) {

@@ -82,7 +82,7 @@ describe('export pontaj Excel', () => {
       kind: 'consolidated',
       month: 4,
       year: 2026,
-      expert: { id: 'expert-2', name: 'Simona Khamissi', role: 'Expert Protectia Datelor', category: 'Expert', oreZi: 8 },
+      expert: { id: 'expert-2', name: 'Simona Khamissi', role: 'Expert Protectia Datelor', category: 'Expert', oreZi: 8, saCodes: ['SA1.1'] },
       activities: [
         {
           date: '2026-05-21',
@@ -116,7 +116,7 @@ describe('export pontaj Excel', () => {
       kind: 'consolidated',
       month: 4,
       year: 2026,
-      expert: { id: 'expert-3', name: 'Expert Test', role: 'Expert PEO', category: 'Expert', oreZi: 8 },
+      expert: { id: 'expert-3', name: 'Expert Test', role: 'Expert PEO', category: 'Expert', oreZi: 8, saCodes: ['SA1.1', 'SA2.1'] },
       activities: [
         { date: '2026-05-21', hours: 2, activityType: 'Activitate unu', saCode: 'SA1.1', description: 'Prima activitate', status: 'approved' },
         { date: '2026-05-21', hours: 2, activityType: 'Activitate doi', saCode: 'SA2.1', description: 'A doua activitate', status: 'approved' },
@@ -137,6 +137,28 @@ describe('export pontaj Excel', () => {
     assert.match(cellXml(sheet, 'AL78'), /<v>2<\/v>/);
     assert.match(cellXml(sheet, 'AL79'), /<v>2<\/v>/);
     assert.match(cellXml(sheet, 'AM79'), /COUNTIF\(AO:AO,A79\)/);
+  });
+
+  it('completeaza Nr activitate doar din mappingul oficial pentru SA-uri eligibile expertului', async () => {
+    const workbook = await generatePontajExcel({
+      kind: 'consolidated',
+      month: 4,
+      year: 2026,
+      expert: { id: 'expert-4', name: 'Expert Test', role: 'Expert PEO', category: 'Expert', oreZi: 8, saCodes: ['SA3.2'] },
+      activities: [
+        { date: '2026-05-21', hours: 2, activityType: 'Activitate eligibila', saCode: 'SA 3.2', status: 'approved' },
+        { date: '2026-05-22', hours: 2, activityType: 'Activitate neeligibila', saCode: 'SA5.1', status: 'approved' },
+      ],
+      concurrentProjects: [],
+      concurrentTimesheetEntries: [],
+    });
+
+    const files = readXlsx(workbook.buffer);
+    const sheet = files.get('xl/worksheets/sheet5.xml')!.toString('utf8');
+
+    assert.match(cellXml(sheet, 'B78'), /A3/);
+    assert.doesNotMatch(cellXml(sheet, 'B79'), /A5|Activitate neeligibila/);
+    assert.match(cellXml(sheet, 'D79'), /SA5\.1 Activitate neeligibila/);
   });
 });
 
