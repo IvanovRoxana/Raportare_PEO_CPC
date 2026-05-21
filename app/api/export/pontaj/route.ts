@@ -3,6 +3,15 @@ import { generatePontajExcel, type ExportPayload } from '@/lib/pontaj-excel-expo
 
 export const runtime = 'nodejs';
 
+export async function GET(request: Request) {
+  return NextResponse.redirect(new URL('/expert?export=pontaj', request.url), {
+    status: 303,
+    headers: {
+      'Cache-Control': 'no-store',
+    },
+  });
+}
+
 export async function POST(request: Request) {
   try {
     const payload = (await request.json()) as ExportPayload;
