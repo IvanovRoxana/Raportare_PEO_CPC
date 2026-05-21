@@ -31,6 +31,7 @@ import { getMonthName } from '@/lib/backend-store';
 import { buildConsolidatedTimesheet, filterActiveConcurrentProjectsForMonth, getConcurrentProjectMonthlyTotal, getConsolidatedWarnings } from '@/lib/concurrent-projects';
 import { buildPendingSharedActivityAlerts, buildPendingSharedDeliverableAlerts, buildReturnedSharedActivityAlerts } from '@/lib/document-sharing';
 import { canAccessPmDashboard } from '@/lib/pm-dashboard';
+import { buildPontajExportPayload } from '@/lib/pontaj-export-payload';
 import type { Activity, ConcurrentProject, ConcurrentProjectTimesheetEntry, Expert } from '@/lib/types';
 import { getNonWorkingDayInfo } from '@/lib/non-working-days';
 import { cn } from '@/lib/utils';
@@ -439,15 +440,15 @@ export default function ExpertHomeDashboard() {
     const response = await fetch('/api/export/pontaj', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+      body: JSON.stringify(buildPontajExportPayload({
         kind: 'consolidated',
-        expert: currentExpert as Expert,
+        expert: currentExpert,
         activities: peoActivities,
         concurrentProjects: activeConcurrentProjects,
         concurrentTimesheetEntries: expertConcurrentEntries,
         month: currentMonth,
         year: currentYear,
-      }),
+      })),
     });
 
     if (!response.ok) {

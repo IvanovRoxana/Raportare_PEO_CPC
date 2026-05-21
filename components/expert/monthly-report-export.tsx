@@ -15,6 +15,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import type { Activity, ConcurrentProject, ConcurrentProjectTimesheetEntry, Expert } from '@/lib/types';
 import { getMonthName } from '@/lib/app-utils';
 import { getNonWorkingDayInfo } from '@/lib/non-working-days';
+import { buildPontajExportPayload } from '@/lib/pontaj-export-payload';
 import { getWorkingHoursInfo } from '@/lib/working-hours';
 
 interface MonthlyReportExportProps {
@@ -106,7 +107,7 @@ export function MonthlyReportExport({ expert, activities, concurrentProjects = [
     const response = await fetch('/api/export/pontaj', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+      body: JSON.stringify(buildPontajExportPayload({
         kind,
         expert,
         activities,
@@ -114,7 +115,7 @@ export function MonthlyReportExport({ expert, activities, concurrentProjects = [
         concurrentTimesheetEntries,
         month,
         year,
-      }),
+      })),
     });
 
     if (!response.ok) {
