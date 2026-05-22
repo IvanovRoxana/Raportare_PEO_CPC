@@ -59,6 +59,9 @@ describe('export pontaj Excel', () => {
     assert.match(cellXml(sheet, 'F53'), /Linie GOODWORKS4ALL/);
     assert.match(cellXml(sheet, 'AG53'), /Livrabil GW/);
     assert.equal(cellXml(sheet, 'F59'), '<c r="F59" s="529"/>');
+    assert.match(cellXml(sheet, 'AG16'), /SUM\(B16:AF16\)\+COUNTIF\(B16:AF16,&quot;DE&quot;\)\*2/);
+    assert.doesNotMatch(cellXml(sheet, 'AG16'), /<v>/);
+    assert.match(cellXml(sheet, 'AG18'), /SUM\(AG15:AG17\)/);
   });
 
   it('opreste exportul daca proiectele paralele au ore in zile nelucratoare', async () => {
@@ -109,6 +112,9 @@ describe('export pontaj Excel', () => {
     assert.match(cellXml(sheet, 'AL78'), /<v>4<\/v>/);
     assert.match(cellXml(sheet, 'AO78'), /<v>46163<\/v>/);
     assert.match(cellXml(sheet, 'AP78'), /LEFT\(D78,6\)/);
+    assert.match(cellXml(sheet, 'AG16'), /SUM\(B16:AF16\)\+COUNTIF\(B16:AF16,&quot;DE&quot;\)\*8/);
+    assert.doesNotMatch(cellXml(sheet, 'AG16'), /<v>71<\/v>/);
+    assert.match(cellXml(sheet, 'AG17'), /SUM\(AG15:AG16\)/);
   });
 
   it('adauga rand separat cand exista mai multe activitati PEO in aceeasi zi', async () => {

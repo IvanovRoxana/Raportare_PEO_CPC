@@ -1,9 +1,19 @@
-import type { ExportPayload } from './pontaj-excel-export';
 import type { Activity, ConcurrentProject, ConcurrentProjectTimesheetEntry, Expert } from './types';
 
+type PontajExportKind = 'peo' | 'consolidated';
+type ExportPayload = {
+  kind: PontajExportKind;
+  expert: Partial<Expert> & { beneficiary?: string };
+  activities: Partial<Activity>[];
+  concurrentProjects?: Partial<ConcurrentProject>[];
+  concurrentTimesheetEntries?: Partial<ConcurrentProjectTimesheetEntry>[];
+  month: number;
+  year: number;
+};
+
 type BuildPontajExportPayloadInput = {
-  kind: ExportPayload['kind'];
-  expert: Expert;
+  kind: PontajExportKind;
+  expert: Expert & { beneficiary?: string };
   activities: Activity[];
   concurrentProjects?: ConcurrentProject[];
   concurrentTimesheetEntries?: ConcurrentProjectTimesheetEntry[];
@@ -49,8 +59,8 @@ export function buildPontajExportPayload({
       deliverables: activity.deliverables?.map((deliverable) => ({
         id: deliverable.id,
         fileName: limitText(deliverable.fileName || deliverable.originalFileName || 'livrabil', 300) || 'livrabil',
-        fileType: deliverable.fileType,
-        fileSize: deliverable.fileSize,
+        fileType: deliverable.fileType ?? '',
+        fileSize: deliverable.fileSize ?? 0,
         declaredTitle: limitText(deliverable.declaredTitle, 300),
         docTitle: limitText(deliverable.docTitle, 300),
       })),

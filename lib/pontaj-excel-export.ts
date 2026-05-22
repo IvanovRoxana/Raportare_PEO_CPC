@@ -260,6 +260,7 @@ async function generateConsolidatedWorkbook(payload: ExportPayload): Promise<Gen
     );
     sheetXml = setCell(sheetXml, `${col}${summaryRows.total}`, isWorking ? { formula: `SUM(${col}${summaryRows.concordia}:${col}${summaryRows.peo})` } : null);
   }
+  sheetXml = setTimesheetSummaryTotals(sheetXml, summaryRows, dailyHours, getGoodworksDailyHours(payload.concurrentProjects ?? []));
 
   if (goodworksSection) {
     for (let index = 0; index < goodworksSection.dayRows; index += 1) {
@@ -374,6 +375,42 @@ function validateExportPayload(payload: ExportPayload) {
     const dates = [...new Set(invalidConcurrentEntries.map((entry) => entry.date).filter(Boolean))].join(', ');
     throw new Error(`Exportul a fost oprit: exista ore pe proiecte paralele pontate in zile nelucratoare (${dates}). Corecteaza pontajele paralele inainte de export.`);
   }
+}
+
+function setTimesheetSummaryTotals(
+  sheetXml: string,
+  rows: { concordia: number; goodworks?: number; peo: number; total: number },
+  peoDailyHours: number,
+  goodworksDailyHours: number,
+) {
+  const concordiaDailyHours = Math.max(0, 8 - peoDailyHours - goodworksDailyHours);
+  sheetXml = setTimesheetRowTotals(sheetXml, rows.concordia, concordiaDailyHours);
+  if (rows.goodworks) {
+    sheetXml = setTimesheetRowTotals(sheetXml, rows.goodworks, goodworksDailyHours);
+  }
+  sheetXml = setTimesheetRowTotals(sheetXml, rows.peo, peoDailyHours);
+
+  for (const col of ['AG', 'AH', 'AI', 'AJ', 'AK', 'AL']) {
+    sheetXml = setCell(sheetXml, `${col}${rows.total}`, { formula: `SUM(${col}${rows.concordia}:${col}${rows.peo})` });
+  }
+
+  return sheetXml;
+}
+
+function setTimesheetRowTotals(sheetXml: string, row: number, dailyHours: number) {
+  sheetXml = setCell(sheetXml, `AG${row}`, { formula: `SUM(B${row}:AF${row})+COUNTIF(B${row}:AF${row},"DE")*${dailyHours}` });
+  sheetXml = setCell(sheetXml, `AH${row}`, { formula: `AG${row}/8` });
+  sheetXml = setCell(sheetXml, `AI${row}`, { formula: `COUNTIF(B${row}:AF${row},"CO")*${dailyHours}` });
+  sheetXml = setCell(sheetXml, `AJ${row}`, { formula: `AI${row}/8` });
+  sheetXml = setCell(sheetXml, `AK${row}`, { formula: `COUNTIF(B${row}:AF${row},"CM")*8` });
+  sheetXml = setCell(sheetXml, `AL${row}`, { formula: `AK${row}/8` });
+  return sheetXml;
+}
+
+function getGoodworksDailyHours(projects: Partial<ConcurrentProject>[]) {
+  return projects
+    .filter((project) => project.isActive !== false && isGoodworksProject(project))
+    .reduce((total, project) => total + (Number(project.dailyHours) || 0), 0);
 }
 
 function readXlsx(buffer: Buffer) {
