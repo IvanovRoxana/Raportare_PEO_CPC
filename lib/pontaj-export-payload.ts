@@ -48,7 +48,7 @@ export function buildPontajExportPayload({
       status: activity.status,
       deliverables: activity.deliverables?.map((deliverable) => ({
         id: deliverable.id,
-        fileName: limitText(deliverable.fileName, 300),
+        fileName: limitText(deliverable.fileName || deliverable.originalFileName || 'livrabil', 300) || 'livrabil',
         fileType: deliverable.fileType,
         fileSize: deliverable.fileSize,
         declaredTitle: limitText(deliverable.declaredTitle, 300),
