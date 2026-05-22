@@ -54,7 +54,7 @@ describe('export pontaj Excel', () => {
     const files = readXlsx(workbook.buffer);
     const sheet = files.get('xl/worksheets/sheet5.xml')!.toString('utf8');
 
-    assert.match(cellXml(sheet, 'B16'), /TRANSPOSE\(IF\(E49:E79="","",E49:E79\)\)/);
+    assert.match(cellXml(sheet, 'F16'), /SUMIFS\(\$E\$49:\$E\$\d+,\$A\$49:\$A\$\d+,&quot;=&quot;&amp;DATE\(2026,5,F13\)\)/);
     assert.match(cellXml(sheet, 'E53'), /<v>2<\/v>/);
     assert.match(cellXml(sheet, 'F53'), /Linie GOODWORKS4ALL/);
     assert.match(cellXml(sheet, 'AG53'), /Livrabil GW/);
@@ -115,6 +115,31 @@ describe('export pontaj Excel', () => {
     assert.match(cellXml(sheet, 'AG16'), /SUM\(B16:AF16\)\+COUNTIF\(B16:AF16,&quot;DE&quot;\)\*8/);
     assert.doesNotMatch(cellXml(sheet, 'AG16'), /<v>71<\/v>/);
     assert.match(cellXml(sheet, 'AG17'), /SUM\(AG15:AG16\)/);
+  });
+
+  it('pastreaza CO in timesheet si totalizeaza orele de concediu separat', async () => {
+    const workbook = await generatePontajExcel({
+      kind: 'consolidated',
+      month: 4,
+      year: 2026,
+      expert: { id: 'expert-co', name: 'Expert CO', role: 'Expert GT', category: 'Expert', oreZi: 8, saCodes: ['SA1.1'] },
+      activities: [
+        { date: '2026-05-21', hours: 8, activityType: 'Activitate PEO', saCode: 'SA1.1', status: 'approved' },
+        { date: '2026-05-22', hours: 0, activityType: 'CO - Concediu odihna', title: 'CO - Concediu odihna', dayType: 'CO', saCode: 'SA1.1', status: 'approved' },
+      ],
+      concurrentProjects: [],
+      concurrentTimesheetEntries: [],
+    });
+
+    const files = readXlsx(workbook.buffer);
+    const sheet = files.get('xl/worksheets/sheet5.xml')!.toString('utf8');
+
+    assert.match(cellXml(sheet, 'W16'), /CO/);
+    assert.match(cellXml(sheet, 'W15'), /^<c r="W15"[^/]*\/>$/);
+    assert.match(cellXml(sheet, 'AG16'), /COUNTIF\(B16:AF16,&quot;DE&quot;\)\*8/);
+    assert.match(cellXml(sheet, 'AI16'), /COUNTIF\(B16:AF16,&quot;CO&quot;\)\*8/);
+    assert.match(cellXml(sheet, 'AL79'), /CO/);
+    assert.match(cellXml(sheet, 'AM79'), /OR\(AL79=&quot;CO&quot;,AL79=&quot;CM&quot;\)/);
   });
 
   it('adauga rand separat cand exista mai multe activitati PEO in aceeasi zi', async () => {

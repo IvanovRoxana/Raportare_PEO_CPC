@@ -249,14 +249,21 @@ async function generateConsolidatedWorkbook(payload: ExportPayload): Promise<Gen
     const dateKey = inMonth ? isoDate(payload.year, payload.month, day) : '';
     const info = inMonth ? getNonWorkingDayInfo(dateKey) : null;
     const isWorking = !!info && !info.isNonWorkingDay;
+    const peoLeaveCode = inMonth ? getLeaveCode(grouped.get(dateKey) ?? []) : null;
+    const goodworksLeaveCode = inMonth ? getLeaveCode(goodworksByDate.get(dateKey) ?? []) : null;
+    const hasLeave = !!peoLeaveCode || !!goodworksLeaveCode;
 
     sheetXml = setCell(sheetXml, `${col}13`, inMonth ? day : null);
     sheetXml = setCell(sheetXml, `${col}14`, inMonth ? WEEKDAYS_EN[new Date(payload.year, payload.month, day).getDay()] : null);
-    sheetXml = setCell(sheetXml, `${col}${summaryRows.concordia}`, isWorking ? { formula: `MAX(0,8-SUM(${col}${hasGoodworks ? summaryRows.goodworks : summaryRows.peo}:${col}${summaryRows.peo}))` } : null);
+    sheetXml = setCell(sheetXml, `${col}${summaryRows.concordia}`, isWorking && !hasLeave ? { formula: `MAX(0,8-SUM(${col}${hasGoodworks ? summaryRows.goodworks : summaryRows.peo}:${col}${summaryRows.peo}))` } : null);
+    if (hasGoodworks) {
+      const goodworksCell = goodworksLeaveCode ?? (isWorking ? { formula: `SUMIFS($E$${goodworksSection!.startRow}:$E$${goodworksSection!.totalRow - 1},$A$${goodworksSection!.startRow}:$A$${goodworksSection!.totalRow - 1},"="&DATE(${payload.year},${payload.month + 1},${col}13))` } : null);
+      sheetXml = setCell(sheetXml, `${col}${summaryRows.goodworks}`, goodworksCell);
+    }
     sheetXml = setCell(
       sheetXml,
       `${col}${summaryRows.peo}`,
-      isWorking ? { formula: `SUMIFS($AL$${peoSection.startRow}:$AL$${detailEnd},$A$${peoSection.startRow}:$A$${detailEnd},"="&DATE(${payload.year},${payload.month + 1},${col}13))` } : null,
+      peoLeaveCode ?? (isWorking ? { formula: `SUMIFS($AL$${peoSection.startRow}:$AL$${detailEnd},$A$${peoSection.startRow}:$A$${detailEnd},"="&DATE(${payload.year},${payload.month + 1},${col}13))` } : null),
     );
     sheetXml = setCell(sheetXml, `${col}${summaryRows.total}`, isWorking ? { formula: `SUM(${col}${summaryRows.concordia}:${col}${summaryRows.peo})` } : null);
   }
@@ -271,14 +278,15 @@ async function generateConsolidatedWorkbook(payload: ExportPayload): Promise<Gen
       const info = inMonth ? getNonWorkingDayInfo(dateKey) : null;
       const isWorking = !!info && !info.isNonWorkingDay;
       const dayEntries = isWorking ? goodworksByDate.get(dateKey) ?? [] : [];
+      const leaveCode = getLeaveCode(dayEntries);
       const hours = sumConcurrentHours(dayEntries);
 
       sheetXml = setCell(sheetXml, `A${row}`, inMonth ? excelSerial(payload.year, payload.month, day) : null);
       sheetXml = setCell(sheetXml, `B${row}`, null);
       sheetXml = setCell(sheetXml, `C${row}`, hours > 0 ? joinUnique(dayEntries.map((entry) => entry.wp ?? '')) : null);
       sheetXml = setCell(sheetXml, `D${row}`, null);
-      sheetXml = setCell(sheetXml, `E${row}`, hours > 0 ? hours : null);
-      sheetXml = setCell(sheetXml, `F${row}`, hours > 0 ? joinUnique(dayEntries.map((entry) => entry.taskName ?? '')) : null);
+      sheetXml = setCell(sheetXml, `E${row}`, leaveCode ?? (hours > 0 ? hours : null));
+      sheetXml = setCell(sheetXml, `F${row}`, leaveCode ?? (hours > 0 ? joinUnique(dayEntries.map((entry) => entry.taskName ?? '')) : null));
       sheetXml = setCell(sheetXml, `AG${row}`, hours > 0 ? joinUnique(dayEntries.map((entry) => entry.relevantDeliverable ?? '')) : null);
     }
   }
@@ -293,23 +301,24 @@ async function generateConsolidatedWorkbook(payload: ExportPayload): Promise<Gen
     const detail = detailRows[index];
     const row = peoSection.startRow + index;
     const activity = detail?.activity;
+    const leaveCode = activity ? getLeaveCode([activity]) : null;
     const hours = detail?.isWorking && activity ? Number(activity.hours) || 0 : 0;
 
     sheetXml = setCell(sheetXml, `A${row}`, detail ? detail.dateSerial : null);
-    sheetXml = setCell(sheetXml, `B${row}`, hours > 0 && activity ? activityCode(activity, payload.expert) : null);
-    sheetXml = setCell(sheetXml, `D${row}`, hours > 0 && activity ? activitySubactivity(activity) : null);
+    sheetXml = setCell(sheetXml, `B${row}`, (hours > 0 || leaveCode) && activity ? activityCode(activity, payload.expert) : null);
+    sheetXml = setCell(sheetXml, `D${row}`, (hours > 0 || leaveCode) && activity ? activitySubactivity(activity) : null);
     sheetXml = setCell(sheetXml, `AK${row}`, null);
-    sheetXml = setCell(sheetXml, `AL${row}`, hours > 0 ? hours : null);
+    sheetXml = setCell(sheetXml, `AL${row}`, leaveCode ?? (hours > 0 ? hours : null));
     sheetXml = setCell(
       sheetXml,
       `AM${row}`,
       detail?.isWorking
         ? {
-            formula: `IF(AL${row}="CO","CO",IF(COUNTIF(AO:AO,A${row})=0,0,(8-SUMIF(AO:AO,A${row},AL:AL))/COUNTIF(AO:AO,A${row})))`,
+            formula: `IF(OR(AL${row}="CO",AL${row}="CM"),AL${row},IF(COUNTIF(AO:AO,A${row})=0,0,(8-SUMIF(AO:AO,A${row},AL:AL))/COUNTIF(AO:AO,A${row})))`,
           }
         : null,
     );
-    sheetXml = setCell(sheetXml, `AN${row}`, hours > 0 && activity ? activityDescription(activity) : null);
+    sheetXml = setCell(sheetXml, `AN${row}`, (hours > 0 || leaveCode) && activity ? activityDescription(activity) : null);
     sheetXml = setCell(sheetXml, `AO${row}`, detail?.isWorking ? detail.dateSerial : null);
     sheetXml = setCell(sheetXml, `AP${row}`, detail?.isWorking ? { formula: `LEFT(D${row},6)` } : null);
     sheetXml = setCell(sheetXml, `AQ${row}`, null);
@@ -791,7 +800,8 @@ function getGoodworksEntries(
   );
 
   return entries.filter((entry) => {
-    if (!entry.date || entry.month !== month || entry.year !== year || (Number(entry.hours) || 0) <= 0) return false;
+    if (!entry.date || entry.month !== month || entry.year !== year) return false;
+    if ((Number(entry.hours) || 0) <= 0 && !getLeaveCode([entry])) return false;
     if (entry.status === 'rejected') return false;
     return goodworksProjectIds.size > 0 && goodworksProjectIds.has(entry.concurrentProjectId);
   });
@@ -884,12 +894,26 @@ function buildPeoDetailRows(year: number, month: number, grouped: Map<string, Pa
 function groupActivitiesByDate(activities: Partial<Activity>[]) {
   const grouped = new Map<string, Partial<Activity>[]>();
   activities
-    .filter((activity) => (activity.status as string | undefined) !== 'rejected' && activity.date && Number(activity.hours) > 0)
+    .filter((activity) => (activity.status as string | undefined) !== 'rejected' && activity.date && (Number(activity.hours) > 0 || getLeaveCode([activity])))
     .forEach((activity) => {
       const date = toDateKey(activity.date!);
       grouped.set(date, [...(grouped.get(date) ?? []), activity]);
     });
   return grouped;
+}
+
+function getLeaveCode(entries: Array<Partial<Activity> | Partial<ConcurrentProjectTimesheetEntry>>) {
+  const hasCo = entries.some((entry) => normalizeLeaveCode(entry.dayType) === 'CO');
+  if (hasCo) return 'CO';
+  const hasCm = entries.some((entry) => normalizeLeaveCode(entry.dayType) === 'CM');
+  return hasCm ? 'CM' : null;
+}
+
+function normalizeLeaveCode(dayType?: string) {
+  const value = String(dayType ?? '').trim().toUpperCase();
+  if (value === 'CO' || value.includes('CONCEDIU ODIHNA')) return 'CO';
+  if (value === 'CM' || value.includes('CONCEDIU MEDICAL')) return 'CM';
+  return null;
 }
 
 function sumHours(activities: Partial<Activity>[]) {
