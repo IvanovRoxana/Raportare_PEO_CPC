@@ -6,6 +6,7 @@ import {
   BarChart3,
   CalendarDays,
   CircleDollarSign,
+  ClipboardList,
   FileText,
   MessageSquare,
   SearchIcon,
@@ -39,6 +40,7 @@ export const dashboardNavItems: DashboardNavItem[] = [
   { label: 'Livrabile', href: '/expert/peo#livrabile', icon: Upload },
   { label: 'Rapoarte', href: '/expert/peo#rapoarte', icon: FileText },
   { label: 'Verificări PM', href: '/pm', icon: SearchIcon },
+  { label: 'Achiziții', href: '/achizitii', icon: ClipboardList },
   { label: 'Experți', href: '/pm#situatie-lunara', icon: Users },
   { label: 'Administrare', href: '/admin', icon: Settings },
   { label: 'Dashboard financiar', href: '/financiar', icon: CircleDollarSign },
@@ -59,6 +61,7 @@ export const pmNavItems: DashboardNavItem[] = [
   { label: 'Rapoarte', href: '/pm#pm-tabs', icon: FileText },
   { label: 'Livrabile', href: '/pm#pm-tabs', icon: Upload },
   { label: 'Verificări PM', href: '/pm', icon: SearchIcon },
+  { label: 'Achiziții', href: '/achizitii', icon: ClipboardList },
   { label: 'Experți', href: '/pm#situatie-lunara', icon: Users },
   { label: 'Administrare', href: '/admin', icon: Settings },
 ];
@@ -68,18 +71,32 @@ export const adminNavItems: DashboardNavItem[] = [
   { label: 'Pontaj lunar', href: '/expert', icon: CalendarDays },
   { label: 'Rapoarte', href: '/expert/peo#rapoarte', icon: FileText },
   { label: 'Livrabile', href: '/expert/peo#livrabile', icon: Upload },
+  { label: 'Achiziții', href: '/achizitii', icon: ClipboardList },
   { label: 'Experți', href: '/pm#situatie-lunara', icon: Users },
   { label: 'Administrare', href: '/admin', icon: Settings },
 ];
 
 export const financialNavItems: DashboardNavItem[] = [
   { label: 'Dashboard financiar', href: '/financiar', icon: BarChart3 },
+  { label: 'Achiziții', href: '/achizitii', icon: ClipboardList },
   { label: 'Pontaj lunar', href: '/expert', icon: CalendarDays },
   { label: 'Activitățile mele', href: '/expert/peo', icon: FileText },
   { label: 'Rapoarte', href: '/expert/peo#rapoarte', icon: FileText },
   { label: 'Livrabile', href: '/expert/peo#livrabile', icon: Upload },
   { label: 'Experți', href: '/pm#situatie-lunara', icon: Users },
   { label: 'Administrare', href: '/admin', icon: Settings },
+];
+
+export const procurementNavItems: DashboardNavItem[] = [
+  { label: 'Dashboard', href: '/achizitii', icon: BarChart3 },
+  { label: 'Planificare', href: '/achizitii#planificare', icon: CalendarDays },
+  { label: 'Proiecte', href: '/achizitii#proiecte', icon: ClipboardList },
+  { label: 'Documentație', href: '/achizitii#documentatie', icon: FileText },
+  { label: 'Lansare', href: '/achizitii#lansare', icon: Upload },
+  { label: 'Evaluare', href: '/achizitii#evaluare', icon: SearchIcon },
+  { label: 'Contracte', href: '/achizitii#contracte', icon: FileText },
+  { label: 'Recepție și facturare', href: '/achizitii#receptie-facturare', icon: CircleDollarSign },
+  { label: 'Arhivă', href: '/achizitii#arhiva', icon: Settings },
 ];
 
 type DashboardShellProps = {

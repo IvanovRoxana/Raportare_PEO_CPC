@@ -36,10 +36,18 @@ export function canAccessPmDashboard(input: DashboardAccessInput) {
   );
 }
 
+export function canAccessProcurementModule(input: DashboardAccessInput) {
+  return canAccessPmDashboard(input);
+}
+
 export function resolveDashboardAccess(input: DashboardAccessInput) {
+  const canUsePm = canAccessPmDashboard(input);
+
   return {
     canUseExpert: canAccessExpertModule(input),
-    canUsePm: canAccessPmDashboard(input),
+    canUsePm,
+    canUseAchizitii: canUsePm,
+    canUseFinancial: canUsePm,
   };
 }
 

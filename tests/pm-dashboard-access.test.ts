@@ -36,6 +36,8 @@ test('utilizator Expert vede doar Modul Expert', () => {
   assert.deepEqual(resolveDashboardAccess({ roles: ['expert'], projectRole: 'Expert', hasPmAccess: false }), {
     canUseExpert: true,
     canUsePm: false,
+    canUseAchizitii: false,
+    canUseFinancial: false,
   });
 });
 
@@ -48,6 +50,26 @@ test('utilizator Expert/PM vede Modul Expert si Dashboard PM', () => {
   const access = resolveDashboardAccess({ roles: ['expert'], projectRole: 'Expert/PM', hasPmAccess: true });
   assert.equal(access.canUseExpert, true);
   assert.equal(access.canUsePm, true);
+  assert.equal(access.canUseAchizitii, true);
+});
+
+test('Simona Khamissi GDPR ramane directionata doar catre Modul Expert', () => {
+  const simona = experts.find((expert) => expert.email === 'simona.khamissi@confederatia-concordia.ro');
+  assert.ok(simona);
+  assert.equal(String(simona.category).toLowerCase(), 'gdpr');
+  assert.equal(simona.role, 'Expert');
+  assert.equal(simona.hasPmAccess, false);
+  assert.deepEqual(simona.cognitoGroups, ['expert']);
+
+  const roles = mergeRolesWithExpertProfile([], simona);
+  assert.deepEqual(roles, ['expert']);
+  assert.equal(getDashboardPathForRoleSet(roles), '/expert');
+  assert.deepEqual(resolveDashboardAccess({ roles, projectRole: simona.role, hasPmAccess: simona.hasPmAccess }), {
+    canUseExpert: true,
+    canUsePm: false,
+    canUseAchizitii: false,
+    canUseFinancial: false,
+  });
 });
 
 test('Ivanov Roxana are acces simultan la Expert, PM si Admin din tabelul de experti', () => {
@@ -66,6 +88,8 @@ test('Ivanov Roxana are acces simultan la Expert, PM si Admin din tabelul de exp
   assert.deepEqual(resolveDashboardAccess({ roles, projectRole: roxana.role, hasPmAccess: roxana.hasPmAccess }), {
     canUseExpert: true,
     canUsePm: true,
+    canUseAchizitii: true,
+    canUseFinancial: true,
   });
 });
 
@@ -179,5 +203,5 @@ test('Ivanov Roxana vede selectorul de rol cu Admin inclus', () => {
 
   assert.deepEqual(roles, ['admin', 'expert', 'pm']);
   assert.equal(getDashboardPathForRoleSet(roles), '/auth/select-dashboard');
-  assert.deepEqual(getDashboardDestinationsForRoles(roles).map((destination) => destination.path), ['/expert', '/pm', '/admin']);
+  assert.deepEqual(getDashboardDestinationsForRoles(roles).map((destination) => destination.path), ['/expert', '/pm', '/achizitii', '/financiar', '/admin']);
 });

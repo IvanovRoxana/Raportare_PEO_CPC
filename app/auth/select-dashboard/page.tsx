@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { BriefcaseBusiness, CircleDollarSign, FileText, LayoutDashboard, Loader2, ShieldCheck } from 'lucide-react';
+import { BriefcaseBusiness, CircleDollarSign, ClipboardList, FileText, LayoutDashboard, Loader2, ShieldCheck } from 'lucide-react';
 import { getDashboardPathForRoles, getSignedInUser } from '@/lib/aws/auth';
 import { resolveDashboardAccess } from '@/lib/pm-dashboard';
 import { Button } from '@/components/ui/button';
@@ -12,6 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 export default function SelectDashboardPage() {
   const [canUseExpert, setCanUseExpert] = useState(false);
   const [canUsePm, setCanUsePm] = useState(false);
+  const [canUseAchizitii, setCanUseAchizitii] = useState(false);
   const [canUseAdmin, setCanUseAdmin] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
@@ -23,9 +24,9 @@ export default function SelectDashboardPage() {
         return;
       }
 
-      const { canUseExpert: expertAccess, canUsePm: pmAccess } = resolveDashboardAccess({ roles: user.roles });
+      const { canUseExpert: expertAccess, canUsePm: pmAccess, canUseAchizitii: procurementAccess } = resolveDashboardAccess({ roles: user.roles });
       const adminAccess = user.roles.includes('admin');
-      const availableDashboards = [expertAccess, pmAccess, adminAccess].filter(Boolean).length;
+      const availableDashboards = [expertAccess, pmAccess, procurementAccess, adminAccess].filter(Boolean).length;
 
       if (availableDashboards <= 1) {
         router.replace(getDashboardPathForRoles(user.roles));
@@ -34,6 +35,7 @@ export default function SelectDashboardPage() {
 
       setCanUseExpert(expertAccess);
       setCanUsePm(pmAccess);
+      setCanUseAchizitii(procurementAccess);
       setCanUseAdmin(adminAccess);
       setIsLoading(false);
     });
@@ -65,7 +67,7 @@ export default function SelectDashboardPage() {
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
               </div>
             ) : (
-              <div className="grid gap-4 sm:grid-cols-4">
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
                 {canUseExpert && (
                   <Button asChild size="lg" className="h-24 flex-col gap-2">
                     <Link href="/expert">
@@ -80,6 +82,15 @@ export default function SelectDashboardPage() {
                     <Link href="/pm">
                       <BriefcaseBusiness className="h-6 w-6" />
                       Dashboard PM
+                    </Link>
+                  </Button>
+                )}
+
+                {canUseAchizitii && (
+                  <Button asChild size="lg" variant="outline" className="h-24 flex-col gap-2">
+                    <Link href="/achizitii">
+                      <ClipboardList className="h-6 w-6" />
+                      Modul Achiziții
                     </Link>
                   </Button>
                 )}

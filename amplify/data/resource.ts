@@ -384,6 +384,256 @@ const schema = a.schema({
       allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
     ]),
 
+  ProcurementProject: a
+    .model({
+      code: a.string().required(),
+      title: a.string().required(),
+      description: a.string(),
+      category: a.string(),
+      projectId: a.string(),
+      projectCode: a.string(),
+      mysmisCode: a.string(),
+      subactivity: a.string(),
+      procurementType: a.string().required(),
+      procedureType: a.string().required(),
+      responsibleUserId: a.string(),
+      department: a.string(),
+      currentStatus: a.string().default("PLANIFICATA"),
+      estimatedValueWithoutVat: a.float().default(0),
+      estimatedVatValue: a.float().default(0),
+      estimatedValueWithVat: a.float().default(0),
+      currency: a.string().default("RON"),
+      budgetLine: a.string(),
+      fundingSource: a.string(),
+      plannedPeriod: a.string(),
+      plannedStartYear: a.integer(),
+      plannedEndYear: a.integer(),
+      attentionLevel: a.string().default("on_track"),
+      attentionLabel: a.string(),
+      sourceRowNumber: a.integer(),
+      sourceFileName: a.string(),
+    })
+    .secondaryIndexes((index) => [
+      index("currentStatus"),
+      index("procurementType"),
+      index("procedureType"),
+      index("plannedEndYear"),
+      index("sourceRowNumber"),
+    ])
+    .authorization((allow) => [
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
+  ProcurementDocument: a
+    .model({
+      procurementProjectId: a.id().required(),
+      documentType: a.string().required(),
+      title: a.string().required(),
+      visibilityType: a.string().required(),
+      stage: a.string().required(),
+      fileUrl: a.string(),
+      status: a.string().default("draft"),
+      uploadedBy: a.string(),
+      uploadedAt: a.datetime(),
+      notes: a.string(),
+    })
+    .secondaryIndexes((index) => [
+      index("procurementProjectId"),
+      index("visibilityType"),
+      index("stage"),
+    ])
+    .authorization((allow) => [
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
+  ProcurementLaunch: a
+    .model({
+      procurementProjectId: a.id().required(),
+      launchDate: a.date(),
+      launchMethod: a.string(),
+      launchChannel: a.string(),
+      publishedUrl: a.string(),
+      sentDocumentsSummary: a.string(),
+      clarificationsDeadline: a.date(),
+      offerDeadline: a.date(),
+      publicationProofFileUrl: a.string(),
+      status: a.string().default("draft"),
+      createdBy: a.string(),
+    })
+    .secondaryIndexes((index) => [index("procurementProjectId"), index("status")])
+    .authorization((allow) => [
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
+  ProcurementSupplier: a
+    .model({
+      name: a.string().required(),
+      cui: a.string(),
+      contactPerson: a.string(),
+      email: a.email(),
+      phone: a.string(),
+      address: a.string(),
+      isVatPayer: a.boolean().default(false),
+    })
+    .secondaryIndexes((index) => [index("name"), index("cui")])
+    .authorization((allow) => [
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
+  ProcurementOffer: a
+    .model({
+      procurementProjectId: a.id().required(),
+      supplierId: a.id(),
+      receivedDate: a.date(),
+      receivedTime: a.string(),
+      receivedMethod: a.string(),
+      offeredValueWithoutVat: a.float(),
+      offeredValueWithVat: a.float(),
+      currency: a.string().default("RON"),
+      isVatPayer: a.boolean(),
+      documentsComplete: a.boolean().default(false),
+      eligibilityStatus: a.string(),
+      capacityConformityStatus: a.string(),
+      technicalConformityStatus: a.string(),
+      financialScore: a.float(),
+      isWinningOffer: a.boolean().default(false),
+      notes: a.string(),
+    })
+    .secondaryIndexes((index) => [
+      index("procurementProjectId"),
+      index("supplierId"),
+    ])
+    .authorization((allow) => [
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
+  ProcurementEvaluation: a
+    .model({
+      procurementProjectId: a.id().required(),
+      offerId: a.id(),
+      evaluationStage: a.string().required(),
+      committeeDecisionDocumentId: a.id(),
+      conflictOfInterestSigned: a.boolean().default(false),
+      administrativeResult: a.string(),
+      technicalResult: a.string(),
+      financialResult: a.string(),
+      decision: a.string(),
+      notes: a.string(),
+    })
+    .secondaryIndexes((index) => [index("procurementProjectId"), index("offerId"), index("evaluationStage")])
+    .authorization((allow) => [
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
+  ProcurementContract: a
+    .model({
+      procurementProjectId: a.id().required(),
+      winningOfferId: a.id(),
+      supplierId: a.id(),
+      contractNumber: a.string(),
+      contractDate: a.date(),
+      contractValueWithoutVat: a.float(),
+      contractValueWithVat: a.float(),
+      currency: a.string().default("RON"),
+      implementationStartDate: a.date(),
+      implementationEndDate: a.date(),
+      contractStatus: a.string().default("draft"),
+      fileUrl: a.string(),
+    })
+    .secondaryIndexes((index) => [index("procurementProjectId"), index("supplierId"), index("contractStatus")])
+    .authorization((allow) => [
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
+  ProcurementDeliverable: a
+    .model({
+      procurementContractId: a.id(),
+      procurementProjectId: a.id().required(),
+      title: a.string().required(),
+      description: a.string(),
+      dueDate: a.date(),
+      deliveryDate: a.date(),
+      status: a.string().default("PLANNED"),
+      acceptanceNotes: a.string(),
+      fileUrl: a.string(),
+    })
+    .secondaryIndexes((index) => [index("procurementProjectId"), index("procurementContractId"), index("status")])
+    .authorization((allow) => [
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
+  ProcurementReception: a
+    .model({
+      procurementContractId: a.id(),
+      procurementProjectId: a.id().required(),
+      receptionDate: a.date(),
+      receptionDocumentNumber: a.string(),
+      receptionFileUrl: a.string(),
+      status: a.string().default("DRAFT"),
+      sentToFinancialAt: a.datetime(),
+      notes: a.string(),
+      createdBy: a.string(),
+    })
+    .secondaryIndexes((index) => [index("procurementProjectId"), index("procurementContractId"), index("status")])
+    .authorization((allow) => [
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
+  ProcurementInvoice: a
+    .model({
+      procurementContractId: a.id(),
+      procurementProjectId: a.id().required(),
+      invoiceNumber: a.string(),
+      invoiceDate: a.date(),
+      invoiceValueWithoutVat: a.float(),
+      invoiceVatValue: a.float(),
+      invoiceValueWithVat: a.float(),
+      currency: a.string().default("RON"),
+      invoiceFileUrl: a.string(),
+      sentToFinancialAt: a.datetime(),
+      status: a.string().default("RECEIVED"),
+      notes: a.string(),
+    })
+    .secondaryIndexes((index) => [index("procurementProjectId"), index("procurementContractId"), index("status")])
+    .authorization((allow) => [
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
+  ProcurementStatusHistory: a
+    .model({
+      procurementProjectId: a.id().required(),
+      oldStatus: a.string(),
+      newStatus: a.string().required(),
+      changedBy: a.string(),
+      changedAt: a.datetime().required(),
+      notes: a.string(),
+    })
+    .secondaryIndexes((index) => [index("procurementProjectId").sortKeys(["changedAt"]), index("newStatus")])
+    .authorization((allow) => [
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
+  ProcurementChecklist: a
+    .model({
+      procurementProjectId: a.id().required(),
+      stage: a.string().required(),
+      itemKey: a.string().required(),
+      itemLabel: a.string().required(),
+      isRequired: a.boolean().default(true),
+      isCompleted: a.boolean().default(false),
+      completedBy: a.string(),
+      completedAt: a.datetime(),
+      notes: a.string(),
+    })
+    .secondaryIndexes((index) => [
+      index("procurementProjectId"),
+      index("stage"),
+      index("itemKey"),
+    ])
+    .authorization((allow) => [
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
   HistoricalImportBatch: a
     .model({
       projectCode: a.string().required(),
