@@ -813,6 +813,24 @@ export default function ExpertDashboard() {
     );
   }
 
+  const sharedSourceActivity = sharedActivityRegistrationContext?.sourceActivity;
+  const sharedSourceRelation = sharedActivityRegistrationContext?.activityRelation;
+  const sharedSourceExpertName = sharedActivityRegistrationContext?.sourceExpert?.name
+    || sharedSourceActivity?.expertName
+    || sharedSourceRelation?.sourceExpertName
+    || sharedSourceRelation?.sourceExpertId
+    || 'Expert nespecificat';
+  const sharedSourceDate = sharedSourceActivity?.date || sharedSourceRelation?.sourceActivityDate;
+  const sharedSourceHours = sharedSourceActivity?.hours || sharedSourceRelation?.sourceActivityHours || 0;
+  const sharedSourceTheme = sharedSourceActivity?.title
+    || sharedSourceActivity?.activityType
+    || sharedSourceRelation?.sourceActivityTitle
+    || sharedSourceRelation?.sourceActivityType
+    || 'Tema nespecificata';
+  const sharedSourceDescription = sharedSourceActivity?.description || sharedSourceRelation?.sourceActivityDescription;
+  const sharedSourceSaCode = sharedSourceActivity?.saCode || sharedSourceRelation?.sourceActivitySaCode;
+  const sharedSourceProjectCode = sharedSourceActivity?.projectCode || sharedSourceRelation?.sourceActivityProjectCode;
+
   return (
     <>
       <AdminViewAsBanner />
@@ -917,6 +935,8 @@ export default function ExpertDashboard() {
           </>
         }
       >
+        {!showForm && (
+          <>
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-4">
           <div className="space-y-1">
             <div className="flex flex-wrap items-center gap-2">
@@ -997,6 +1017,8 @@ export default function ExpertDashboard() {
             </div>
           </CardContent>
         </Card>
+          </>
+        )}
 
         <div id="livrabile" className="scroll-mt-24" />
         <Tabs defaultValue="activitati" className="space-y-6">
@@ -1020,34 +1042,29 @@ export default function ExpertDashboard() {
                         Formularul este precompletat cu datele declarate de coleg. Verifica si ajusteaza pontajul tau inainte de salvare.
                       </p>
                     </div>
-                    {sharedActivityRegistrationContext?.sourceActivity ? (
+                    {sharedActivityRegistrationContext ? (
                       <div className="grid gap-2 rounded-md border border-blue-200 bg-white/70 p-3 md:grid-cols-2">
                         <div>
                           <p className="text-xs font-medium uppercase text-blue-600">Declarat de</p>
-                          <p className="mt-1 font-medium">
-                            {sharedActivityRegistrationContext.sourceExpert?.name
-                              || sharedActivityRegistrationContext.sourceActivity.expertName
-                              || sharedActivityRegistrationContext.activityRelation.sourceExpertName
-                              || sharedActivityRegistrationContext.activityRelation.sourceExpertId}
-                          </p>
+                          <p className="mt-1 font-medium">{sharedSourceExpertName}</p>
                         </div>
                         <div>
                           <p className="text-xs font-medium uppercase text-blue-600">Cand a avut loc</p>
                           <p className="mt-1 font-medium">
-                            {formatDisplayDate(sharedActivityRegistrationContext.sourceActivity.date)}
-                            {sharedActivityRegistrationContext.sourceActivity.hours > 0
-                              ? `, ${sharedActivityRegistrationContext.sourceActivity.hours}h`
+                            {sharedSourceDate ? formatDisplayDate(sharedSourceDate) : 'Data nespecificata'}
+                            {sharedSourceHours > 0
+                              ? `, ${sharedSourceHours}h`
                               : ''}
                           </p>
                         </div>
                         <div className="md:col-span-2">
                           <p className="text-xs font-medium uppercase text-blue-600">Tema</p>
-                          <p className="mt-1 font-medium">{sharedActivityRegistrationContext.sourceActivity.title}</p>
+                          <p className="mt-1 font-medium">{sharedSourceTheme}</p>
                         </div>
                         <div>
                           <p className="text-xs font-medium uppercase text-blue-600">Incadrare</p>
                           <p className="mt-1 font-medium">
-                            {[sharedActivityRegistrationContext.sourceActivity.saCode, sharedActivityRegistrationContext.sourceActivity.projectCode]
+                            {[sharedSourceSaCode, sharedSourceProjectCode]
                               .filter(Boolean)
                               .join(' / ') || 'Neprecizata'}
                           </p>
@@ -1060,11 +1077,11 @@ export default function ExpertDashboard() {
                               : 'Nu exista livrabil comun atasat acestei sugestii'}
                           </p>
                         </div>
-                        {sharedActivityRegistrationContext.sourceActivity.description && (
+                        {sharedSourceDescription && (
                           <div className="md:col-span-2">
                             <p className="text-xs font-medium uppercase text-blue-600">Descriere coleg</p>
                             <p className="mt-1 whitespace-pre-wrap text-blue-900">
-                              {sharedActivityRegistrationContext.sourceActivity.description}
+                              {sharedSourceDescription}
                             </p>
                           </div>
                         )}
