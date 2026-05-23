@@ -648,22 +648,39 @@ export function ActivityForm({
       return;
     }
 
-    if (reportingWarnings.length > 0) {
-      const message = [
-        'Activitatea se va salva, dar raportul de activitate nu va putea fi transmis pana la remedierea urmatoarelor probleme:',
-        ...reportingWarnings.map((warning) => `- ${warning}`),
-      ].join('\n');
-      setValidationError(message);
-      if (typeof window !== 'undefined') {
-        window.alert(message);
+    const deliverablesToProcess = deliverables.filter((d) => d.uploaded && (d.filename || d.name));
+    const uploadedDeliverables: DeliverableSlot[] = [];
+
+    for (const deliverable of deliverablesToProcess) {
+      try {
+        const uploadedDeliverable = await uploadDeliverableFile(deliverable);
+        uploadedDeliverables.push(uploadedDeliverable);
+      } catch (error) {
+        const deliverableLabel = deliverable.filename || deliverable.name || 'livrabil';
+        const errorMessage = error instanceof Error ? error.message : 'Eroare necunoscuta la upload.';
+        reportingWarnings.push(
+          `Livrabilul "${deliverableLabel}" nu a putut fi incarcat in S3 (${errorMessage}). Activitatea se salveaza ca draft si livrabilul poate fi reincarcat ulterior.`,
+        );
+
+        uploadedDeliverables.push({
+          ...deliverable,
+          duplicateStatus: 'pending_upload',
+          titleCheckStatus: deliverable.titleCheckStatus || 'extraction_failed',
+          titleCheckMessage: deliverable.titleCheckMessage || 'Upload incomplet. Reincarca livrabilul pentru validare completa.',
+        });
       }
     }
 
-    const uploadedDeliverables = await Promise.all(
-      deliverables
-        .filter(d => d.uploaded && (d.filename || d.name))
-        .map(uploadDeliverableFile)
-    );
+    if (reportingWarnings.length > 0) {
+      const warningMessage = [
+        'Activitatea se va salva, dar raportul de activitate nu va putea fi transmis pana la remedierea urmatoarelor probleme:',
+        ...reportingWarnings.map((warning) => `- ${warning}`),
+      ].join('\n');
+      setValidationError(warningMessage);
+      if (typeof window !== 'undefined') {
+        window.alert(warningMessage);
+      }
+    }
 
     const activities: Activity[] = selectedDates.map((date) => {
       // Get hours for this specific date, fallback to default
