@@ -52,6 +52,7 @@ import {
   parseGdprMetaJson,
   serializeGdprMeta,
   validateGdprActivityDraft,
+  type GdprBusinessHubEvent,
   type GdprFieldDefinition,
   type GdprMeta,
   type GdprMetaValue,
@@ -293,6 +294,7 @@ export function ActivityForm({
   const [titleVerificationResult, setTitleVerificationResult] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const businessHubPvInputRef = useRef<HTMLInputElement>(null);
   
   // Get available activities for selected SA from catalog
   const availableActivities = useMemo(() => {
@@ -370,6 +372,7 @@ export function ActivityForm({
   }, [expertCategory]);
 
   const selectedGdprTemplate = useMemo(() => getGdprTemplate(gdprTemplateCode), [gdprTemplateCode]);
+  const isBusinessHubGdpr = selectedGdprTemplate?.code === 'GDPR_BUSINESS_HUB';
   const gdprFieldDefinitions = useMemo(
     () => getGdprFieldDefinitions(gdprTemplateCode, gdprMeta),
     [gdprTemplateCode, gdprMeta]
@@ -442,6 +445,119 @@ export function ActivityForm({
     // Clear input
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
+    }
+  };
+
+  const fileToDataUrl = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+
+  const handleBusinessHubPvUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setIsGeneratingGdprDocx(true);
+    setValidationError(null);
+    try {
+      const XLSX = await import('xlsx');
+      const buffer = await file.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
+      const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json<unknown[]>(worksheet, { header: 1, defval: '' });
+      const parsed = parseBusinessHubPvRows(rows);
+      const pvDataUrl = await fileToDataUrl(file);
+      const nextMeta: GdprMeta = buildDefaultGdprMeta('GDPR_BUSINESS_HUB', {
+        ...gdprMeta,
+        lunaAnalizata: parsed.monthLabel || `${reportMonthName} ${year}`,
+        numarEvenimente: parsed.events.length,
+        inregistrareBd: file.name,
+        responsabilHub: gdprMeta.responsabilHub || 'Alexandru Enache',
+        rolHub: gdprMeta.rolHub || 'suport logistic',
+        documenteAnalizate: { selected: ['proces_verbal', 'altele'], altele: 'Proces-verbal evenimente Business HUB' },
+        datePersonale: ['nume si prenume', 'functie', 'organizatie', 'semnatura'],
+        temeiGdpr: ['interes legitim', 'interes public / implementare proiect'],
+        concluzie: gdprConclusionCode || 'fara_prelucrari_directe',
+        businessHubEvents: parsed.events,
+      }, parsed.monthLabel || `${reportMonthName} ${year}`);
+      const objectText = buildGdprObjectVerification('GDPR_BUSINESS_HUB', nextMeta);
+      const completedMeta: GdprMeta = {
+        ...nextMeta,
+        obiectVerificare: objectText,
+      };
+      setGdprTemplateCode('GDPR_BUSINESS_HUB');
+      setSaCode('SA1.1');
+      setActivityTitle('Verificare GDPR Business HUB');
+      setHours('6');
+      setHoursPerDay((prev) => {
+        const next = { ...prev };
+        selectedDates.forEach((date) => {
+          next[date] = '6';
+        });
+        onSelectedHoursChange?.(next);
+        return next;
+      });
+      setGdprConclusionCode(String(completedMeta.concluzie || 'fara_prelucrari_directe'));
+      setGdprMeta(completedMeta);
+
+      const input = {
+        templateCode: 'GDPR_BUSINESS_HUB' as const,
+        meta: completedMeta,
+        date: selectedDates[0] || '',
+        expertName,
+        expertRole: expert?.positionInProject || expert?.role,
+        projectCode: expert?.projectCode,
+        projectTitle: expert?.projectTitle,
+      };
+      const generatedDescription = buildGdprActivityDescription(input);
+      const generatedBlob = await buildGdprDeliverableDocx(input);
+      const generatedDataUrl = await blobToDataUrl(generatedBlob);
+      const generatedSlot = createGeneratedGdprDeliverableSlot({
+        ...input,
+        fileData: generatedDataUrl,
+        fileSize: generatedBlob.size,
+      });
+      const pvSlot: DeliverableSlot = {
+        ...createDeliverableSlot('livrabil', file.name),
+        name: file.name,
+        filename: file.name,
+        rawFilename: file.name.replace(/\.[^.]+$/, ''),
+        fileType: file.type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        fileSize: file.size,
+        fileData: pvDataUrl,
+        uploadedAt: new Date().toISOString(),
+        uploaded: true,
+        declaredTitle: `Proces-verbal evenimente Business HUB - ${parsed.monthLabel || reportMonthName}`,
+        docTitle: `Proces-verbal evenimente Business HUB - ${parsed.monthLabel || reportMonthName}`,
+        titleConfirmed: true,
+        titleSource: 'auto_detected',
+        titleMatch: true,
+        titleCheckStatus: 'matched',
+        titleCheckMessage: 'Procesul-verbal Business HUB a fost atasat ca dovada minima.',
+        documentId: `doc_bh_pv_${generateId()}`,
+        isCommonDeliverable: false,
+        sharedWithExpertIds: [],
+      };
+
+      setDescription(generatedDescription);
+      setGdprGeneratedText(generatedDescription);
+      setDeliverables((prev) => [
+        ...prev.filter((deliverable) =>
+          !deliverable.documentId?.startsWith('doc_bh_pv_')
+          && (deliverable.declaredTitle !== generatedSlot.declaredTitle || !deliverable.documentId?.startsWith('doc_gdpr_')),
+        ),
+        pvSlot,
+        generatedSlot,
+      ]);
+    } catch (error) {
+      setValidationError(error instanceof Error ? error.message : 'Nu am putut citi procesul-verbal Business HUB.');
+    } finally {
+      setIsGeneratingGdprDocx(false);
+      if (businessHubPvInputRef.current) {
+        businessHubPvInputRef.current.value = '';
+      }
     }
   };
 
@@ -1004,7 +1120,7 @@ export function ActivityForm({
     if (field.type === 'checkbox_with_other') {
       const selectedValue = value && typeof value === 'object' && !Array.isArray(value) && Array.isArray((value as { selected?: string[] }).selected)
         ? value as { selected: string[]; altele?: string }
-        : { selected: Array.isArray(value) ? value : [], altele: '' };
+        : { selected: Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [], altele: '' };
       const selected = selectedValue.selected || [];
       const hasOther = selected.includes('altele');
       const updateSelection = (nextSelected: string[], altele = selectedValue.altele || '') => {
@@ -1053,7 +1169,7 @@ export function ActivityForm({
     }
 
     if (field.type === 'multi' && field.options?.length) {
-      const selected = Array.isArray(value) ? value : [];
+      const selected = Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
       return (
         <Field key={field.key} className="space-y-2">
           {label}
@@ -1090,7 +1206,7 @@ export function ActivityForm({
     }
 
     if (field.type === 'multi') {
-      const selectedText = Array.isArray(value) ? value.join(', ') : (typeof value === 'string' ? value : '');
+      const selectedText = Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string').join(', ') : (typeof value === 'string' ? value : '');
       return (
         <Field key={field.key}>
           {label}
@@ -1290,6 +1406,52 @@ export function ActivityForm({
                       )}
                     </div>
 
+                    {isBusinessHubGdpr && (
+                      <div className="rounded-md border border-emerald-200 bg-white p-4">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-semibold text-emerald-950">Generator rapid RP Business HUB</div>
+                            <p className="mt-1 text-xs text-emerald-800">
+                              Incarca procesul-verbal Excel. Aplicatia extrage luna si tabelul evenimentelor, ataseaza PV-ul ca dovada minima si genereaza automat raportul preliminar DOCX.
+                            </p>
+                          </div>
+                          <Button
+                            type="button"
+                            onClick={() => businessHubPvInputRef.current?.click()}
+                            disabled={isGeneratingGdprDocx}
+                          >
+                            {isGeneratingGdprDocx ? (
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            ) : (
+                              <Upload className="h-4 w-4 mr-2" />
+                            )}
+                            Upload PV si genereaza RP
+                          </Button>
+                        </div>
+                        <input
+                          ref={businessHubPvInputRef}
+                          type="file"
+                          className="hidden"
+                          accept=".xls,.xlsx"
+                          onChange={handleBusinessHubPvUpload}
+                        />
+                        <div className="mt-3 grid gap-3 text-xs text-slate-700 md:grid-cols-3">
+                          <div className="rounded-md bg-emerald-50 p-2">
+                            <span className="font-medium">Luna detectata</span>
+                            <div>{typeof gdprMeta.lunaAnalizata === 'string' ? gdprMeta.lunaAnalizata : 'se completeaza din PV'}</div>
+                          </div>
+                          <div className="rounded-md bg-emerald-50 p-2">
+                            <span className="font-medium">Evenimente detectate</span>
+                            <div>{typeof gdprMeta.numarEvenimente === 'number' ? gdprMeta.numarEvenimente : 'se calculeaza automat'}</div>
+                          </div>
+                          <div className="rounded-md bg-emerald-50 p-2">
+                            <span className="font-medium">Status</span>
+                            <div>{gdprMeta.businessHubEvents ? 'PV citit si RP generat' : 'asteapta upload PV'}</div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="grid gap-4 md:grid-cols-2">
                       <Field>
                         <FieldLabel htmlFor="gdprConclusion">Concluzie conformitate *</FieldLabel>
@@ -1306,12 +1468,14 @@ export function ActivityForm({
                           </SelectContent>
                         </Select>
                       </Field>
-                      {gdprFieldDefinitions.slice(0, 1).map(renderGdprField)}
+                      {!isBusinessHubGdpr && gdprFieldDefinitions.slice(0, 1).map(renderGdprField)}
                     </div>
 
-                    <div className="grid gap-4 md:grid-cols-2">
-                      {gdprFieldDefinitions.slice(1).map(renderGdprField)}
-                    </div>
+                    {!isBusinessHubGdpr && (
+                      <div className="grid gap-4 md:grid-cols-2">
+                        {gdprFieldDefinitions.slice(1).map(renderGdprField)}
+                      </div>
+                    )}
 
                     <div className="flex flex-wrap gap-2 border-t border-emerald-200 pt-3">
                       <Button type="button" variant="outline" onClick={generateGdprDescription}>
@@ -1931,4 +2095,70 @@ export function ActivityForm({
       </CardContent>
     </Card>
   );
+}
+
+function parseBusinessHubPvRows(rows: unknown[][]): { monthLabel: string; events: GdprBusinessHubEvent[] } {
+  const textRows = rows.map((row) => row.map((cell) => formatSpreadsheetCell(cell)));
+  const allText = textRows.flat().join(' ');
+  const monthMatch = allText.match(/luna\s+([A-Za-zĂÂÎȘȚăâîșț]+)\s+(\d{4})/i);
+  const monthLabel = monthMatch ? `${monthMatch[1]} ${monthMatch[2]}` : '';
+  const headerIndex = textRows.findIndex((row) =>
+    row.some((cell) => /federa/i.test(cell))
+    && row.some((cell) => /eveniment/i.test(cell))
+    && row.some((cell) => /^data$/i.test(cell)),
+  );
+  if (headerIndex < 0) {
+    throw new Error('Nu am gasit tabelul de evenimente in procesul-verbal Business HUB.');
+  }
+
+  const header = textRows[headerIndex];
+  const federationIndex = findHeaderIndex(header, /federa|asocia/i);
+  const eventIndex = findHeaderIndex(header, /eveniment/i);
+  const dateIndex = findHeaderIndex(header, /^data$/i);
+  const roomIndex = findHeaderIndex(header, /sala/i);
+  const intervalIndex = findHeaderIndex(header, /interval/i);
+  const signatureIndex = findHeaderIndex(header, /semn/i);
+  const events: GdprBusinessHubEvent[] = [];
+  let currentFederation = '';
+
+  for (const row of textRows.slice(headerIndex + 1)) {
+    const federation = row[federationIndex] || '';
+    const event = row[eventIndex] || '';
+    const date = row[dateIndex] || '';
+    const room = row[roomIndex] || '';
+    const interval = row[intervalIndex] || '';
+    const signature = row[signatureIndex] || '';
+    if (federation) currentFederation = federation;
+    if (!event && !date && !room && !interval) continue;
+    if (!event || !date) continue;
+    events.push({
+      federation: currentFederation,
+      event,
+      date,
+      room,
+      interval,
+      signature,
+    });
+  }
+
+  if (events.length === 0) {
+    throw new Error('Procesul-verbal a fost citit, dar nu am gasit evenimente cu data completata.');
+  }
+
+  return { monthLabel, events };
+}
+
+function findHeaderIndex(row: string[], pattern: RegExp) {
+  const index = row.findIndex((cell) => pattern.test(cell));
+  if (index < 0) {
+    throw new Error('Tabelul din PV nu are coloanele asteptate pentru Business HUB.');
+  }
+  return index;
+}
+
+function formatSpreadsheetCell(value: unknown) {
+  if (value instanceof Date) {
+    return value.toLocaleDateString('ro-RO');
+  }
+  return String(value ?? '').replace(/\s+/g, ' ').trim();
 }

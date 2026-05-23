@@ -4,6 +4,7 @@ import { normalizeAndGroupActivities } from '../lib/activity-report/normalize.ts
 import { buildActivityReportPrompt, buildActivityReportPromptInput } from '../lib/activity-report/prompt.ts';
 import {
   buildDefaultGdprMeta,
+  buildBusinessHubPreliminaryReportText,
   buildGdprActivityDescription,
   buildGdprDeliverableText,
   getGdprRequiredFields,
@@ -186,4 +187,32 @@ test('monitorizarea GT ramane activitate cu livrabil obligatoriu', () => {
 
   assert.equal(validation.ok, false);
   assert.ok(validation.missingFields.includes('livrabil_generat_sau_atasat'));
+});
+
+test('raportul Business HUB foloseste luna si tabelul de evenimente din PV', () => {
+  const report = buildBusinessHubPreliminaryReportText({
+    templateCode: 'GDPR_BUSINESS_HUB',
+    date: '2026-05-07',
+    expertName: 'Simona Khamissi',
+    meta: {
+      lunaAnalizata: 'aprilie 2026',
+      numarEvenimente: 16,
+      concluzie: 'fara_prelucrari_directe',
+      businessHubEvents: [
+        {
+          federation: 'Asociatia Berarii Romaniei',
+          event: 'Meeting BR',
+          date: '08 Aprilie',
+          room: 'Class Room',
+          interval: '15:30-16:30',
+          signature: 'Mihai Sauciuc',
+        },
+      ],
+    },
+  });
+
+  assert.match(report, /luna aprilie 2026/);
+  assert.match(report, /Trecerea in revista a 16 evenimente desfasurate in luna aprilie 2026/);
+  assert.match(report, /Meeting BR/);
+  assert.match(report, /Mihai Sauciuc/);
 });

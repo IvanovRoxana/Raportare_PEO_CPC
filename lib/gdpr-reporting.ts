@@ -53,13 +53,22 @@ export interface GdprSelectionValue {
   altele?: string;
 }
 
+export interface GdprBusinessHubEvent {
+  federation: string;
+  event: string;
+  date: string;
+  room: string;
+  interval: string;
+  signature?: string;
+}
+
 export interface GdprOption {
   key: string;
   label: string;
   requiresFreeText?: boolean;
 }
 
-export type GdprMetaValue = string | number | boolean | string[] | GdprSelectionValue | undefined;
+export type GdprMetaValue = string | number | boolean | string[] | GdprSelectionValue | GdprBusinessHubEvent[] | undefined;
 export type GdprMeta = Record<string, GdprMetaValue>;
 
 export interface GdprFieldDefinition {
@@ -307,7 +316,7 @@ export const GDPR_TEMPLATES: GdprTemplate[] = [
     label: 'Verificare GDPR Business HUB',
     activityTitle: 'Verificare GDPR Business HUB',
     saCode: 'SA1.1',
-    defaultHours: 4,
+    defaultHours: 6,
     deliverableTitle: 'Raport privind evenimentele desfasurate in Business HUB - protectia datelor',
     deliverableType: 'Raport verificare GDPR',
     requiresDeliverable: false,
@@ -886,6 +895,9 @@ export function buildGdprActivityDescription(input: GdprGenerationInput) {
 export function buildGdprDeliverableText(input: GdprGenerationInput) {
   const template = getGdprTemplate(input.templateCode);
   if (!template) return '';
+  if (template.code === 'GDPR_BUSINESS_HUB') {
+    return buildBusinessHubPreliminaryReportText(input);
+  }
 
   const description = buildGdprActivityDescription(input);
   const conclusion = getGdprConclusionText(String(input.meta.concluzie || 'conform_fara_neconformitati'));
@@ -916,6 +928,9 @@ export function buildGdprDeliverableText(input: GdprGenerationInput) {
 }
 
 export async function buildGdprDeliverableDocx(input: GdprGenerationInput): Promise<Blob> {
+  if (input.templateCode === 'GDPR_BUSINESS_HUB') {
+    return buildBusinessHubPreliminaryReportDocx(input);
+  }
   const { Document, Packer, Paragraph, TextRun, HeadingLevel } = await import('docx');
   const textContent = buildGdprDeliverableText(input);
   const children = textContent.split('\n').map((line, index) => {
@@ -927,6 +942,159 @@ export async function buildGdprDeliverableDocx(input: GdprGenerationInput): Prom
     }
     return new Paragraph({ children: [new TextRun(line)] });
   });
+
+  const doc = new Document({ sections: [{ children }] });
+  return Packer.toBlob(doc);
+}
+
+export function buildBusinessHubPreliminaryReportText(input: GdprGenerationInput) {
+  const meta = input.meta;
+  const month = text(meta.lunaAnalizata, 'luna analizata').toLowerCase();
+  const events = getBusinessHubEvents(meta);
+  const eventCount = Number(meta.numarEvenimente) || events.length || 0;
+  const eventLines = events.length > 0
+    ? [
+        'Federatie/Asociatie\tEveniment\tData\tSala\tInterval orar\tSemnatura',
+        ...events.map((event) => [
+          event.federation,
+          event.event,
+          event.date,
+          event.room,
+          event.interval,
+          event.signature || '',
+        ].join('\t')),
+      ]
+    : ['Tabelul evenimentelor se completeaza pe baza procesului-verbal incarcat.'];
+
+  return [
+    'RAPORT PRELIMINAR',
+    '',
+    `Privind trecerea in revista a evenimentelor desfasurate in Business HUB in luna ${month} - Protectia datelor cu caracter personal`,
+    '',
+    'Avand in vedere:',
+    'Necesitatile operationale identificate in implementarea proiectului "Consolidarea capacitatii Concordia pentru dialog social" PEO/10610/22.01.2024',
+    'Aprobarea Manualului Beneficiarului pentru proiectele finantate prin PEO 2021-2027',
+    'Recomandarile autoritatii finantatoare in ceea ce priveste documentele justificative',
+    '',
+    'a fost redactata prezenta minuta de sedinta.',
+    '',
+    'Activitatea s-a desfasurat in scopul asigurarii conformitatii, trasabilitatii si auditabilitatii proceselor interne, avand caracter preventiv si procedural, nu doar operational, contribuind la:',
+    'reducerea riscului de neconformitate in implementare',
+    'transparenta si controlul fluxurilor de date in cadrul infrastructurii proiectului',
+    'consolidarea capacitatii institutionale de management si administrare a resurselor (SA3.2)',
+    '',
+    'Scopul sesiunii: documentarea, analizarea si standardizarea modului de gestionare a informatiilor si a datelor cu caracter personal rezultate din activitatile organizate in Business Hub, in vederea asigurarii conformitatii cu prevederile GDPR si cu cerintele proiectelor PEO.',
+    '',
+    `Avand in vedere obiectivele asumate prin proiectul mentionat, in luna ${month}, s-au desfasurat urmatoarele activitati cu facilitarea accesului la resursele disponibile in Business HUB:`,
+    '',
+    ...eventLines,
+    '',
+    'Proces de lucru etapizat',
+    `1. Trecerea in revista a ${eventCount || '[numar]'} evenimente desfasurate in luna ${month};`,
+    '2. Identificarea si clasificarea datelor personale prelucrate de Administrator Business HUB;',
+    '3. Validarea mediului de stocare a documentelor ce contin date personale;',
+    '4. Observatii privind zonele de atentie in gestionarea datelor personale de catre organizatorii evenimentelor;',
+    '5. Monitorizare si conformitate continua;',
+    '',
+    `In cadrul sesiunii de lucru au fost parcurse urmatoarele etape:`,
+    `1. Trecerea in revista a evenimentelor ce au avut loc in Business HUB in luna ${month}.`,
+    'Coordonator Business HUB a elaborat un document in care a enumerat evenimentele, federatia/asociatia organizatoare, data, sala de intalniri, intervalul orar si persoana de contact din partea organizatorilor. La acest document, Expertul in Prelucrarea Datelor cu caracter personal (DPO) a adaugat o informare GDPR, anexata acestuia (livrabil). Documentul urmeaza a fi semnat de catre toti responsabilii (persoana de contact) din partea federatiilor organizatoare.',
+    '',
+    'Identificarea si clasificarea datelor personale prelucrate de Administrator Business HUB',
+    'S-au identificat urmatoarele date personale prelucrate: nume si prenume, date de contact, functie si organizatie, semnatura.',
+    '',
+    'Validarea mediului de stocare a documentelor ce contin date personale',
+    'S-au identificat si discutat urmatoarele medii de stocare: emailurile institutionale primite si transmise, arhivarea dosarelor virtuale stocate pe serverul CPC si dispozitivele utilizate pentru salile de videoconferinta.',
+    '',
+    'Observatii privind zonele de atentie in gestionarea datelor personale de catre organizatorii evenimentelor',
+    'Expertul in Prelucrarea Datelor cu caracter personal (DPO) a mentionat principalele riscuri: acces neautorizat la sedinte/intalniri, lipsa consimtamantului explicit pentru anumite tipuri de date, nerespectarea principiului minimizarii datelor, risc de neconformitate cu drepturile persoanelor vizate si partajarea necontrolata a datelor catre terti.',
+    `Coordonatorul Business Hub a verificat si validat faptul ca pentru evenimentele desfasurate in luna ${month}, Business Hub asigura exclusiv suportul logistic si tehnic (spatiu, echipamente, acces), fara implicare in gestionarea datelor personale. Conform responsabilitatilor prevazute in fisa de post si a atributiilor SA3.2, prelucrarea datelor ramane integral in sarcina entitatii organizatoare.`,
+    '',
+    'Propuneri pentru monitorizarea conformitatii cu GDPR',
+    'Expertul in Prelucrarea Datelor cu caracter personal (DPO) a amintit metodele prin care se monitorizeaza conformitatea GDPR in prelucrarea datelor personale si masurile ce se pot adopta pentru sporirea protectiei prelucrarii: masuri de securitate si criptare, masuri de pastrare si stergere a datelor, monitorizarea accesului si jurnalizare, informarea si obtinerea consimtamantului clar exprimat, drepturile persoanelor vizate.',
+    '',
+    'Concluzii:',
+    `Expertul GDPR confirma ca in luna ${month} nu au existat prelucrari directe de date personale de catre Business HUB, responsabilitatea revenind exclusiv organizatiilor care au organizat evenimentele.`,
+    'Business HUB nu este operator de date personale in contextul evenimentelor organizate de federatii/asociatii membre, ci doar furnizor de infrastructura. Singura prelucrare de date realizata de HUB consta in procesul verbal al evenimentelor, care contine datele persoanelor de contact desemnate.',
+    'Coordonatorul HUB confirma ca toate evenimentele au fost desfasurate conform procedurilor logistice, iar infrastructura a fost utilizata eficient, fara incidente tehnice.',
+    `Durata totala a activitatii a fost de 6 ore si include procesul complet de analiza documentara, verificari operationale, consultare tehnica, redactare, validare si arhivare a livrabilelor, in data de ${input.date || 'data selectata'}.`,
+    '',
+    'Intocmit,',
+    input.expertName || 'Expert GDPR',
+  ].join('\n');
+}
+
+async function buildBusinessHubPreliminaryReportDocx(input: GdprGenerationInput): Promise<Blob> {
+  const { Document, Packer, Paragraph, TextRun, HeadingLevel, Table, TableRow, TableCell } = await import('docx');
+  const meta = input.meta;
+  const month = text(meta.lunaAnalizata, 'luna analizata').toLowerCase();
+  const events = getBusinessHubEvents(meta);
+  const eventCount = Number(meta.numarEvenimente) || events.length || 0;
+  const p = (value: string, bold = false) => new Paragraph({ children: [new TextRun({ text: value, bold })] });
+  const cell = (value: string, bold = false) => new TableCell({ children: [p(value, bold)] });
+  const children: any[] = [
+    new Paragraph({ text: 'RAPORT PRELIMINAR', heading: HeadingLevel.HEADING_1 }),
+    p(`Privind trecerea in revista a evenimentelor desfasurate in Business HUB in luna ${month} - Protectia datelor cu caracter personal`, true),
+    p(''),
+    p('Avand in vedere:'),
+    p('Necesitatile operationale identificate in implementarea proiectului "Consolidarea capacitatii Concordia pentru dialog social" PEO/10610/22.01.2024'),
+    p('Aprobarea Manualului Beneficiarului pentru proiectele finantate prin PEO 2021-2027'),
+    p('Recomandarile autoritatii finantatoare in ceea ce priveste documentele justificative'),
+    p(''),
+    p('a fost redactata prezenta minuta de sedinta.'),
+    p(''),
+    p('Activitatea s-a desfasurat in scopul asigurarii conformitatii, trasabilitatii si auditabilitatii proceselor interne, avand caracter preventiv si procedural, nu doar operational, contribuind la:'),
+    p('reducerea riscului de neconformitate in implementare'),
+    p('transparenta si controlul fluxurilor de date in cadrul infrastructurii proiectului'),
+    p('consolidarea capacitatii institutionale de management si administrare a resurselor (SA3.2)'),
+    p(''),
+    p('Scopul sesiunii: documentarea, analizarea si standardizarea modului de gestionare a informatiilor si a datelor cu caracter personal rezultate din activitatile organizate in Business Hub, in vederea asigurarii conformitatii cu prevederile GDPR si cu cerintele proiectelor PEO.'),
+    p(''),
+    p(`Avand in vedere obiectivele asumate prin proiectul mentionat, in luna ${month}, s-au desfasurat urmatoarele activitati cu facilitarea accesului la resursele disponibile in Business HUB:`),
+  ];
+
+  if (events.length > 0) {
+    children.push(new Table({
+      rows: [
+        new TableRow({ children: ['Federatie/Asociatie', 'Eveniment', 'Data', 'Sala', 'Interval orar', 'Semnatura'].map((header) => cell(header, true)) }),
+        ...events.map((event) => new TableRow({
+          children: [event.federation, event.event, event.date, event.room, event.interval, event.signature || ''].map((value) => cell(value)),
+        })),
+      ],
+    }));
+  } else {
+    children.push(p('Tabelul evenimentelor se completeaza pe baza procesului-verbal incarcat.'));
+  }
+
+  children.push(
+    new Paragraph({ text: 'Proces de lucru etapizat', heading: HeadingLevel.HEADING_2 }),
+    p(`1. Trecerea in revista a ${eventCount || '[numar]'} evenimente desfasurate in luna ${month};`),
+    p('2. Identificarea si clasificarea datelor personale prelucrate de Administrator Business HUB;'),
+    p('3. Validarea mediului de stocare a documentelor ce contin date personale;'),
+    p('4. Observatii privind zonele de atentie in gestionarea datelor personale de catre organizatorii evenimentelor;'),
+    p('5. Monitorizare si conformitate continua;'),
+    p(''),
+    p(`In cadrul sesiunii de lucru au fost parcurse urmatoarele etape:`),
+    p(`1. Trecerea in revista a evenimentelor ce au avut loc in Business HUB in luna ${month}.`),
+    p('Coordonator Business HUB a elaborat un document in care a enumerat evenimentele, federatia/asociatia organizatoare, data, sala de intalniri, intervalul orar si persoana de contact din partea organizatorilor. La acest document, Expertul in Prelucrarea Datelor cu caracter personal (DPO) a adaugat o informare GDPR, anexata acestuia (livrabil). Documentul urmeaza a fi semnat de catre toti responsabilii (persoana de contact) din partea federatiilor organizatoare.'),
+    new Paragraph({ text: 'Identificarea si clasificarea datelor personale prelucrate de Administrator Business HUB', heading: HeadingLevel.HEADING_2 }),
+    p('S-au identificat urmatoarele date personale prelucrate: nume si prenume, date de contact, functie si organizatie, semnatura.'),
+    new Paragraph({ text: 'Validarea mediului de stocare a documentelor ce contin date personale', heading: HeadingLevel.HEADING_2 }),
+    p('S-au identificat si discutat urmatoarele medii de stocare: emailurile institutionale primite si transmise, arhivarea dosarelor virtuale stocate pe serverul CPC si dispozitivele utilizate pentru salile de videoconferinta.'),
+    new Paragraph({ text: 'Observatii privind zonele de atentie in gestionarea datelor personale de catre organizatorii evenimentelor', heading: HeadingLevel.HEADING_2 }),
+    p('Expertul in Prelucrarea Datelor cu caracter personal (DPO) a mentionat principalele riscuri: acces neautorizat la sedinte/intalniri, lipsa consimtamantului explicit pentru anumite tipuri de date, nerespectarea principiului minimizarii datelor, risc de neconformitate cu drepturile persoanelor vizate si partajarea necontrolata a datelor catre terti.'),
+    p(`Coordonatorul Business Hub a verificat si validat faptul ca pentru evenimentele desfasurate in luna ${month}, Business Hub asigura exclusiv suportul logistic si tehnic (spatiu, echipamente, acces), fara implicare in gestionarea datelor personale. Conform responsabilitatilor prevazute in fisa de post si a atributiilor SA3.2, prelucrarea datelor ramane integral in sarcina entitatii organizatoare.`),
+    new Paragraph({ text: 'Propuneri pentru monitorizarea conformitatii cu GDPR', heading: HeadingLevel.HEADING_2 }),
+    p('Expertul in Prelucrarea Datelor cu caracter personal (DPO) a amintit metodele prin care se monitorizeaza conformitatea GDPR in prelucrarea datelor personale si masurile ce se pot adopta pentru sporirea protectiei prelucrarii: masuri de securitate si criptare, masuri de pastrare si stergere a datelor, monitorizarea accesului si jurnalizare, informarea si obtinerea consimtamantului clar exprimat, drepturile persoanelor vizate.'),
+    new Paragraph({ text: 'Concluzii', heading: HeadingLevel.HEADING_2 }),
+    p(`Expertul GDPR confirma ca in luna ${month} nu au existat prelucrari directe de date personale de catre Business HUB, responsabilitatea revenind exclusiv organizatiilor care au organizat evenimentele.`),
+    p('Business HUB nu este operator de date personale in contextul evenimentelor organizate de federatii/asociatii membre, ci doar furnizor de infrastructura. Singura prelucrare de date realizata de HUB consta in procesul verbal al evenimentelor, care contine datele persoanelor de contact desemnate.'),
+    p('Coordonatorul HUB confirma ca toate evenimentele au fost desfasurate conform procedurilor logistice, iar infrastructura a fost utilizata eficient, fara incidente tehnice.'),
+    p(`Durata totala a activitatii a fost de 6 ore si include procesul complet de analiza documentara, verificari operationale, consultare tehnica, redactare, validare si arhivare a livrabilelor, in data de ${input.date || 'data selectata'}.`),
+    p(''),
+    p('Intocmit,'),
+    p(input.expertName || 'Expert GDPR'),
+  );
 
   const doc = new Document({ sections: [{ children }] });
   return Packer.toBlob(doc);
@@ -1019,6 +1187,14 @@ function buildSpecificDescription(code: GdprTemplateCode, meta: GdprMeta) {
   return '';
 }
 
+function getBusinessHubEvents(meta: GdprMeta): GdprBusinessHubEvent[] {
+  return Array.isArray(meta.businessHubEvents)
+    ? meta.businessHubEvents.filter((event): event is GdprBusinessHubEvent =>
+        Boolean(event && typeof event === 'object' && 'event' in event && 'date' in event),
+      )
+    : [];
+}
+
 function isEmptyMetaValue(value: GdprMetaValue) {
   if (isSelectionValue(value)) {
     return value.selected.length === 0 && !value.altele?.trim();
@@ -1030,7 +1206,7 @@ function isEmptyMetaValue(value: GdprMetaValue) {
 
 function text(value: GdprMetaValue, fallback: string) {
   if (isSelectionValue(value)) return listText(value, fallback);
-  if (Array.isArray(value)) return value.filter(Boolean).join(', ') || fallback;
+  if (Array.isArray(value)) return value.filter((item): item is string => typeof item === 'string' && item.length > 0).join(', ') || fallback;
   if (typeof value === 'boolean') return value ? 'Da' : 'Nu';
   if (value === undefined || value === null || value === '') return fallback;
   return String(value);
@@ -1054,7 +1230,7 @@ function isSelectionValue(value: GdprMetaValue): value is GdprSelectionValue {
 
 function selectedValues(value: GdprMetaValue): string[] {
   if (isSelectionValue(value)) return value.selected;
-  if (Array.isArray(value)) return value;
+  if (Array.isArray(value)) return value.filter((item): item is string => typeof item === 'string');
   if (typeof value === 'string') return value.split(',').map((item) => item.trim()).filter(Boolean);
   return [];
 }
