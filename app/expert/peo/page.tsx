@@ -834,7 +834,12 @@ export default function ExpertDashboard() {
                 Înapoi la pontaj
               </Link>
             </Button>
-            <Select value={selectedExpertId || ''} onValueChange={(id) => setSelectedExpertId(id)}>
+            {showForm ? (
+              <Badge variant="secondary" className="h-10 rounded-lg px-3 text-sm font-medium">
+                Pontaj pentru: {selectedExpert.name}
+              </Badge>
+            ) : (
+              <Select value={selectedExpertId || ''} onValueChange={(id) => setSelectedExpertId(id)}>
               <SelectTrigger className="w-[210px]">
                 <SelectValue placeholder="Selectează expert" />
               </SelectTrigger>
@@ -845,7 +850,8 @@ export default function ExpertDashboard() {
                   </SelectItem>
                 ))}
               </SelectContent>
-            </Select>
+              </Select>
+            )}
             {!showForm && (
               <Button onClick={handleAddActivity} disabled={!selectedExpert.id || isApproved || monthlyBlocking.isBlocked}>
                 <Plus className="h-4 w-4" />
