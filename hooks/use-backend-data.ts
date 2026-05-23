@@ -18,9 +18,22 @@ import {
   auditLogsService,
   documentsService,
   historicalImportService,
+  procurementChecklistsService,
+  procurementContractsService,
+  procurementDeliverablesService,
+  procurementDocumentsService,
+  procurementEvaluationsService,
+  procurementInvoicesService,
+  procurementLaunchesService,
+  procurementOffersService,
+  procurementProjectsService,
+  procurementReceptionsService,
+  procurementStatusHistoryService,
+  procurementSuppliersService,
   sharedDeliverablesService,
 } from '@/lib/backend-store';
 import type { Activity, Expert, VerificationData, Neconformitate, VerificationNote, AppSettings, ActivityCatalog, WorkingGroup, ConcurrentProject, ConcurrentProjectTimesheetEntry, ReportStatus, GrupTintaEntry, AuditLog, AdminInterventionRequest, HistoricalImportBatch, HistoricalTimesheetDayEntry, MonthlyActivityItem, MonthlyExpertReport, UploadedReportingFile } from '@/lib/types';
+import { getContractedProcurementProjects, type ProcurementChecklist, type ProcurementContract, type ProcurementDeliverable, type ProcurementDocument, type ProcurementEvaluation, type ProcurementInvoice, type ProcurementLaunch, type ProcurementOffer, type ProcurementProject, type ProcurementReception, type ProcurementStatusHistory, type ProcurementSupplier } from '@/lib/procurement';
 
 const EMPTY_LIST: readonly never[] = Object.freeze([]);
 
@@ -217,6 +230,21 @@ export function useSharedDeliverables(expertId?: string) {
   };
 }
 
+export function useSharedActivityRegistrationContext(relationId?: string | null) {
+  const key = relationId ? `shared-activity-registration-${relationId}` : null;
+  const { data, error, isLoading } = useSWR(
+    key && isBackendAvailable() ? key : null,
+    safeFetcher(() => sharedDeliverablesService.getActivityRegistrationContext(relationId!))
+  );
+
+  return {
+    context: data ?? null,
+    isLoading,
+    error,
+    mutate: () => (key ? mutate(key) : undefined),
+  };
+}
+
 export function useSharedDeliverableMutations() {
   const registerForActivity = async (relationId: string, targetActivityId: string) => {
     const updated = await sharedDeliverablesService.registerForActivity(relationId, targetActivityId);
@@ -231,6 +259,100 @@ export function useSharedDeliverableMutations() {
   };
 
   return { registerForActivity, ignore };
+}
+
+export function useProcurementProjects() {
+  const { data, error, isLoading } = useSWR(
+    isBackendAvailable() ? 'procurement-projects' : null,
+    safeFetcher(procurementProjectsService.getAll)
+  );
+
+  return {
+    procurementProjects: data ?? getContractedProcurementProjects(),
+    isLoading: isBackendAvailable() ? isLoading : false,
+    error,
+    mutate: () => mutate('procurement-projects'),
+  };
+}
+
+export function useProcurementProject(id: string | null) {
+  const { data, error, isLoading } = useSWR(
+    id && isBackendAvailable() ? `procurement-project-${id}` : null,
+    safeFetcher(() => procurementProjectsService.getById(id!))
+  );
+
+  return {
+    procurementProject: data ?? (id ? getContractedProcurementProjects().find((project) => project.id === id) ?? null : null),
+    isLoading: isBackendAvailable() ? isLoading : false,
+    error,
+  };
+}
+
+export function useProcurementProjectMutations() {
+  const create = async (project: Omit<ProcurementProject, 'id'>) => {
+    const created = await procurementProjectsService.create(project);
+    mutate('procurement-projects');
+    return created;
+  };
+
+  const update = async (id: string, updates: Partial<ProcurementProject>) => {
+    const updated = await procurementProjectsService.update(id, updates);
+    mutate('procurement-projects');
+    mutate(`procurement-project-${id}`);
+    return updated;
+  };
+
+  return { create, update };
+}
+
+function useProcurementChildRecords<T>(keyPrefix: string, service: { getByProject: (projectId: string) => Promise<T[]> }, procurementProjectId?: string) {
+  const key = procurementProjectId ? `${keyPrefix}-${procurementProjectId}` : null;
+  const { data, error, isLoading } = useSWR(
+    key && isBackendAvailable() ? key : null,
+    safeFetcher(() => service.getByProject(procurementProjectId!))
+  );
+
+  return {
+    records: stableList(data),
+    isLoading: isBackendAvailable() ? isLoading : false,
+    error,
+    mutate: () => key ? mutate(key) : undefined,
+  };
+}
+
+export const useProcurementDocuments = (projectId?: string) =>
+  useProcurementChildRecords<ProcurementDocument>('procurement-documents', procurementDocumentsService, projectId);
+export const useProcurementLaunches = (projectId?: string) =>
+  useProcurementChildRecords<ProcurementLaunch>('procurement-launches', procurementLaunchesService, projectId);
+export const useProcurementOffers = (projectId?: string) =>
+  useProcurementChildRecords<ProcurementOffer>('procurement-offers', procurementOffersService, projectId);
+export const useProcurementEvaluations = (projectId?: string) =>
+  useProcurementChildRecords<ProcurementEvaluation>('procurement-evaluations', procurementEvaluationsService, projectId);
+export const useProcurementContracts = (projectId?: string) =>
+  useProcurementChildRecords<ProcurementContract>('procurement-contracts', procurementContractsService, projectId);
+export const useProcurementDeliverables = (projectId?: string) =>
+  useProcurementChildRecords<ProcurementDeliverable>('procurement-deliverables', procurementDeliverablesService, projectId);
+export const useProcurementReceptions = (projectId?: string) =>
+  useProcurementChildRecords<ProcurementReception>('procurement-receptions', procurementReceptionsService, projectId);
+export const useProcurementInvoices = (projectId?: string) =>
+  useProcurementChildRecords<ProcurementInvoice>('procurement-invoices', procurementInvoicesService, projectId);
+export const useProcurementStatusHistory = (projectId?: string) =>
+  useProcurementChildRecords<ProcurementStatusHistory>('procurement-status-history', procurementStatusHistoryService, projectId);
+export const useProcurementChecklists = (projectId?: string) =>
+  useProcurementChildRecords<ProcurementChecklist>('procurement-checklists', procurementChecklistsService, projectId);
+
+export function useProcurementReferenceData() {
+  const suppliers = useSWR(
+    isBackendAvailable() ? 'procurement-suppliers' : null,
+    safeFetcher(procurementSuppliersService.getAll)
+  );
+
+  return {
+    suppliers: stableList(suppliers.data as ProcurementSupplier[] | null | undefined),
+    isLoading: isBackendAvailable() ? suppliers.isLoading : false,
+    error: suppliers.error,
+    mutate: () => mutate('procurement-suppliers'),
+  };
 }
 
 // ============================================

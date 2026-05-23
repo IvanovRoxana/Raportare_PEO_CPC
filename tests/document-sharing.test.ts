@@ -160,12 +160,24 @@ test('creeaza si afiseaza sugestii de activitate comuna separate de livrabile', 
     sourceExpertId: 'expert-1',
     targetExpertIds: ['expert-2', 'expert-2', 'expert-1'],
     projectId: '302151',
+    sourceActivity: {
+      expertName: 'Expert Unu',
+      date: '2026-05-12',
+      hours: 4,
+      activityType: 'Atelier comun',
+      title: 'Atelier comun',
+      description: 'Discutie comuna pe livrabil.',
+      saCode: 'SA1.1',
+    },
   });
 
   assert.equal(relations.length, 1);
   assert.equal(relations[0].documentId, 'activity:activity-1');
   assert.equal(relations[0].status, 'pending_registration');
   assert.ok(relations[0].notifiedAt);
+  assert.equal(relations[0].sourceExpertName, 'Expert Unu');
+  assert.equal(relations[0].sourceActivityDate, '2026-05-12');
+  assert.equal(relations[0].sourceActivityTitle, 'Atelier comun');
 
   const pendingAlerts = buildPendingSharedActivityAlerts({
     expert: { id: 'expert-2', name: 'Expert Doi', role: 'Expert', norma: 8 },

@@ -1,5 +1,5 @@
 import { normalizeTitleForMatch } from './title-suggestion.ts';
-import type { Deliverable, DocumentMetadata, Expert, SharedDeliverable } from './types';
+import type { Activity, Deliverable, DocumentMetadata, Expert, SharedDeliverable } from './types';
 
 export type SharedDeliverableStatus =
   | 'pending_registration'
@@ -56,14 +56,34 @@ export function isActivitySuggestionRelation(relation: Pick<SharedDeliverable, '
   return relation.documentId.startsWith('activity:');
 }
 
+export function buildSharedActivitySnapshot(activity?: Partial<Activity>) {
+  if (!activity) return {};
+
+  return {
+    sourceExpertName: activity.expertName,
+    sourceActivityDate: activity.date,
+    sourceActivityHours: activity.hours,
+    sourceActivityType: activity.activityType,
+    sourceActivityTitle: activity.title,
+    sourceActivityDescription: activity.description,
+    sourceActivityLocation: activity.location,
+    sourceActivityDayType: activity.dayType,
+    sourceActivitySaCode: activity.saCode,
+    sourceActivityCatalogActivityId: activity.catalogActivityId,
+    sourceActivityProjectCode: activity.projectCode,
+  };
+}
+
 export function buildSharedActivitySuggestions(args: {
   sourceActivityId: string;
   sourceExpertId: string;
   targetExpertIds: string[];
   projectId?: string;
+  sourceActivity?: Partial<Activity>;
 }) {
   const createdAt = new Date().toISOString();
   const documentId = `activity:${args.sourceActivityId}`;
+  const sourceSnapshot = buildSharedActivitySnapshot(args.sourceActivity);
   return [...new Set(args.targetExpertIds)]
     .filter((targetExpertId) => targetExpertId && targetExpertId !== args.sourceExpertId)
     .map((targetExpertId): SharedDeliverable => ({
@@ -73,6 +93,7 @@ export function buildSharedActivitySuggestions(args: {
       targetExpertId,
       projectId: args.projectId,
       sourceActivityId: args.sourceActivityId,
+      ...sourceSnapshot,
       status: 'pending_registration',
       notifiedAt: createdAt,
       createdAt,
@@ -86,8 +107,10 @@ export function buildSharedDeliverables(args: {
   targetExpertIds: string[];
   projectId?: string;
   sourceActivityId?: string;
+  sourceActivity?: Partial<Activity>;
 }) {
   const createdAt = new Date().toISOString();
+  const sourceSnapshot = buildSharedActivitySnapshot(args.sourceActivity);
   return [...new Set(args.targetExpertIds)]
     .filter((targetExpertId) => targetExpertId && targetExpertId !== args.sourceExpertId)
     .map((targetExpertId): SharedDeliverable => ({
@@ -97,6 +120,7 @@ export function buildSharedDeliverables(args: {
       targetExpertId,
       projectId: args.projectId,
       sourceActivityId: args.sourceActivityId,
+      ...sourceSnapshot,
       status: 'pending_registration',
       createdAt,
       updatedAt: createdAt,
@@ -208,10 +232,14 @@ export function buildPendingSharedActivityAlerts(args: {
       return {
         relationId: relation.id,
         sourceActivityId: relation.sourceActivityId,
-        sourceExpertName: sourceExpert?.name || relation.sourceExpertId,
+        sourceExpertName: relation.sourceExpertName || sourceExpert?.name || relation.sourceExpertId,
+        sourceActivityDate: relation.sourceActivityDate,
+        sourceActivityHours: relation.sourceActivityHours,
+        sourceActivityTitle: relation.sourceActivityTitle || relation.sourceActivityType,
+        sourceActivitySaCode: relation.sourceActivitySaCode,
         projectId: relation.projectId,
         status: relation.status,
-        message: `${sourceExpert?.name || 'Un alt expert'} te-a sugerat ca participant la o activitate comuna. Poti adauga activitatea in pontajul tau sau o poti ignora.`,
+        message: `${relation.sourceExpertName || sourceExpert?.name || 'Un alt expert'} te-a sugerat ca participant la o activitate comuna. Poti adauga activitatea in pontajul tau sau o poti ignora.`,
       };
     });
 }

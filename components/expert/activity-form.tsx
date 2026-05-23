@@ -33,6 +33,7 @@ import { useActivityCatalog } from '@/hooks/use-backend-data';
 import type { Activity, Deliverable, GrupTintaEntry, Expert, ActivityCatalog } from '@/lib/types';
 import { isGtExpertCategory, normalizePeoCategory } from '@/lib/peo-category';
 import { buildDocumentS3Key, hashFirstPageText, normalizeDocumentTextForFingerprint, sha256Hex } from '@/lib/document-sharing';
+import { shouldAttachUploadedDeliverablesToDate } from '@/lib/activity-deliverables';
 import { validateActivitiesBeforeCreate, type ActivityDraftForValidation } from '@/lib/pontaj-rules';
 import {
   GDPR_CONCLUSION_OPTIONS,
@@ -70,6 +71,7 @@ interface ActivityFormProps {
   onSave: (activities: Activity[]) => void | Promise<void>;
   onCancel: () => void;
   initialActivity?: Activity;
+  prefillActivity?: Partial<Activity>;
   isSaving?: boolean;
   apiKey?: string | null;
 }
@@ -88,6 +90,7 @@ export function ActivityForm({
   onSave,
   onCancel,
   initialActivity,
+  prefillActivity,
   isSaving = false,
   apiKey = null,
 }: ActivityFormProps) {
@@ -139,20 +142,21 @@ export function ActivityForm({
   const expertNorma = expert?.norma || 8;
   // Default hours = min(norma, 8) - experts usually fill their daily norm
   const defaultHours = Math.min(expertNorma, 8);
+  const activitySeed = initialActivity || prefillActivity;
   
   // Per-day hours state - each day can have different hours
   const [hoursPerDay, setHoursPerDay] = useState<Record<string, string>>(() => {
     // Initialize with default hours for each selected date
     const initial: Record<string, string> = {};
     selectedDates.forEach(date => {
-      initial[date] = selectedHours?.[date] || initialActivity?.hours?.toString() || defaultHours.toString();
+      initial[date] = selectedHours?.[date] || activitySeed?.hours?.toString() || defaultHours.toString();
     });
     return initial;
   });
   
   // Legacy single hours for backward compatibility (used when saving)
-  const [hours, setHours] = useState(initialActivity?.hours?.toString() || defaultHours.toString());
-  const [saCode, setSaCode] = useState(initialActivity?.saCode || '');
+  const [hours, setHours] = useState(activitySeed?.hours?.toString() || defaultHours.toString());
+  const [saCode, setSaCode] = useState(activitySeed?.saCode || '');
   
   // Set or reset default SA code when available SA codes load after category filtering.
   useEffect(() => {
@@ -186,18 +190,18 @@ export function ActivityForm({
       return next;
     });
   };
-  const [activityTitle, setActivityTitle] = useState(initialActivity?.activityType || '');
+  const [activityTitle, setActivityTitle] = useState(activitySeed?.activityType || '');
   const [dayType, setDayType] = useState<'lucratoare' | 'CO' | 'CM'>(
-    (initialActivity?.dayType as 'lucratoare' | 'CO' | 'CM') || 'lucratoare'
+    (activitySeed?.dayType as 'lucratoare' | 'CO' | 'CM') || 'lucratoare'
   );
-  const [description, setDescription] = useState(initialActivity?.description || '');
-  const [location, setLocation] = useState(initialActivity?.location || 'Birou');
+  const [description, setDescription] = useState(activitySeed?.description || '');
+  const [location, setLocation] = useState(activitySeed?.location || 'Birou');
   const [validationError, setValidationError] = useState<string | null>(null);
-  const [gdprTemplateCode, setGdprTemplateCode] = useState(initialActivity?.gdprTemplateCode || '');
-  const [gdprMeta, setGdprMeta] = useState<GdprMeta>(() => buildDefaultGdprMeta(initialActivity?.gdprTemplateCode, parseGdprMetaJson(initialActivity?.gdprMetaJson), `${reportMonthName} ${year}`));
-  const [gdprGeneratedText, setGdprGeneratedText] = useState(initialActivity?.gdprGeneratedText || '');
+  const [gdprTemplateCode, setGdprTemplateCode] = useState(activitySeed?.gdprTemplateCode || '');
+  const [gdprMeta, setGdprMeta] = useState<GdprMeta>(() => buildDefaultGdprMeta(activitySeed?.gdprTemplateCode, parseGdprMetaJson(activitySeed?.gdprMetaJson), `${reportMonthName} ${year}`));
+  const [gdprGeneratedText, setGdprGeneratedText] = useState(activitySeed?.gdprGeneratedText || '');
   const [gdprConclusionCode, setGdprConclusionCode] = useState(
-    initialActivity?.gdprConclusionCode || String(parseGdprMetaJson(initialActivity?.gdprMetaJson).concluzie || 'conform_fara_neconformitati')
+    activitySeed?.gdprConclusionCode || String(parseGdprMetaJson(activitySeed?.gdprMetaJson).concluzie || 'conform_fara_neconformitati')
   );
   const [isGeneratingGdprDocx, setIsGeneratingGdprDocx] = useState(false);
   const [isImprovingGdprText, setIsImprovingGdprText] = useState(false);
@@ -685,6 +689,7 @@ export function ActivityForm({
     const activities: Activity[] = selectedDates.map((date) => {
       // Get hours for this specific date, fallback to default
       const dateHours = isLeave ? 0 : (parseFloat(hoursPerDay[date] || defaultHours.toString()) || defaultHours);
+      const shouldAttachDeliverables = shouldAttachUploadedDeliverablesToDate(selectedDates, date);
       
       return {
         id: initialActivity?.id || generateId(),
@@ -697,7 +702,7 @@ export function ActivityForm({
         catalogActivityId: selectedCatalogItem?.id,
         title: activityTitle,
         description,
-        deliverables: uploadedDeliverables
+        deliverables: shouldAttachDeliverables ? uploadedDeliverables
           .map(d => ({
             id: d.id,
             activityId: initialActivity?.id || '',
@@ -748,7 +753,7 @@ export function ActivityForm({
             aiReason: d.aiCheck?.reason,
             eligibilityCheck: d.eligibilityCheck || undefined,
             fileData: d.fileData,
-          })),
+          })) : [],
         location,
         dayType,
         shareStatus: activityCommon ? 'shared' : 'private',

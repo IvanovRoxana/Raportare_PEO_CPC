@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { ArrowLeft, CalendarDays, CheckCircle, ClipboardList, Clock3, FileText, Loader2, Plus, Send, Lock, AlertTriangle, Upload } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { DashboardShell, expertNavItems } from '@/components/layout/dashboard-shell';
 import { ProgressBar, RightInfoCard } from '@/components/layout/dashboard-primitives';
 import { Button } from '@/components/ui/button';
@@ -29,8 +30,10 @@ import {
   useCollaborationExperts,
   useConcurrentProjects,
   useConcurrentProjectTimesheetByMonth,
+  useDocuments,
   useExperts,
   useReportStatus,
+  useSharedActivityRegistrationContext,
   useSharedDeliverableMutations,
   useSharedDeliverables,
 } from '@/hooks/use-backend-data';
@@ -41,7 +44,7 @@ import { getSignedInUser } from '@/lib/aws/auth';
 import { isGtExpertCategory } from '@/lib/peo-category';
 import { parseGdprMetaJson, validateGdprActivityDraft } from '@/lib/gdpr-reporting';
 import { assertCanLogHoursOnDate, getNonWorkingDayInfo } from '@/lib/non-working-days';
-import { formatDate } from '@/lib/app-utils';
+import { formatDate, formatDateRo } from '@/lib/app-utils';
 import { isExceptionActivity } from '@/lib/peo-constants';
 import { getWorkingDaysListInMonth } from '@/lib/working-hours';
 import {
@@ -77,7 +80,21 @@ function needsTitleConfirmation(deliverable: Deliverable) {
   return !deliverable.fileType?.startsWith('image/');
 }
 
+function clearSharedRelationQueryParams() {
+  if (typeof window === 'undefined') return;
+
+  const url = new URL(window.location.href);
+  url.searchParams.delete('sharedActivityRelationId');
+  url.searchParams.delete('sharedDeliverableRelationId');
+  window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+}
+
+function formatDisplayDate(date?: string) {
+  return date ? formatDateRo(date) : 'Neprecizata';
+}
+
 export default function ExpertDashboard() {
+  const router = useRouter();
   const today = new Date();
   const baseMonth = today.getMonth();
   const baseYear = today.getFullYear();
@@ -90,13 +107,18 @@ export default function ExpertDashboard() {
   const [selectedExpertId, setSelectedExpertId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [pendingSharedActivityRelationId, setPendingSharedActivityRelationId] = useState<string | null>(null);
+  const [pendingSharedDeliverableRelationId, setPendingSharedDeliverableRelationId] = useState<string | null>(null);
+  const [sharedActivityPrefill, setSharedActivityPrefill] = useState<Partial<Activity> | null>(null);
 
   // Data hooks
   const { experts, isLoading: expertsLoading } = useExperts();
   const { experts: collaborationExperts } = useCollaborationExperts();
   const { activities: allMonthActivities, isLoading: activitiesLoading, mutate: refreshActivities } = useActivitiesByMonth(currentMonth, currentYear);
+  const { documents } = useDocuments();
   const { createBatch, update: updateActivity, remove: removeActivity } = useActivityMutations();
   const { status: reportStatus, updateStatus: updateReportStatus, isLoading: reportStatusLoading } = useReportStatus(selectedExpertId, currentMonth, currentYear);
   const previousMonthDate = useMemo(() => new Date(baseYear, baseMonth - 1, 1), [baseMonth, baseYear]);
@@ -105,27 +127,53 @@ export default function ExpertDashboard() {
   const { status: nextMonthStatus } = useReportStatus(selectedExpertId, nextMonthDate.getMonth(), nextMonthDate.getFullYear());
   const { projects: concurrentProjects } = useConcurrentProjects(selectedExpertId);
   const { entries: concurrentTimesheetEntries } = useConcurrentProjectTimesheetByMonth(currentMonth, currentYear);
-  const { sharedDeliverables, mutate: refreshSharedDeliverables } = useSharedDeliverables(selectedExpertId || undefined);
+  const { sharedDeliverables, isLoading: sharedDeliverablesLoading, mutate: refreshSharedDeliverables } = useSharedDeliverables(selectedExpertId || undefined);
+  const {
+    context: sharedActivityRegistrationContext,
+    isLoading: sharedActivityRegistrationLoading,
+  } = useSharedActivityRegistrationContext(pendingSharedActivityRelationId);
   const { registerForActivity } = useSharedDeliverableMutations();
 
   // Get logged in user email
   useEffect(() => {
-    getSignedInUser().then((user) => {
-      if (user?.email) {
-        setUserEmail(user.email);
-      }
-    });
-  }, []);
+    let isMounted = true;
+
+    getSignedInUser()
+      .then((user) => {
+        if (!isMounted) return;
+
+        if (!user) {
+          setIsAuthenticated(false);
+          setIsAuthLoading(false);
+          router.replace('/auth/login?redirectTo=/expert/peo');
+          return;
+        }
+
+        setIsAuthenticated(true);
+        setUserEmail(user.email ?? user.displayName ?? null);
+        setIsAuthLoading(false);
+      })
+      .catch(() => {
+        if (!isMounted) return;
+        setIsAuthenticated(false);
+        setIsAuthLoading(false);
+        router.replace('/auth/login?redirectTo=/expert/peo');
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [router]);
 
   // Set expert based on logged in user's email
   useEffect(() => {
-    if (experts.length === 0 || selectedExpertId) return;
+    if (isAuthLoading || experts.length === 0 || selectedExpertId) return;
 
     const matchingExpert = userEmail
-      ? experts.find(e => e.email?.toLowerCase() === userEmail.toLowerCase())
+      ? experts.find(e => e.email?.toLowerCase() === userEmail.toLowerCase() || e.name?.toLowerCase() === userEmail.toLowerCase())
       : null;
-    setSelectedExpertId((matchingExpert ?? experts[0]).id);
-  }, [experts, userEmail, selectedExpertId]);
+    if (matchingExpert) setSelectedExpertId(matchingExpert.id);
+  }, [experts, isAuthLoading, userEmail, selectedExpertId]);
 
 
   // Get selected expert
@@ -140,6 +188,47 @@ export default function ExpertDashboard() {
     if (!selectedExpertId) return [];
     return allMonthActivities.filter((a) => a.expertId === selectedExpertId);
   }, [allMonthActivities, selectedExpertId]);
+  const pendingSharedDeliverableContext = useMemo(() => {
+    if (!pendingSharedDeliverableRelationId) return null;
+
+    const relation = sharedDeliverables.find((item) => item.id === pendingSharedDeliverableRelationId);
+    if (!relation) return null;
+
+    const document = documents.find((item) => item.id === relation.documentId);
+    const sourceActivityId = relation.sourceActivityId || document?.sourceActivityId;
+    const sourceActivity = sourceActivityId
+      ? allMonthActivities.find((activity) => activity.id === sourceActivityId)
+      : undefined;
+    const sourceExpert = experts.find((expert) => expert.id === relation.sourceExpertId);
+
+    return {
+      relation,
+      document,
+      sourceExpertName: relation.sourceExpertName
+        || document?.uploadedByExpertName
+        || sourceActivity?.expertName
+        || sourceExpert?.name
+        || relation.sourceExpertId
+        || 'Alt expert',
+      theme: relation.sourceActivityTitle
+        || relation.sourceActivityType
+        || sourceActivity?.title
+        || document?.declaredTitle
+        || document?.suggestedTitle
+        || document?.extractedTitle
+        || document?.originalFileName
+        || 'Livrabil comun',
+      date: relation.sourceActivityDate || sourceActivity?.date || document?.activityDate,
+      hours: relation.sourceActivityHours || sourceActivity?.hours,
+      description: relation.sourceActivityDescription || sourceActivity?.description,
+      location: relation.sourceActivityLocation || sourceActivity?.location,
+      dayType: relation.sourceActivityDayType || sourceActivity?.dayType,
+      saCode: relation.sourceActivitySaCode || sourceActivity?.saCode || document?.saCode,
+      projectId: relation.sourceActivityProjectCode || relation.projectId || document?.projectId || sourceActivity?.projectCode,
+      fileName: document?.originalFileName,
+      deliverableType: document?.deliverableType,
+    };
+  }, [allMonthActivities, documents, experts, pendingSharedDeliverableRelationId, sharedDeliverables]);
 
   const monthlyBlocking = useMemo(
     () =>
@@ -268,18 +357,34 @@ export default function ExpertDashboard() {
           expertId: selectedExpertId!,
         })));
 
+        const activityTargetId = createdActivities[0]?.id;
+        const deliverableTargetId = pendingSharedActivityRelationId
+          ? activityTargetId
+          : createdActivities[createdActivities.length - 1]?.id || activityTargetId;
+        const deliverableRelationIdsToRegister = [...new Set([
+          ...(sharedActivityRegistrationContext?.relatedDeliverableRelations.map((relation) => relation.id) ?? []),
+          ...(pendingSharedDeliverableRelationId ? [pendingSharedDeliverableRelationId] : []),
+        ])].filter((relationId) => relationId !== pendingSharedActivityRelationId);
+
         if (pendingSharedActivityRelationId && createdActivities[0]?.id) {
           await registerForActivity(pendingSharedActivityRelationId, createdActivities[0].id);
-          await refreshSharedDeliverables();
-          setPendingSharedActivityRelationId(null);
-          if (typeof window !== 'undefined') {
-            window.history.replaceState(null, '', window.location.pathname);
+        }
+
+        if (deliverableTargetId) {
+          for (const relationId of deliverableRelationIdsToRegister) {
+            await registerForActivity(relationId, deliverableTargetId);
           }
+        }
+
+        if (pendingSharedActivityRelationId || deliverableRelationIdsToRegister.length > 0) {
+          await refreshSharedDeliverables();
+          resetSharedRegistrationFlow();
         }
       }
       await refreshActivities();
       setShowForm(false);
       setEditingActivity(null);
+      setSharedActivityPrefill(null);
       setSelectedDates([]);
       setSelectedHours({});
     } catch (error) {
@@ -298,6 +403,7 @@ export default function ExpertDashboard() {
     if (reportStatus?.status === 'approved') return;
 
     setEditingActivity(activity);
+    setSharedActivityPrefill(null);
     setSelectedDates([activity.date]);
     setSelectedHours({ [activity.date]: activity.hours.toString() });
     setShowForm(true);
@@ -481,27 +587,154 @@ export default function ExpertDashboard() {
     setSelectedHours(nextHours);
   };
 
+  const resetSharedRegistrationFlow = () => {
+    setPendingSharedActivityRelationId(null);
+    setPendingSharedDeliverableRelationId(null);
+    setSharedActivityPrefill(null);
+    clearSharedRelationQueryParams();
+  };
+
 
 
   useEffect(() => {
-    if (typeof window === 'undefined' || pendingSharedActivityRelationId) return;
-    const relationId = new URLSearchParams(window.location.search).get('sharedActivityRelationId');
-    if (relationId) {
-      setPendingSharedActivityRelationId(relationId);
+    if (typeof window === 'undefined') return;
+
+    const params = new URLSearchParams(window.location.search);
+    const activityRelationId = params.get('sharedActivityRelationId');
+    const deliverableRelationId = params.get('sharedDeliverableRelationId');
+
+    if (activityRelationId && pendingSharedActivityRelationId !== activityRelationId) {
+      setPendingSharedActivityRelationId(activityRelationId);
     }
-  }, [pendingSharedActivityRelationId]);
+    if (deliverableRelationId && pendingSharedDeliverableRelationId !== deliverableRelationId) {
+      setPendingSharedDeliverableRelationId(deliverableRelationId);
+    }
+  }, [pendingSharedActivityRelationId, pendingSharedDeliverableRelationId]);
 
   useEffect(() => {
-    if (!pendingSharedActivityRelationId || showForm || !selectedExpertId) return;
+    if (!pendingSharedActivityRelationId || showForm || !selectedExpertId || sharedActivityRegistrationLoading) return;
+
+    const sourceActivity = sharedActivityRegistrationContext?.sourceActivity;
+    if (!sourceActivity) {
+      setSaveError('Nu am gasit detaliile activitatii comune. Revino in dashboard si incearca din nou.');
+      return;
+    }
+
+    if (sourceActivity.date) {
+      const [targetYear, targetMonth] = sourceActivity.date.split('-').map(Number);
+      const normalizedTargetMonth = targetMonth - 1;
+      if (
+        Number.isInteger(targetYear)
+        && Number.isInteger(normalizedTargetMonth)
+        && (targetYear !== currentYear || normalizedTargetMonth !== currentMonth)
+      ) {
+        setCurrentYear(targetYear);
+        setCurrentMonth(normalizedTargetMonth);
+        return;
+      }
+    }
+
     if (monthlyBlocking.isBlocked) {
       setSaveError(monthlyBlocking.reason);
       return;
     }
-    setSaveError('Completeaza activitatea sugerata, apoi salveaza pentru a inchide atentionarea de activitate comuna.');
-    syncSelectedDates([getDefaultActivityDate()]);
+
+    const prefillHours = sourceActivity.hours > 0 ? sourceActivity.hours.toString() : getDefaultHours();
+    setSaveError('Verifica activitatea propusa de coleg, ajusteaza daca este nevoie, apoi salveaza pentru a inchide atentionarea.');
+    setSharedActivityPrefill({
+      date: sourceActivity.date,
+      hours: sourceActivity.hours > 0 ? sourceActivity.hours : Number(prefillHours),
+      activityType: sourceActivity.activityType,
+      saCode: sourceActivity.saCode,
+      catalogActivityId: sourceActivity.catalogActivityId,
+      title: sourceActivity.title,
+      description: sourceActivity.description,
+      location: sourceActivity.location,
+      dayType: sourceActivity.dayType,
+      projectCode: sourceActivity.projectCode,
+      gdprTemplateCode: sourceActivity.gdprTemplateCode,
+      gdprMetaJson: sourceActivity.gdprMetaJson,
+      gdprGeneratedText: sourceActivity.gdprGeneratedText,
+      gdprConclusionCode: sourceActivity.gdprConclusionCode,
+    });
+    syncSelectedDates([sourceActivity.date], { [sourceActivity.date]: prefillHours });
     setEditingActivity(null);
     setShowForm(true);
-  }, [pendingSharedActivityRelationId, showForm, selectedExpertId, monthlyBlocking.isBlocked, monthlyBlocking.reason]);
+  }, [
+    currentMonth,
+    currentYear,
+    monthlyBlocking.isBlocked,
+    monthlyBlocking.reason,
+    pendingSharedActivityRelationId,
+    selectedExpertId,
+    sharedActivityRegistrationContext,
+    sharedActivityRegistrationLoading,
+    showForm,
+  ]);
+
+  useEffect(() => {
+    if (!pendingSharedDeliverableRelationId || showForm || !selectedExpertId || sharedDeliverablesLoading) return;
+
+    if (!pendingSharedDeliverableContext?.relation) {
+      setSaveError('Nu am gasit livrabilul comun de asociat. Revino in dashboard si incearca din nou.');
+      return;
+    }
+
+    if (pendingSharedDeliverableContext.date) {
+      const [targetYear, targetMonth] = pendingSharedDeliverableContext.date.split('-').map(Number);
+      const normalizedTargetMonth = targetMonth - 1;
+      if (
+        Number.isInteger(targetYear)
+        && Number.isInteger(normalizedTargetMonth)
+        && (targetYear !== currentYear || normalizedTargetMonth !== currentMonth)
+      ) {
+        setCurrentYear(targetYear);
+        setCurrentMonth(normalizedTargetMonth);
+        return;
+      }
+    }
+
+    if (monthlyBlocking.isBlocked) {
+      setSaveError(monthlyBlocking.reason);
+      return;
+    }
+
+    const suggestedDate = pendingSharedDeliverableContext.date
+      && !getNonWorkingDayInfo(pendingSharedDeliverableContext.date).isNonWorkingDay
+      ? pendingSharedDeliverableContext.date
+      : getDefaultActivityDate();
+    const suggestedHours = pendingSharedDeliverableContext.hours && pendingSharedDeliverableContext.hours > 0
+      ? pendingSharedDeliverableContext.hours.toString()
+      : getDefaultHours();
+
+    setSaveError('Completeaza activitatea pentru livrabilul comun, apoi salveaza pentru a inchide atentionarea.');
+    if (pendingSharedDeliverableContext.theme || pendingSharedDeliverableContext.saCode) {
+      setSharedActivityPrefill({
+        date: suggestedDate,
+        hours: pendingSharedDeliverableContext.hours || Number(suggestedHours),
+        activityType: pendingSharedDeliverableContext.theme,
+        title: pendingSharedDeliverableContext.theme,
+        description: pendingSharedDeliverableContext.description,
+        location: pendingSharedDeliverableContext.location,
+        dayType: pendingSharedDeliverableContext.dayType,
+        saCode: pendingSharedDeliverableContext.saCode,
+        projectCode: pendingSharedDeliverableContext.projectId,
+      });
+    }
+    syncSelectedDates([suggestedDate], { [suggestedDate]: suggestedHours });
+    setEditingActivity(null);
+    setShowForm(true);
+  }, [
+    currentMonth,
+    currentYear,
+    monthlyBlocking.isBlocked,
+    monthlyBlocking.reason,
+    pendingSharedDeliverableContext,
+    pendingSharedDeliverableRelationId,
+    selectedExpertId,
+    sharedDeliverablesLoading,
+    showForm,
+  ]);
 
   const handleAddActivity = () => {
     if (monthlyBlocking.isBlocked) {
@@ -514,6 +747,7 @@ export default function ExpertDashboard() {
       syncSelectedDates([getDefaultActivityDate()]);
     }
     setEditingActivity(null);
+    setSharedActivityPrefill(null);
     setShowForm(true);
   };
 
@@ -538,21 +772,43 @@ export default function ExpertDashboard() {
     syncSelectedDates(dates);
     if (dates.length > 0) {
       setEditingActivity(null);
+      setSharedActivityPrefill(null);
       setShowForm(true);
     } else {
       setShowForm(false);
     }
   };
 
-  const isLoading = expertsLoading || activitiesLoading;
+  const isLoading = isAuthLoading || expertsLoading || activitiesLoading;
 
-  if (isLoading && experts.length === 0) {
+  if (isLoading && (experts.length === 0 || !selectedExpertId)) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
           <p className="text-muted-foreground">Se încarcă datele...</p>
         </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated || !selectedExpertId) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-6">
+        <Card className="max-w-md rounded-lg">
+          <CardContent className="flex flex-col items-center gap-4 p-8 text-center">
+            <Lock className="h-10 w-10 text-primary" />
+            <div>
+              <h2 className="text-xl font-semibold">Autentificare necesara</h2>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                Nu am gasit un profil de expert asociat contului curent. Autentifica-te din nou sau contacteaza administratorul pentru asocierea profilului.
+              </p>
+            </div>
+            <Button asChild>
+              <Link href="/auth/login?redirectTo=/expert/peo">Mergi la autentificare</Link>
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -748,9 +1004,116 @@ export default function ExpertDashboard() {
           {/* Tab: Activitati - pentru adaugare/editare activitati */}
           <TabsContent id="activitati" value="activitati" className="space-y-6 scroll-mt-24">
             {pendingSharedActivityRelationId && (
-              <div className="flex items-start gap-2 rounded-lg border border-blue-300 bg-blue-50 p-3 text-sm text-blue-800">
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                <p>Adaugi o activitate pornita dintr-o sugestie de activitate comuna. La salvare, atentionarea va fi marcata ca rezolvata.</p>
+              <div className="rounded-lg border border-blue-300 bg-blue-50 p-4 text-sm text-blue-900">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <div className="min-w-0 space-y-3">
+                    <div>
+                      <p className="font-semibold">Adaugi o activitate comuna sugerata</p>
+                      <p className="mt-1 text-blue-800">
+                        Formularul este precompletat cu datele declarate de coleg. Verifica si ajusteaza pontajul tau inainte de salvare.
+                      </p>
+                    </div>
+                    {sharedActivityRegistrationContext?.sourceActivity ? (
+                      <div className="grid gap-2 rounded-md border border-blue-200 bg-white/70 p-3 md:grid-cols-2">
+                        <div>
+                          <p className="text-xs font-medium uppercase text-blue-600">Declarat de</p>
+                          <p className="mt-1 font-medium">
+                            {sharedActivityRegistrationContext.sourceExpert?.name
+                              || sharedActivityRegistrationContext.sourceActivity.expertName
+                              || sharedActivityRegistrationContext.activityRelation.sourceExpertName
+                              || sharedActivityRegistrationContext.activityRelation.sourceExpertId}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs font-medium uppercase text-blue-600">Cand a avut loc</p>
+                          <p className="mt-1 font-medium">
+                            {formatDisplayDate(sharedActivityRegistrationContext.sourceActivity.date)}
+                            {sharedActivityRegistrationContext.sourceActivity.hours > 0
+                              ? `, ${sharedActivityRegistrationContext.sourceActivity.hours}h`
+                              : ''}
+                          </p>
+                        </div>
+                        <div className="md:col-span-2">
+                          <p className="text-xs font-medium uppercase text-blue-600">Tema</p>
+                          <p className="mt-1 font-medium">{sharedActivityRegistrationContext.sourceActivity.title}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs font-medium uppercase text-blue-600">Incadrare</p>
+                          <p className="mt-1 font-medium">
+                            {[sharedActivityRegistrationContext.sourceActivity.saCode, sharedActivityRegistrationContext.sourceActivity.projectCode]
+                              .filter(Boolean)
+                              .join(' / ') || 'Neprecizata'}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs font-medium uppercase text-blue-600">Livrabile comune</p>
+                          <p className="mt-1 font-medium">
+                            {sharedActivityRegistrationContext.relatedDocuments.length > 0
+                              ? `${sharedActivityRegistrationContext.relatedDocuments.length} se vor asocia la salvare`
+                              : 'Nu exista livrabil comun atasat acestei sugestii'}
+                          </p>
+                        </div>
+                        {sharedActivityRegistrationContext.sourceActivity.description && (
+                          <div className="md:col-span-2">
+                            <p className="text-xs font-medium uppercase text-blue-600">Descriere coleg</p>
+                            <p className="mt-1 whitespace-pre-wrap text-blue-900">
+                              {sharedActivityRegistrationContext.sourceActivity.description}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-blue-800">Se incarca detaliile activitatii comune...</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {pendingSharedDeliverableRelationId && (
+              <div className="rounded-lg border border-blue-300 bg-blue-50 p-4 text-sm text-blue-900">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <div className="min-w-0 space-y-3">
+                    <div>
+                      <p className="font-semibold">Asociezi un livrabil comun in pontajul tau</p>
+                      <p className="mt-1 text-blue-800">
+                        Salveaza activitatea de mai jos pentru ca livrabilul sa fie marcat ca inregistrat pe activitatea ta.
+                      </p>
+                    </div>
+                    {pendingSharedDeliverableContext ? (
+                      <div className="grid gap-2 rounded-md border border-blue-200 bg-white/70 p-3 md:grid-cols-2">
+                        <div>
+                          <p className="text-xs font-medium uppercase text-blue-600">Declarat de</p>
+                          <p className="mt-1 font-medium">{pendingSharedDeliverableContext.sourceExpertName}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs font-medium uppercase text-blue-600">Cand a avut loc</p>
+                          <p className="mt-1 font-medium">{formatDisplayDate(pendingSharedDeliverableContext.date)}</p>
+                        </div>
+                        <div className="md:col-span-2">
+                          <p className="text-xs font-medium uppercase text-blue-600">Tema</p>
+                          <p className="mt-1 font-medium">{pendingSharedDeliverableContext.theme}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs font-medium uppercase text-blue-600">Document</p>
+                          <p className="mt-1 font-medium">{pendingSharedDeliverableContext.fileName || 'Document comun'}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs font-medium uppercase text-blue-600">Incadrare</p>
+                          <p className="mt-1 font-medium">
+                            {[pendingSharedDeliverableContext.saCode, pendingSharedDeliverableContext.deliverableType, pendingSharedDeliverableContext.projectId]
+                              .filter(Boolean)
+                              .join(' / ') || 'Neprecizata'}
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-blue-800">Se incarca detaliile livrabilului comun...</p>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
 
@@ -818,10 +1181,14 @@ export default function ExpertDashboard() {
                     onCancel={() => {
                       setShowForm(false);
                       setEditingActivity(null);
+                      if (pendingSharedActivityRelationId || pendingSharedDeliverableRelationId) {
+                        resetSharedRegistrationFlow();
+                      }
                       setSelectedDates([]);
                       setSelectedHours({});
                     }}
                     initialActivity={editingActivity || undefined}
+                    prefillActivity={sharedActivityPrefill || undefined}
                     isSaving={isSaving}
                   />
                 ) : (
@@ -897,6 +1264,7 @@ export default function ExpertDashboard() {
                 }
                 setSaveError(null);
                 syncSelectedDates([date]);
+                setSharedActivityPrefill(null);
                 setShowForm(true);
               }}
               onEditActivity={handleEditActivity}

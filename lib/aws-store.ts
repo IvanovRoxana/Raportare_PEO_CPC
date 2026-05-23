@@ -45,6 +45,7 @@ import type {
   MonthlyExpertReport,
   Neconformitate,
   ReportStatus,
+  SharedActivityRegistrationContext,
   SharedDeliverable,
   UploadedReportingFile,
   VerificationData,
@@ -52,9 +53,29 @@ import type {
   WorkingGroup,
 } from './types';
 import { createAuditLog, prepareAdminActivityOverride } from './audit-trail';
-import { buildSharedActivitySuggestions, buildSharedDeliverables, findDuplicateCandidates, markSharedDeliverableRegistered } from './document-sharing';
+import { buildSharedActivitySnapshot, buildSharedActivitySuggestions, buildSharedDeliverables, findDuplicateCandidates, isActivitySuggestionRelation, markSharedDeliverableRegistered } from './document-sharing';
 import { buildDefaultConcurrentProjects, mergeConcurrentProjectsWithDefaults } from './default-concurrent-projects';
 import { normalizeTitleForMatch } from './title-suggestion';
+import {
+  createProcurementStatusHistoryEntry,
+  getContractedProcurementProjects,
+  getProcurementAttentionLevel,
+  PROCUREMENT_ATTENTION_LABELS,
+  type ProcurementAttentionLevel,
+  type ProcurementChecklist,
+  type ProcurementContract,
+  type ProcurementDeliverable,
+  type ProcurementDocument,
+  type ProcurementEvaluation,
+  type ProcurementInvoice,
+  type ProcurementLaunch,
+  type ProcurementOffer,
+  type ProcurementProject,
+  type ProcurementReception,
+  type ProcurementStatus,
+  type ProcurementStatusHistory,
+  type ProcurementSupplier,
+} from './procurement';
 
 export { isAwsAvailable };
 export {
@@ -302,6 +323,30 @@ function withSupportedActivityShareFields(payload: Record<string, unknown>, acti
 
   Object.entries(shareFields).forEach(([field, value]) => {
     if (modelHasField('Activity', field)) {
+      payload[field] = value;
+    }
+  });
+
+  return payload;
+}
+
+function withSupportedSharedDeliverableFields(payload: Record<string, unknown>, relation: Partial<SharedDeliverable>) {
+  const extendedFields: Record<string, unknown> = {
+    sourceExpertName: relation.sourceExpertName,
+    sourceActivityDate: relation.sourceActivityDate,
+    sourceActivityHours: relation.sourceActivityHours,
+    sourceActivityType: relation.sourceActivityType,
+    sourceActivityTitle: relation.sourceActivityTitle,
+    sourceActivityDescription: relation.sourceActivityDescription,
+    sourceActivityLocation: relation.sourceActivityLocation,
+    sourceActivityDayType: relation.sourceActivityDayType,
+    sourceActivitySaCode: relation.sourceActivitySaCode,
+    sourceActivityCatalogActivityId: relation.sourceActivityCatalogActivityId,
+    sourceActivityProjectCode: relation.sourceActivityProjectCode,
+  };
+
+  Object.entries(extendedFields).forEach(([field, value]) => {
+    if (value !== undefined && modelHasField('SharedDeliverable', field)) {
       payload[field] = value;
     }
   });
@@ -576,6 +621,17 @@ function mapSharedDeliverable(item: any): SharedDeliverable {
     projectId: item.projectId ?? undefined,
     sourceActivityId: item.sourceActivityId ?? undefined,
     targetActivityId: item.targetActivityId ?? undefined,
+    sourceExpertName: item.sourceExpertName ?? undefined,
+    sourceActivityDate: item.sourceActivityDate ?? undefined,
+    sourceActivityHours: item.sourceActivityHours ?? undefined,
+    sourceActivityType: item.sourceActivityType ?? undefined,
+    sourceActivityTitle: item.sourceActivityTitle ?? undefined,
+    sourceActivityDescription: item.sourceActivityDescription ?? undefined,
+    sourceActivityLocation: item.sourceActivityLocation ?? undefined,
+    sourceActivityDayType: item.sourceActivityDayType ?? undefined,
+    sourceActivitySaCode: item.sourceActivitySaCode ?? undefined,
+    sourceActivityCatalogActivityId: item.sourceActivityCatalogActivityId ?? undefined,
+    sourceActivityProjectCode: item.sourceActivityProjectCode ?? undefined,
     status: item.status,
     notifiedAt: item.notifiedAt ?? undefined,
     registeredAt: item.registeredAt ?? undefined,
@@ -703,7 +759,7 @@ async function createDocumentMetadataForDeliverable(
 
 async function syncSharedActivitySuggestions(
   client: any,
-  activity: Pick<Activity, 'expertId' | 'shareStatus' | 'takenByExperts' | 'projectCode'>,
+  activity: Partial<Activity> & Pick<Activity, 'expertId' | 'shareStatus' | 'takenByExperts' | 'projectCode'>,
   activityId: string,
 ) {
   if (!client.models.SharedDeliverable) return;
@@ -712,19 +768,28 @@ async function syncSharedActivitySuggestions(
     documentId: { eq: `activity:${activityId}` },
   });
   const selectedTargets = new Set(activity.shareStatus === 'shared' ? activity.takenByExperts ?? [] : []);
+  const sourceSnapshot = buildSharedActivitySnapshot(activity);
 
   await Promise.all(existing.map((relation) => {
     if (selectedTargets.has(relation.targetExpertId)) {
       selectedTargets.delete(relation.targetExpertId);
       if (relation.status === 'removed') {
-        return client.models.SharedDeliverable.update({
+        return client.models.SharedDeliverable.update(withSupportedSharedDeliverableFields({
           id: relation.id,
           status: 'pending_registration',
           notifiedAt: new Date().toISOString(),
           removedAt: null,
-        });
+        }, sourceSnapshot));
       }
-      return Promise.resolve(null);
+
+      const updatePayload = withSupportedSharedDeliverableFields({
+        id: relation.id,
+        projectId: activity.projectCode,
+        sourceActivityId: activityId,
+      }, sourceSnapshot);
+      return Object.keys(updatePayload).length > 1
+        ? client.models.SharedDeliverable.update(updatePayload)
+        : Promise.resolve(null);
     }
 
     if (relation.status === 'pending_registration') {
@@ -743,10 +808,11 @@ async function syncSharedActivitySuggestions(
     sourceExpertId: activity.expertId,
     targetExpertIds: Array.from(selectedTargets),
     projectId: activity.projectCode,
+    sourceActivity: activity,
   });
 
   await Promise.all(suggestions.map((relation) =>
-    client.models.SharedDeliverable.create({
+    client.models.SharedDeliverable.create(withSupportedSharedDeliverableFields({
       id: relation.id,
       documentId: relation.documentId,
       sourceExpertId: relation.sourceExpertId,
@@ -755,7 +821,7 @@ async function syncSharedActivitySuggestions(
       sourceActivityId: relation.sourceActivityId,
       status: relation.status,
       notifiedAt: relation.notifiedAt,
-    }),
+    }, relation)),
   ));
 }
 
@@ -773,10 +839,11 @@ async function createSharedDeliverablesForDocument(
     targetExpertIds: deliverable.sharedWithExpertIds || [],
     projectId: deliverable.projectId || activity.projectCode,
     sourceActivityId: activityId,
+    sourceActivity: activity,
   });
 
   await Promise.all(relations.map((relation) =>
-    client.models.SharedDeliverable.create({
+    client.models.SharedDeliverable.create(withSupportedSharedDeliverableFields({
       id: relation.id,
       documentId: relation.documentId,
       sourceExpertId: relation.sourceExpertId,
@@ -784,8 +851,144 @@ async function createSharedDeliverablesForDocument(
       projectId: relation.projectId,
       sourceActivityId: relation.sourceActivityId,
       status: relation.status,
-    }),
+    }, relation)),
   ));
+}
+
+async function listSharedDocumentIdsForExpert(client: any, expertId: string) {
+  if (!client.models.SharedDeliverable) return [];
+
+  const [targetRelations, sourceRelations] = await Promise.all([
+    listModel<any>(client.models.SharedDeliverable, { targetExpertId: { eq: expertId } }),
+    listModel<any>(client.models.SharedDeliverable, { sourceExpertId: { eq: expertId } }),
+  ]);
+
+  return [...new Set([...targetRelations, ...sourceRelations]
+    .filter((relation) => relation.documentId && !isActivitySuggestionRelation(relation))
+    .map((relation) => relation.documentId))];
+}
+
+async function listDocumentsByIds(client: any, documentIds: string[]) {
+  if (!client.models.Document || documentIds.length === 0) return [];
+
+  const documents = await Promise.all(documentIds.map(async (documentId) => {
+    const result = await client.models.Document.get({ id: documentId });
+    assertNoErrors(result, 'AWS get shared document');
+    return result.data ? mapDocument(result.data) : null;
+  }));
+
+  return documents.filter((document): document is DocumentMetadata => Boolean(document));
+}
+
+async function attachSharedDocumentToTargetActivity(
+  client: any,
+  relation: SharedDeliverable,
+  targetActivity: any,
+) {
+  if (!client.models.Deliverable || !client.models.Document) return;
+
+  const existingDeliverables = await listModel<any>(client.models.Deliverable, { activityId: { eq: targetActivity.id } });
+  if (existingDeliverables.some((deliverable) => deliverable.documentId === relation.documentId)) return;
+
+  const documentResult = await client.models.Document.get({ id: relation.documentId });
+  assertNoErrors(documentResult, 'AWS get shared document for registration');
+  if (!documentResult.data) {
+    throw new Error('Nu am gasit metadata livrabilului comun pentru asociere.');
+  }
+
+  const document = mapDocument(documentResult.data);
+  const result = await client.models.Deliverable.create(withSupportedDeliverableFields({
+    activityId: targetActivity.id,
+    fileName: document.originalFileName,
+    fileType: document.mimeType,
+    fileSize: document.fileSize,
+    filePath: document.s3Key,
+    uploadedAt: new Date().toISOString(),
+    declaredTitle: document.declaredTitle,
+    docTitle: document.extractedTitle,
+    titleMatch: document.titleMatch ?? undefined,
+  }, {
+    documentId: document.id,
+    s3Bucket: document.s3Bucket,
+    s3Key: document.s3Key,
+    originalFileName: document.originalFileName,
+    fileHash: document.fileHash,
+    firstPageTextHash: document.firstPageTextHash,
+    contentFingerprint: document.contentFingerprint,
+    uploadedByExpertId: document.uploadedByExpertId,
+    uploadedByExpertName: document.uploadedByExpertName,
+    projectId: document.projectId,
+    projectName: document.projectName,
+    sourceActivityId: document.sourceActivityId || relation.sourceActivityId,
+    activityDate: document.activityDate || targetActivity.date,
+    saCode: document.saCode || targetActivity.saCode,
+    deliverableType: document.deliverableType,
+    isCommonDeliverable: true,
+    declaredTitle: document.declaredTitle,
+    docTitle: document.extractedTitle,
+    suggestedTitle: document.suggestedTitle,
+    titleSuggestionConfidence: document.titleSuggestionConfidence,
+    titleSuggestionAlternatives: document.titleSuggestionAlternatives,
+    titleSuggestionReason: document.titleSuggestionReason,
+    titleMatch: document.titleMatch,
+    titleCheckStatus: document.titleCheckStatus,
+    eligibilityCheck: document.eligibilityCheck,
+  }));
+  assertNoErrors(result, 'AWS attach shared deliverable to target activity');
+}
+
+function getSourceActivityIdFromRelation(relation: SharedDeliverable) {
+  return relation.sourceActivityId || (isActivitySuggestionRelation(relation)
+    ? relation.documentId.replace(/^activity:/, '')
+    : undefined);
+}
+
+function buildSourceActivityFromSharedSnapshot(
+  relation: SharedDeliverable,
+  sourceExpert?: Expert,
+  relatedDocuments: DocumentMetadata[] = [],
+): Activity | undefined {
+  const document = relatedDocuments[0];
+  const date = relation.sourceActivityDate || document?.activityDate;
+  const title =
+    relation.sourceActivityTitle
+    || relation.sourceActivityType
+    || document?.declaredTitle
+    || document?.suggestedTitle
+    || document?.extractedTitle
+    || document?.originalFileName;
+  const activityType = relation.sourceActivityType || title;
+
+  if (!date || !title || !activityType) return undefined;
+
+  return {
+    id: getSourceActivityIdFromRelation(relation) || relation.id,
+    expertId: relation.sourceExpertId,
+    expertName: relation.sourceExpertName || sourceExpert?.name,
+    date,
+    hours: relation.sourceActivityHours ?? 0,
+    activityType,
+    saCode: relation.sourceActivitySaCode || document?.saCode,
+    catalogActivityId: relation.sourceActivityCatalogActivityId,
+    title,
+    description: relation.sourceActivityDescription,
+    location: relation.sourceActivityLocation,
+    dayType: relation.sourceActivityDayType,
+    shareStatus: 'shared',
+    projectCode: relation.sourceActivityProjectCode || relation.projectId || document?.projectId,
+  };
+}
+
+async function tryGetSharedSourceActivity(client: any, sourceActivityId?: string) {
+  if (!client.models.Activity || !sourceActivityId) return null;
+
+  try {
+    const result = await client.models.Activity.get({ id: sourceActivityId });
+    if (result.errors || !result.data) return null;
+    return attachActivityChildren(result.data);
+  } catch {
+    return null;
+  }
 }
 
 async function attachActivityChildren(activity: any): Promise<Activity> {
@@ -1146,6 +1349,24 @@ export const documentsService = {
     if (!client.models.Document) return [];
     const scope = await getCurrentDataAccessScope(client);
     if (scope.accessLevel === 'none') return [];
+
+    if (!scope.canAccessAllExperts && scope.currentExpertId) {
+      const [ownDocuments, sharedDocumentIds] = await Promise.all([
+        listModel<any>(client.models.Document, { uploadedByExpertId: { eq: scope.currentExpertId } }),
+        listSharedDocumentIdsForExpert(client, scope.currentExpertId),
+      ]);
+      const ownDocumentIds = new Set(ownDocuments.map((document) => document.id));
+      const sharedDocuments = await listDocumentsByIds(
+        client,
+        sharedDocumentIds.filter((documentId) => !ownDocumentIds.has(documentId)),
+      );
+      const deduped = new Map([
+        ...ownDocuments.map(mapDocument),
+        ...sharedDocuments,
+      ].map((document) => [document.id, document]));
+      return Array.from(deduped.values()).sort((a, b) => b.uploadDate.localeCompare(a.uploadDate));
+    }
+
     const filter = scope.canAccessAllExperts ? undefined : { uploadedByExpertId: { eq: scope.currentExpertId } };
     const data = await listModel<any>(client.models.Document, filter);
     return filterDocumentsForScope(data.map(mapDocument), scope).sort((a, b) => b.uploadDate.localeCompare(a.uploadDate));
@@ -1159,7 +1380,18 @@ export const documentsService = {
     if (!result.data) return null;
     const document = mapDocument(result.data);
     const scope = await getCurrentDataAccessScope(client);
-    return filterDocumentsForScope([document], scope)[0] ?? null;
+    const directlyVisible = filterDocumentsForScope([document], scope)[0];
+    if (directlyVisible) return directlyVisible;
+
+    if (!scope.canAccessAllExperts && scope.currentExpertId && client.models.SharedDeliverable) {
+      const relations = await listModel<any>(client.models.SharedDeliverable, { documentId: { eq: id } });
+      const canAccessSharedDocument = relations.some((relation) =>
+        relation.sourceExpertId === scope.currentExpertId || relation.targetExpertId === scope.currentExpertId,
+      );
+      if (canAccessSharedDocument) return document;
+    }
+
+    return null;
   },
 
   async getByProject(projectId: string): Promise<DocumentMetadata[]> {
@@ -1212,6 +1444,47 @@ export const sharedDeliverablesService = {
     return data.map(mapSharedDeliverable);
   },
 
+  async getActivityRegistrationContext(relationId: string): Promise<SharedActivityRegistrationContext | null> {
+    const client = getAwsDataClient() as any;
+    if (!client.models.SharedDeliverable) return null;
+
+    const existing = await client.models.SharedDeliverable.get({ id: relationId });
+    assertNoErrors(existing, 'AWS get shared activity registration context');
+    if (!existing.data) return null;
+
+    const activityRelation = mapSharedDeliverable(existing.data);
+    if (!isActivitySuggestionRelation(activityRelation)) return null;
+
+    await assertCanAccessExpert(client, activityRelation.targetExpertId);
+
+    const sourceActivityId = getSourceActivityIdFromRelation(activityRelation);
+    const relatedRawRelations = await listModel<any>(client.models.SharedDeliverable, {
+      targetExpertId: { eq: activityRelation.targetExpertId },
+      status: { eq: 'pending_registration' },
+    });
+    const relatedDeliverableRelations = relatedRawRelations
+      .map(mapSharedDeliverable)
+      .filter((relation) =>
+        !isActivitySuggestionRelation(relation)
+        && relation.sourceActivityId === sourceActivityId,
+      );
+    const [sourceExpertResult, relatedDocuments, sourceActivityFromBackend] = await Promise.all([
+      client.models.Expert.get({ id: activityRelation.sourceExpertId }).catch(() => ({ data: null })),
+      listDocumentsByIds(client, relatedDeliverableRelations.map((relation) => relation.documentId)),
+      tryGetSharedSourceActivity(client, sourceActivityId),
+    ]);
+    const sourceExpert = sourceExpertResult.data ? mapExpert(sourceExpertResult.data) : undefined;
+
+    return {
+      activityRelation,
+      sourceActivity: sourceActivityFromBackend
+        || buildSourceActivityFromSharedSnapshot(activityRelation, sourceExpert, relatedDocuments),
+      sourceExpert,
+      relatedDeliverableRelations,
+      relatedDocuments,
+    };
+  },
+
   async registerForActivity(relationId: string, targetActivityId: string): Promise<SharedDeliverable | null> {
     const client = getAwsDataClient() as any;
     if (!client.models.SharedDeliverable) return null;
@@ -1233,6 +1506,9 @@ export const sharedDeliverablesService = {
       relation: mapSharedDeliverable(existing.data),
       targetActivityId,
     });
+    if (!isActivitySuggestionRelation(registered)) {
+      await attachSharedDocumentToTargetActivity(client, registered, targetActivity.data);
+    }
     const result = await client.models.SharedDeliverable.update({
       id: relationId,
       status: registered.status,
@@ -1988,6 +2264,220 @@ function mapConcurrentProjectTimesheetEntry(item: any): ConcurrentProjectTimeshe
     updatedAt: item.updatedAt,
   };
 }
+
+async function assertCanAccessProcurement(client: any) {
+  const scope = await getCurrentDataAccessScope(client);
+  if (!scope.canUsePmDashboard) {
+    throw new Error('Acces interzis: modulul Achiziții este disponibil pentru PM și Admin.');
+  }
+  return scope;
+}
+
+function mapProcurementProject(item: any): ProcurementProject {
+  const currentStatus = (item.currentStatus ?? 'PLANIFICATA') as ProcurementStatus;
+  const plannedEndYear = item.plannedEndYear ?? undefined;
+  const attentionLevel = (item.attentionLevel ?? getProcurementAttentionLevel({ plannedEndYear, currentStatus })) as ProcurementAttentionLevel;
+
+  return {
+    id: item.id,
+    code: item.code,
+    title: item.title,
+    description: item.description ?? undefined,
+    category: item.category ?? '',
+    projectId: item.projectId ?? undefined,
+    projectCode: item.projectCode ?? undefined,
+    mysmisCode: item.mysmisCode ?? undefined,
+    subactivity: item.subactivity ?? undefined,
+    procurementType: item.procurementType,
+    procedureType: item.procedureType,
+    responsibleUserId: item.responsibleUserId ?? undefined,
+    department: item.department ?? undefined,
+    currentStatus,
+    estimatedValueWithoutVat: item.estimatedValueWithoutVat ?? 0,
+    estimatedVatValue: item.estimatedVatValue ?? 0,
+    estimatedValueWithVat: item.estimatedValueWithVat ?? 0,
+    currency: item.currency ?? 'RON',
+    budgetLine: item.budgetLine ?? undefined,
+    fundingSource: item.fundingSource ?? undefined,
+    plannedPeriod: item.plannedPeriod ?? '',
+    plannedStartYear: item.plannedStartYear ?? undefined,
+    plannedEndYear,
+    attentionLevel,
+    attentionLabel: item.attentionLabel ?? PROCUREMENT_ATTENTION_LABELS[attentionLevel],
+    sourceRowNumber: item.sourceRowNumber ?? undefined,
+    sourceFileName: item.sourceFileName ?? undefined,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+  };
+}
+
+function mapProcurementDocument(item: any): ProcurementDocument {
+  return {
+    id: item.id,
+    procurementProjectId: item.procurementProjectId,
+    documentType: item.documentType,
+    title: item.title,
+    visibilityType: item.visibilityType,
+    stage: item.stage,
+    fileUrl: item.fileUrl ?? undefined,
+    status: item.status ?? undefined,
+    uploadedBy: item.uploadedBy ?? undefined,
+    uploadedAt: item.uploadedAt ?? undefined,
+    notes: item.notes ?? undefined,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+  };
+}
+
+function mapProcurementStatusHistory(item: any): ProcurementStatusHistory {
+  return {
+    id: item.id,
+    procurementProjectId: item.procurementProjectId,
+    oldStatus: item.oldStatus ?? undefined,
+    newStatus: item.newStatus,
+    changedBy: item.changedBy ?? undefined,
+    changedAt: item.changedAt,
+    notes: item.notes ?? undefined,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+  };
+}
+
+function mapProcurementChecklist(item: any): ProcurementChecklist {
+  return {
+    id: item.id,
+    procurementProjectId: item.procurementProjectId,
+    stage: item.stage,
+    itemKey: item.itemKey,
+    itemLabel: item.itemLabel,
+    isRequired: item.isRequired ?? true,
+    isCompleted: item.isCompleted ?? false,
+    completedBy: item.completedBy ?? undefined,
+    completedAt: item.completedAt ?? undefined,
+    notes: item.notes ?? undefined,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+  };
+}
+
+const mapProcurementLaunch = (item: any): ProcurementLaunch => ({ ...item });
+const mapProcurementSupplier = (item: any): ProcurementSupplier => ({ ...item });
+const mapProcurementOffer = (item: any): ProcurementOffer => ({ ...item });
+const mapProcurementEvaluation = (item: any): ProcurementEvaluation => ({ ...item });
+const mapProcurementContract = (item: any): ProcurementContract => ({ ...item });
+const mapProcurementDeliverable = (item: any): ProcurementDeliverable => ({ ...item });
+const mapProcurementReception = (item: any): ProcurementReception => ({ ...item });
+const mapProcurementInvoice = (item: any): ProcurementInvoice => ({ ...item });
+
+function sortProcurementProjects(projects: ProcurementProject[]) {
+  return [...projects].sort((a, b) => (a.sourceRowNumber ?? 9999) - (b.sourceRowNumber ?? 9999) || a.title.localeCompare(b.title));
+}
+
+export const procurementProjectsService = {
+  async getAll(): Promise<ProcurementProject[]> {
+    const client = getAwsDataClient();
+    await assertCanAccessProcurement(client);
+    if (!client.models.ProcurementProject) return getContractedProcurementProjects();
+    const data = await listModel<any>(client.models.ProcurementProject);
+    const projects = data.map(mapProcurementProject);
+    return projects.length ? sortProcurementProjects(projects) : getContractedProcurementProjects();
+  },
+
+  async getById(id: string): Promise<ProcurementProject | null> {
+    const client = getAwsDataClient();
+    await assertCanAccessProcurement(client);
+    if (!client.models.ProcurementProject) {
+      return getContractedProcurementProjects().find((project) => project.id === id) ?? null;
+    }
+    const result = await client.models.ProcurementProject.get({ id });
+    assertNoErrors(result, 'AWS get procurement project');
+    return result.data ? mapProcurementProject(result.data) : null;
+  },
+
+  async create(project: Omit<ProcurementProject, 'id'>): Promise<ProcurementProject> {
+    const client = getAwsDataClient();
+    await assertCanAccessProcurement(client);
+    const result = await client.models.ProcurementProject.create(project);
+    assertNoErrors(result, 'AWS create procurement project');
+    const created = mapProcurementProject(result.data);
+    if (client.models.ProcurementStatusHistory) {
+      await client.models.ProcurementStatusHistory.create(createProcurementStatusHistoryEntry({
+        procurementProjectId: created.id,
+        newStatus: created.currentStatus,
+        notes: 'Proiect de achiziție creat.',
+      }));
+    }
+    return created;
+  },
+
+  async update(id: string, updates: Partial<ProcurementProject>): Promise<ProcurementProject> {
+    const client = getAwsDataClient();
+    await assertCanAccessProcurement(client);
+    const existing = await client.models.ProcurementProject.get({ id });
+    assertNoErrors(existing, 'AWS get procurement project before update');
+    const result = await client.models.ProcurementProject.update({ id, ...updates });
+    assertNoErrors(result, 'AWS update procurement project');
+    const updated = mapProcurementProject(result.data);
+
+    if (updates.currentStatus && existing.data?.currentStatus !== updates.currentStatus && client.models.ProcurementStatusHistory) {
+      await client.models.ProcurementStatusHistory.create(createProcurementStatusHistoryEntry({
+        procurementProjectId: id,
+        oldStatus: existing.data?.currentStatus ? existing.data.currentStatus as ProcurementStatus : undefined,
+        newStatus: updates.currentStatus,
+        notes: 'Status actualizat în modulul Achiziții.',
+      }));
+    }
+
+    return updated;
+  },
+};
+
+function buildProcurementChildService<T>(modelName: string, mapper: (item: any) => T) {
+  return {
+    async getAll(): Promise<T[]> {
+      const client = getAwsDataClient();
+      await assertCanAccessProcurement(client);
+      const model = (client.models as Record<string, any>)[modelName];
+      if (!model) return [];
+      const data = await listModel<any>(model);
+      return data.map(mapper);
+    },
+    async getByProject(procurementProjectId: string): Promise<T[]> {
+      const client = getAwsDataClient();
+      await assertCanAccessProcurement(client);
+      const model = (client.models as Record<string, any>)[modelName];
+      if (!model) return [];
+      const data = await listModel<any>(model, { procurementProjectId: { eq: procurementProjectId } });
+      return data.map(mapper);
+    },
+    async create(input: Omit<T, 'id'>): Promise<T> {
+      const client = getAwsDataClient();
+      await assertCanAccessProcurement(client);
+      const result = await (client.models as Record<string, any>)[modelName].create(input);
+      assertNoErrors(result, `AWS create ${modelName}`);
+      return mapper(result.data);
+    },
+    async update(id: string, updates: Partial<T>): Promise<T> {
+      const client = getAwsDataClient();
+      await assertCanAccessProcurement(client);
+      const result = await (client.models as Record<string, any>)[modelName].update({ id, ...updates });
+      assertNoErrors(result, `AWS update ${modelName}`);
+      return mapper(result.data);
+    },
+  };
+}
+
+export const procurementDocumentsService = buildProcurementChildService<ProcurementDocument>('ProcurementDocument', mapProcurementDocument);
+export const procurementLaunchesService = buildProcurementChildService<ProcurementLaunch>('ProcurementLaunch', mapProcurementLaunch);
+export const procurementSuppliersService = buildProcurementChildService<ProcurementSupplier>('ProcurementSupplier', mapProcurementSupplier);
+export const procurementOffersService = buildProcurementChildService<ProcurementOffer>('ProcurementOffer', mapProcurementOffer);
+export const procurementEvaluationsService = buildProcurementChildService<ProcurementEvaluation>('ProcurementEvaluation', mapProcurementEvaluation);
+export const procurementContractsService = buildProcurementChildService<ProcurementContract>('ProcurementContract', mapProcurementContract);
+export const procurementDeliverablesService = buildProcurementChildService<ProcurementDeliverable>('ProcurementDeliverable', mapProcurementDeliverable);
+export const procurementReceptionsService = buildProcurementChildService<ProcurementReception>('ProcurementReception', mapProcurementReception);
+export const procurementInvoicesService = buildProcurementChildService<ProcurementInvoice>('ProcurementInvoice', mapProcurementInvoice);
+export const procurementStatusHistoryService = buildProcurementChildService<ProcurementStatusHistory>('ProcurementStatusHistory', mapProcurementStatusHistory);
+export const procurementChecklistsService = buildProcurementChildService<ProcurementChecklist>('ProcurementChecklist', mapProcurementChecklist);
 
 export const reportStatusService = {
   async getByExpertAndMonth(expertId: string, month: number, year: number): Promise<ReportStatus | null> {

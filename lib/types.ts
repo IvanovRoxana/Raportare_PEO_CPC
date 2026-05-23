@@ -278,6 +278,17 @@ export interface SharedDeliverable {
   projectId?: string;
   sourceActivityId?: string;
   targetActivityId?: string;
+  sourceExpertName?: string;
+  sourceActivityDate?: string;
+  sourceActivityHours?: number;
+  sourceActivityType?: string;
+  sourceActivityTitle?: string;
+  sourceActivityDescription?: string;
+  sourceActivityLocation?: string;
+  sourceActivityDayType?: string;
+  sourceActivitySaCode?: string;
+  sourceActivityCatalogActivityId?: string;
+  sourceActivityProjectCode?: string;
   status: 'pending_registration' | 'registered' | 'ignored_by_admin' | 'removed' | 'confirmed_not_relevant' | string;
   notifiedAt?: string;
   registeredAt?: string;
@@ -285,6 +296,14 @@ export interface SharedDeliverable {
   removedAt?: string;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface SharedActivityRegistrationContext {
+  activityRelation: SharedDeliverable;
+  sourceActivity?: Activity;
+  sourceExpert?: Expert;
+  relatedDeliverableRelations: SharedDeliverable[];
+  relatedDocuments: DocumentMetadata[];
 }
 
 export interface GrupTintaEntry {

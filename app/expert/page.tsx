@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   AlertTriangle,
   ArrowRight,
@@ -11,6 +12,7 @@ import {
   ClipboardList,
   Clock3,
   Globe2,
+  Loader2,
   Save,
   Users,
 } from 'lucide-react';
@@ -294,11 +296,14 @@ function ConcurrentTimesheetEditor({
 }
 
 export default function ExpertHomeDashboard() {
+  const router = useRouter();
   const [currentMonth] = useState(new Date().getMonth());
   const [currentYear] = useState(new Date().getFullYear());
   const [signedInEmail, setSignedInEmail] = useState<string | null>(null);
   const [signedInName, setSignedInName] = useState('expert');
   const [signedInRoles, setSignedInRoles] = useState<AppRole[]>([]);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   const { experts } = useExperts();
   const { activities: monthActivities } = useActivitiesByMonth(currentMonth, currentYear);
@@ -307,12 +312,36 @@ export default function ExpertHomeDashboard() {
   const [draftConcurrentEntries, setDraftConcurrentEntries] = useState<Record<string, Partial<ConcurrentProjectTimesheetEntry>>>({});
 
   useEffect(() => {
-    getSignedInUser().then((user) => {
-      if (user?.email) setSignedInEmail(user.email);
-      if (user?.displayName) setSignedInName(user.displayName);
-      if (user?.roles) setSignedInRoles(user.roles);
-    });
-  }, []);
+    let isMounted = true;
+
+    getSignedInUser()
+      .then((user) => {
+        if (!isMounted) return;
+
+        if (!user) {
+          setIsAuthenticated(false);
+          setIsAuthLoading(false);
+          router.replace('/auth/login?redirectTo=/expert');
+          return;
+        }
+
+        setIsAuthenticated(true);
+        if (user.email) setSignedInEmail(user.email);
+        if (user.displayName) setSignedInName(user.displayName);
+        if (user.roles) setSignedInRoles(user.roles);
+        setIsAuthLoading(false);
+      })
+      .catch(() => {
+        if (!isMounted) return;
+        setIsAuthenticated(false);
+        setIsAuthLoading(false);
+        router.replace('/auth/login?redirectTo=/expert');
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [router]);
 
   const currentExpert = useMemo(() => {
     if (!signedInEmail) return null;
@@ -477,6 +506,17 @@ export default function ExpertHomeDashboard() {
     hasPmAccess: currentExpert?.hasPmAccess,
   });
 
+  if (isAuthLoading || !isAuthenticated) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-4 text-center">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">Se verifica autentificarea...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
       <AdminViewAsBanner />
@@ -595,9 +635,15 @@ export default function ExpertHomeDashboard() {
               {pendingActivityAlerts.map((alert) => (
                 <div key={alert.relationId} className="rounded-md border border-amber-200 bg-white/70 p-3 text-sm">
                   <div className="font-medium">Sugestie de la {alert.sourceExpertName}</div>
+                  {alert.sourceActivityTitle && (
+                    <div className="mt-1 text-sm font-medium text-amber-950">{alert.sourceActivityTitle}</div>
+                  )}
                   <div className="mt-1 text-xs text-amber-800">{alert.message}</div>
                   <div className="mt-2 flex flex-wrap gap-2 text-xs">
                     {alert.projectId && <Badge variant="outline">{alert.projectId}</Badge>}
+                    {alert.sourceActivitySaCode && <Badge variant="outline">{alert.sourceActivitySaCode}</Badge>}
+                    {alert.sourceActivityDate && <Badge variant="outline">{alert.sourceActivityDate}</Badge>}
+                    {alert.sourceActivityHours && <Badge variant="outline">{alert.sourceActivityHours}h</Badge>}
                     <Badge variant="secondary">{alert.status}</Badge>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2">
@@ -661,7 +707,9 @@ export default function ExpertHomeDashboard() {
                     <Badge variant="secondary">{alert.status}</Badge>
                   </div>
                   <Button asChild size="sm" className="mt-3 h-8 rounded-md">
-                    <Link href="/expert/peo">Asociaza in pontajul meu</Link>
+                    <Link href={`/expert/peo?sharedDeliverableRelationId=${encodeURIComponent(alert.relationId)}`}>
+                      Asociaza in pontajul meu
+                    </Link>
                   </Button>
                 </div>
               ))}

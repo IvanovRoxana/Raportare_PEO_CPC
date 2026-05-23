@@ -22,6 +22,18 @@ export const historicalImportService = awsStore.historicalImportService;
 export const auditLogsService = awsStore.auditLogsService;
 export const documentsService = awsStore.documentsService;
 export const sharedDeliverablesService = awsStore.sharedDeliverablesService;
+export const procurementProjectsService = awsStore.procurementProjectsService;
+export const procurementDocumentsService = awsStore.procurementDocumentsService;
+export const procurementLaunchesService = awsStore.procurementLaunchesService;
+export const procurementSuppliersService = awsStore.procurementSuppliersService;
+export const procurementOffersService = awsStore.procurementOffersService;
+export const procurementEvaluationsService = awsStore.procurementEvaluationsService;
+export const procurementContractsService = awsStore.procurementContractsService;
+export const procurementDeliverablesService = awsStore.procurementDeliverablesService;
+export const procurementReceptionsService = awsStore.procurementReceptionsService;
+export const procurementInvoicesService = awsStore.procurementInvoicesService;
+export const procurementStatusHistoryService = awsStore.procurementStatusHistoryService;
+export const procurementChecklistsService = awsStore.procurementChecklistsService;
 
 export const activeBackendProvider = 'aws';
 
