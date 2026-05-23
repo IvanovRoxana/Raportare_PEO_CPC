@@ -904,6 +904,7 @@ export default function ExpertDashboard() {
               </Link>
             </RightInfoCard>
 
+            {!showForm && (
             <RightInfoCard title="Status raportare" icon={ClipboardList}>
               <div className="space-y-4 text-sm">
                 <div className="flex items-center justify-between border-b border-slate-100 pb-3">
@@ -916,6 +917,7 @@ export default function ExpertDashboard() {
                 </div>
               </div>
             </RightInfoCard>
+            )}
 
             <RightInfoCard title="Sfaturi completare" icon={CheckCircle}>
               <div className="space-y-3 text-sm leading-6">
