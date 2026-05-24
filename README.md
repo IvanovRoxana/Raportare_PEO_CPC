@@ -64,6 +64,45 @@ ENABLE_DELIVERABLE_ELIGIBILITY_CHECK=false
 
 Set both values to `true` to reactivate the UI action and the server endpoint later.
 
+## One-Command Deploy
+
+The local deploy flow can run checks, commit/push to GitHub and start the Amplify Hosting job for `main`.
+
+First-time or expired AWS SSO session:
+
+```powershell
+npm run aws:sso
+```
+
+The full deploy script also auto-configures the `raportarepeo` AWS SSO profile with:
+
+- SSO start URL: `https://d-c367697fc4.awsapps.com/start`;
+- account ID: `147885329053`;
+- role: `AdministratorAccess`;
+- region: `eu-north-1`.
+
+Regular deploy with a commit:
+
+```powershell
+npm run deploy:full -- -CommitMessage "Describe the change"
+```
+
+What it does:
+
+- runs `typecheck`, `lint`, `test` and `build`;
+- commits local changes when `-CommitMessage` is provided;
+- pulls with `--ff-only` and pushes `main` to GitHub;
+- starts an Amplify `RELEASE` job for app `d19mquq8thd1uj`, branch `main`;
+- waits for the Amplify job to finish.
+
+Useful options:
+
+```powershell
+npm run deploy:full -- -SkipGit
+npm run deploy:full -- -SkipChecks
+npm run deploy:full -- -NoWait
+```
+
 Example smoke command for an existing AI endpoint:
 
 ```bash
