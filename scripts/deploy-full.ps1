@@ -154,7 +154,7 @@ try {
     }
     if ($startJobExitCode -ne 0) {
       $jobError = ($jobOutput | Out-String)
-      if ($jobError -match "pending or running jobs") {
+      if ($jobError -match "pending[\s\S]*running jobs") {
         Write-Host "Exista deja un job Amplify pending/running. Preiau ultimul job pentru monitorizare..." -ForegroundColor Yellow
         $latestJobJson = & $AwsExe amplify list-jobs `
           --app-id $AmplifyAppId `
