@@ -373,16 +373,18 @@ export function ActivityForm({
 
   const selectedGdprTemplate = useMemo(() => getGdprTemplate(gdprTemplateCode), [gdprTemplateCode]);
   const isBusinessHubGdpr = selectedGdprTemplate?.code === 'GDPR_BUSINESS_HUB';
+  const effectiveActivityTitle = isGdprExpert && selectedGdprTemplate ? selectedGdprTemplate.activityTitle : activityTitle;
+  const effectiveSaCode = isGdprExpert && selectedGdprTemplate ? selectedGdprTemplate.saCode : saCode;
   const gdprFieldDefinitions = useMemo(
     () => getGdprFieldDefinitions(gdprTemplateCode, gdprMeta),
     [gdprTemplateCode, gdprMeta]
   );
   
   // Check if current activity is exception (no deliverable required)
-  const isException = isExceptionActivity(activityTitle);
+  const isException = isExceptionActivity(effectiveActivityTitle);
   
   // Check if current activity is event
-  const isEvent = isEventActivity(activityTitle);
+  const isEvent = isEventActivity(effectiveActivityTitle);
   
   // Check if leave day
   const isLeave = dayType === 'CO' || dayType === 'CM';
@@ -395,7 +397,7 @@ export function ActivityForm({
   const eventDur = parseFloat(eventDuration) || 0;
   const needsExtendedDesc = isEvent && eventDur > 0 && totalHours > eventDur && (eventExtendedDesc || '').trim().length < 20;
   const saveBlockers = [
-    (!activityTitle.trim() && !isLeave) ? 'Selecteaza tipul activitatii.' : null,
+    (!effectiveActivityTitle.trim() && !isLeave) ? 'Selecteaza tipul activitatii.' : null,
     isSaving ? 'Salvarea este deja in curs.' : null,
     (isException && (description || '').length < 15) ? 'Completeaza descrierea pentru activitatea exceptata.' : null,
     needsCommonDesc ? 'Pentru activitate comuna, descrierea trebuie sa aiba minimum 30 de caractere.' : null,
@@ -405,10 +407,11 @@ export function ActivityForm({
 
   // Update activity when SA changes
   useEffect(() => {
+    if (isGdprExpert && gdprTemplateCode) return;
     if (availableActivities.length > 0 && !availableActivities.includes(activityTitle)) {
       setActivityTitle('');
     }
-  }, [saCode, availableActivities, activityTitle]);
+  }, [saCode, availableActivities, activityTitle, isGdprExpert, gdprTemplateCode]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -821,10 +824,10 @@ export function ActivityForm({
         expertId,
         expertName,
         hours: dateHours,
-        activityType: activityTitle,
-        saCode,
+        activityType: effectiveActivityTitle,
+        saCode: effectiveSaCode,
         catalogActivityId: selectedCatalogItem?.id,
-        title: activityTitle,
+        title: effectiveActivityTitle,
         description,
         deliverables: shouldAttachDeliverables ? uploadedDeliverables
           .map(d => ({
