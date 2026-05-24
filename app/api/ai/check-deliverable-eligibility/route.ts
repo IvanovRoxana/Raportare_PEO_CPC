@@ -2,6 +2,11 @@ import { Output } from 'ai';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { governedGenerateText, aiErrorResponse } from '@/lib/ai-governance';
+import {
+  DELIVERABLE_ELIGIBILITY_DISABLED_MESSAGE,
+  DELIVERABLE_ELIGIBILITY_DISABLED_STATUS,
+  isDeliverableEligibilityCheckEnabled,
+} from '@/lib/feature-flags';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -46,6 +51,16 @@ function nonConclusive(reason: string) {
 
 export async function POST(req: Request) {
   try {
+    if (!isDeliverableEligibilityCheckEnabled()) {
+      return NextResponse.json(
+        {
+          status: DELIVERABLE_ELIGIBILITY_DISABLED_STATUS,
+          message: DELIVERABLE_ELIGIBILITY_DISABLED_MESSAGE,
+        },
+        { status: 503 }
+      );
+    }
+
     const body = await req.json();
     const {
       documentTitle,

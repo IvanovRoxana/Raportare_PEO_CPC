@@ -5,12 +5,20 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Mic, Loader2, Download, Check, AlertTriangle, X } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Mic, Loader2, Download, Check, AlertTriangle } from 'lucide-react';
 import { DeliverableItem } from './deliverable-item';
 import { type DeliverableSlot, extractEventDate, createDeliverableSlot } from '@/lib/deliverable-types';
 import { generateDocx, downloadBlob } from '@/lib/document-utils';
+import type { Expert } from '@/lib/types';
 
 interface EventDocsPanelProps {
   deliverables: DeliverableSlot[];
@@ -18,6 +26,8 @@ interface EventDocsPanelProps {
   activityTitle: string;
   date: string;
   description: string;
+  allExperts?: Expert[];
+  currentExpertId?: string;
   onUpdateDeliverable: (id: string, patch: Partial<DeliverableSlot>) => void;
   onUpsertSlot: (slotType: 'event_mom' | 'event_proof', name: string, patch: Partial<DeliverableSlot>) => void;
 }
@@ -28,6 +38,8 @@ export function EventDocsPanel({
   activityTitle,
   date,
   description,
+  allExperts = [],
+  currentExpertId,
   onUpdateDeliverable,
   onUpsertSlot,
 }: EventDocsPanelProps) {
@@ -44,8 +56,15 @@ export function EventDocsPanel({
   const eventMOM = deliverables.find(d => d.slotType === 'event_mom');
   const eventProof = deliverables.find(d => d.slotType === 'event_proof');
 
-  const missingEventMOM = !eventMOM?.uploaded && !confirmed;
-  const missingEventProof = !eventProof?.uploaded;
+  const proofRequired = !hasMOM;
+  const proofAtOtherExpert = !!eventProof?.isCommonDeliverable && !eventProof?.uploaded;
+  const proofAtOtherExpertValid = proofAtOtherExpert && !!eventProof?.uploadedByExpertId;
+  const proofSatisfied = !proofRequired || !!eventProof?.uploaded || proofAtOtherExpertValid;
+  const momSatisfied = hasMOM ? !!eventMOM?.uploaded : confirmed;
+  const missingEventMOM = !momSatisfied;
+  const missingEventProof = !proofSatisfied;
+  const otherExperts = allExperts.filter((ex) => ex.id !== currentExpertId);
+  const selectedProofExpert = otherExperts.find((ex) => ex.id === eventProof?.uploadedByExpertId);
 
   const generateReport = async () => {
     if (genDesc.trim().length < 20) {
@@ -115,6 +134,25 @@ export function EventDocsPanel({
 
   const isComplete = !missingEventMOM && !missingEventProof;
 
+  const updateProofAtOtherExpert = (checked: boolean) => {
+    onUpsertSlot('event_proof', 'Fotografii + link eveniment', {
+      isCommonDeliverable: checked,
+      uploadedByExpertId: checked ? eventProof?.uploadedByExpertId : undefined,
+      uploadedByExpertName: checked ? eventProof?.uploadedByExpertName : undefined,
+      ...(checked ? { uploaded: false } : {}),
+    });
+  };
+
+  const updateProofExpert = (expertId: string) => {
+    const selectedExpert = otherExperts.find((ex) => ex.id === expertId);
+    onUpsertSlot('event_proof', 'Fotografii + link eveniment', {
+      isCommonDeliverable: true,
+      uploaded: false,
+      uploadedByExpertId: selectedExpert?.id,
+      uploadedByExpertName: selectedExpert?.name,
+    });
+  };
+
   // Cross-check date from MOM vs pontaj date
   const momDocText = eventMOM?.docText || '';
   const momExtractedDate = momDocText ? extractEventDate(momDocText) : null;
@@ -134,31 +172,10 @@ export function EventDocsPanel({
       </div>
 
       <div className="flex flex-col gap-3">
-        {/* SLOT 1: Dovada participare (always visible, required) */}
-        <div>
-          <div className="text-[11px] font-medium text-green-800 mb-1">
-            1. Dovada participare - obligatorie
-          </div>
-          <div className="text-[10px] text-green-600 mb-2">
-            Incarca intai poza sau lista de prezenta - va fi inclusa in raportul generat.
-          </div>
-          <DeliverableItem
-            deliverable={eventProof || createDeliverableSlot('event_proof', 'Fotografii eveniment')}
-            apiKey={null}
-            subActivity={subActivity}
-            activityTitle={activityTitle}
-            onUpdate={(patch) => onUpsertSlot('event_proof', 'Fotografii + link eveniment', patch)}
-            showSteps={false}
-            required={true}
-            label="Fotografie eveniment SAU Lista prezenta cu semnaturi olografe"
-            hint="JPG/PNG sau document scanat cu semnaturile participantilor."
-          />
-        </div>
-
-        {/* SLOT 2: MOM / Raport */}
+        {/* SLOT 1: MOM / Raport */}
         <div>
           <div className="text-[11px] font-medium text-green-800 mb-2">
-            2. MOM sau Raport eveniment
+            1. MOM sau Raport eveniment
           </div>
 
           {/* Toggle */}
@@ -205,7 +222,7 @@ export function EventDocsPanel({
                     Descrie participarea la eveniment
                   </div>
                   <div className="text-[10px] text-green-600 mb-2">
-                    Cine a participat, ce s-a discutat, ce s-a decis, ce actiuni urmeaza. Poza de mai sus va fi inclusa in raport.
+                    Cine a participat, ce s-a discutat, ce s-a decis, ce actiuni urmeaza.
                   </div>
                   <Textarea
                     value={genDesc}
@@ -322,6 +339,83 @@ export function EventDocsPanel({
             </div>
           )}
         </div>
+
+        {/* SLOT 2: Dovada participare */}
+        <div>
+          <div className="text-[11px] font-medium text-green-800 mb-1">
+            2. Dovada participare {proofRequired ? '- obligatorie' : '- optionala'}
+          </div>
+          <div className="text-[10px] text-green-600 mb-2">
+            {proofRequired
+              ? 'Incarca poza/lista de prezenta sau indica expertul care a incarcat dovada comuna.'
+              : 'Optional: MOM-ul semnat contine deja lista participantilor, deci dovada separata nu blocheaza salvarea.'}
+          </div>
+
+          {!hasMOM && (
+            <div className="mb-2 rounded-md border border-amber-200 bg-white/70 p-2">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="eventProofAtOtherExpert"
+                  checked={proofAtOtherExpert}
+                  onCheckedChange={(checked) => updateProofAtOtherExpert(checked === true)}
+                />
+                <Label htmlFor="eventProofAtOtherExpert" className="text-xs text-green-800 cursor-pointer">
+                  Dovada participarii este incarcata la alt expert
+                </Label>
+              </div>
+
+              {proofAtOtherExpert && (
+                <div className="mt-2">
+                  <Label className="text-[10px] text-amber-700">Expertul care detine dovada</Label>
+                  <Select
+                    value={eventProof?.uploadedByExpertId || ''}
+                    onValueChange={updateProofExpert}
+                  >
+                    <SelectTrigger className="mt-1 h-8 w-full bg-white text-xs">
+                      <SelectValue placeholder="Alege expertul" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {otherExperts.map((expertOption) => (
+                        <SelectItem key={expertOption.id} value={expertOption.id}>
+                          {expertOption.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {otherExperts.length === 0 && (
+                    <div className="mt-1 text-[10px] text-amber-700">
+                      Nu exista alti experti disponibili pentru selectie.
+                    </div>
+                  )}
+                  {!proofAtOtherExpertValid && (
+                    <div className="mt-1 text-[10px] text-amber-700">
+                      Selecteaza expertul concret pentru ca dovada sa fie considerata valida.
+                    </div>
+                  )}
+                  {proofAtOtherExpertValid && (
+                    <div className="mt-1 text-[10px] text-green-700">
+                      Dovada va fi preluata de la {eventProof?.uploadedByExpertName || selectedProofExpert?.name}.
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {!proofAtOtherExpert && (
+            <DeliverableItem
+              deliverable={eventProof || createDeliverableSlot('event_proof', 'Fotografii eveniment')}
+              apiKey={null}
+              subActivity={subActivity}
+              activityTitle={activityTitle}
+              onUpdate={(patch) => onUpsertSlot('event_proof', 'Fotografii + link eveniment', patch)}
+              showSteps={false}
+              required={proofRequired}
+              label="Fotografie eveniment SAU Lista prezenta cu semnaturi olografe"
+              hint="JPG/PNG sau document scanat cu semnaturile participantilor."
+            />
+          )}
+        </div>
       </div>
 
       {/* Date mismatch warning */}
@@ -342,8 +436,8 @@ export function EventDocsPanel({
         isComplete ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'
       }`}>
         {isComplete 
-          ? '✓ Documentele de eveniment sunt complete'
-          : `⚠ Lipsesc: ${[missingEventMOM ? 'MOM/Raport eveniment' : null, missingEventProof ? 'Dovada participare' : null].filter(Boolean).join(' si ')}`
+          ? 'OK: Documentele de eveniment sunt complete'
+          : `Atentie: Lipsesc: ${[missingEventMOM ? 'MOM/Raport eveniment' : null, missingEventProof ? 'Dovada participare' : null].filter(Boolean).join(' si ')}`
         }
       </div>
     </div>

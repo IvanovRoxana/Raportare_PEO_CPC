@@ -394,6 +394,14 @@ export function ActivityForm({
   const totalHours = parseFloat(hours) || 0;
   const eventDur = parseFloat(eventDuration) || 0;
   const needsExtendedDesc = isEvent && eventDur > 0 && totalHours > eventDur && (eventExtendedDesc || '').trim().length < 20;
+  const saveBlockers = [
+    (!activityTitle.trim() && !isLeave) ? 'Selecteaza tipul activitatii.' : null,
+    isSaving ? 'Salvarea este deja in curs.' : null,
+    (isException && (description || '').length < 15) ? 'Completeaza descrierea pentru activitatea exceptata.' : null,
+    needsCommonDesc ? 'Pentru activitate comuna, descrierea trebuie sa aiba minimum 30 de caractere.' : null,
+    needsExtendedDesc ? 'Pentru evenimente cu ore peste durata evenimentului, completeaza descrierea extinsa.' : null,
+  ].filter((message): message is string => Boolean(message));
+  const isSaveDisabled = saveBlockers.length > 0;
 
   // Update activity when SA changes
   useEffect(() => {
@@ -1993,6 +2001,8 @@ export function ActivityForm({
                     activityTitle={activityTitle}
                     date={selectedDates[0] || ''}
                     description={description}
+                    allExperts={allExperts}
+                    currentExpertId={expertId}
                     onUpdateDeliverable={updateDeliverable}
                     onUpsertSlot={upsertEventSlot}
                   />
@@ -2068,6 +2078,20 @@ export function ActivityForm({
           </div>
         )}
 
+        {isSaveDisabled && !isSaving && (
+          <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <div>
+              <div className="font-medium">Activitatea nu poate fi salvata inca:</div>
+              <ul className="mt-1 list-disc pl-4">
+                {saveBlockers.map((blocker) => (
+                  <li key={blocker}>{blocker}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )}
+
         {/* Actions */}
         <div className="flex justify-end gap-2 pt-4 border-t">
           <Button type="button" variant="outline" onClick={onCancel}>
@@ -2076,13 +2100,7 @@ export function ActivityForm({
           <Button 
             type="button" 
             onClick={handleSave} 
-            disabled={
-              (!activityTitle.trim() && !isLeave) || 
-              isSaving ||
-              (isException && (description || '').length < 15) ||
-              needsCommonDesc ||
-              needsExtendedDesc
-            }
+            disabled={isSaveDisabled}
           >
             {isSaving ? (
               <>

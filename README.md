@@ -51,6 +51,19 @@ curl http://localhost:3000/api/health
 
 AI routes remain server-side only and require server environment variables such as `OPENAI_API_KEY` to be configured in Amplify Hosting, not exposed with `NEXT_PUBLIC_*`.
 
+### Temporary deliverable eligibility suspension
+
+Automatic deliverable eligibility checking is temporarily disabled until API keys are configured and the eligibility rules are fully validated. Manual PM review, upload, listing, status updates, observations and reporting history remain available.
+
+Use these feature flags to control the automatic check:
+
+```bash
+NEXT_PUBLIC_ENABLE_DELIVERABLE_ELIGIBILITY_CHECK=false
+ENABLE_DELIVERABLE_ELIGIBILITY_CHECK=false
+```
+
+Set both values to `true` to reactivate the UI action and the server endpoint later.
+
 Example smoke command for an existing AI endpoint:
 
 ```bash

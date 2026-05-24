@@ -84,6 +84,7 @@
     "aws-cdk": "^2.1121.0",
     "aws-cdk-lib": "^2.253.1",
     "constructs": "^10.6.0",
+    "eslint": "^10.4.0",
     "postcss": "^8.5",
     "tailwindcss": "^4.2.0",
     "tw-animate-css": "1.3.3",

@@ -2,8 +2,9 @@
 // Activity Entry Status Calculation
 // ============================================
 
-import { EXCEPTIONS, EVENT_ACTS, isEventActivity } from './peo-constants';
-import type { Activity, Deliverable } from './types';
+import { EXCEPTIONS, EVENT_ACTS, isEventActivity } from './peo-constants.ts';
+import { isDeliverableEligibilityCheckEnabledClient } from './feature-flags.ts';
+import type { Activity, Deliverable } from './types.ts';
 
 export type ActivityStatus = 
   | 'complete' 
@@ -68,8 +69,9 @@ export function getActivityStatus(entry: ActivityEntry): ActivityStatus {
       return 'missing';
     }
     
-    // Check title confirmation and AI check for non-photo deliverables
-    if (mainDelivs.some(d => !d.isPhoto && (!d.titleConfirmed || !d.stadiu || !d.aiCheck))) {
+    // Check title confirmation and manual status. AI eligibility is optional while the feature flag is disabled.
+    const eligibilityCheckEnabled = isDeliverableEligibilityCheckEnabledClient();
+    if (mainDelivs.some(d => !d.isPhoto && (!d.titleConfirmed || !d.stadiu || (eligibilityCheckEnabled && !d.aiCheck)))) {
       return 'title_mismatch';
     }
     

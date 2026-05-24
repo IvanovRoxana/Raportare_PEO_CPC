@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ALL_DELIVERABLE_TYPES, DOCUMENT_STADIU_OPTIONS, type DeliverableSlot } from '@/lib/deliverable-types';
 import { extractDocxFirstPageText, extractDocxText, extractPdfFirstPageText, isImageFile } from '@/lib/document-utils';
+import { DELIVERABLE_ELIGIBILITY_UI_MESSAGE, isDeliverableEligibilityCheckEnabledClient } from '@/lib/feature-flags';
 import { applyAutomaticTitleSuggestion, suggestTitleFromFirstPage, validateDeclaredTitleOnFirstPage } from '@/lib/title-suggestion';
 
 interface DeliverableItemProps {
@@ -64,6 +65,7 @@ export function DeliverableItem({
   const typeOptions = deliverableOptions || ALL_DELIVERABLE_TYPES;
   const fileRef = useRef<HTMLInputElement>(null);
   const [aiLoading, setAiLoading] = useState(false);
+  const eligibilityCheckEnabled = isDeliverableEligibilityCheckEnabledClient();
 
   const readFileAsDataUrl = (file: File) =>
     new Promise<string>((resolve, reject) => {
@@ -140,6 +142,8 @@ export function DeliverableItem({
   };
 
   const handleAiCheck = async () => {
+    if (!eligibilityCheckEnabled) return;
+
     setAiLoading(true);
     try {
       const extractedText = (deliverable.docText || deliverable.firstPageText || '').slice(0, 12000);
@@ -292,7 +296,7 @@ export function DeliverableItem({
   const step1ok = deliverable.uploaded;
   const step2ok = deliverable.isPhoto || (deliverable.uploaded && deliverable.titleConfirmed);
   const step3ok = deliverable.isPhoto || (deliverable.uploaded && !!deliverable.stadiu);
-  const step4ok = deliverable.isPhoto || (deliverable.uploaded && !!deliverable.aiCheck);
+  const step4ok = deliverable.isPhoto || !eligibilityCheckEnabled || (deliverable.uploaded && !!deliverable.aiCheck);
   const allOk = step1ok && step2ok && step3ok && step4ok;
 
   const borderColor = !step1ok
@@ -314,7 +318,7 @@ export function DeliverableItem({
           <StepBadge ok={step1ok} n={1} label="Fisier incarcat" />
           <StepBadge ok={step2ok} n={2} label="Titlu confirmat" />
           <StepBadge ok={step3ok} n={3} label="Stadiu selectat" />
-          <StepBadge ok={step4ok} n={4} label="Eligibilitate verificata" />
+          <StepBadge ok={step4ok} n={4} label={eligibilityCheckEnabled ? 'Eligibilitate verificata' : 'Verificare manuala PM'} />
         </div>
       )}
 
@@ -512,20 +516,37 @@ export function DeliverableItem({
 
       {deliverable.uploaded && !deliverable.isPhoto && (
         <div className="space-y-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleAiCheck}
-            disabled={aiLoading}
-            className="text-xs border-indigo-300 text-indigo-700 hover:bg-indigo-50"
-          >
-            {aiLoading ? (
-              <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-            ) : (
-              <Sparkles className="h-3 w-3 mr-1" />
-            )}
-            {aiLoading ? 'Se verifică...' : 'Verifică eligibilitatea livrabilului'}
-          </Button>
+          {eligibilityCheckEnabled ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleAiCheck}
+              disabled={aiLoading}
+              className="text-xs border-indigo-300 text-indigo-700 hover:bg-indigo-50"
+            >
+              {aiLoading ? (
+                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+              ) : (
+                <Sparkles className="h-3 w-3 mr-1" />
+              )}
+              {aiLoading ? 'Se verifică...' : 'Verifică eligibilitatea livrabilului'}
+            </Button>
+          ) : (
+            <div className="space-y-1.5">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled
+                className="text-xs border-slate-300 text-slate-600"
+              >
+                <AlertTriangle className="h-3 w-3 mr-1" />
+                Verificare eligibilitate suspendata temporar
+              </Button>
+              <div className="rounded border border-amber-200 bg-amber-50 p-2 text-[10px] text-amber-800">
+                {DELIVERABLE_ELIGIBILITY_UI_MESSAGE}
+              </div>
+            </div>
+          )}
 
           {deliverable.eligibilityCheck && (
             <EligibilityResultCard check={deliverable.eligibilityCheck} />
