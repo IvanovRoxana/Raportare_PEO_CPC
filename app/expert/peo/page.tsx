@@ -102,6 +102,7 @@ export default function ExpertDashboard() {
   const [selectedHours, setSelectedHours] = useState<Record<string, string>>({});
   const [currentMonth, setCurrentMonth] = useState(baseMonth);
   const [currentYear, setCurrentYear] = useState(baseYear);
+  const [activeTab, setActiveTab] = useState('activitati');
   const [showForm, setShowForm] = useState(false);
   const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
   const [selectedExpertId, setSelectedExpertId] = useState<string | null>(null);
@@ -182,6 +183,12 @@ export default function ExpertDashboard() {
     return expert || { id: '', name: 'Expert', role: '', norma: 8, saCodes: [] };
   }, [experts, selectedExpertId]);
   const isGtExpert = isGtExpertCategory(selectedExpert.category);
+
+  useEffect(() => {
+    if (activeTab === 'gt' && !isGtExpert) {
+      setActiveTab('activitati');
+    }
+  }, [activeTab, isGtExpert]);
 
   // Filter activities by expert
   const activities = useMemo(() => {
@@ -407,6 +414,7 @@ export default function ExpertDashboard() {
     setSelectedDates([activity.date]);
     setSelectedHours({ [activity.date]: activity.hours.toString() });
     setShowForm(true);
+    setActiveTab('activitati');
   };
 
   const handleDeleteActivity = async (activityId: string) => {
@@ -749,6 +757,7 @@ export default function ExpertDashboard() {
     setEditingActivity(null);
     setSharedActivityPrefill(null);
     setShowForm(true);
+    setActiveTab('activitati');
   };
 
   // Auto-open form when dates are selected
@@ -774,6 +783,7 @@ export default function ExpertDashboard() {
       setEditingActivity(null);
       setSharedActivityPrefill(null);
       setShowForm(true);
+      setActiveTab('activitati');
     } else {
       setShowForm(false);
     }
@@ -1023,7 +1033,7 @@ export default function ExpertDashboard() {
         )}
 
         <div id="livrabile" className="scroll-mt-24" />
-        <Tabs defaultValue="activitati" className="space-y-6">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className={`grid w-full ${isGtExpert ? 'grid-cols-4' : 'grid-cols-3'}`}>
             <TabsTrigger value="activitati">Activitati</TabsTrigger>
             <TabsTrigger value="calendar">Calendar</TabsTrigger>
@@ -1291,6 +1301,7 @@ export default function ExpertDashboard() {
                 syncSelectedDates([date]);
                 setSharedActivityPrefill(null);
                 setShowForm(true);
+                setActiveTab('activitati');
               }}
               onEditActivity={handleEditActivity}
               onDeleteActivity={handleDeleteActivity}
