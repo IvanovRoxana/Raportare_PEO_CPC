@@ -138,14 +138,21 @@ try {
   if (-not $SkipAmplify) {
     Write-Step "Amplify start-job"
     Ensure-AwsLogin
-    $jobOutput = & $AwsExe amplify start-job `
-      --app-id $AmplifyAppId `
-      --branch-name $Branch `
-      --job-type RELEASE `
-      --profile $Profile `
-      --region $Region `
-      --output json 2>&1
-    if ($LASTEXITCODE -ne 0) {
+    $previousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+      $jobOutput = & $AwsExe amplify start-job `
+        --app-id $AmplifyAppId `
+        --branch-name $Branch `
+        --job-type RELEASE `
+        --profile $Profile `
+        --region $Region `
+        --output json 2>&1
+      $startJobExitCode = $LASTEXITCODE
+    } finally {
+      $ErrorActionPreference = $previousErrorActionPreference
+    }
+    if ($startJobExitCode -ne 0) {
       $jobError = ($jobOutput | Out-String)
       if ($jobError -match "pending or running jobs") {
         Write-Host "Exista deja un job Amplify pending/running. Preiau ultimul job pentru monitorizare..." -ForegroundColor Yellow
