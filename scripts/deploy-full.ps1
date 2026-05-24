@@ -138,20 +138,37 @@ try {
   if (-not $SkipAmplify) {
     Write-Step "Amplify start-job"
     Ensure-AwsLogin
-    $jobJson = & $AwsExe amplify start-job `
+    $jobOutput = & $AwsExe amplify start-job `
       --app-id $AmplifyAppId `
       --branch-name $Branch `
       --job-type RELEASE `
       --profile $Profile `
       --region $Region `
-      --output json
+      --output json 2>&1
     if ($LASTEXITCODE -ne 0) {
-      throw "Nu am putut porni jobul Amplify."
+      $jobError = ($jobOutput | Out-String)
+      if ($jobError -match "pending or running jobs") {
+        Write-Host "Exista deja un job Amplify pending/running. Preiau ultimul job pentru monitorizare..." -ForegroundColor Yellow
+        $latestJobJson = & $AwsExe amplify list-jobs `
+          --app-id $AmplifyAppId `
+          --branch-name $Branch `
+          --max-results 1 `
+          --profile $Profile `
+          --region $Region `
+          --output json
+        if ($LASTEXITCODE -ne 0) {
+          throw "Nu am putut citi lista de joburi Amplify."
+        }
+        $latestJob = $latestJobJson | ConvertFrom-Json
+        $jobId = $latestJob.jobSummaries[0].jobId
+      } else {
+        throw "Nu am putut porni jobul Amplify. $jobError"
+      }
+    } else {
+      $job = ($jobOutput | Out-String) | ConvertFrom-Json
+      $jobId = $job.jobSummary.jobId
+      Write-Host "Job Amplify pornit: $jobId" -ForegroundColor Green
     }
-
-    $job = $jobJson | ConvertFrom-Json
-    $jobId = $job.jobSummary.jobId
-    Write-Host "Job Amplify pornit: $jobId" -ForegroundColor Green
 
     if (-not $NoWait) {
       Write-Step "Astept finalizarea jobului Amplify"
