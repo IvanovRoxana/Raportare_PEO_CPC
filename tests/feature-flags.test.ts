@@ -44,3 +44,17 @@ test('deliverable eligibility check only enables on explicit true flags', () => 
   restoreEnv('ENABLE_DELIVERABLE_ELIGIBILITY_CHECK', previousServer);
   restoreEnv('NEXT_PUBLIC_ENABLE_DELIVERABLE_ELIGIBILITY_CHECK', previousClient);
 });
+
+test('server eligibility endpoint can be enabled from the public build flag', () => {
+  const previousServer = process.env.ENABLE_DELIVERABLE_ELIGIBILITY_CHECK;
+  const previousClient = process.env.NEXT_PUBLIC_ENABLE_DELIVERABLE_ELIGIBILITY_CHECK;
+
+  process.env.ENABLE_DELIVERABLE_ELIGIBILITY_CHECK = 'false';
+  process.env.NEXT_PUBLIC_ENABLE_DELIVERABLE_ELIGIBILITY_CHECK = 'true';
+
+  assert.equal(isDeliverableEligibilityCheckEnabled(), true);
+  assert.equal(isDeliverableEligibilityCheckEnabledClient(), true);
+
+  restoreEnv('ENABLE_DELIVERABLE_ELIGIBILITY_CHECK', previousServer);
+  restoreEnv('NEXT_PUBLIC_ENABLE_DELIVERABLE_ELIGIBILITY_CHECK', previousClient);
+});
