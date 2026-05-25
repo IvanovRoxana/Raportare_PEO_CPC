@@ -6,6 +6,9 @@ frontend:
         - npm ci --legacy-peer-deps
     build:
       commands:
+        - if [ -n "$OPENAI_API_KEY" ]; then printf "OPENAI_API_KEY=%s\n" "$OPENAI_API_KEY" >> .env.production; fi
+        - if [ -n "$ENABLE_DELIVERABLE_ELIGIBILITY_CHECK" ]; then printf "ENABLE_DELIVERABLE_ELIGIBILITY_CHECK=%s\n" "$ENABLE_DELIVERABLE_ELIGIBILITY_CHECK" >> .env.production; fi
+        - if [ -n "$NEXT_PUBLIC_ENABLE_DELIVERABLE_ELIGIBILITY_CHECK" ]; then printf "NEXT_PUBLIC_ENABLE_DELIVERABLE_ELIGIBILITY_CHECK=%s\n" "$NEXT_PUBLIC_ENABLE_DELIVERABLE_ELIGIBILITY_CHECK" >> .env.production; fi
         - npm run build
   artifacts:
     baseDirectory: .next
