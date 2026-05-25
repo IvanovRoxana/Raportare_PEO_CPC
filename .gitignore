@@ -12,6 +12,8 @@ build/
 # local environment
 .env*.local
 .env
+.venv/
+.codex/
 
 # logs
 npm-debug.log*

@@ -135,7 +135,8 @@ export interface DeliverableSlot {
   fileType?: string;
   fileSize?: number;
   filePath?: string;
-  fileData?: string; // Base64
+  fileData?: string; // Legacy Base64/data URL, kept for already-saved/generated deliverables.
+  fileBlob?: File | Blob;
   documentId?: string;
   s3Bucket?: string;
   s3Key?: string;
@@ -154,6 +155,8 @@ export interface DeliverableSlot {
   sharedWithExpertIds?: string[];
   possibleDuplicateOfDocumentId?: string;
   duplicateStatus?: string;
+  uploadStatus?: 'idle' | 'queued' | 'uploading' | 'uploaded' | 'failed';
+  uploadError?: string;
   uploadedAt?: string;
   uploaded: boolean;
   isPhoto: boolean;
@@ -194,6 +197,7 @@ export function createDeliverableSlot(slotType: DeliverableSlotType, name: strin
     fileSize: 0,
     filePath: undefined,
     fileData: undefined,
+    fileBlob: undefined,
     documentId: undefined,
     s3Bucket: undefined,
     s3Key: undefined,
@@ -212,6 +216,8 @@ export function createDeliverableSlot(slotType: DeliverableSlotType, name: strin
     sharedWithExpertIds: [],
     possibleDuplicateOfDocumentId: undefined,
     duplicateStatus: undefined,
+    uploadStatus: 'idle',
+    uploadError: undefined,
     uploadedAt: undefined,
     uploaded: false,
     isPhoto: false,

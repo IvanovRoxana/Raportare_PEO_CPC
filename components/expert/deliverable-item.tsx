@@ -67,14 +67,6 @@ export function DeliverableItem({
   const [aiLoading, setAiLoading] = useState(false);
   const eligibilityCheckEnabled = isDeliverableEligibilityCheckEnabledClient();
 
-  const readFileAsDataUrl = (file: File) =>
-    new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = () => reject(reader.error);
-      reader.readAsDataURL(file);
-    });
-
   const handleFile = async (ev: React.ChangeEvent<HTMLInputElement>) => {
     const file = ev.target.files?.[0];
     if (!file) return;
@@ -112,16 +104,17 @@ export function DeliverableItem({
           declaredTitle: suggestion.declaredTitle,
           titleSource: suggestion.titleSource,
         });
-    const fileData = await readFileAsDataUrl(file);
-
     onUpdate({
       filename: file.name,
       rawFilename: raw,
       fileType: file.type || 'application/octet-stream',
       fileSize: file.size,
-      fileData,
+      fileData: undefined,
+      fileBlob: file,
       uploadedAt: new Date().toISOString(),
       uploaded: true,
+      uploadStatus: 'idle',
+      uploadError: undefined,
       isPhoto,
       docTitle,
       docText,
@@ -275,6 +268,9 @@ export function DeliverableItem({
       fileSize: 0,
       filePath: undefined,
       fileData: undefined,
+      fileBlob: undefined,
+      uploadStatus: 'idle',
+      uploadError: undefined,
       docTitle: null,
       docText: null,
       firstPageText: null,
@@ -390,6 +386,26 @@ export function DeliverableItem({
             <span className="text-[10px] flex-1 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-slate-900">
               {deliverable.filename}
             </span>
+            {deliverable.uploadStatus && deliverable.uploadStatus !== 'idle' && (
+              <Badge
+                variant="outline"
+                className={`text-[10px] ${
+                  deliverable.uploadStatus === 'uploaded'
+                    ? 'border-green-300 bg-green-50 text-green-700'
+                    : deliverable.uploadStatus === 'failed'
+                      ? 'border-red-300 bg-red-50 text-red-700'
+                      : 'border-blue-300 bg-blue-50 text-blue-700'
+                }`}
+              >
+                {deliverable.uploadStatus === 'uploading'
+                  ? 'upload'
+                  : deliverable.uploadStatus === 'uploaded'
+                    ? 'incarcat'
+                    : deliverable.uploadStatus === 'failed'
+                      ? 'eroare'
+                      : 'coada'}
+              </Badge>
+            )}
             <Button
               variant="ghost"
               size="sm"
@@ -401,6 +417,12 @@ export function DeliverableItem({
           </div>
         )}
       </div>
+
+      {deliverable.uploadError && (
+        <div className="rounded border border-red-200 bg-red-50 p-1.5 text-[10px] text-red-700">
+          {deliverable.uploadError}
+        </div>
+      )}
 
       {!deliverable.isPhoto && (
         <div className="space-y-1.5">

@@ -423,7 +423,8 @@ export default function ExpertDashboard() {
     if (reportStatus?.status === 'approved') return;
 
     try {
-      await removeActivity(activityId);
+      const activityContext = activities.find((activity) => activity.id === activityId);
+      await removeActivity(activityId, activityContext);
       await refreshActivities();
     } catch (error) {
       console.error('Error deleting activity:', error);
@@ -866,7 +867,7 @@ export default function ExpertDashboard() {
                 Pontaj pentru: {selectedExpert.name}
               </Badge>
             ) : (
-              <Select value={selectedExpertId || ''} onValueChange={(id) => setSelectedExpertId(id)}>
+              <Select value={selectedExpertId || ''} onValueChange={(id: string) => setSelectedExpertId(id)}>
               <SelectTrigger className="w-[210px]">
                 <SelectValue placeholder="Selectează expert" />
               </SelectTrigger>
@@ -1258,7 +1259,7 @@ export default function ExpertDashboard() {
               <div className="flex items-center gap-4">
                 <Select
                   value={`${currentMonth}-${currentYear}`}
-                  onValueChange={(value) => {
+                  onValueChange={(value: string) => {
                     const [m, y] = value.split('-').map(Number);
                     handleMonthChange(m, y);
                   }}

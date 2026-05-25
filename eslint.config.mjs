@@ -31,6 +31,7 @@ export default [
   {
     ignores: [
       '.next/**',
+      '.venv/**',
       '.amplify/**',
       'node_modules/**',
       'amplify_outputs.json',

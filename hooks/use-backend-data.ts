@@ -166,33 +166,62 @@ export function useActivitiesByDateRange(startDate: string, endDate: string) {
   };
 }
 
+function activityMonthFromDate(date?: string) {
+  if (!date) return null;
+  const parsed = new Date(`${date}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return {
+    month: parsed.getMonth(),
+    year: parsed.getFullYear(),
+  };
+}
+
+function revalidateAffectedActivityKeys(activities: Array<Partial<Activity>>) {
+  const expertIds = new Set<string>();
+  const months = new Set<string>();
+  let touchesGrupTinta = false;
+
+  activities.forEach((activity) => {
+    if (activity.expertId) expertIds.add(activity.expertId);
+    const monthInfo = activityMonthFromDate(activity.date);
+    if (monthInfo) months.add(`${monthInfo.month}-${monthInfo.year}`);
+    if ((activity.grupTinta?.length ?? 0) > 0) touchesGrupTinta = true;
+  });
+
+  expertIds.forEach((expertId) => mutate(`activities-expert-${expertId}`));
+  months.forEach((monthKey) => {
+    mutate(`activities-month-${monthKey}`);
+    mutate(`report-status-month-${monthKey}`);
+    if (touchesGrupTinta) mutate(`grup-tinta-stats-${monthKey}`);
+  });
+}
+
 export function useActivityMutations() {
   const create = async (activity: Omit<Activity, 'id' | 'createdAt' | 'updatedAt'>) => {
     const created = await activitiesService.create(activity);
-    // Mutate all activity-related keys
-    mutate((key: string) => typeof key === 'string' && key.startsWith('activities'), undefined, { revalidate: true });
+    revalidateAffectedActivityKeys([created]);
     return created;
   };
 
   const createBatch = async (activities: Omit<Activity, 'id' | 'createdAt' | 'updatedAt'>[]) => {
     const created = await activitiesService.createBatch(activities);
-    mutate((key: string) => typeof key === 'string' && key.startsWith('activities'), undefined, { revalidate: true });
+    revalidateAffectedActivityKeys(created);
     return created;
   };
 
   const update = async (id: string, updates: Partial<Activity>) => {
     await activitiesService.update(id, updates);
-    mutate((key: string) => typeof key === 'string' && key.startsWith('activities'), undefined, { revalidate: true });
+    revalidateAffectedActivityKeys([{ id, ...updates }]);
   };
 
-  const remove = async (id: string) => {
+  const remove = async (id: string, activityContext?: Partial<Activity>) => {
     await activitiesService.delete(id);
-    mutate((key: string) => typeof key === 'string' && key.startsWith('activities'), undefined, { revalidate: true });
+    if (activityContext) revalidateAffectedActivityKeys([activityContext]);
   };
 
   const removeByDates = async (expertId: string, dates: string[]) => {
     await activitiesService.deleteByDates(expertId, dates);
-    mutate((key: string) => typeof key === 'string' && key.startsWith('activities'), undefined, { revalidate: true });
+    revalidateAffectedActivityKeys(dates.map((date) => ({ expertId, date })));
   };
 
   return { create, createBatch, update, remove, removeByDates };
