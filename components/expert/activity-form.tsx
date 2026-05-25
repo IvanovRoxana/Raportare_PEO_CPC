@@ -34,7 +34,14 @@ import type { Activity, Deliverable, GrupTintaEntry, Expert, ActivityCatalog } f
 import { isGtExpertCategory, normalizePeoCategory } from '@/lib/peo-category';
 import { buildDocumentS3Key, hashFirstPageText, normalizeDocumentTextForFingerprint, sha256Hex } from '@/lib/document-sharing';
 import { shouldAttachUploadedDeliverablesToDate } from '@/lib/activity-deliverables';
-import { validateActivitiesBeforeCreate, type ActivityDraftForValidation } from '@/lib/pontaj-rules';
+import {
+  MAX_PONTAJ_HOURS,
+  buildSelectedHoursForDates,
+  isValidPontajHours,
+  normalizePontajHoursValue,
+  validateActivitiesBeforeCreate,
+  type ActivityDraftForValidation,
+} from '@/lib/pontaj-rules';
 import {
   GDPR_CONCLUSION_OPTIONS,
   GDPR_TEMPLATES,
@@ -142,21 +149,20 @@ export function ActivityForm({
   
   const expertNorma = expert?.norma || 8;
   // Default hours = min(norma, 8) - experts usually fill their daily norm
-  const defaultHours = Math.min(expertNorma, 8);
+  const defaultHours = Number(normalizePontajHoursValue(Math.min(expertNorma, MAX_PONTAJ_HOURS)));
+  const hourOptions = useMemo(() => Array.from({ length: MAX_PONTAJ_HOURS }, (_, index) => index + 1), []);
   const activitySeed = initialActivity || prefillActivity;
   
   // Per-day hours state - each day can have different hours
   const [hoursPerDay, setHoursPerDay] = useState<Record<string, string>>(() => {
-    // Initialize with default hours for each selected date
-    const initial: Record<string, string> = {};
-    selectedDates.forEach(date => {
-      initial[date] = selectedHours?.[date] || activitySeed?.hours?.toString() || defaultHours.toString();
-    });
-    return initial;
+    const seedHours = activitySeed?.hours !== undefined
+      ? Object.fromEntries(selectedDates.map((date) => [date, normalizePontajHoursValue(activitySeed.hours, defaultHours)]))
+      : selectedHours;
+    return buildSelectedHoursForDates(selectedDates, seedHours, defaultHours);
   });
   
   // Legacy single hours for backward compatibility (used when saving)
-  const [hours, setHours] = useState(activitySeed?.hours?.toString() || defaultHours.toString());
+  const [hours, setHours] = useState(normalizePontajHoursValue(activitySeed?.hours, defaultHours));
   const [saCode, setSaCode] = useState(activitySeed?.saCode || '');
   
   // Set or reset default SA code when available SA codes load after category filtering.
@@ -174,19 +180,15 @@ export function ActivityForm({
   // Update hoursPerDay when selectedDates change (add new dates with default hours)
   useEffect(() => {
     setHoursPerDay(prev => {
-      const updated = { ...prev };
-      selectedDates.forEach(date => {
-        if (!updated[date]) {
-          updated[date] = selectedHours?.[date] || defaultHours.toString();
-        }
-      });
-      return updated;
+      const baseHours = { ...prev, ...selectedHours };
+      return buildSelectedHoursForDates(selectedDates, baseHours, defaultHours);
     });
   }, [selectedDates, defaultHours, selectedHours]);
 
   const updateHoursForDate = (date: string, value: string) => {
+    if (!isValidPontajHours(value)) return;
     setHoursPerDay(prev => {
-      const next = { ...prev, [date]: value };
+      const next = { ...prev, [date]: normalizePontajHoursValue(value, prev[date] || defaultHours) };
       onSelectedHoursChange?.(next);
       return next;
     });
@@ -393,7 +395,7 @@ export function ActivityForm({
   const needsCommonDesc = activityCommon && (description || '').trim().length < 30;
   
   // Check if extended event description is needed
-  const totalHours = parseFloat(hours) || 0;
+  const totalHours = Number(hours) || 0;
   const eventDur = parseFloat(eventDuration) || 0;
   const needsExtendedDesc = isEvent && eventDur > 0 && totalHours > eventDur && (eventExtendedDesc || '').trim().length < 20;
   const saveBlockers = [
@@ -751,7 +753,7 @@ export function ActivityForm({
       id: initialActivity?.id,
       expertId,
       date,
-      hours: isLeave ? 0 : (parseFloat(hoursPerDay[date] || defaultHours.toString()) || defaultHours),
+      hours: isLeave ? 0 : Number(normalizePontajHoursValue(hoursPerDay[date], defaultHours)),
       status: initialActivity?.status,
       projectCode: expert?.projectCode,
     }));
@@ -815,7 +817,7 @@ export function ActivityForm({
 
     const activities: Activity[] = selectedDates.map((date) => {
       // Get hours for this specific date, fallback to default
-      const dateHours = isLeave ? 0 : (parseFloat(hoursPerDay[date] || defaultHours.toString()) || defaultHours);
+      const dateHours = isLeave ? 0 : Number(normalizePontajHoursValue(hoursPerDay[date], defaultHours));
       const shouldAttachDeliverables = shouldAttachUploadedDeliverablesToDate(selectedDates, date);
       
       return {
@@ -953,7 +955,7 @@ export function ActivityForm({
       concluzie: gdprConclusionCode || 'conform_fara_neconformitati',
     }, `${reportMonthName} ${year}`));
 
-    const templateHours = Math.min(template.defaultHours, defaultHours).toString();
+    const templateHours = normalizePontajHoursValue(Math.min(template.defaultHours, defaultHours), defaultHours);
     setHours(templateHours);
     setHoursPerDay((prev) => {
       const next = { ...prev };
@@ -1302,8 +1304,7 @@ export function ActivityForm({
                   <SelectValue placeholder="Selecteaza orele" />
                 </SelectTrigger>
                 <SelectContent>
-                  {Array.from({ length: 16 }, (_, i) => (i + 1) * 0.5)
-                    .filter(h => h <= 8)
+                  {hourOptions
                     .map(h => (
                       <SelectItem key={h} value={h.toString()}>
                         {h} {h === 1 ? 'ora' : 'ore'}
@@ -1334,8 +1335,7 @@ export function ActivityForm({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {Array.from({ length: 16 }, (_, i) => (i + 1) * 0.5)
-                        .filter(h => h <= 8)
+                      {hourOptions
                         .map(h => (
                           <SelectItem key={h} value={h.toString()}>
                             {h}h
@@ -1348,7 +1348,7 @@ export function ActivityForm({
               ))}
             </div>
             <p className="text-xs text-muted-foreground">
-              Total: {selectedDates.reduce((sum, date) => sum + parseFloat(hoursPerDay[date] || defaultHours.toString()), 0)}h pentru {selectedDates.length} zile
+              Total: {selectedDates.reduce((sum, date) => sum + Number(normalizePontajHoursValue(hoursPerDay[date], defaultHours)), 0)}h pentru {selectedDates.length} zile
             </p>
           </div>
         )}

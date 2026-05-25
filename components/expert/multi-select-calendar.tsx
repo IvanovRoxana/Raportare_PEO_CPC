@@ -7,7 +7,13 @@ import { cn } from '@/lib/utils';
 import { formatDate, getMonthName } from '@/lib/app-utils';
 import { getNonWorkingDayInfo } from '@/lib/non-working-days';
 import { getWorkingHoursInfo } from '@/lib/working-hours';
-import { DAILY_HOURS_LIMIT } from '@/lib/pontaj-rules';
+import {
+  DAILY_HOURS_LIMIT,
+  MAX_PONTAJ_HOURS,
+  buildSelectedHoursForDates,
+  isValidPontajHours,
+  normalizePontajHoursValue,
+} from '@/lib/pontaj-rules';
 import type { Activity } from '@/lib/types';
 
 interface MultiSelectCalendarProps {
@@ -40,7 +46,7 @@ export function MultiSelectCalendar({
   const [currentDate, setCurrentDate] = useState(new Date());
   const [isSelecting, setIsSelecting] = useState(false);
   const [selectionStart, setSelectionStart] = useState<string | null>(null);
-  const [defaultHours, setDefaultHours] = useState(Math.min(expertNorma, 8));
+  const [defaultHours, setDefaultHours] = useState(Number(normalizePontajHoursValue(Math.min(expertNorma, MAX_PONTAJ_HOURS))));
 
   const month = currentDate.getMonth();
   const year = currentDate.getFullYear();
@@ -51,7 +57,7 @@ export function MultiSelectCalendar({
     [month, year, expertNorma, activities],
   );
   const selectedTotalHours = useMemo(
-    () => sortedSelectedDates.reduce((sum, date) => sum + Number(selectedHours[date] || defaultHours), 0),
+    () => sortedSelectedDates.reduce((sum, date) => sum + Number(normalizePontajHoursValue(selectedHours[date], defaultHours)), 0),
     [sortedSelectedDates, selectedHours, defaultHours],
   );
 
@@ -91,18 +97,15 @@ export function MultiSelectCalendar({
 
   const syncSelectedDates = (dates: string[], baseHours = selectedHours) => {
     const uniqueDates = [...new Set(dates)].sort();
-    const nextHours: Record<string, string> = {};
-
-    uniqueDates.forEach((date) => {
-      nextHours[date] = baseHours[date] || defaultHours.toString();
-    });
+    const nextHours = buildSelectedHoursForDates(uniqueDates, baseHours, defaultHours);
 
     onSelectedHoursChange?.(nextHours);
     onSelectDates(uniqueDates);
   };
 
   const updateSelectedHour = (date: string, value: string | number) => {
-    const numericValue = Math.min(8, Math.max(0, Number(value) || 0));
+    if (!isValidPontajHours(value)) return;
+    const numericValue = Number(normalizePontajHoursValue(value, selectedHours[date] || defaultHours));
     onSelectedHoursChange?.({
       ...selectedHours,
       [date]: numericValue.toString(),
@@ -110,7 +113,8 @@ export function MultiSelectCalendar({
   };
 
   const applyHoursToAll = (value: string | number) => {
-    const numericValue = Math.min(8, Math.max(1, Number(value) || 1));
+    if (!isValidPontajHours(value)) return;
+    const numericValue = Number(normalizePontajHoursValue(value, defaultHours));
     setDefaultHours(numericValue);
     onSelectedHoursChange?.(
       Object.fromEntries(sortedSelectedDates.map((date) => [date, numericValue.toString()])),
@@ -227,7 +231,7 @@ export function MultiSelectCalendar({
           const hasActivities = getDateActivities(date).length > 0;
           const totalHours = getTotalHours(date);
           const isToday = formatDate(new Date()) === dateStr;
-          const selectedHour = selectedHours[dateStr] || defaultHours.toString();
+          const selectedHour = normalizePontajHoursValue(selectedHours[dateStr], defaultHours);
           const projectedDailyHours = totalHours + (isSelected ? Number(selectedHour) || 0 : 0);
           const exceedsDailyLimit = isCurrentMonth
             && !isNonWorkingDay
@@ -369,7 +373,7 @@ export function MultiSelectCalendar({
             <div className="max-h-44 space-y-1 overflow-y-auto pr-1">
               {sortedSelectedDates.map((date) => {
                 const existingHours = (activityMap[date] || []).reduce((sum, activity) => sum + activity.hours, 0);
-                const selectedValue = Number(selectedHours[date] || defaultHours) || 0;
+                const selectedValue = Number(normalizePontajHoursValue(selectedHours[date], defaultHours));
                 const projectedHours = existingHours + selectedValue;
                 const isOverDailyLimit = projectedHours > DAILY_HOURS_LIMIT;
 
@@ -395,10 +399,10 @@ export function MultiSelectCalendar({
                     </span>
                     <input
                       type="number"
-                      min={0}
-                      max={8}
-                      step={0.5}
-                      value={selectedHours[date] || defaultHours.toString()}
+                      min={1}
+                      max={MAX_PONTAJ_HOURS}
+                      step={1}
+                      value={normalizePontajHoursValue(selectedHours[date], defaultHours)}
                       onChange={(event) => updateSelectedHour(date, event.target.value)}
                       className="h-8 w-16 rounded-md border border-input bg-background px-2 text-center text-xs"
                     />

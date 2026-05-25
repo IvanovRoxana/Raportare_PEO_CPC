@@ -48,7 +48,9 @@ import { formatDate, formatDateRo } from '@/lib/app-utils';
 import { isExceptionActivity } from '@/lib/peo-constants';
 import { getWorkingDaysListInMonth } from '@/lib/working-hours';
 import {
+  buildSelectedHoursForDates,
   getMonthlyBlockingState,
+  normalizePontajHoursValue,
   validateActivitiesBeforeCreate,
   type ActivityDraftForValidation,
 } from '@/lib/pontaj-rules';
@@ -587,10 +589,7 @@ export default function ExpertDashboard() {
 
   const syncSelectedDates = (dates: string[], baseHours = selectedHours) => {
     const uniqueDates = [...new Set(dates)].sort();
-    const nextHours: Record<string, string> = {};
-    uniqueDates.forEach((date) => {
-      nextHours[date] = baseHours[date] || getDefaultHours();
-    });
+    const nextHours = buildSelectedHoursForDates(uniqueDates, baseHours, getDefaultHours());
     setSelectedDates(uniqueDates);
     setSelectedHours(nextHours);
   };
@@ -903,12 +902,12 @@ export default function ExpertDashboard() {
                 <div>
                   <p className="text-sm text-muted-foreground">Total ore introduse</p>
                   <p className="mt-1 text-4xl font-bold text-slate-950">
-                    {selectedDates.reduce((sum, date) => sum + (Number(selectedHours[date]) || 0), 0)}h
+                    {selectedDates.reduce((sum, date) => sum + Number(normalizePontajHoursValue(selectedHours[date], getDefaultHours())), 0)}h
                   </p>
                 </div>
                 <span className="text-sm text-muted-foreground">din 8h disponibile</span>
               </div>
-              <ProgressBar value={Math.min(100, selectedDates.reduce((sum, date) => sum + (Number(selectedHours[date]) || 0), 0) * 12.5)} className="mt-4" />
+              <ProgressBar value={Math.min(100, selectedDates.reduce((sum, date) => sum + Number(normalizePontajHoursValue(selectedHours[date], getDefaultHours())), 0) * 12.5)} className="mt-4" />
               <Link href="#calendar" className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-primary">
                 Vezi detaliile zilei
               </Link>
@@ -1042,7 +1041,7 @@ export default function ExpertDashboard() {
           </TabsList>
 
           {/* Tab: Activitati - pentru adaugare/editare activitati */}
-          <TabsContent id="activitati" value="activitati" className="space-y-6 scroll-mt-24">
+          <TabsContent id="activitati" value="activitati" forceMount className="space-y-6 scroll-mt-24">
             {pendingSharedActivityRelationId && (
               <div className="rounded-lg border border-blue-300 bg-blue-50 p-4 text-sm text-blue-900">
                 <div className="flex items-start gap-2">

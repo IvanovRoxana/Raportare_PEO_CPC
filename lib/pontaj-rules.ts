@@ -4,6 +4,8 @@ import { assertCanLogHoursOnDate, calculateMonthlyNormHours } from './non-workin
 import type { Activity, Expert } from './types';
 
 export const DAILY_HOURS_LIMIT = 8;
+export const MIN_PONTAJ_HOURS = 1;
+export const MAX_PONTAJ_HOURS = DAILY_HOURS_LIMIT;
 
 export type NormType = 'calculated' | 'manual_adjusted' | 'project';
 
@@ -26,7 +28,7 @@ export interface MonthlyNormInfo {
 
 export interface PontajValidationResult {
   ok: boolean;
-  code?: 'NON_WORKING_DAY' | 'DAILY_LIMIT_EXCEEDED' | 'MONTHLY_NORM_EXCEEDED' | 'PROJECT_NORM_EXCEEDED';
+  code?: 'INVALID_HOURS' | 'NON_WORKING_DAY' | 'DAILY_LIMIT_EXCEEDED' | 'MONTHLY_NORM_EXCEEDED' | 'PROJECT_NORM_EXCEEDED';
   message?: string;
   monthlyNorm: number;
   monthlyTotalBefore: number;
@@ -136,6 +138,38 @@ export function totalActivityHours(activities: Pick<ActivityDraftForValidation, 
   return activities.reduce((sum, activity) => sum + (Number(activity.hours) || 0), 0);
 }
 
+export function isValidPontajHours(hours: unknown) {
+  const value = typeof hours === 'string' ? Number(hours) : hours;
+  return (
+    typeof value === 'number'
+    && Number.isFinite(value)
+    && Number.isInteger(value)
+    && value >= MIN_PONTAJ_HOURS
+    && value <= MAX_PONTAJ_HOURS
+  );
+}
+
+export function normalizePontajHoursValue(value: unknown, fallback: number | string = MAX_PONTAJ_HOURS) {
+  const numericValue = typeof value === 'string' ? Number(value) : value;
+  if (isValidPontajHours(numericValue)) return String(numericValue);
+
+  const fallbackValue = typeof fallback === 'string' ? Number(fallback) : fallback;
+  return isValidPontajHours(fallbackValue) ? String(fallbackValue) : String(MAX_PONTAJ_HOURS);
+}
+
+export function buildSelectedHoursForDates(
+  dates: string[],
+  baseHours: Record<string, string> = {},
+  defaultHours: number | string = MAX_PONTAJ_HOURS,
+) {
+  const nextHours: Record<string, string> = {};
+  [...new Set(dates)].sort().forEach((date) => {
+    nextHours[date] = normalizePontajHoursValue(baseHours[date], defaultHours);
+  });
+
+  return nextHours;
+}
+
 export function validateActivitiesBeforeCreate(args: {
   expert: Partial<Expert>;
   existingActivities: ActivityDraftForValidation[];
@@ -155,6 +189,21 @@ export function validateActivitiesBeforeCreate(args: {
   [...existingActivities, ...newActivities].forEach((activity) => {
     dailyTotalsAfter[activity.date] = (dailyTotalsAfter[activity.date] ?? 0) + (Number(activity.hours) || 0);
   });
+
+  for (const activity of newActivities) {
+    if (!isValidPontajHours(activity.hours)) {
+      return {
+        ok: false,
+        code: 'INVALID_HOURS',
+        message: `Activitatea nu a fost creată: orele pontate trebuie să fie numere întregi între ${MIN_PONTAJ_HOURS} și ${MAX_PONTAJ_HOURS}.`,
+        monthlyNorm,
+        monthlyTotalBefore,
+        monthlyTotalAfter,
+        remainingMonthlyHours: Math.max(0, monthlyNorm - monthlyTotalBefore),
+        dailyTotalsAfter,
+      };
+    }
+  }
 
   for (const activity of newActivities) {
     try {
