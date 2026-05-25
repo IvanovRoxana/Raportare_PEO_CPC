@@ -32,6 +32,7 @@ export default [
     ignores: [
       '.next/**',
       '.amplify/**',
+      '.venv/**',
       'node_modules/**',
       'amplify_outputs.json',
       'package-lock.json',

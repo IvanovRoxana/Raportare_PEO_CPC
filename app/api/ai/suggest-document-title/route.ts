@@ -1,8 +1,9 @@
 import { Output } from 'ai';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { governedGenerateText, aiErrorResponse } from '@/lib/ai-governance';
+import { governedGenerateText, aiErrorResponse, assertAllowedAiRequest } from '@/lib/ai-governance';
 import { suggestTitleFromFirstPage } from '@/lib/title-suggestion';
+import { openaiModel } from '@/lib/openai';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -20,6 +21,7 @@ function trimText(value: unknown, maxChars: number) {
 
 export async function POST(req: Request) {
   try {
+    assertAllowedAiRequest(req);
     const body = await req.json();
     const {
       fileName,
@@ -44,7 +46,7 @@ export async function POST(req: Request) {
       request: body,
       actorName: expertName,
       projectCode,
-      model: 'openai/gpt-4o-mini',
+      model: openaiModel(),
       system: `Ești un asistent care identifică titlul real al unui document încărcat într-o aplicație de raportare PEO. Primești text extras din prima pagină. Alege un titlu clar și relevant pentru document, evitând antetele instituționale, datele izolate, codurile de proiect, numerele de pagină, denumirile organizației, adresele și textele administrative. Nu inventa un titlu care nu este susținut de text. Dacă nu poți identifica sigur titlul, returnează o sugestie cu confidence low. Returnează doar JSON valid.`,
       prompt: `Nume fișier: ${fileName || 'Nespecificat'}
 

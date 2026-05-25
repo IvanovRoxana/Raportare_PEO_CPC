@@ -1,7 +1,8 @@
 import { Output } from 'ai';
-import { governedGenerateText, aiErrorResponse } from '@/lib/ai-governance';
+import { governedGenerateText, aiErrorResponse, assertAllowedAiRequest } from '@/lib/ai-governance';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { openaiModel } from '@/lib/openai';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -20,6 +21,7 @@ const DateVerificationSchema = z.object({
 
 export async function POST(req: Request) {
   try {
+    assertAllowedAiRequest(req);
     const body = await req.json();
     const { documentText, documentTitle, pontajDate, activityTitle } = body;
 
@@ -31,7 +33,7 @@ export async function POST(req: Request) {
       endpoint: '/api/ai/verify-date',
       operation: 'verify-date',
       request: body,
-      model: 'openai/gpt-4o-mini',
+      model: openaiModel(),
       system: `Ești un asistent specializat în verificarea documentelor pentru proiecte cu finanțare europeană.
 Sarcina ta este să extragi datele din documente și să verifici dacă corespund cu data pontată.
 Fii atent la:

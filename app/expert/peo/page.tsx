@@ -1210,7 +1210,6 @@ export default function ExpertDashboard() {
                     allActivities={allMonthActivities}
                     month={currentMonth}
                     year={currentYear}
-                    apiKey={null}
                     onSave={handleSaveActivities}
                     onCancel={() => {
                       setShowForm(false);

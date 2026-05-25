@@ -1,13 +1,15 @@
 import { Output } from 'ai';
-import { governedGenerateText, aiErrorResponse } from '@/lib/ai-governance';
+import { governedGenerateText, aiErrorResponse, assertAllowedAiRequest } from '@/lib/ai-governance';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { openaiModel } from '@/lib/openai';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
   try {
+    assertAllowedAiRequest(req);
     const body = await req.json();
     const { livrabile, raportData, files } = body;
 
@@ -22,7 +24,7 @@ export async function POST(req: Request) {
       endpoint: '/api/ai/verify-livrabile',
       operation: 'verify-livrabile',
       request: body,
-      model: 'openai/gpt-4o-mini',
+      model: openaiModel(),
       system: `Ești un expert în verificarea conformității numelor de fișiere livrabile pentru proiecte cu finanțare europeană.
 Verifică dacă numele fișierelor încărcate corespund cu titlurile activităților din raportul de activitate.
 Un nume de fișier trebuie să conțină elemente din titlul activității pentru a fi considerat valid.`,

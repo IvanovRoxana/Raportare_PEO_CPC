@@ -3,6 +3,7 @@ import { appendFile, mkdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { generateText } from 'ai';
 import { NextResponse } from 'next/server';
+import { isOpenAIConfigurationError } from '@/lib/openai';
 
 type GenerateTextOptions = Parameters<typeof generateText>[0];
 
@@ -293,12 +294,33 @@ function recordRequestAndSpend(costUsd: number) {
   state.monthlySpendUsd.set(thisMonth, (state.monthlySpendUsd.get(thisMonth) ?? 0) + costUsd);
 }
 
+export function assertAllowedAiRequest(request: Request) {
+  const origin = request.headers.get('origin');
+  const host = request.headers.get('host');
+
+  if (!origin || !host) {
+    return;
+  }
+
+  let originHost = '';
+  try {
+    originHost = new URL(origin).host;
+  } catch {
+    throw new AiGovernanceError('Cererea AI are un header Origin invalid.', 'AI_ORIGIN_INVALID', 403);
+  }
+
+  if (originHost !== host) {
+    throw new AiGovernanceError('Cererea AI a fost respinsa.', 'AI_ORIGIN_DENIED', 403);
+  }
+}
+
 async function appendAuditRecord(record: Record<string, unknown>) {
   const serialized = stableStringify(record);
   const path = getAuditLogPath();
 
-  if (path === 'console' || process.env.AI_AUDIT_LOG_TO_CONSOLE !== 'false') {
-    console.info(`[AI_AUDIT] ${serialized}`);
+  if (path === 'console' || process.env.AI_AUDIT_LOG_TO_CONSOLE === 'true') {
+    const { input: _input, output: _output, error, ...metadata } = record;
+    console.info(`[AI_AUDIT] ${stableStringify({ ...metadata, error: redactSecrets(error) })}`);
   }
 
   if (path === 'console') {
@@ -445,6 +467,16 @@ export async function governedGenerateText(optionsWithMetadata: GovernedGenerate
 }
 
 export function aiErrorResponse(error: unknown, fallbackMessage: string) {
+  if (isOpenAIConfigurationError(error)) {
+    return NextResponse.json(
+      {
+        error: 'OPENAI_API_KEY lipseste din configuratia serverului.',
+        code: 'OPENAI_API_KEY_MISSING',
+      },
+      { status: 500 }
+    );
+  }
+
   if (error instanceof AiGovernanceError) {
     return NextResponse.json(
       {

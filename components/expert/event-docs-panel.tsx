@@ -202,7 +202,6 @@ export function EventDocsPanel({
           {hasMOM && (
             <DeliverableItem
               deliverable={eventMOM || createDeliverableSlot('event_mom', 'Minute intalnire / MOM')}
-              apiKey={null}
               subActivity={subActivity}
               activityTitle={activityTitle}
               onUpdate={(patch) => onUpsertSlot('event_mom', 'MOM / Minut / Proces verbal eveniment', patch)}
@@ -405,7 +404,6 @@ export function EventDocsPanel({
           {!proofAtOtherExpert && (
             <DeliverableItem
               deliverable={eventProof || createDeliverableSlot('event_proof', 'Fotografii eveniment')}
-              apiKey={null}
               subActivity={subActivity}
               activityTitle={activityTitle}
               onUpdate={(patch) => onUpsertSlot('event_proof', 'Fotografii + link eveniment', patch)}

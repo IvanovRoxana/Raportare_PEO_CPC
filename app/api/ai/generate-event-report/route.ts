@@ -1,7 +1,8 @@
 import { Output } from 'ai';
-import { governedGenerateText, aiErrorResponse } from '@/lib/ai-governance';
+import { governedGenerateText, aiErrorResponse, assertAllowedAiRequest } from '@/lib/ai-governance';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { openaiModel } from '@/lib/openai';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -24,6 +25,7 @@ const EventReportSchema = z.object({
 
 export async function POST(req: Request) {
   try {
+    assertAllowedAiRequest(req);
     const body = await req.json();
     const { description, activityTitle, date, expertName, subActivity } = body;
 
@@ -37,7 +39,7 @@ export async function POST(req: Request) {
       request: body,
       actorName: expertName,
       projectCode: '302141',
-      model: 'openai/gpt-4o-mini',
+      model: openaiModel(),
       system: `Ești un asistent specializat în generarea rapoartelor de participare pentru evenimente în cadrul proiectelor PEO (finanțare europeană).
 Generezi rapoarte profesionale, detaliate, în limba română, respectând formatul standard cerut de finanțator.
 Extragi informațiile din descrierea activității și le completezi cu detalii plauzibile unde lipsesc.`,

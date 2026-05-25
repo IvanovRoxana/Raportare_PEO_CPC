@@ -1,7 +1,8 @@
 import { Output } from 'ai';
-import { governedGenerateText, aiErrorResponse } from '@/lib/ai-governance';
+import { governedGenerateText, aiErrorResponse, assertAllowedAiRequest } from '@/lib/ai-governance';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { openaiModel } from '@/lib/openai';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -19,6 +20,7 @@ const RaportRowSchema = z.object({
 
 export async function POST(req: Request) {
   try {
+    assertAllowedAiRequest(req);
     const body = await req.json();
     const { fileData, fileName, fileType } = body;
 
@@ -31,7 +33,7 @@ export async function POST(req: Request) {
       endpoint: '/api/ai/extract-raport',
       operation: 'extract-raport',
       request: body,
-      model: 'openai/gpt-4o-mini',
+      model: openaiModel(),
       system: `Ești un asistent specializat în extragerea datelor din rapoarte de activitate pentru proiecte cu finanțare europeană.
 Extrage activitățile din documentul furnizat și returnează-le în format structurat.`,
       prompt: `Extrage activitățile din acest raport de activitate.

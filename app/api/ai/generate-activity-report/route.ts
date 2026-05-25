@@ -1,4 +1,5 @@
-import { aiErrorResponse, governedGenerateText } from '@/lib/ai-governance';
+import { aiErrorResponse, assertAllowedAiRequest, governedGenerateText } from '@/lib/ai-governance';
+import { openaiModel } from '@/lib/openai';
 import {
   ACTIVITY_REPORT_SYSTEM_PROMPT,
   buildActivityReportPrompt,
@@ -13,6 +14,7 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
   try {
+    assertAllowedAiRequest(req);
     const body = normalizeRequest(await req.json());
     const { normalizedActivities, groupedActivities, totals } = normalizeAndGroupActivities(body.activities);
     const promptInput = buildActivityReportPromptInput(body, normalizedActivities, groupedActivities, totals);
@@ -28,7 +30,7 @@ export async function POST(req: Request) {
       month: body.month,
       year: body.year,
       projectCode: body.projectCode || '302141',
-      model: modelSelection.model,
+      model: openaiModel(modelSelection.model.replace(/^openai\//, '')),
       system: ACTIVITY_REPORT_SYSTEM_PROMPT,
       prompt,
     });

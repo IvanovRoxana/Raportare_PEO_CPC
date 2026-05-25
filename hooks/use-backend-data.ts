@@ -508,21 +508,14 @@ export function useSettings() {
 }
 
 export function useApiKey() {
-  const { data, error, isLoading } = useSWR(
-    isBackendAvailable() ? 'api-key' : null,
-    safeFetcher(settingsService.getApiKey)
-  );
-  
-  const setApiKey = async (apiKey: string) => {
-    await settingsService.setApiKey(apiKey);
-    mutate('api-key');
-    mutate('settings');
+  const setApiKey = async () => {
+    throw new Error('OpenAI API keys must be configured server-side with OPENAI_API_KEY.');
   };
   
   return {
-    apiKey: data || '',
-    isLoading,
-    error,
+    apiKey: '',
+    isLoading: false,
+    error: null,
     setApiKey,
   };
 }
@@ -533,10 +526,8 @@ export function useSettingsMutations() {
     mutate('settings');
   };
 
-  const setApiKey = async (apiKey: string) => {
-    await settingsService.setApiKey(apiKey);
-    mutate('api-key');
-    mutate('settings');
+  const setApiKey = async () => {
+    throw new Error('OpenAI API keys must be configured server-side with OPENAI_API_KEY.');
   };
 
   return { save, setApiKey };

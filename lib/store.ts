@@ -141,11 +141,11 @@ export const settingsStore = {
   },
 
   getApiKey: (): string => {
-    return settingsStore.get().claudeApiKey;
+    return '';
   },
 
-  setApiKey: (key: string): void => {
-    settingsStore.save({ claudeApiKey: key });
+  setApiKey: (): void => {
+    throw new Error('OpenAI API keys must be configured server-side with OPENAI_API_KEY.');
   },
 
   clear: (): void => {

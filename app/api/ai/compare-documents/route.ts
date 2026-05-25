@@ -1,13 +1,15 @@
 import { Output } from 'ai';
-import { governedGenerateText, aiErrorResponse } from '@/lib/ai-governance';
+import { governedGenerateText, aiErrorResponse, assertAllowedAiRequest } from '@/lib/ai-governance';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { openaiModel } from '@/lib/openai';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
   try {
+    assertAllowedAiRequest(req);
     const body = await req.json();
     const { raportData, pontajData } = body;
 
@@ -22,7 +24,7 @@ export async function POST(req: Request) {
       endpoint: '/api/ai/compare-documents',
       operation: 'compare-documents',
       request: body,
-      model: 'openai/gpt-4o-mini',
+      model: openaiModel(),
       system: `Ești un expert în verificarea conformității documentelor pentru proiecte cu finanțare europeană.
 Compară datele din pontajul Excel cu cele din raportul de activitate și identifică:
 1. Activități care se potrivesc (aceeași dată, ore similare)

@@ -81,7 +81,6 @@ interface ActivityFormProps {
   initialActivity?: Activity;
   prefillActivity?: Partial<Activity>;
   isSaving?: boolean;
-  apiKey?: string | null;
 }
 
 export function ActivityForm({
@@ -100,7 +99,6 @@ export function ActivityForm({
   initialActivity,
   prefillActivity,
   isSaving = false,
-  apiKey = null,
 }: ActivityFormProps) {
   // Fetch activity catalog from database
   const { catalog, isLoading: catalogLoading } = useActivityCatalog();
@@ -625,7 +623,7 @@ export function ActivityForm({
   };
 
   const verifyTitleWithAI = async () => {
-    if (!activityTitle.trim() || !apiKey) return;
+    if (!activityTitle.trim()) return;
 
     setIsVerifyingTitle(true);
     setTitleVerificationResult(null);
@@ -1574,7 +1572,7 @@ export function ActivityForm({
             <Field>
               <div className="flex items-center justify-between">
                 <FieldLabel htmlFor="activity">Activitate</FieldLabel>
-                {apiKey && activityTitle && (
+                {activityTitle && (
                   <Button
                     type="button"
                     variant="outline"
@@ -1735,7 +1733,6 @@ export function ActivityForm({
                       <DeliverableItem
                         key={d.id}
                         deliverable={d}
-                        apiKey={apiKey}
                         subActivity={saCode}
                         activityTitle={activityTitle}
                         selectedActivityId={selectedCatalogItem?.id}
@@ -1931,7 +1928,6 @@ export function ActivityForm({
                       <DeliverableItem
                         key={d.id}
                         deliverable={d}
-                        apiKey={apiKey}
                         subActivity={saCode}
                         activityTitle={activityTitle}
                         selectedActivityId={selectedCatalogItem?.id}
@@ -1984,7 +1980,6 @@ export function ActivityForm({
                         <DeliverableItem
                           key={d.id}
                           deliverable={d}
-                          apiKey={null}
                           subActivity={saCode}
                           activityTitle={activityTitle}
                           onUpdate={(patch) => updateDeliverable(d.id, patch)}

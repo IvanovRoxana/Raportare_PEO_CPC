@@ -1,11 +1,13 @@
-import { governedGenerateText, aiErrorResponse } from '@/lib/ai-governance';
+import { governedGenerateText, aiErrorResponse, assertAllowedAiRequest } from '@/lib/ai-governance';
 import { NextResponse } from 'next/server';
+import { openaiModel } from '@/lib/openai';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
   try {
+    assertAllowedAiRequest(req);
     const body = await req.json();
     const { activities, month, year, expertName } = body;
 
@@ -27,7 +29,7 @@ export async function POST(req: Request) {
       month,
       year,
       projectCode: '302141',
-      model: 'openai/gpt-4o-mini',
+      model: openaiModel(),
       system: `Ești un asistent care generează rapoarte de activitate pentru proiecte PEO (Proiecte cu finanțare europeană).
 Generează rapoarte clare, profesionale, în limba română.
 Folosește formatul standard pentru rapoarte de activitate cu secțiuni clare.`,

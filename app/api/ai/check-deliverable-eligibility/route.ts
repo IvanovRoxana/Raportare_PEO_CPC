@@ -1,7 +1,8 @@
 import { Output } from 'ai';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { governedGenerateText, aiErrorResponse } from '@/lib/ai-governance';
+import { governedGenerateText, aiErrorResponse, assertAllowedAiRequest } from '@/lib/ai-governance';
+import { openaiModel } from '@/lib/openai';
 import {
   DELIVERABLE_ELIGIBILITY_DISABLED_MESSAGE,
   DELIVERABLE_ELIGIBILITY_DISABLED_STATUS,
@@ -51,6 +52,7 @@ function nonConclusive(reason: string) {
 
 export async function POST(req: Request) {
   try {
+    assertAllowedAiRequest(req);
     if (!isDeliverableEligibilityCheckEnabled()) {
       return NextResponse.json(
         {
@@ -99,7 +101,7 @@ export async function POST(req: Request) {
       projectCode,
       month,
       year,
-      model: 'openai/gpt-4o-mini',
+      model: openaiModel(),
       system: `Ești un evaluator de conformitate pentru livrabile într-un proiect PEO cu finanțare europeană. Rolul tău este să verifici dacă un document încărcat pare eligibil ca livrabil pentru activitatea selectată, pe baza textului extras din document și a reperelor oficiale din Catalogul activităților. Nu inventa informații. Nu confirma eligibilitatea dacă dovezile sunt insuficiente. Returnează doar JSON valid, fără explicații în afara JSON.`,
       prompt: `Verifică eligibilitatea următorului livrabil.
 

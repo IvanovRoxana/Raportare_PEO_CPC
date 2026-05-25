@@ -13,7 +13,6 @@ interface CrossExpertCheckProps {
   activities: Activity[];
   month: number;
   year: number;
-  apiKey: string | null;
   onSaveIssues?: (issues: CrossExpertRow[]) => void;
 }
 
@@ -34,7 +33,7 @@ function calculateSimilarity(str1: string, str2: string): number {
   return commonWords.length / Math.max(words1.length, words2.length);
 }
 
-export function CrossExpertCheck({ experts, activities, month, year, apiKey, onSaveIssues }: CrossExpertCheckProps) {
+export function CrossExpertCheck({ experts, activities, month, year, onSaveIssues }: CrossExpertCheckProps) {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
 
@@ -134,15 +133,12 @@ export function CrossExpertCheck({ experts, activities, month, year, apiKey, onS
   }, [activities, experts]);
 
   const runAIAnalysis = async () => {
-    if (!apiKey) return;
-    
     setIsAnalyzing(true);
     try {
       const response = await fetch('/api/ai/cross-expert', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          apiKey,
           month: monthName,
           year,
           activities: activities.map(a => ({
@@ -180,16 +176,14 @@ export function CrossExpertCheck({ experts, activities, month, year, apiKey, onS
             Identificarea suprapunerilor și activităților similare între experți
           </p>
         </div>
-        {apiKey && (
-          <Button onClick={runAIAnalysis} disabled={isAnalyzing} size="sm" className="text-xs">
-            {isAnalyzing ? (
-              <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-            ) : (
-              <Sparkles className="h-3 w-3 mr-1" />
-            )}
-            {isAnalyzing ? 'Analizez...' : 'Analiză AI'}
-          </Button>
-        )}
+        <Button onClick={runAIAnalysis} disabled={isAnalyzing} size="sm" className="text-xs">
+          {isAnalyzing ? (
+            <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+          ) : (
+            <Sparkles className="h-3 w-3 mr-1" />
+          )}
+          {isAnalyzing ? 'Analizez...' : 'Analiză AI'}
+        </Button>
       </div>
 
       {/* Summary */}

@@ -1,5 +1,6 @@
-import { governedGenerateText, aiErrorResponse } from '@/lib/ai-governance';
+import { governedGenerateText, aiErrorResponse, assertAllowedAiRequest } from '@/lib/ai-governance';
 import { NextResponse } from 'next/server';
+import { openaiModel } from '@/lib/openai';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -11,6 +12,7 @@ interface ChatMessage {
 
 export async function POST(req: Request) {
   try {
+    assertAllowedAiRequest(req);
     const body = await req.json();
     const { messages, context } = body;
 
@@ -26,7 +28,7 @@ export async function POST(req: Request) {
       endpoint: '/api/ai/chat',
       operation: 'chat',
       request: body,
-      model: 'openai/gpt-4o-mini',
+      model: openaiModel(),
       system: `Ești Ramona, un asistent AI specializat în verificarea documentelor pentru proiecte cu finanțare europeană (PEO).
 Ești expertă în:
 - Verificarea conformității pontajelor și rapoartelor de activitate

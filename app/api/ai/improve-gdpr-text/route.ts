@@ -1,11 +1,13 @@
-import { governedGenerateText, aiErrorResponse } from '@/lib/ai-governance';
+import { governedGenerateText, aiErrorResponse, assertAllowedAiRequest } from '@/lib/ai-governance';
 import { NextResponse } from 'next/server';
+import { openaiModel } from '@/lib/openai';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
   try {
+    assertAllowedAiRequest(req);
     const body = await req.json();
     const { text, templateLabel, expertName, month, year, projectCode } = body;
 
@@ -21,7 +23,7 @@ export async function POST(req: Request) {
       month,
       year,
       projectCode: projectCode || '302141',
-      model: 'openai/gpt-4o-mini',
+      model: openaiModel(),
       system: `Esti un asistent care imbunatateste texte de raportare GDPR pentru proiecte PEO.
 Pastreaza sensul, nu inventa fapte, nu adauga neconformitati sau incidente care nu exista.
 Scrie in romana, la persoana I singular, cu ton tehnic-administrativ.

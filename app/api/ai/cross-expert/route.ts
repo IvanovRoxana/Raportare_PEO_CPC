@@ -1,13 +1,15 @@
 import { Output } from 'ai';
-import { governedGenerateText, aiErrorResponse } from '@/lib/ai-governance';
+import { governedGenerateText, aiErrorResponse, assertAllowedAiRequest } from '@/lib/ai-governance';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { openaiModel } from '@/lib/openai';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
   try {
+    assertAllowedAiRequest(req);
     const body = await req.json();
     const { files, activities, month, year } = body;
 
@@ -24,7 +26,7 @@ export async function POST(req: Request) {
         month,
         year,
         projectCode: '302141',
-        model: 'openai/gpt-4o-mini',
+        model: openaiModel(),
         system: `Ești un expert în analiza și verificarea rapoartelor de activitate pentru proiecte cu finanțare europeană (PEO).
 Analizează activitățile mai multor experți și identifică:
 1. Suprapuneri suspecte (activități similare pe aceleași date)
@@ -57,7 +59,7 @@ Identifică potențiale probleme de suprapunere sau dublare între experți.`,
       operation: 'cross-expert-files',
       request: body,
       projectCode: '302141',
-      model: 'openai/gpt-4o-mini',
+      model: openaiModel(),
       system: `Ești un expert în detectarea suprapunerilor suspecte între activitățile raportate de diferiți experți 
 în proiecte cu finanțare europeană. Analizezi rapoartele pentru a identifica:
 1. Activități identice sau foarte similare raportate de experți diferiți în aceeași zi

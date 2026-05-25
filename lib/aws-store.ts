@@ -1985,7 +1985,7 @@ const localSettings = {
 export const settingsService = {
   async get(): Promise<AppSettings> {
     return {
-      claudeApiKey: localSettings.get('claude_api_key'),
+      claudeApiKey: '',
       projectCode: localSettings.get('project_code') || '302141',
       projectTitle: localSettings.get('project_title') || 'Proiect PEO',
       contractNumber: localSettings.get('contract_number'),
@@ -1997,12 +1997,12 @@ export const settingsService = {
     localSettings.set(key, value);
   },
 
-  async setApiKey(apiKey: string): Promise<void> {
-    localSettings.set('claude_api_key', apiKey);
+  async setApiKey(): Promise<void> {
+    throw new Error('OpenAI API keys must be configured server-side with OPENAI_API_KEY.');
   },
 
   async getApiKey(): Promise<string> {
-    return localSettings.get('claude_api_key');
+    return '';
   },
 };
 

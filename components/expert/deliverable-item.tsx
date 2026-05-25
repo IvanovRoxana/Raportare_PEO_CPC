@@ -13,7 +13,6 @@ import { applyAutomaticTitleSuggestion, suggestTitleFromFirstPage, validateDecla
 
 interface DeliverableItemProps {
   deliverable: DeliverableSlot;
-  apiKey: string | null;
   subActivity: string;
   activityTitle: string;
   selectedActivityId?: string;
@@ -39,7 +38,6 @@ interface DeliverableItemProps {
 
 export function DeliverableItem({
   deliverable,
-  apiKey,
   subActivity,
   activityTitle,
   selectedActivityId,

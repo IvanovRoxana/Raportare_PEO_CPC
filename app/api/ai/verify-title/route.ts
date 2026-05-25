@@ -1,13 +1,15 @@
-import { governedGenerateText, aiErrorResponse } from '@/lib/ai-governance';
+import { governedGenerateText, aiErrorResponse, assertAllowedAiRequest } from '@/lib/ai-governance';
 import { NextResponse } from 'next/server';
+import { openaiModel } from '@/lib/openai';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
   try {
+    assertAllowedAiRequest(req);
     const body = await req.json();
-    const { title, activityType, description, apiKey, subActivity, activityTitle, deliverableType, declaredTitle, docText } = body;
+    const { title, activityType, description, subActivity, activityTitle, deliverableType, declaredTitle, docText } = body;
 
     // Handle legacy format (simple title check)
     if (title && !declaredTitle) {
@@ -15,7 +17,7 @@ export async function POST(req: Request) {
         endpoint: '/api/ai/verify-title',
         operation: 'verify-title-legacy',
         request: body,
-        model: 'openai/gpt-4o-mini',
+        model: openaiModel(),
         system: `Ești un expert în verificarea conformității titlurilor de activități pentru proiecte cu finanțare europeană (PEO).
 Verifică dacă titlul activității este:
 1. Relevant pentru tipul de activitate specificat
@@ -69,7 +71,7 @@ Răspunde doar cu JSON valid.`;
         endpoint: '/api/ai/verify-title',
         operation: 'verify-title-deliverable',
         request: body,
-        model: 'openai/gpt-4o-mini',
+        model: openaiModel(),
         system: systemPrompt,
         prompt: userPrompt,
       });
