@@ -93,7 +93,7 @@ export const procurementNavItems: DashboardNavItem[] = [
   { label: 'Proiecte', href: '/achizitii#proiecte', icon: ClipboardList },
   { label: 'Documentație', href: '/achizitii#documentatie', icon: FileText },
   { label: 'Lansare', href: '/achizitii#lansare', icon: Upload },
-  { label: 'Evaluare', href: '/achizitii#evaluare', icon: SearchIcon },
+  { label: 'Evaluare oferte', href: '/achizitii#evaluare-oferte', icon: SearchIcon },
   { label: 'Contracte', href: '/achizitii#contracte', icon: FileText },
   { label: 'Recepție și facturare', href: '/achizitii#receptie-facturare', icon: CircleDollarSign },
   { label: 'Arhivă', href: '/achizitii#arhiva', icon: Settings },
