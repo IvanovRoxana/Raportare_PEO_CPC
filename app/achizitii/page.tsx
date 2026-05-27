@@ -24,6 +24,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { StatusBadge } from '@/components/ui/status-badge';
+import { ProcurementEvaluationWorkspace } from '@/components/procurement/evaluation-workspace';
 import { useProcurementProjects } from '@/hooks/use-procurement-data';
 import { getSignedInUser } from '@/lib/aws/auth';
 import { resolveDashboardAccess } from '@/lib/pm-dashboard';
@@ -273,6 +274,8 @@ export default function ProcurementDashboardPage() {
           footer={<p className="text-sm text-muted-foreground">Afișate {Math.min(filteredProjects.length, 18)} din {filteredProjects.length} achiziții filtrate.</p>}
         />
       </section>
+
+      {selectedProject ? <ProcurementEvaluationWorkspace project={selectedProject} /> : null}
 
       <section className="grid gap-4 lg:grid-cols-5">
         {stageCards.map((stage) => {

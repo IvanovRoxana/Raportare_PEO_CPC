@@ -536,6 +536,249 @@ const schema = a.schema({
       allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
     ]),
 
+  ProcurementOfferPackage: a
+    .model({
+      procurementProjectId: a.id().required(),
+      supplierId: a.id().required(),
+      supplierName: a.string().required(),
+      originalRootName: a.string(),
+      importedAt: a.datetime().required(),
+      documentCount: a.integer().default(0),
+      status: a.string().default("Neverificat"),
+      notes: a.string(),
+    })
+    .secondaryIndexes((index) => [
+      index("procurementProjectId"),
+      index("supplierId"),
+      index("status"),
+    ])
+    .authorization((allow) => [
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
+  ProcurementOfferDocument: a
+    .model({
+      procurementProjectId: a.id().required(),
+      supplierId: a.id().required(),
+      supplierName: a.string().required(),
+      packageId: a.id().required(),
+      originalPath: a.string().required(),
+      normalizedFilename: a.string().required(),
+      extension: a.string(),
+      sizeBytes: a.integer(),
+      hash: a.string(),
+      storagePath: a.string(),
+      mimeType: a.string(),
+      importedAt: a.datetime().required(),
+      extractedText: a.string(),
+      extractionStatus: a.string(),
+      extractionWarnings: a.string().array(),
+      ocrUsed: a.boolean().default(false),
+      pageCount: a.integer(),
+      signaturePresent: a.boolean().default(false),
+      qualifiedSignatureStatus: a.string(),
+      signatureValidationProvider: a.string(),
+      signatureValidatedAt: a.datetime(),
+      signatureValidationNotes: a.string(),
+      docType: a.string().default("NECLASIFICAT"),
+      classificationConfidence: a.float(),
+      classificationSource: a.string(),
+      reviewRequired: a.boolean().default(false),
+      aiReason: a.string(),
+      status: a.string().default("Neverificat"),
+    })
+    .secondaryIndexes((index) => [
+      index("procurementProjectId"),
+      index("supplierId"),
+      index("packageId"),
+      index("docType"),
+      index("status"),
+    ])
+    .authorization((allow) => [
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
+  ProcurementExtractedField: a
+    .model({
+      procurementProjectId: a.id().required(),
+      supplierId: a.id().required(),
+      documentId: a.id().required(),
+      field: a.string().required(),
+      label: a.string().required(),
+      valueJson: a.json(),
+      confidence: a.float(),
+      source: a.string(),
+      reviewRequired: a.boolean().default(false),
+      reviewerNotes: a.string(),
+    })
+    .secondaryIndexes((index) => [
+      index("procurementProjectId"),
+      index("supplierId"),
+      index("documentId"),
+      index("field"),
+    ])
+    .authorization((allow) => [
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
+  ProcurementEvaluationExpert: a
+    .model({
+      procurementProjectId: a.id().required(),
+      supplierId: a.id().required(),
+      supplierName: a.string().required(),
+      expertName: a.string().required(),
+      role: a.string().required(),
+      cvDocumentId: a.id(),
+      diplomaDocumentId: a.id(),
+      trainerCertificateDocumentId: a.id(),
+      availabilityDocumentId: a.id(),
+      notes: a.string(),
+    })
+    .secondaryIndexes((index) => [
+      index("procurementProjectId"),
+      index("supplierId"),
+      index("role"),
+      index("expertName"),
+    ])
+    .authorization((allow) => [
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
+  ProcurementExpertCourseMapping: a
+    .model({
+      procurementProjectId: a.id().required(),
+      supplierId: a.id().required(),
+      supplierName: a.string().required(),
+      expertId: a.id().required(),
+      expertName: a.string().required(),
+      role: a.string().required(),
+      courseId: a.string().required(),
+      courseName: a.string().required(),
+      courseKeywords: a.string().array(),
+      yearsClaimedF6: a.float(),
+      yearsClaimedCv: a.float(),
+      yearsProvenGeneral: a.float().default(0),
+      yearsOnlineClaimed: a.float(),
+      yearsOnlineProven: a.float().default(0),
+      supportDocumentIds: a.id().array(),
+      cvMatchesEvidence: a.string().default("Neverificat"),
+      f6MatchesEvidence: a.string().default("Neverificat"),
+      courseRelevance: a.string().default("review"),
+      keywordMatchScore: a.float().default(0),
+      declaredVsProvenGap: a.float().default(0),
+      eligibilityDecision: a.string().default("Neverificat"),
+      selectedForScoring: a.boolean().default(false),
+      confidence: a.float().default(0),
+      reviewerNotes: a.string(),
+    })
+    .secondaryIndexes((index) => [
+      index("procurementProjectId"),
+      index("supplierId"),
+      index("expertId"),
+      index("courseId"),
+      index("eligibilityDecision"),
+    ])
+    .authorization((allow) => [
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
+  ProcurementSimilarExperience: a
+    .model({
+      procurementProjectId: a.id().required(),
+      supplierId: a.id().required(),
+      supplierName: a.string().required(),
+      beneficiary: a.string(),
+      contractNo: a.string(),
+      object: a.string(),
+      valueRonExVat: a.float(),
+      startDate: a.date(),
+      endDate: a.date(),
+      onlineEvidence: a.boolean().default(false),
+      supportDocumentIds: a.id().array(),
+      status: a.string().default("Neverificat"),
+    })
+    .secondaryIndexes((index) => [
+      index("procurementProjectId"),
+      index("supplierId"),
+      index("status"),
+    ])
+    .authorization((allow) => [
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
+  ProcurementFinancialOffer: a
+    .model({
+      procurementProjectId: a.id().required(),
+      supplierId: a.id().required(),
+      supplierName: a.string().required(),
+      currency: a.string().default("RON"),
+      totalPriceExVat: a.float(),
+      vat: a.float(),
+      totalPriceWithVat: a.float(),
+      offerValidityDays: a.integer(),
+      priceFirm: a.boolean(),
+      form12Present: a.boolean().default(false),
+      annexPresent: a.boolean().default(false),
+      totalsMatch: a.boolean().default(false),
+      status: a.string().default("Neverificat"),
+    })
+    .secondaryIndexes((index) => [
+      index("procurementProjectId"),
+      index("supplierId"),
+      index("status"),
+    ])
+    .authorization((allow) => [
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
+  ProcurementValidationResult: a
+    .model({
+      procurementProjectId: a.id().required(),
+      supplierId: a.id().required(),
+      ruleId: a.string().required(),
+      requirement: a.string().required(),
+      severity: a.string().required(),
+      status: a.string().required(),
+      observedValue: a.string(),
+      sourceDocumentIds: a.id().array(),
+      reviewerNotes: a.string(),
+    })
+    .secondaryIndexes((index) => [
+      index("procurementProjectId"),
+      index("supplierId"),
+      index("ruleId"),
+      index("severity"),
+      index("status"),
+    ])
+    .authorization((allow) => [
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
+  ProcurementScoringResult: a
+    .model({
+      procurementProjectId: a.id().required(),
+      supplierId: a.id().required(),
+      supplierName: a.string().required(),
+      blockingValidationPass: a.boolean().default(false),
+      ct1CoordinatorScore: a.float().default(0),
+      ct2TrainersScore: a.float().default(0),
+      ct3OnlineScore: a.float().default(0),
+      priceExVat: a.float(),
+      priceScore: a.float().default(0),
+      totalScore: a.float().default(0),
+      rank: a.integer(),
+      status: a.string().default("Neverificat"),
+    })
+    .secondaryIndexes((index) => [
+      index("procurementProjectId"),
+      index("supplierId"),
+      index("rank"),
+      index("status"),
+    ])
+    .authorization((allow) => [
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
   ProcurementContract: a
     .model({
       procurementProjectId: a.id().required(),
