@@ -312,6 +312,24 @@ export function ActivityForm({
     ) || null;
   }, [activityTitle, saCode, filteredCatalog]);
 
+  const lastAutoDescriptionRef = useRef('');
+
+  useEffect(() => {
+    if (initialActivity?.id || prefillActivity?.description?.trim()) return;
+    if (!selectedCatalogItem) return;
+
+    const standardDescription = selectedCatalogItem.description?.trim() ?? '';
+    setDescription((currentDescription) => {
+      const currentWasAutoFilled =
+        !currentDescription.trim() || currentDescription === lastAutoDescriptionRef.current;
+
+      if (!currentWasAutoFilled) return currentDescription;
+
+      lastAutoDescriptionRef.current = standardDescription;
+      return standardDescription;
+    });
+  }, [initialActivity?.id, prefillActivity?.description, selectedCatalogItem]);
+
   const collaboratorSuggestions = useMemo(() => {
     const suggestionScores = new Map<string, { score: number; reasons: Set<string> }>();
     const selectedDateSet = new Set(selectedDates);

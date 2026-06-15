@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { DashboardShell, adminNavItems } from '@/components/layout/dashboard-shell';
 import { DataTable, ProgressBar, RightInfoCard, StatCard } from '@/components/layout/dashboard-primitives';
+import { ActivityDescriptionEditor } from '@/components/admin/activity-description-editor';
 import { ViewAsExpertPanel } from '@/components/admin/view-as-expert-panel';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -32,7 +33,7 @@ import experts from '@/data/import/experts.json';
 import reportStatuses from '@/data/import/report-statuses.json';
 import workingGroups from '@/data/import/working-groups.json';
 import { buildAdminDashboardSnapshot } from '@/lib/admin-module';
-import type { Expert } from '@/lib/types';
+import type { ActivityCatalog, Expert } from '@/lib/types';
 
 const snapshot = buildAdminDashboardSnapshot({
   experts: experts as Expert[],
@@ -307,7 +308,7 @@ export default function AdminPage() {
               />
             </TabsContent>
 
-            {(['roluri', 'subactivitati', 'proiecte'] as const).map((tab) => (
+            {(['roluri', 'proiecte'] as const).map((tab) => (
               <TabsContent key={tab} value={tab} className="m-0 p-6">
                 <div className="grid gap-4 md:grid-cols-3">
                   {[
@@ -323,6 +324,10 @@ export default function AdminPage() {
                 </div>
               </TabsContent>
             ))}
+
+            <TabsContent value="subactivitati" className="m-0 p-6">
+              <ActivityDescriptionEditor fallbackCatalog={activityCatalog as ActivityCatalog[]} />
+            </TabsContent>
           </CardContent>
         </Tabs>
       </Card>
