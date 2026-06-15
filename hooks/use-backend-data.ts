@@ -564,14 +564,40 @@ export function useActivityCatalogBySa(saCode: string | null) {
 }
 
 export function useActivityCatalogMutations() {
-  const updateDescription = async (id: string, description: string) => {
-    const updated = await activityCatalogService.updateDescription(id, description);
+  const refreshCatalog = (saCode?: string, previousSaCode?: string) => {
     mutate('activity-catalog');
-    mutate(`activity-catalog-${updated.saCode}`);
+    if (saCode) mutate(`activity-catalog-${saCode}`);
+    if (previousSaCode && previousSaCode !== saCode) mutate(`activity-catalog-${previousSaCode}`);
+  };
+
+  const create = async (activity: Omit<ActivityCatalog, 'id' | 'createdAt'>) => {
+    const created = await activityCatalogService.create(activity);
+    refreshCatalog(created.saCode);
+    return created;
+  };
+
+  const update = async (
+    id: string,
+    updates: Partial<Omit<ActivityCatalog, 'id' | 'createdAt'>>,
+    previousSaCode?: string,
+  ) => {
+    const updated = await activityCatalogService.update(id, updates);
+    refreshCatalog(updated.saCode, previousSaCode);
     return updated;
   };
 
-  return { updateDescription };
+  const updateDescription = async (id: string, description: string) => {
+    const updated = await activityCatalogService.updateDescription(id, description);
+    refreshCatalog(updated.saCode);
+    return updated;
+  };
+
+  const remove = async (id: string, previousSaCode?: string) => {
+    await activityCatalogService.delete(id);
+    refreshCatalog(previousSaCode);
+  };
+
+  return { create, update, updateDescription, remove };
 }
 
 // ============================================

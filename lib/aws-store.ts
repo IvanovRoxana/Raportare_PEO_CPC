@@ -2019,11 +2019,55 @@ export const activityCatalogService = {
     return data.map(mapActivityCatalog).sort((a, b) => (a.activityNumber ?? 0) - (b.activityNumber ?? 0));
   },
 
-  async updateDescription(id: string, description: string): Promise<ActivityCatalog> {
+  async create(input: Omit<ActivityCatalog, 'id' | 'createdAt'>): Promise<ActivityCatalog> {
     const client = getAwsDataClient() as any;
-    const result = await client.models.ActivityCatalog.update({ id, description });
-    assertNoErrors(result, 'AWS update activity catalog description');
+    const result = await client.models.ActivityCatalog.create({
+      category: input.category,
+      saCode: input.saCode,
+      serviceCategory: input.serviceCategory,
+      activityNumber: input.activityNumber,
+      activityName: input.activityName,
+      description: input.description,
+      objectives: input.objectives,
+      serviceComponent: input.serviceComponent,
+      beneficiaries: input.beneficiaries,
+      expectedResults: input.expectedResults,
+      deliverables: input.deliverables,
+      indicators: input.indicators,
+    });
+    assertNoErrors(result, 'AWS create activity catalog item');
     return mapActivityCatalog(result.data);
+  },
+
+  async update(id: string, updates: Partial<Omit<ActivityCatalog, 'id' | 'createdAt'>>): Promise<ActivityCatalog> {
+    const client = getAwsDataClient() as any;
+    const result = await client.models.ActivityCatalog.update({
+      id,
+      category: updates.category,
+      saCode: updates.saCode,
+      serviceCategory: updates.serviceCategory,
+      activityNumber: updates.activityNumber,
+      activityName: updates.activityName,
+      description: updates.description,
+      objectives: updates.objectives,
+      serviceComponent: updates.serviceComponent,
+      beneficiaries: updates.beneficiaries,
+      expectedResults: updates.expectedResults,
+      deliverables: updates.deliverables,
+      indicators: updates.indicators,
+    });
+    assertNoErrors(result, 'AWS update activity catalog item');
+    return mapActivityCatalog(result.data);
+  },
+
+  async updateDescription(id: string, description: string): Promise<ActivityCatalog> {
+    return activityCatalogService.update(id, { description });
+  },
+
+  async delete(id: string): Promise<void> {
+    const client = getAwsDataClient() as any;
+    const result = await client.models.ActivityCatalog.delete({ id });
+    assertNoErrors(result, 'AWS delete activity catalog item');
   },
 };
 
