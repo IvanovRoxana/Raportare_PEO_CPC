@@ -65,6 +65,22 @@ import {
   type GdprMetaValue,
 } from '@/lib/gdpr-reporting';
 
+const SAVED_SLOT_TYPES = new Set<DeliverableSlot['slotType']>([
+  'livrabil',
+  'main',
+  'raport_preliminar',
+  'event_mom',
+  'event_proof',
+  'justificativ',
+]);
+
+function resolveSavedSlotType(deliverableType?: string, category?: string): DeliverableSlot['slotType'] {
+  const savedType = category || deliverableType;
+  return SAVED_SLOT_TYPES.has(savedType as DeliverableSlot['slotType'])
+    ? (savedType as DeliverableSlot['slotType'])
+    : 'livrabil';
+}
+
 interface ActivityFormProps {
   selectedDates: string[];
   selectedHours?: Record<string, string>;
@@ -160,7 +176,7 @@ export function ActivityForm({
   });
   
   // Legacy single hours for backward compatibility (used when saving)
-  const [hours, setHours] = useState(normalizePontajHoursValue(activitySeed?.hours, defaultHours));
+  const [, setHours] = useState(normalizePontajHoursValue(activitySeed?.hours, defaultHours));
   const [saCode, setSaCode] = useState(activitySeed?.saCode || '');
   
   // Set or reset default SA code when available SA codes load after category filtering.
@@ -211,7 +227,7 @@ export function ActivityForm({
   const [deliverables, setDeliverables] = useState<DeliverableSlot[]>(
     initialActivity?.deliverables?.map(d => ({
       id: d.id,
-      slotType: 'livrabil' as const,
+      slotType: resolveSavedSlotType(d.deliverableType, d.category),
       name: d.fileName,
       filename: d.fileName,
       fileType: d.fileType,
@@ -411,7 +427,9 @@ export function ActivityForm({
   const needsCommonDesc = activityCommon && (description || '').trim().length < 30;
   
   // Check if extended event description is needed
-  const totalHours = Number(hours) || 0;
+  const totalHours = selectedDates.reduce((sum, date) => (
+    sum + Number(normalizePontajHoursValue(hoursPerDay[date], defaultHours))
+  ), 0);
   const eventDur = parseFloat(eventDuration) || 0;
   const needsExtendedDesc = isEvent && eventDur > 0 && totalHours > eventDur && (eventExtendedDesc || '').trim().length < 20;
   const saveBlockers = [
@@ -869,7 +887,9 @@ export function ActivityForm({
             sourceActivityId: d.sourceActivityId,
             activityDate: date,
             saCode,
+            category: d.slotType,
             deliverableType: d.deliverableType || d.type || d.slotType,
+            uploaded: true,
             isCommonDeliverable: Boolean(d.common || d.isCommonDeliverable),
             sharedWithExpertIds: d.common ? collaborators : (d.sharedWithExpertIds || []),
             possibleDuplicateOfDocumentId: d.possibleDuplicateOfDocumentId,
@@ -1103,6 +1123,12 @@ export function ActivityForm({
   const mainDeliverables = deliverables.filter(d => !d.slotType || d.slotType === 'livrabil');
   const prelimDeliverables = deliverables.filter(d => d.slotType === 'raport_preliminar');
   const justifDeliverables = deliverables.filter(d => d.slotType === 'justificativ');
+  const hasEventMomAsMainDeliverable = isEvent && deliverables.some((deliverable) => (
+    deliverable.slotType === 'event_mom'
+    && deliverable.uploaded
+    && !deliverable.isPendingConfirm
+    && Boolean(deliverable.filename || deliverable.name || deliverable.declaredTitle)
+  ));
 
   const renderGdprField = (field: GdprFieldDefinition) => {
     const value = gdprMeta[field.key];
@@ -2078,7 +2104,7 @@ export function ActivityForm({
         )}
 
         {/* Validation warnings */}
-        {!isLeave && !isException && mainDeliverables.length === 0 && (
+        {!isLeave && !isException && mainDeliverables.length === 0 && !hasEventMomAsMainDeliverable && (
           <div className="flex items-center gap-2 p-3 bg-amber-50 rounded-lg border border-amber-200">
             <AlertTriangle className="h-4 w-4 text-amber-600" />
             <span className="text-sm text-amber-800">

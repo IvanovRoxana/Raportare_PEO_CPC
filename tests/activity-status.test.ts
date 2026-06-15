@@ -77,3 +77,66 @@ test('activity status still requires AI eligibility when deliverable eligibility
 
   restoreEnv('NEXT_PUBLIC_ENABLE_DELIVERABLE_ELIGIBILITY_CHECK', previousClientFlag);
 });
+
+test('event status accepts MOM as the main deliverable when event proof exists', () => {
+  assert.equal(
+    getActivityStatus({
+      id: 'a-event',
+      expertId: 'e1',
+      expertName: 'Expert AP',
+      date: '2026-05-15',
+      hours: 4,
+      activityType: 'Participare / reprezentare consultare publica sau dezbatere',
+      title: 'Participare / reprezentare consultare publica sau dezbatere',
+      description: 'Participare la consultare publica.',
+      deliverables: [
+        {
+          id: 'mom',
+          activityId: 'a-event',
+          fileName: 'mom-eveniment.pdf',
+          fileType: 'application/pdf',
+          fileSize: 1024,
+          deliverableType: 'event_mom',
+          filePath: 'documents/mom-eveniment.pdf',
+        },
+        {
+          id: 'proof',
+          activityId: 'a-event',
+          fileName: 'foto-eveniment.jpg',
+          fileType: 'image/jpeg',
+          fileSize: 2048,
+          deliverableType: 'event_proof',
+          uploaded: true,
+        },
+      ],
+    }),
+    'complete'
+  );
+});
+
+test('event status still requires event proof even when MOM exists', () => {
+  assert.equal(
+    getActivityStatus({
+      id: 'a-event',
+      expertId: 'e1',
+      expertName: 'Expert AP',
+      date: '2026-05-15',
+      hours: 4,
+      activityType: 'Participare / reprezentare consultare publica sau dezbatere',
+      title: 'Participare / reprezentare consultare publica sau dezbatere',
+      description: 'Participare la consultare publica.',
+      deliverables: [
+        {
+          id: 'mom',
+          activityId: 'a-event',
+          fileName: 'mom-eveniment.pdf',
+          fileType: 'application/pdf',
+          fileSize: 1024,
+          deliverableType: 'event_mom',
+          uploaded: true,
+        },
+      ],
+    }),
+    'missing'
+  );
+});

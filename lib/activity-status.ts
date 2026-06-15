@@ -36,6 +36,14 @@ export interface ActivityEntry extends Activity {
   deliverables?: DeliverableWithStatus[];
 }
 
+function getDeliverableKind(deliverable: DeliverableWithStatus): string | undefined {
+  return deliverable.category || deliverable.deliverableType;
+}
+
+function isUploadedDeliverable(deliverable: DeliverableWithStatus): boolean {
+  return deliverable.uploaded ?? Boolean(deliverable.filePath || deliverable.s3Key || deliverable.fileName);
+}
+
 /**
  * Calculate the status of an activity entry based on its data
  */
@@ -56,39 +64,39 @@ export function getActivityStatus(entry: ActivityEntry): ActivityStatus {
   }
   
   const delivs = entry.deliverables || [];
+  const actLow = (entry.activityType || '').toLowerCase();
+  const isEvent = isEventActivity(actLow);
   
   if (delivs.length > 0) {
     // Check main deliverables
-    const mainDelivs = delivs.filter(d => !d.category || d.category === 'livrabil');
+    const mainDelivs = delivs.filter((d) => {
+      const kind = getDeliverableKind(d);
+      return !kind || kind === 'livrabil' || kind === 'main';
+    });
+    const hasMOM = delivs.some((d) =>
+      getDeliverableKind(d) === 'event_mom' && isUploadedDeliverable(d) && !d.isPendingConfirm
+    );
+    const hasProof = delivs.some((d) =>
+      getDeliverableKind(d) === 'event_proof' && isUploadedDeliverable(d)
+    );
     
-    if (mainDelivs.length === 0) {
+    if (isEvent && (!hasMOM || !hasProof)) {
       return 'missing';
     }
     
-    if (mainDelivs.some(d => !d.uploaded)) {
+    if (!isEvent && mainDelivs.length === 0) {
       return 'missing';
     }
     
-    // Check title confirmation and manual status. AI eligibility is optional while the feature flag is disabled.
-    const eligibilityCheckEnabled = isDeliverableEligibilityCheckEnabledClient();
-    if (mainDelivs.some(d => !d.isPhoto && (!d.titleConfirmed || !d.stadiu || (eligibilityCheckEnabled && !d.aiCheck)))) {
-      return 'title_mismatch';
+    if (mainDelivs.some(d => !isUploadedDeliverable(d))) {
+      return 'missing';
     }
-    
-    // Check event docs (only for event activities)
-    const actLow = (entry.activityType || '').toLowerCase();
-    const isEvent = isEventActivity(actLow);
-    
-    if (isEvent) {
-      const hasMOM = delivs.some(d => 
-        d.category === 'event_mom' && d.uploaded && !d.isPendingConfirm
-      );
-      const hasProof = delivs.some(d => 
-        d.category === 'event_proof' && d.uploaded
-      );
-      
-      if (!hasMOM || !hasProof) {
-        return 'missing';
+
+    if (mainDelivs.length > 0) {
+      // Check title confirmation and manual status. AI eligibility is optional while the feature flag is disabled.
+      const eligibilityCheckEnabled = isDeliverableEligibilityCheckEnabledClient();
+      if (mainDelivs.some(d => !d.isPhoto && (!d.titleConfirmed || !d.stadiu || (eligibilityCheckEnabled && !d.aiCheck)))) {
+        return 'title_mismatch';
       }
     }
     
