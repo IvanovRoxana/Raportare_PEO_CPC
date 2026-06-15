@@ -563,6 +563,17 @@ export function useActivityCatalogBySa(saCode: string | null) {
   };
 }
 
+export function useActivityCatalogMutations() {
+  const updateDescription = async (id: string, description: string) => {
+    const updated = await activityCatalogService.updateDescription(id, description);
+    mutate('activity-catalog');
+    mutate(`activity-catalog-${updated.saCode}`);
+    return updated;
+  };
+
+  return { updateDescription };
+}
+
 // ============================================
 // WORKING GROUPS HOOKS
 // ============================================

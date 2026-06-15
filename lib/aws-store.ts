@@ -2018,6 +2018,13 @@ export const activityCatalogService = {
     const data = await listModel<any>(client.models.ActivityCatalog, { saCode: { eq: saCode } });
     return data.map(mapActivityCatalog).sort((a, b) => (a.activityNumber ?? 0) - (b.activityNumber ?? 0));
   },
+
+  async updateDescription(id: string, description: string): Promise<ActivityCatalog> {
+    const client = getAwsDataClient() as any;
+    const result = await client.models.ActivityCatalog.update({ id, description });
+    assertNoErrors(result, 'AWS update activity catalog description');
+    return mapActivityCatalog(result.data);
+  },
 };
 
 function mapActivityCatalog(item: any): ActivityCatalog {
