@@ -72,6 +72,19 @@ function areDraftsEqual(left: ActivityCatalogDraft, right: ActivityCatalogDraft)
   return JSON.stringify(normalizeDraft(left)) === JSON.stringify(normalizeDraft(right));
 }
 
+function catalogMergeKey(item: Pick<ActivityCatalog, 'id' | 'category' | 'saCode' | 'activityNumber' | 'activityName'>) {
+  const category = item.category?.trim().toLowerCase();
+  const saCode = item.saCode?.trim().toUpperCase();
+  const activityNumber = Number(item.activityNumber || 0);
+  const activityName = item.activityName?.trim().toLowerCase();
+
+  if (category && saCode) {
+    return `${category}|${saCode}|${activityNumber > 0 ? activityNumber : activityName || item.id}`;
+  }
+
+  return item.id;
+}
+
 export function ActivityDescriptionEditor({ fallbackCatalog = [] }: ActivityDescriptionEditorProps) {
   const { catalog: backendCatalog, isLoading, error } = useActivityCatalog();
   const { create, update, remove } = useActivityCatalogMutations();
@@ -85,17 +98,21 @@ export function ActivityDescriptionEditor({ fallbackCatalog = [] }: ActivityDesc
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
 
-  const baseCatalog = backendCatalog.length > 0 ? backendCatalog : fallbackCatalog;
+  const persistedCatalogKeys = useMemo(() => {
+    return new Set([...backendCatalog, ...localCatalog].map(catalogMergeKey));
+  }, [backendCatalog, localCatalog]);
+
   const catalog = useMemo(() => {
-    const byId = new Map<string, ActivityCatalog>();
-    baseCatalog.forEach((item) => byId.set(item.id, item));
-    localCatalog.forEach((item) => byId.set(item.id, item));
-    return Array.from(byId.values()).sort((a, b) =>
+    const byKey = new Map<string, ActivityCatalog>();
+    fallbackCatalog.forEach((item) => byKey.set(catalogMergeKey(item), item));
+    backendCatalog.forEach((item) => byKey.set(catalogMergeKey(item), item));
+    localCatalog.forEach((item) => byKey.set(catalogMergeKey(item), item));
+    return Array.from(byKey.values()).sort((a, b) =>
       `${a.category}-${a.saCode}-${a.activityNumber}-${a.activityName}`.localeCompare(
         `${b.category}-${b.saCode}-${b.activityNumber}-${b.activityName}`,
       ),
     );
-  }, [baseCatalog, localCatalog]);
+  }, [backendCatalog, fallbackCatalog, localCatalog]);
 
   const categoryOptions = useMemo(() => {
     return Array.from(new Set([
@@ -184,11 +201,12 @@ export function ActivityDescriptionEditor({ fallbackCatalog = [] }: ActivityDesc
     setSaveMessage(null);
 
     try {
-      const saved = isCreating
+      const shouldCreate = isCreating
+        || !selectedActivity
+        || !persistedCatalogKeys.has(catalogMergeKey(selectedActivity));
+      const saved = shouldCreate
         ? await create(normalized)
-        : selectedActivity
-          ? await update(selectedActivity.id, normalized, selectedActivity.saCode)
-          : null;
+        : await update(selectedActivity.id, normalized, selectedActivity.saCode);
 
       if (!saved) return;
 
@@ -233,6 +251,7 @@ export function ActivityDescriptionEditor({ fallbackCatalog = [] }: ActivityDesc
   };
 
   const baselineDraft = selectedActivity ? draftFromActivity(selectedActivity) : draftFromActivity(null);
+  const selectedActivityIsPersisted = selectedActivity ? persistedCatalogKeys.has(catalogMergeKey(selectedActivity)) : false;
   const hasChanges = isCreating || !areDraftsEqual(draft, baselineDraft);
   const canSave = hasChanges
     && draft.category.trim()
@@ -348,7 +367,7 @@ export function ActivityDescriptionEditor({ fallbackCatalog = [] }: ActivityDesc
                     Modificarile se salveaza in ActivityCatalog si apar automat in formularul expertilor.
                   </p>
                 </div>
-                {!isCreating && selectedActivity && (
+                {!isCreating && selectedActivity && selectedActivityIsPersisted && (
                   <Button type="button" variant="outline" onClick={handleDelete} disabled={isSaving} className="text-red-700">
                     <Trash2 className="h-4 w-4" />
                     Elimina

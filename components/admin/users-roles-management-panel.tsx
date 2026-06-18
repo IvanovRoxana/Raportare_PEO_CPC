@@ -11,8 +11,38 @@ import { requestPasswordReset, getSignedInUser, signUpWithEmail } from '@/lib/aw
 
 type RoleOption = 'Expert' | 'PM' | 'Expert/PM' | 'Admin';
 
+function expertIdentityKey(expert: Pick<Expert, 'id' | 'email'>) {
+  return expert.email?.trim().toLowerCase() || expert.id;
+}
+
+function buildExpertCreateInput(expert: Expert, updates: Partial<Expert>): Omit<Expert, 'id'> {
+  return {
+    userId: expert.userId,
+    name: updates.name || expert.name,
+    role: updates.role || expert.role || 'Expert',
+    email: updates.email ?? expert.email,
+    phone: updates.phone ?? expert.phone,
+    category: updates.category ?? expert.category,
+    norma: updates.norma ?? expert.norma ?? 8,
+    normType: updates.normType ?? expert.normType,
+    oreZi: updates.oreZi ?? expert.oreZi,
+    dailyHours: updates.dailyHours ?? expert.dailyHours,
+    manualMonthlyNorm: updates.manualMonthlyNorm ?? expert.manualMonthlyNorm,
+    projectMonthlyNorm: updates.projectMonthlyNorm ?? expert.projectMonthlyNorm,
+    positionInProject: updates.positionInProject ?? expert.positionInProject,
+    projectCode: updates.projectCode ?? expert.projectCode,
+    projectTitle: updates.projectTitle ?? expert.projectTitle,
+    beneficiary: updates.beneficiary ?? expert.beneficiary,
+    saCodes: updates.saCodes ?? expert.saCodes ?? [],
+    hasPmAccess: updates.hasPmAccess ?? expert.hasPmAccess ?? false,
+    cognitoGroups: updates.cognitoGroups ?? expert.cognitoGroups,
+    isActive: updates.isActive ?? expert.isActive ?? true,
+  };
+}
+
 export function UsersRolesManagementPanel() {
   const [experts, setExperts] = useState<Expert[]>([]);
+  const [persistedExpertKeys, setPersistedExpertKeys] = useState<Set<string>>(() => new Set());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -33,13 +63,21 @@ export function UsersRolesManagementPanel() {
     setLoading(true);
     setError(null);
     try {
-      const data = await expertsService.getAll({ includeInactive: true, includeFallback: false });
-      setExperts(data);
+      const [mergedExperts, backendExperts] = await Promise.all([
+        expertsService.getAll({ includeInactive: true }),
+        expertsService.getAll({ includeInactive: true, includeFallback: false }),
+      ]);
+      setExperts(mergedExperts);
+      setPersistedExpertKeys(new Set(backendExperts.map(expertIdentityKey)));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Nu am putut încărca utilizatorii.');
     } finally {
       setLoading(false);
     }
+  }
+
+  function isPersistedExpert(expert: Expert) {
+    return persistedExpertKeys.has(expertIdentityKey(expert));
   }
 
   useEffect(() => {
@@ -112,10 +150,15 @@ export function UsersRolesManagementPanel() {
     setError(null);
     setOk(null);
     try {
-      await expertsService.update(expert.id, {
+      const updates = {
         role: nextRole,
         hasPmAccess: nextRole.includes('PM'),
-      });
+      };
+      if (isPersistedExpert(expert)) {
+        await expertsService.update(expert.id, updates);
+      } else {
+        await expertsService.create(buildExpertCreateInput(expert, updates));
+      }
       setOk(`Rol actualizat pentru ${expert.name}.`);
       await loadExperts();
     } catch (e) {
@@ -166,7 +209,12 @@ export function UsersRolesManagementPanel() {
     setError(null);
     setOk(null);
     try {
-      await expertsService.update(expert.id, { isActive: !(expert.isActive ?? true) });
+      const updates = { isActive: !(expert.isActive ?? true) };
+      if (isPersistedExpert(expert)) {
+        await expertsService.update(expert.id, updates);
+      } else {
+        await expertsService.create(buildExpertCreateInput(expert, updates));
+      }
       setOk(`${expert.name} a fost ${(expert.isActive ?? true) ? 'dezactivat' : 'reactivat'}.`);
       await loadExperts();
     } catch (e) {

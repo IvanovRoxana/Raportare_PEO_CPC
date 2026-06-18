@@ -116,6 +116,10 @@ function normalizeRole(value?: string): RoleOption {
   return 'Expert';
 }
 
+function expertIdentityKey(expert: Pick<Expert, 'id' | 'email'>) {
+  return expert.email?.trim().toLowerCase() || expert.id;
+}
+
 function buildEditForm(expert: Expert): EditFormState {
   const role = normalizeRole(expert.role);
 
@@ -131,6 +135,31 @@ function buildEditForm(expert: Expert): EditFormState {
     positionInProject: expert.positionInProject || '',
     hasPmAccess: expert.hasPmAccess ?? role.includes('PM'),
     isActive: expert.isActive ?? true,
+  };
+}
+
+function buildExpertCreateInput(expert: Expert, updates: Partial<Expert>): Omit<Expert, 'id'> {
+  return {
+    userId: expert.userId,
+    name: updates.name || expert.name,
+    role: updates.role || expert.role || 'Expert',
+    email: updates.email ?? expert.email,
+    phone: updates.phone ?? expert.phone,
+    category: updates.category ?? expert.category,
+    norma: updates.norma ?? expert.norma ?? 8,
+    normType: updates.normType ?? expert.normType,
+    oreZi: updates.oreZi ?? expert.oreZi,
+    dailyHours: updates.dailyHours ?? expert.dailyHours,
+    manualMonthlyNorm: updates.manualMonthlyNorm ?? expert.manualMonthlyNorm,
+    projectMonthlyNorm: updates.projectMonthlyNorm ?? expert.projectMonthlyNorm,
+    positionInProject: updates.positionInProject ?? expert.positionInProject,
+    projectCode: updates.projectCode ?? expert.projectCode,
+    projectTitle: updates.projectTitle ?? expert.projectTitle,
+    beneficiary: updates.beneficiary ?? expert.beneficiary,
+    saCodes: updates.saCodes ?? expert.saCodes ?? [],
+    hasPmAccess: updates.hasPmAccess ?? expert.hasPmAccess ?? false,
+    cognitoGroups: updates.cognitoGroups ?? expert.cognitoGroups,
+    isActive: updates.isActive ?? expert.isActive ?? true,
   };
 }
 
@@ -177,6 +206,7 @@ async function createUserAudit(input: {
 
 export function AdminUsersTable({ fallbackUsers = [] }: { fallbackUsers?: AdminUserFallback[] }) {
   const [experts, setExperts] = useState<Expert[]>([]);
+  const [persistedExpertKeys, setPersistedExpertKeys] = useState<Set<string>>(() => new Set());
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -192,8 +222,12 @@ export function AdminUsersTable({ fallbackUsers = [] }: { fallbackUsers?: AdminU
     setError(null);
 
     try {
-      const data = await expertsService.getAll({ includeInactive: true, includeFallback: false });
-      setExperts(data);
+      const [mergedExperts, backendExperts] = await Promise.all([
+        expertsService.getAll({ includeInactive: true }),
+        expertsService.getAll({ includeInactive: true, includeFallback: false }),
+      ]);
+      setExperts(mergedExperts);
+      setPersistedExpertKeys(new Set(backendExperts.map(expertIdentityKey)));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Nu am putut incarca utilizatorii.');
     } finally {
@@ -259,6 +293,10 @@ export function AdminUsersTable({ fallbackUsers = [] }: { fallbackUsers?: AdminU
     setOk(null);
   }
 
+  function isPersistedExpert(expert: Expert) {
+    return persistedExpertKeys.has(expertIdentityKey(expert));
+  }
+
   async function handleSaveProfile() {
     if (!editingExpert || !form) return;
 
@@ -292,13 +330,20 @@ export function AdminUsersTable({ fallbackUsers = [] }: { fallbackUsers?: AdminU
     };
 
     try {
-      await expertsService.update(editingExpert.id, updates);
+      const savedExpert = isPersistedExpert(editingExpert)
+        ? editingExpert
+        : await expertsService.create(buildExpertCreateInput(editingExpert, updates));
+
+      if (savedExpert === editingExpert) {
+        await expertsService.update(editingExpert.id, updates);
+      }
+
       await createUserAudit({
         actionType: 'user_profile_updated',
-        expert: editingExpert,
+        expert: savedExpert,
         fieldName: 'profile',
         oldValue: auditProfileValue(editingExpert),
-        newValue: auditProfileValue({ ...editingExpert, ...updates }),
+        newValue: auditProfileValue({ ...savedExpert, ...updates }),
         justification: 'Profil utilizator actualizat din panoul de administrare.',
       });
 
@@ -349,10 +394,17 @@ export function AdminUsersTable({ fallbackUsers = [] }: { fallbackUsers?: AdminU
     setOk(null);
 
     try {
-      await expertsService.update(expert.id, { isActive: nextActive });
+      const savedExpert = isPersistedExpert(expert)
+        ? expert
+        : await expertsService.create(buildExpertCreateInput(expert, { isActive: nextActive }));
+
+      if (savedExpert === expert) {
+        await expertsService.update(expert.id, { isActive: nextActive });
+      }
+
       await createUserAudit({
         actionType: nextActive ? 'user_profile_reactivated' : 'user_profile_deactivated',
-        expert,
+        expert: savedExpert,
         fieldName: 'isActive',
         oldValue: String(expert.isActive ?? true),
         newValue: String(nextActive),
@@ -380,10 +432,17 @@ export function AdminUsersTable({ fallbackUsers = [] }: { fallbackUsers?: AdminU
     setOk(null);
 
     try {
-      await expertsService.delete(expert.id);
+      const savedExpert = isPersistedExpert(expert)
+        ? expert
+        : await expertsService.create(buildExpertCreateInput(expert, { isActive: false }));
+
+      if (savedExpert === expert) {
+        await expertsService.delete(expert.id);
+      }
+
       await createUserAudit({
         actionType: 'user_profile_deleted',
-        expert,
+        expert: savedExpert,
         fieldName: 'isActive',
         oldValue: String(expert.isActive ?? true),
         newValue: 'false',
