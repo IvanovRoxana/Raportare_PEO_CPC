@@ -57,6 +57,7 @@ import { createAuditLog, prepareAdminActivityOverride } from './audit-trail';
 import { buildSharedActivitySnapshot, buildSharedActivitySuggestions, buildSharedDeliverables, findDuplicateCandidates, isActivitySuggestionRelation, markSharedDeliverableRegistered } from './document-sharing';
 import { buildDefaultConcurrentProjects, mergeConcurrentProjectsWithDefaults } from './default-concurrent-projects';
 import { normalizeTitleForMatch } from './title-suggestion';
+import { parseAwsJsonField, serializeAwsJsonField } from './aws-json';
 import {
   createProcurementStatusHistoryEntry,
   getContractedProcurementProjects,
@@ -290,7 +291,7 @@ function withSupportedDeliverableFields(payload: Record<string, unknown>, delive
     sharedWithExpertIds: deliverable.sharedWithExpertIds,
     possibleDuplicateOfDocumentId: deliverable.possibleDuplicateOfDocumentId,
     duplicateStatus: deliverable.duplicateStatus,
-    eligibilityCheck: deliverable.eligibilityCheck,
+    eligibilityCheck: serializeAwsJsonField(deliverable.eligibilityCheck),
   };
 
   Object.entries(extendedFields).forEach(([field, value]) => {
@@ -562,7 +563,7 @@ function mapDeliverable(item: any): Deliverable {
     titleCheckMessage: item.titleCheckMessage ?? undefined,
     aiStatus: item.aiStatus ?? undefined,
     aiReason: item.aiReason ?? undefined,
-    eligibilityCheck: item.eligibilityCheck ?? undefined,
+    eligibilityCheck: parseAwsJsonField<Deliverable['eligibilityCheck']>(item.eligibilityCheck),
   };
 }
 
@@ -595,7 +596,7 @@ function mapDocument(item: any): DocumentMetadata {
     extractedTitleNormalized: item.extractedTitleNormalized ?? undefined,
     titleMatch: item.titleMatch ?? null,
     titleCheckStatus: item.titleCheckStatus ?? undefined,
-    eligibilityCheck: item.eligibilityCheck ?? undefined,
+    eligibilityCheck: parseAwsJsonField<DocumentMetadata['eligibilityCheck']>(item.eligibilityCheck),
     isCommonDeliverable: item.isCommonDeliverable ?? false,
     possibleDuplicateOfDocumentId: item.possibleDuplicateOfDocumentId ?? undefined,
     duplicateStatus: item.duplicateStatus ?? undefined,
@@ -720,7 +721,7 @@ async function createDocumentMetadataForDeliverable(
     titleSuggestionConfidence: deliverable.titleSuggestionConfidence,
     titleSuggestionAlternatives: deliverable.titleSuggestionAlternatives,
     titleSuggestionReason: deliverable.titleSuggestionReason,
-    eligibilityCheck: deliverable.eligibilityCheck,
+    eligibilityCheck: serializeAwsJsonField(deliverable.eligibilityCheck),
     isCommonDeliverable: deliverable.isCommonDeliverable ?? false,
     possibleDuplicateOfDocumentId: duplicate?.document.id || deliverable.possibleDuplicateOfDocumentId,
     duplicateStatus,
