@@ -65,7 +65,21 @@ const users = fallbackUsers.map(([name, email, role, organization, status, lastA
     .toUpperCase(),
 }));
 
-export default function AdminPage() {
+const adminTabValues = ['utilizatori', 'roluri', 'subactivitati', 'ai', 'proiecte'] as const;
+
+type AdminTabValue = (typeof adminTabValues)[number];
+
+function resolveAdminTab(tab?: string | string[]): AdminTabValue {
+  const value = Array.isArray(tab) ? tab[0] : tab;
+  return adminTabValues.includes(value as AdminTabValue) ? (value as AdminTabValue) : 'utilizatori';
+}
+
+export default async function AdminPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ tab?: string | string[] }>;
+}) {
+  const selectedTab = resolveAdminTab((await searchParams)?.tab);
   const statCards = [
     {
       label: 'Utilizatori activi',
@@ -73,6 +87,7 @@ export default function AdminPage() {
       description: '+12 față de luna trecută',
       icon: UsersRound,
       tone: 'blue' as const,
+      href: '/admin?tab=utilizatori',
     },
     {
       label: 'Roluri definite',
@@ -80,6 +95,7 @@ export default function AdminPage() {
       description: 'Nicio modificare recentă',
       icon: ShieldCheck,
       tone: 'navy' as const,
+      href: '/admin?tab=roluri',
     },
     {
       label: 'Experți activi',
@@ -87,6 +103,7 @@ export default function AdminPage() {
       description: '+3 față de luna trecută',
       icon: Users,
       tone: 'blue' as const,
+      href: '/admin/users#utilizatori',
     },
     {
       label: 'Proiecte active',
@@ -94,6 +111,7 @@ export default function AdminPage() {
       description: 'PEO și proiecte asociate',
       icon: Building2,
       tone: 'success' as const,
+      href: '/admin?tab=proiecte',
     },
   ];
 
@@ -201,7 +219,7 @@ export default function AdminPage() {
       </section>
 
       <Card className="overflow-hidden rounded-[1.5rem] py-0">
-        <Tabs defaultValue="utilizatori">
+        <Tabs defaultValue={selectedTab}>
           <div className="border-b border-slate-100 px-6 pt-5">
             <TabsList className="h-auto gap-8 bg-transparent p-0">
               {[

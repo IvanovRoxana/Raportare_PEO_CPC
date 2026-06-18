@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import Link from 'next/link';
 import type { LucideIcon } from 'lucide-react';
 import { FileText, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -79,6 +80,7 @@ export function StatCard({
   progress,
   tone = 'navy',
   className,
+  href,
 }: {
   icon: LucideIcon;
   label: string;
@@ -88,9 +90,16 @@ export function StatCard({
   progress?: number;
   tone?: DashboardTone;
   className?: string;
+  href?: string;
 }) {
-  return (
-    <Card className={cn('justify-between rounded-[1.5rem] py-0', className)}>
+  const card = (
+    <Card
+      className={cn(
+        'h-full justify-between rounded-[1.5rem] py-0',
+        href ? 'transition hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-md' : null,
+        className,
+      )}
+    >
       <CardContent className="p-5">
         <div className="flex items-start gap-4">
           <div className={cn('flex h-14 w-14 shrink-0 items-center justify-center rounded-[1.25rem]', toneClasses[tone].icon)}>
@@ -111,6 +120,18 @@ export function StatCard({
         {trend ? <div className={cn('mt-4 text-sm font-semibold', toneClasses[tone].text)}>{trend}</div> : null}
       </CardContent>
     </Card>
+  );
+
+  if (!href) return card;
+
+  return (
+    <Link
+      href={href}
+      aria-label={`Deschide ${label}`}
+      className="block h-full rounded-[1.5rem] outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+    >
+      {card}
+    </Link>
   );
 }
 
