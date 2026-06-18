@@ -12,34 +12,21 @@ import {
   Sparkles,
   ShieldCheck,
   Upload,
-  Users,
   UsersRound,
 } from 'lucide-react';
 import { DashboardShell, adminNavItems } from '@/components/layout/dashboard-shell';
-import { ProgressBar, RightInfoCard, StatCard } from '@/components/layout/dashboard-primitives';
+import { ProgressBar, RightInfoCard } from '@/components/layout/dashboard-primitives';
 import { ActivityDescriptionEditor } from '@/components/admin/activity-description-editor';
 import { AiApiStatusPanel } from '@/components/admin/ai-api-status-panel';
+import { AdminStatCards } from '@/components/admin/admin-stat-cards';
 import { AdminUsersTable } from '@/components/admin/admin-users-table';
 import { ViewAsExpertPanel } from '@/components/admin/view-as-expert-panel';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import activities from '@/data/import/sample-activities.json';
 import activityCatalog from '@/data/import/activity-catalog.json';
 import experts from '@/data/import/experts.json';
-import reportStatuses from '@/data/import/report-statuses.json';
-import workingGroups from '@/data/import/working-groups.json';
-import { buildAdminDashboardSnapshot } from '@/lib/admin-module';
 import type { ActivityCatalog, Expert } from '@/lib/types';
-
-const snapshot = buildAdminDashboardSnapshot({
-  experts: experts as Expert[],
-  activities,
-  reportStatuses,
-  activeReportingMonths: ['Mai 2026'],
-  activityCatalogCount: activityCatalog.length,
-  workingGroupsCount: workingGroups.length,
-});
 
 const fallbackUsers = [
   ['Andrei Dumitrescu', 'andrei.d@concordia.ro', 'Administrator', 'Concordia', 'Activ', '12 mai 2026, 09:42'],
@@ -74,46 +61,19 @@ function resolveAdminTab(tab?: string | string[]): AdminTabValue {
   return adminTabValues.includes(value as AdminTabValue) ? (value as AdminTabValue) : 'utilizatori';
 }
 
+const initialAdminStats = {
+  activeUsers: (experts as Expert[]).filter((expert) => expert.isActive !== false).length,
+  rolesDefined: 4,
+  activeExperts: (experts as Expert[]).filter((expert) => expert.isActive !== false && /expert/i.test(expert.role)).length,
+  activeProjects: 4,
+};
+
 export default async function AdminPage({
   searchParams,
 }: {
   searchParams?: Promise<{ tab?: string | string[] }>;
 }) {
   const selectedTab = resolveAdminTab((await searchParams)?.tab);
-  const statCards = [
-    {
-      label: 'Utilizatori activi',
-      value: 128,
-      description: '+12 față de luna trecută',
-      icon: UsersRound,
-      tone: 'blue' as const,
-      href: '/admin?tab=utilizatori',
-    },
-    {
-      label: 'Roluri definite',
-      value: 6,
-      description: 'Nicio modificare recentă',
-      icon: ShieldCheck,
-      tone: 'navy' as const,
-      href: '/admin?tab=roluri',
-    },
-    {
-      label: 'Experți activi',
-      value: snapshot.activeExperts || 27,
-      description: '+3 față de luna trecută',
-      icon: Users,
-      tone: 'blue' as const,
-      href: '/admin/users#utilizatori',
-    },
-    {
-      label: 'Proiecte active',
-      value: 4,
-      description: 'PEO și proiecte asociate',
-      icon: Building2,
-      tone: 'success' as const,
-      href: '/admin?tab=proiecte',
-    },
-  ];
 
   return (
     <DashboardShell
@@ -212,11 +172,7 @@ export default async function AdminPage({
         </>
       }
     >
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {statCards.map((stat) => (
-          <StatCard key={stat.label} {...stat} />
-        ))}
-      </section>
+      <AdminStatCards initialStats={initialAdminStats} />
 
       <Card className="overflow-hidden rounded-[1.5rem] py-0">
         <Tabs defaultValue={selectedTab}>
