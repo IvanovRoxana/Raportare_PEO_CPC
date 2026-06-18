@@ -37,6 +37,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { StatusBadge } from '@/components/ui/status-badge';
+import { expertIdentityKey } from '@/lib/expert-merge';
 
 type RoleOption = 'Expert' | 'PM' | 'Expert/PM' | 'Admin';
 
@@ -114,10 +115,6 @@ function normalizeRole(value?: string): RoleOption {
   if (value?.toLowerCase().includes('pm') && value?.toLowerCase().includes('expert')) return 'Expert/PM';
   if (value?.toLowerCase().includes('pm')) return 'PM';
   return 'Expert';
-}
-
-function expertIdentityKey(expert: Pick<Expert, 'id' | 'email'>) {
-  return expert.email?.trim().toLowerCase() || expert.id;
 }
 
 function buildEditForm(expert: Expert): EditFormState {
@@ -206,7 +203,7 @@ async function createUserAudit(input: {
 
 export function AdminUsersTable({ fallbackUsers = [] }: { fallbackUsers?: AdminUserFallback[] }) {
   const [experts, setExperts] = useState<Expert[]>([]);
-  const [persistedExpertKeys, setPersistedExpertKeys] = useState<Set<string>>(() => new Set());
+  const [persistedExpertsByKey, setPersistedExpertsByKey] = useState<Map<string, Expert>>(() => new Map());
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -227,7 +224,7 @@ export function AdminUsersTable({ fallbackUsers = [] }: { fallbackUsers?: AdminU
         expertsService.getAll({ includeInactive: true, includeFallback: false }),
       ]);
       setExperts(mergedExperts);
-      setPersistedExpertKeys(new Set(backendExperts.map(expertIdentityKey)));
+      setPersistedExpertsByKey(new Map(backendExperts.map((expert) => [expertIdentityKey(expert), expert])));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Nu am putut incarca utilizatorii.');
     } finally {
@@ -294,7 +291,11 @@ export function AdminUsersTable({ fallbackUsers = [] }: { fallbackUsers?: AdminU
   }
 
   function isPersistedExpert(expert: Expert) {
-    return persistedExpertKeys.has(expertIdentityKey(expert));
+    return persistedExpertsByKey.has(expertIdentityKey(expert));
+  }
+
+  function getPersistedExpertId(expert: Expert) {
+    return persistedExpertsByKey.get(expertIdentityKey(expert))?.id ?? expert.id;
   }
 
   async function handleSaveProfile() {
@@ -331,11 +332,11 @@ export function AdminUsersTable({ fallbackUsers = [] }: { fallbackUsers?: AdminU
 
     try {
       const savedExpert = isPersistedExpert(editingExpert)
-        ? editingExpert
+        ? { ...editingExpert, id: getPersistedExpertId(editingExpert) }
         : await expertsService.create(buildExpertCreateInput(editingExpert, updates));
 
-      if (savedExpert === editingExpert) {
-        await expertsService.update(editingExpert.id, updates);
+      if (isPersistedExpert(editingExpert)) {
+        await expertsService.update(savedExpert.id, updates);
       }
 
       await createUserAudit({
@@ -395,11 +396,11 @@ export function AdminUsersTable({ fallbackUsers = [] }: { fallbackUsers?: AdminU
 
     try {
       const savedExpert = isPersistedExpert(expert)
-        ? expert
+        ? { ...expert, id: getPersistedExpertId(expert) }
         : await expertsService.create(buildExpertCreateInput(expert, { isActive: nextActive }));
 
-      if (savedExpert === expert) {
-        await expertsService.update(expert.id, { isActive: nextActive });
+      if (isPersistedExpert(expert)) {
+        await expertsService.update(savedExpert.id, { isActive: nextActive });
       }
 
       await createUserAudit({
@@ -433,11 +434,11 @@ export function AdminUsersTable({ fallbackUsers = [] }: { fallbackUsers?: AdminU
 
     try {
       const savedExpert = isPersistedExpert(expert)
-        ? expert
+        ? { ...expert, id: getPersistedExpertId(expert) }
         : await expertsService.create(buildExpertCreateInput(expert, { isActive: false }));
 
-      if (savedExpert === expert) {
-        await expertsService.delete(expert.id);
+      if (isPersistedExpert(expert)) {
+        await expertsService.delete(savedExpert.id);
       }
 
       await createUserAudit({

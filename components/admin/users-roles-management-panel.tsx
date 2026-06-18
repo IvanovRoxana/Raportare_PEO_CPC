@@ -8,12 +8,9 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { requestPasswordReset, getSignedInUser, signUpWithEmail } from '@/lib/aws/auth';
+import { expertIdentityKey } from '@/lib/expert-merge';
 
 type RoleOption = 'Expert' | 'PM' | 'Expert/PM' | 'Admin';
-
-function expertIdentityKey(expert: Pick<Expert, 'id' | 'email'>) {
-  return expert.email?.trim().toLowerCase() || expert.id;
-}
 
 function buildExpertCreateInput(expert: Expert, updates: Partial<Expert>): Omit<Expert, 'id'> {
   return {
@@ -42,7 +39,7 @@ function buildExpertCreateInput(expert: Expert, updates: Partial<Expert>): Omit<
 
 export function UsersRolesManagementPanel() {
   const [experts, setExperts] = useState<Expert[]>([]);
-  const [persistedExpertKeys, setPersistedExpertKeys] = useState<Set<string>>(() => new Set());
+  const [persistedExpertsByKey, setPersistedExpertsByKey] = useState<Map<string, Expert>>(() => new Map());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -68,7 +65,7 @@ export function UsersRolesManagementPanel() {
         expertsService.getAll({ includeInactive: true, includeFallback: false }),
       ]);
       setExperts(mergedExperts);
-      setPersistedExpertKeys(new Set(backendExperts.map(expertIdentityKey)));
+      setPersistedExpertsByKey(new Map(backendExperts.map((expert) => [expertIdentityKey(expert), expert])));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Nu am putut încărca utilizatorii.');
     } finally {
@@ -77,7 +74,11 @@ export function UsersRolesManagementPanel() {
   }
 
   function isPersistedExpert(expert: Expert) {
-    return persistedExpertKeys.has(expertIdentityKey(expert));
+    return persistedExpertsByKey.has(expertIdentityKey(expert));
+  }
+
+  function getPersistedExpertId(expert: Expert) {
+    return persistedExpertsByKey.get(expertIdentityKey(expert))?.id ?? expert.id;
   }
 
   useEffect(() => {
@@ -155,7 +156,7 @@ export function UsersRolesManagementPanel() {
         hasPmAccess: nextRole.includes('PM'),
       };
       if (isPersistedExpert(expert)) {
-        await expertsService.update(expert.id, updates);
+        await expertsService.update(getPersistedExpertId(expert), updates);
       } else {
         await expertsService.create(buildExpertCreateInput(expert, updates));
       }
@@ -211,7 +212,7 @@ export function UsersRolesManagementPanel() {
     try {
       const updates = { isActive: !(expert.isActive ?? true) };
       if (isPersistedExpert(expert)) {
-        await expertsService.update(expert.id, updates);
+        await expertsService.update(getPersistedExpertId(expert), updates);
       } else {
         await expertsService.create(buildExpertCreateInput(expert, updates));
       }

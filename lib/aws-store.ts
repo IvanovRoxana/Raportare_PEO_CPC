@@ -4,6 +4,7 @@ import { getAwsDataClient, isAwsAvailable } from '@/lib/aws/client';
 import { getSignedInUser } from '@/lib/aws/auth';
 import outputs from '@/amplify_outputs.json';
 import { peoUsersAsExperts } from '@/lib/peo-users';
+import { mergeExpertLists, mergeExpertWithFallback } from '@/lib/expert-merge';
 import {
   buildCollaborationExpertOptions,
   canAccessExpertId,
@@ -169,16 +170,6 @@ function modelHasField(modelName: string, fieldName: string) {
 
 const ACCESS_DENIED_MESSAGE = 'Acces interzis: nu ai drepturi pentru raportarea acestui expert.';
 
-function mergeExpertLists(primary: Expert[], fallback: Expert[]) {
-  const merged = new Map(fallback.map((expert) => [expert.email?.toLowerCase() ?? expert.id, expert]));
-
-  primary.forEach((expert) => {
-    merged.set(expert.email?.toLowerCase() ?? expert.id, expert);
-  });
-
-  return Array.from(merged.values()).sort((a, b) => a.name.localeCompare(b.name));
-}
-
 async function listActiveExpertsFromBackend(client: any) {
   const data = await listModel<any>(client.models.Expert, { isActive: { ne: false } });
   return data.map(mapExpert);
@@ -212,7 +203,8 @@ async function findCurrentExpertFromBackend(client: any, user: AccessUser | null
     }
   }
 
-  return findExpertForUser(candidates, user) ?? fallbackExpert;
+  const backendExpert = findExpertForUser(candidates, user);
+  return backendExpert ? mergeExpertWithFallback(backendExpert, fallbackExpert) : fallbackExpert;
 }
 
 async function getCurrentDataAccessScope(client: any): Promise<DataAccessScope> {

@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { useActivityCatalog, useActivityCatalogMutations } from '@/hooks/use-backend-data';
 import type { ActivityCatalog } from '@/lib/types';
+import { activityCatalogMergeKey, mergeActivityCatalogs } from '@/lib/activity-catalog-merge';
 
 const ALL = 'all';
 const FALLBACK_CATEGORIES = ['ap', 'com', 'gdpr', 'gt', 'pm'];
@@ -72,19 +73,6 @@ function areDraftsEqual(left: ActivityCatalogDraft, right: ActivityCatalogDraft)
   return JSON.stringify(normalizeDraft(left)) === JSON.stringify(normalizeDraft(right));
 }
 
-function catalogMergeKey(item: Pick<ActivityCatalog, 'id' | 'category' | 'saCode' | 'activityNumber' | 'activityName'>) {
-  const category = item.category?.trim().toLowerCase();
-  const saCode = item.saCode?.trim().toUpperCase();
-  const activityNumber = Number(item.activityNumber || 0);
-  const activityName = item.activityName?.trim().toLowerCase();
-
-  if (category && saCode) {
-    return `${category}|${saCode}|${activityNumber > 0 ? activityNumber : activityName || item.id}`;
-  }
-
-  return item.id;
-}
-
 export function ActivityDescriptionEditor({ fallbackCatalog = [] }: ActivityDescriptionEditorProps) {
   const { catalog: backendCatalog, isLoading, error } = useActivityCatalog();
   const { create, update, remove } = useActivityCatalogMutations();
@@ -99,19 +87,11 @@ export function ActivityDescriptionEditor({ fallbackCatalog = [] }: ActivityDesc
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
 
   const persistedCatalogKeys = useMemo(() => {
-    return new Set([...backendCatalog, ...localCatalog].map(catalogMergeKey));
+    return new Set([...backendCatalog, ...localCatalog].map(activityCatalogMergeKey));
   }, [backendCatalog, localCatalog]);
 
   const catalog = useMemo(() => {
-    const byKey = new Map<string, ActivityCatalog>();
-    fallbackCatalog.forEach((item) => byKey.set(catalogMergeKey(item), item));
-    backendCatalog.forEach((item) => byKey.set(catalogMergeKey(item), item));
-    localCatalog.forEach((item) => byKey.set(catalogMergeKey(item), item));
-    return Array.from(byKey.values()).sort((a, b) =>
-      `${a.category}-${a.saCode}-${a.activityNumber}-${a.activityName}`.localeCompare(
-        `${b.category}-${b.saCode}-${b.activityNumber}-${b.activityName}`,
-      ),
-    );
+    return mergeActivityCatalogs(fallbackCatalog, backendCatalog, localCatalog);
   }, [backendCatalog, fallbackCatalog, localCatalog]);
 
   const categoryOptions = useMemo(() => {
@@ -203,7 +183,7 @@ export function ActivityDescriptionEditor({ fallbackCatalog = [] }: ActivityDesc
     try {
       const shouldCreate = isCreating
         || !selectedActivity
-        || !persistedCatalogKeys.has(catalogMergeKey(selectedActivity));
+        || !persistedCatalogKeys.has(activityCatalogMergeKey(selectedActivity));
       const saved = shouldCreate
         ? await create(normalized)
         : await update(selectedActivity.id, normalized, selectedActivity.saCode);
@@ -251,7 +231,7 @@ export function ActivityDescriptionEditor({ fallbackCatalog = [] }: ActivityDesc
   };
 
   const baselineDraft = selectedActivity ? draftFromActivity(selectedActivity) : draftFromActivity(null);
-  const selectedActivityIsPersisted = selectedActivity ? persistedCatalogKeys.has(catalogMergeKey(selectedActivity)) : false;
+  const selectedActivityIsPersisted = selectedActivity ? persistedCatalogKeys.has(activityCatalogMergeKey(selectedActivity)) : false;
   const hasChanges = isCreating || !areDraftsEqual(draft, baselineDraft);
   const canSave = hasChanges
     && draft.category.trim()

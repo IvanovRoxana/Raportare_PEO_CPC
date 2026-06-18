@@ -32,6 +32,7 @@ import {
 import { useActivityCatalog } from '@/hooks/use-backend-data';
 import type { Activity, Deliverable, GrupTintaEntry, Expert, ActivityCatalog } from '@/lib/types';
 import { isGtExpertCategory, normalizePeoCategory } from '@/lib/peo-category';
+import { mergeActivityCatalogs } from '@/lib/activity-catalog-merge';
 import { buildDocumentS3Key, hashFirstPageText, normalizeDocumentTextForFingerprint, sha256Hex } from '@/lib/document-sharing';
 import { shouldAttachUploadedDeliverablesToDate } from '@/lib/activity-deliverables';
 import {
@@ -135,7 +136,10 @@ export function ActivityForm({
     );
   }, [expert?.category]);
 
-  const effectiveCatalog = catalog.length > 0 ? catalog : fallbackCatalog;
+  const effectiveCatalog = useMemo(
+    () => mergeActivityCatalogs(fallbackCatalog, catalog),
+    [fallbackCatalog, catalog],
+  );
   
   // Get expert's assigned SA codes (based on their role)
   const expertSaCodes = expert?.saCodes || [];
