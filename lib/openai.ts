@@ -1,6 +1,6 @@
 import { createOpenAI } from '@ai-sdk/openai';
 
-export const DEFAULT_OPENAI_MODEL = 'gpt-4o-mini';
+export const DEFAULT_OPENAI_MODEL = process.env.OPENAI_MODEL?.trim() || 'gpt-4o-mini';
 
 export class OpenAIConfigurationError extends Error {
   code = 'OPENAI_API_KEY_MISSING';
