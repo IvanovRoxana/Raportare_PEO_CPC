@@ -12,6 +12,7 @@ import {
   Plus,
   SearchIcon,
   Settings,
+  Sparkles,
   ShieldCheck,
   Upload,
   Users,
@@ -20,6 +21,7 @@ import {
 import { DashboardShell, adminNavItems } from '@/components/layout/dashboard-shell';
 import { DataTable, ProgressBar, RightInfoCard, StatCard } from '@/components/layout/dashboard-primitives';
 import { ActivityDescriptionEditor } from '@/components/admin/activity-description-editor';
+import { AiApiStatusPanel } from '@/components/admin/ai-api-status-panel';
 import { ViewAsExpertPanel } from '@/components/admin/view-as-expert-panel';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -219,6 +221,7 @@ export default function AdminPage() {
                 ['utilizatori', 'Utilizatori', UsersRound],
                 ['roluri', 'Roluri', ShieldCheck],
                 ['subactivitati', 'Subactivități', Settings],
+                ['ai', 'AI API', Sparkles],
                 ['proiecte', 'Proiecte', Building2],
               ].map(([value, label, Icon]) => (
                 <TabsTrigger
@@ -327,6 +330,10 @@ export default function AdminPage() {
 
             <TabsContent value="subactivitati" className="m-0 p-6">
               <ActivityDescriptionEditor fallbackCatalog={activityCatalog as ActivityCatalog[]} />
+            </TabsContent>
+
+            <TabsContent value="ai" className="m-0 p-6">
+              <AiApiStatusPanel />
             </TabsContent>
           </CardContent>
         </Tabs>

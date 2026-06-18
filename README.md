@@ -54,6 +54,17 @@ curl http://localhost:3000/api/health
 
 AI routes remain server-side only and require server environment variables such as `OPENAI_API_KEY` to be configured in Amplify Hosting, not exposed with `NEXT_PUBLIC_*`.
 
+
+### AI API status check
+
+After configuring the server-side OpenAI key, verify the runtime configuration without exposing secrets:
+
+```bash
+curl http://localhost:3000/api/ai/status
+```
+
+The endpoint returns whether `OPENAI_API_KEY` is present, which model is configured through `OPENAI_MODEL`, and the active governance limits. It intentionally never returns the API key value.
+
 ### Temporary deliverable eligibility suspension
 
 Automatic deliverable eligibility checking is temporarily disabled until API keys are configured and the eligibility rules are fully validated. Manual PM review, upload, listing, status updates, observations and reporting history remain available.
