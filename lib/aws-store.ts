@@ -1197,9 +1197,9 @@ export const expertsService = {
     return buildCollaborationExpertOptions(mergeExpertLists(experts, peoUsersAsExperts()));
   },
 
-  async getAll(options?: { includeInactive?: boolean }): Promise<Expert[]> {
+  async getAll(options?: { includeInactive?: boolean; includeFallback?: boolean }): Promise<Expert[]> {
     const client = getAwsDataClient() as any;
-    const fallbackExperts = peoUsersAsExperts();
+    const fallbackExperts = options?.includeFallback === false ? [] : peoUsersAsExperts();
     const scope = await getCurrentDataAccessScope(client);
     const includeInactive = options?.includeInactive === true;
 
@@ -1207,7 +1207,7 @@ export const expertsService = {
       const experts = includeInactive
         ? await listAllExpertsFromBackend(client)
         : await listActiveExpertsFromBackend(client);
-      return mergeExpertLists(experts, fallbackExperts);
+      return fallbackExperts.length > 0 ? mergeExpertLists(experts, fallbackExperts) : experts.sort((a, b) => a.name.localeCompare(b.name));
     }
 
     return scope.currentExpert ? [scope.currentExpert] : [];

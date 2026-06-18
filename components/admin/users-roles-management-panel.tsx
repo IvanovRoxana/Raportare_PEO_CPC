@@ -33,7 +33,7 @@ export function UsersRolesManagementPanel() {
     setLoading(true);
     setError(null);
     try {
-      const data = await expertsService.getAll({ includeInactive: true });
+      const data = await expertsService.getAll({ includeInactive: true, includeFallback: false });
       setExperts(data);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Nu am putut încărca utilizatorii.');

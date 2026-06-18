@@ -4,13 +4,10 @@ import {
   Building2,
   CheckCircle2,
   Database,
-  Filter,
   History,
   KeyRound,
   Lock,
-  MoreHorizontal,
   Plus,
-  SearchIcon,
   Settings,
   Sparkles,
   ShieldCheck,
@@ -19,15 +16,13 @@ import {
   UsersRound,
 } from 'lucide-react';
 import { DashboardShell, adminNavItems } from '@/components/layout/dashboard-shell';
-import { DataTable, ProgressBar, RightInfoCard, StatCard } from '@/components/layout/dashboard-primitives';
+import { ProgressBar, RightInfoCard, StatCard } from '@/components/layout/dashboard-primitives';
 import { ActivityDescriptionEditor } from '@/components/admin/activity-description-editor';
 import { AiApiStatusPanel } from '@/components/admin/ai-api-status-panel';
+import { AdminUsersTable } from '@/components/admin/admin-users-table';
 import { ViewAsExpertPanel } from '@/components/admin/view-as-expert-panel';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { StatusBadge } from '@/components/ui/status-badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import activities from '@/data/import/sample-activities.json';
 import activityCatalog from '@/data/import/activity-catalog.json';
@@ -69,14 +64,6 @@ const users = fallbackUsers.map(([name, email, role, organization, status, lastA
     .slice(0, 2)
     .toUpperCase(),
 }));
-
-const roleStatus = {
-  Administrator: 'in_lucru',
-  Manager: 'verificat',
-  Expert: 'draft',
-  PM: 'cu_observatii',
-  Utilizator: 'informativ',
-} as const;
 
 export default function AdminPage() {
   const statCards = [
@@ -238,77 +225,7 @@ export default function AdminPage() {
 
           <CardContent className="p-0">
             <TabsContent value="utilizatori" className="m-0">
-              <div className="grid gap-3 border-b border-slate-100 p-6 lg:grid-cols-[1.4fr_0.85fr_0.85fr_auto]">
-                <div className="relative">
-                  <SearchIcon className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                  <Input className="pl-9" placeholder="Caută după nume, email sau organizație..." />
-                </div>
-                <Select defaultValue="all">
-                  <SelectTrigger>
-                    <SelectValue placeholder="Toate rolurile" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Toate rolurile</SelectItem>
-                    <SelectItem value="admin">Administrator</SelectItem>
-                    <SelectItem value="pm">PM</SelectItem>
-                    <SelectItem value="expert">Expert</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select defaultValue="all">
-                  <SelectTrigger>
-                    <SelectValue placeholder="Toate organizațiile" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Toate organizațiile</SelectItem>
-                    <SelectItem value="concordia">Concordia</SelectItem>
-                    <SelectItem value="cpc">CPC</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button variant="outline">
-                  <Filter className="h-4 w-4" />
-                  Filtrează
-                </Button>
-              </div>
-
-              <DataTable
-                className="rounded-none border-0 shadow-none"
-                columns={['Nume', 'Email', 'Rol', 'Organizație', 'Status', 'Ultima accesare', 'Acțiuni']}
-                rows={users.map((user, index) => [
-                  <div key={`${user.name}-name`} className="flex items-center gap-3 font-semibold text-primary">
-                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#eaf3fb] text-xs">
-                      {user.initials}
-                    </span>
-                    {user.name}
-                  </div>,
-                  user.email,
-                  <StatusBadge key={`${user.name}-role`} status={roleStatus[user.role as keyof typeof roleStatus] ?? 'informativ'}>
-                    {user.role}
-                  </StatusBadge>,
-                  user.organization,
-                  <StatusBadge key={`${user.name}-status`} status={user.status === 'Activ' ? 'deschisa' : 'inchisa'}>
-                    {user.status}
-                  </StatusBadge>,
-                  user.lastAccess,
-                  <Button key={`${user.name}-action`} variant="ghost" size="icon" aria-label={`Acțiuni ${user.name}`}>
-                    <MoreHorizontal className="h-4 w-4" />
-                  </Button>,
-                ])}
-                footer={
-                  <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
-                    <span>Afișare 1-6 din 128 utilizatori</span>
-                    <div className="flex items-center gap-2">
-                      {[1, 2, 3].map((page) => (
-                        <Button key={page} variant={page === 1 ? 'default' : 'outline'} size="icon-sm">
-                          {page}
-                        </Button>
-                      ))}
-                      <Button variant="outline" size="icon-sm">
-                        <ArrowRight className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                }
-              />
+              <AdminUsersTable fallbackUsers={users} />
             </TabsContent>
 
             {(['roluri', 'proiecte'] as const).map((tab) => (
