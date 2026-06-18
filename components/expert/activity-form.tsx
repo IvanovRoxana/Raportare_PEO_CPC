@@ -65,6 +65,11 @@ import {
   type GdprMeta,
   type GdprMetaValue,
 } from '@/lib/gdpr-reporting';
+import {
+  buildActivityAutofillDeliverablesPayload,
+  type ActivityAutofillCatalogCandidate,
+  type ActivityAutofillSuggestion,
+} from '@/lib/activity-autofill';
 
 const SAVED_SLOT_TYPES = new Set<DeliverableSlot['slotType']>([
   'livrabil',
@@ -312,6 +317,9 @@ export function ActivityForm({
   // Verification
   const [isVerifyingTitle, setIsVerifyingTitle] = useState(false);
   const [titleVerificationResult, setTitleVerificationResult] = useState<string | null>(null);
+  const [isAutofillingActivity, setIsAutofillingActivity] = useState(false);
+  const [activityAutofillSuggestion, setActivityAutofillSuggestion] = useState<ActivityAutofillSuggestion | null>(null);
+  const [activityAutofillError, setActivityAutofillError] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const businessHubPvInputRef = useRef<HTMLInputElement>(null);
@@ -331,6 +339,44 @@ export function ActivityForm({
       item.saCode === saCode && item.activityName === activityTitle
     ) || null;
   }, [activityTitle, saCode, filteredCatalog]);
+
+  const activityAutofillDeliverables = useMemo(() => (
+    buildActivityAutofillDeliverablesPayload(deliverables.map((deliverable) => ({
+      id: deliverable.id,
+      fileName: deliverable.filename || deliverable.name,
+      documentTitle: deliverable.declaredTitle || deliverable.suggestedTitle || deliverable.docTitle,
+      deliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
+      stadiu: deliverable.stadiu,
+      docText: deliverable.docText,
+      firstPageText: deliverable.firstPageText,
+      eligibilityStatus: deliverable.eligibilityCheck?.status,
+      eligibilitySummary: deliverable.eligibilityCheck?.summary || deliverable.aiCheck?.reason,
+    })))
+  ), [deliverables]);
+
+  const activityAutofillCatalogCandidates = useMemo<ActivityAutofillCatalogCandidate[]>(() => (
+    filteredCatalog.map((item) => ({
+      id: item.id,
+      category: item.category,
+      saCode: item.saCode,
+      serviceCategory: item.serviceCategory,
+      activityNumber: item.activityNumber,
+      activityName: item.activityName,
+      description: item.description,
+      objectives: item.objectives,
+      serviceComponent: item.serviceComponent,
+      beneficiaries: item.beneficiaries,
+      expectedResults: item.expectedResults,
+      deliverables: item.deliverables,
+      indicators: item.indicators,
+    }))
+  ), [filteredCatalog]);
+
+  const activityAutofillUnavailableMessage = activityAutofillDeliverables.length === 0
+    ? 'Incarca un PDF/DOC/DOCX cu text extras pentru autocompletare.'
+    : activityAutofillCatalogCandidates.length === 0
+      ? 'Nu exista activitati de catalog disponibile pentru rolul curent.'
+      : null;
 
   const lastAutoDescriptionRef = useRef('');
 
@@ -686,6 +732,63 @@ export function ActivityForm({
     } finally {
       setIsVerifyingTitle(false);
     }
+  };
+
+  const handleSuggestActivityFromDeliverables = async () => {
+    if (activityAutofillUnavailableMessage) return;
+
+    setIsAutofillingActivity(true);
+    setActivityAutofillError(null);
+    setActivityAutofillSuggestion(null);
+
+    try {
+      const response = await fetch('/api/ai/suggest-activity-from-deliverables', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          deliverables: activityAutofillDeliverables,
+          catalogCandidates: activityAutofillCatalogCandidates,
+          expertName,
+          expertRole: expert?.positionInProject || expert?.role,
+          projectCode: expert?.projectCode,
+          month,
+          year,
+          selectedDates,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok || data.error) {
+        throw new Error(data.error || 'Autocompletarea activitatii a esuat.');
+      }
+
+      setActivityAutofillSuggestion(data);
+    } catch (error) {
+      setActivityAutofillError(error instanceof Error ? error.message : 'Eroare la autocompletarea activitatii.');
+    } finally {
+      setIsAutofillingActivity(false);
+    }
+  };
+
+  const applyActivityAutofillSuggestion = () => {
+    if (!activityAutofillSuggestion) return;
+
+    const catalogMatch = activityAutofillCatalogCandidates.find((candidate) => (
+      candidate.saCode === activityAutofillSuggestion.recommended.saCode
+      && candidate.activityName === activityAutofillSuggestion.recommended.activityName
+    ));
+
+    if (!catalogMatch) {
+      setActivityAutofillError('Sugestia nu mai exista in catalogul disponibil pentru rolul curent.');
+      return;
+    }
+
+    setSaCode(activityAutofillSuggestion.recommended.saCode);
+    setActivityTitle(activityAutofillSuggestion.recommended.activityName);
+    setDescription(activityAutofillSuggestion.recommended.description);
+    lastAutoDescriptionRef.current = '__activity_autofill_applied__';
+    setTitleVerificationResult(null);
+    setActivityAutofillError(null);
   };
 
   const dataUrlToBlob = (dataUrl: string, fallbackType: string) => {
@@ -1570,6 +1673,180 @@ export function ActivityForm({
               </div>
             )}
 
+            {/* Main Deliverables */}
+            {!isException && (
+              <div className="space-y-4">
+                {/* Livrabile principale */}
+                <div className="bg-slate-50 rounded-lg p-4 border">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <div className="text-sm font-medium text-foreground flex items-center gap-2">
+                        <FileText className="h-4 w-4" />
+                        Livrabile principale
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        Outputurile directe ale activitatii - obligatorii
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => addDeliverableSlot('livrabil')}
+                    >
+                      <Plus className="h-4 w-4 mr-1" />
+                      Adauga livrabil
+                    </Button>
+                  </div>
+
+                  {mainDeliverables.length === 0 && (
+                    <div className="text-center py-4 text-xs text-muted-foreground border border-dashed rounded-md">
+                      Niciun livrabil. Apasa + pentru a adauga outputul activitatii.
+                    </div>
+                  )}
+
+                  <div className="space-y-3">
+                    {mainDeliverables.map((d) => (
+                      <DeliverableItem
+                        key={d.id}
+                        deliverable={d}
+                        subActivity={saCode}
+                        activityTitle={activityTitle}
+                        selectedActivityId={selectedCatalogItem?.id}
+                        catalogDescription={selectedCatalogItem?.description}
+                        catalogObjectives={selectedCatalogItem?.objectives}
+                        catalogComponent={selectedCatalogItem?.serviceComponent}
+                        catalogBeneficiaries={selectedCatalogItem?.beneficiaries}
+                        catalogExpectedResults={selectedCatalogItem?.expectedResults}
+                        catalogDeliverables={selectedCatalogItem?.deliverables}
+                        catalogIndicators={selectedCatalogItem?.indicators}
+                        projectCode={expert?.projectCode}
+                        month={month}
+                        year={year}
+                        expertName={expertName}
+                        onUpdate={(patch) => updateDeliverable(d.id, patch)}
+                        onRemove={() => removeDeliverable(d.id)}
+                        deliverableOptions={deliverableOptions}
+                      />
+                    ))}
+                  </div>
+
+                  <div className="mt-4 rounded-md border border-slate-200 bg-white p-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-medium text-slate-900">Autocompletare activitate</div>
+                        <div className="text-xs text-slate-600">
+                          Sugereaza subactivitatea, activitatea si descrierea pe baza tuturor livrabilelor citite.
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={handleSuggestActivityFromDeliverables}
+                        disabled={Boolean(activityAutofillUnavailableMessage) || isAutofillingActivity}
+                      >
+                        {isAutofillingActivity ? (
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        ) : (
+                          <Sparkles className="h-4 w-4 mr-2" />
+                        )}
+                        Autocompletare
+                      </Button>
+                    </div>
+
+                    {activityAutofillUnavailableMessage && (
+                      <div className="mt-2 text-xs text-amber-700">
+                        {activityAutofillUnavailableMessage}
+                      </div>
+                    )}
+
+                    {activityAutofillError && (
+                      <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
+                        {activityAutofillError}
+                      </div>
+                    )}
+
+                    {activityAutofillSuggestion && (
+                      <div className="mt-3 space-y-3 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-950">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="font-medium">Sugestie pregatita pentru revizuire</div>
+                          <Badge variant="outline" className="border-emerald-300 bg-white text-emerald-800">
+                            incredere {activityAutofillSuggestion.confidence}
+                          </Badge>
+                        </div>
+                        <div className="grid gap-2 md:grid-cols-2">
+                          <div>
+                            <div className="text-xs font-medium text-emerald-800">Subactivitate</div>
+                            <div>{activityAutofillSuggestion.recommended.saCode}</div>
+                          </div>
+                          <div>
+                            <div className="text-xs font-medium text-emerald-800">Activitate</div>
+                            <div>{activityAutofillSuggestion.recommended.activityName}</div>
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-xs font-medium text-emerald-800">Descriere propusa</div>
+                          <div className="mt-1 whitespace-pre-wrap rounded border border-emerald-200 bg-white p-2 text-xs text-slate-800">
+                            {activityAutofillSuggestion.recommended.description}
+                          </div>
+                        </div>
+                        <div className="grid gap-2 md:grid-cols-3">
+                          <div>
+                            <div className="text-xs font-medium text-emerald-800">Linia Subactivitate</div>
+                            <p className="text-xs">{activityAutofillSuggestion.fieldInstructions.saCode}</p>
+                          </div>
+                          <div>
+                            <div className="text-xs font-medium text-emerald-800">Linia Activitate</div>
+                            <p className="text-xs">{activityAutofillSuggestion.fieldInstructions.activityName}</p>
+                          </div>
+                          <div>
+                            <div className="text-xs font-medium text-emerald-800">Linia Descriere</div>
+                            <p className="text-xs">{activityAutofillSuggestion.fieldInstructions.description}</p>
+                          </div>
+                        </div>
+                        {activityAutofillSuggestion.evidence.length > 0 && (
+                          <div>
+                            <div className="text-xs font-medium text-emerald-800">Dovezi folosite</div>
+                            <ul className="mt-1 list-disc pl-4 text-xs">
+                              {activityAutofillSuggestion.evidence.map((item, index) => (
+                                <li key={`${item}-${index}`}>{item}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        {activityAutofillSuggestion.warnings.length > 0 && (
+                          <div className="rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
+                            <div className="font-medium">De revizuit</div>
+                            <ul className="mt-1 list-disc pl-4">
+                              {activityAutofillSuggestion.warnings.map((item, index) => (
+                                <li key={`${item}-${index}`}>{item}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        <div className="flex justify-end">
+                          <Button type="button" size="sm" onClick={applyActivityAutofillSuggestion}>
+                            <CheckCircle className="h-4 w-4 mr-2" />
+                            Aplica sugestia
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    className="hidden"
+                    onChange={handleFileUpload}
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png"
+                  />
+                </div>
+              </div>
+            )}
+
             {/* Sub-activity and Activity */}
             <div className="grid grid-cols-2 gap-4">
               <Field>
@@ -1744,74 +2021,9 @@ export function ActivityForm({
               </Field>
             )}
 
-            {/* Main Deliverables */}
+            {/* Supporting deliverable settings */}
             {!isException && (
               <div className="space-y-4">
-                {/* Livrabile principale */}
-                <div className="bg-slate-50 rounded-lg p-4 border">
-                  <div className="flex items-center justify-between mb-3">
-                    <div>
-                      <div className="text-sm font-medium text-foreground flex items-center gap-2">
-                        <FileText className="h-4 w-4" />
-                        Livrabile principale
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        Outputurile directe ale activitatii - obligatorii
-                      </div>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => addDeliverableSlot('livrabil')}
-                    >
-                      <Plus className="h-4 w-4 mr-1" />
-                      Adauga livrabil
-                    </Button>
-                  </div>
-
-                  {mainDeliverables.length === 0 && (
-                    <div className="text-center py-4 text-xs text-muted-foreground border border-dashed rounded-md">
-                      Niciun livrabil. Apasa + pentru a adauga outputul activitatii.
-                    </div>
-                  )}
-
-                  <div className="space-y-3">
-                    {mainDeliverables.map((d) => (
-                      <DeliverableItem
-                        key={d.id}
-                        deliverable={d}
-                        subActivity={saCode}
-                        activityTitle={activityTitle}
-                        selectedActivityId={selectedCatalogItem?.id}
-                        catalogDescription={selectedCatalogItem?.description}
-                        catalogObjectives={selectedCatalogItem?.objectives}
-                        catalogComponent={selectedCatalogItem?.serviceComponent}
-                        catalogBeneficiaries={selectedCatalogItem?.beneficiaries}
-                        catalogExpectedResults={selectedCatalogItem?.expectedResults}
-                        catalogDeliverables={selectedCatalogItem?.deliverables}
-                        catalogIndicators={selectedCatalogItem?.indicators}
-                        projectCode={expert?.projectCode}
-                        month={month}
-                        year={year}
-                        expertName={expertName}
-                        onUpdate={(patch) => updateDeliverable(d.id, patch)}
-                        onRemove={() => removeDeliverable(d.id)}
-                        deliverableOptions={deliverableOptions}
-                      />
-                    ))}
-                  </div>
-
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple
-                    className="hidden"
-                    onChange={handleFileUpload}
-                    accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png"
-                  />
-                </div>
-
                 {/* Colaborare */}
                 <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
                   <div className="text-sm font-medium text-blue-800 mb-3 flex items-center gap-2">
