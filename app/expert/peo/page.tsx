@@ -1150,8 +1150,6 @@ export default function ExpertDashboard() {
           </>
         }
       >
-        {!showForm && (
-          <>
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-4">
           <div className="space-y-1">
             <div className="flex flex-wrap items-center gap-2">
@@ -1307,8 +1305,6 @@ export default function ExpertDashboard() {
             )}
           </CardContent>
         </Card>
-          </>
-        )}
 
         <div id="livrabile" className="scroll-mt-24" />
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
