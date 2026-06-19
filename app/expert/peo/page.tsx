@@ -56,11 +56,37 @@ import {
 } from '@/lib/pontaj-rules';
 
 type SubmitReadinessSeverity = 'ok' | 'warning' | 'blocking';
+type SubmitReadinessKey =
+  | 'working-days'
+  | 'deliverables'
+  | 'titles'
+  | 'ai'
+  | 'norm'
+  | 'shared-deliverables'
+  | 'gdpr';
+
+type SubmitReadinessIssueAction =
+  | { type: 'edit-activity'; activityId: string }
+  | { type: 'add-activity-date'; date: string }
+  | { type: 'open-shared-activity'; relationId: string }
+  | { type: 'open-shared-deliverable'; relationId: string }
+  | { type: 'review-activities' };
+
+interface SubmitReadinessIssue {
+  id: string;
+  title: string;
+  detail: string;
+  meta?: string;
+  actionLabel?: string;
+  action?: SubmitReadinessIssueAction;
+}
 
 interface SubmitReadinessItem {
+  key: SubmitReadinessKey;
   label: string;
   detail: string;
   severity: SubmitReadinessSeverity;
+  issues: SubmitReadinessIssue[];
 }
 
 const SUBMIT_MIN_NORM_PERCENT = 80;
@@ -95,6 +121,18 @@ function formatDisplayDate(date?: string) {
   return date ? formatDateRo(date) : 'Neprecizata';
 }
 
+function getActivityDisplayTitle(activity: Activity) {
+  return activity.title || activity.activityType || 'Activitate fara titlu';
+}
+
+function getDeliverableDisplayName(deliverable: Deliverable) {
+  return deliverable.declaredTitle
+    || deliverable.fileName
+    || deliverable.originalFileName
+    || deliverable.docTitle
+    || 'Livrabil fara titlu';
+}
+
 export default function ExpertDashboard() {
   const router = useRouter();
   const today = new Date();
@@ -116,6 +154,7 @@ export default function ExpertDashboard() {
   const [pendingSharedActivityRelationId, setPendingSharedActivityRelationId] = useState<string | null>(null);
   const [pendingSharedDeliverableRelationId, setPendingSharedDeliverableRelationId] = useState<string | null>(null);
   const [sharedActivityPrefill, setSharedActivityPrefill] = useState<Partial<Activity> | null>(null);
+  const [selectedReadinessKey, setSelectedReadinessKey] = useState<SubmitReadinessKey | null>(null);
 
   // Data hooks
   const { experts, isLoading: expertsLoading } = useExperts();
@@ -451,15 +490,17 @@ export default function ExpertDashboard() {
       && !(selectedExpert.category === 'gdpr' && activity.gdprTemplateCode)
       && !hasUsableDeliverable(activity.deliverables),
     );
-    const deliverables = activities.flatMap((activity) => activity.deliverables ?? []);
-    const unconfirmedTitles = deliverables.filter((deliverable) =>
+    const deliverableRefs = activities.flatMap((activity) =>
+      (activity.deliverables ?? []).map((deliverable) => ({ activity, deliverable })),
+    );
+    const unconfirmedTitles = deliverableRefs.filter(({ deliverable }) =>
       needsTitleConfirmation(deliverable) && deliverable.titleConfirmed !== true,
     );
-    const aiReviewDeliverables = deliverables.filter((deliverable) =>
+    const aiReviewDeliverables = deliverableRefs.filter(({ deliverable }) =>
       deliverable.aiStatus === 'review' || deliverable.aiStatus === 'ineligible',
     );
     const gdprActivitiesWithIssues = selectedExpert.category === 'gdpr'
-      ? activities.filter((activity) => {
+      ? activities.map((activity) => {
           if (isActivityException(activity)) return false;
           const validation = validateGdprActivityDraft({
             templateCode: activity.gdprTemplateCode,
@@ -467,58 +508,160 @@ export default function ExpertDashboard() {
             description: activity.gdprGeneratedText || activity.description,
             hasDeliverable: hasUsableDeliverable(activity.deliverables),
           });
-          return !validation.ok;
-        })
+          return validation.ok ? null : { activity, missingFields: validation.missingFields };
+        }).filter((item): item is { activity: Activity; missingFields: string[] } => Boolean(item))
       : [];
     const utilizationPercent = monthlyBlocking.monthlyNorm > 0
       ? Math.round((monthlyBlocking.totalHours / monthlyBlocking.monthlyNorm) * 100)
       : 0;
+    const submitThresholdHours = Math.ceil((monthlyBlocking.monthlyNorm * SUBMIT_MIN_NORM_PERCENT) / 100);
+    const remainingThresholdHours = Math.max(0, submitThresholdHours - monthlyBlocking.totalHours);
     const pendingSharedDeliverables = sharedDeliverables.filter((relation) =>
       relation.status === 'pending_registration',
     );
+    const missingWorkingDayIssues: SubmitReadinessIssue[] = missingWorkingDays.map((date) => ({
+      id: `working-day-${date}`,
+      title: formatDisplayDate(date),
+      detail: 'Zi lucratoare fara pontaj sau exceptie.',
+      meta: date,
+      actionLabel: 'Adauga activitate',
+      action: { type: 'add-activity-date', date },
+    }));
+    const missingDeliverableIssues: SubmitReadinessIssue[] = activitiesMissingDeliverables.map((activity) => ({
+      id: `missing-deliverable-${activity.id}`,
+      title: getActivityDisplayTitle(activity),
+      detail: 'Activitatea nu are niciun livrabil principal atasat.',
+      meta: `${formatDisplayDate(activity.date)}${activity.saCode ? ` / ${activity.saCode}` : ''}`,
+      actionLabel: 'Rezolva',
+      action: { type: 'edit-activity', activityId: activity.id },
+    }));
+    const unconfirmedTitleGroups = unconfirmedTitles.reduce((groups, item) => {
+      const group = groups.get(item.activity.id) || {
+        activity: item.activity,
+        deliverables: [] as Deliverable[],
+      };
+      group.deliverables.push(item.deliverable);
+      groups.set(item.activity.id, group);
+      return groups;
+    }, new Map<string, { activity: Activity; deliverables: Deliverable[] }>());
+    const unconfirmedTitleIssues: SubmitReadinessIssue[] = Array.from(unconfirmedTitleGroups.values()).map(({ activity, deliverables }) => {
+      const deliverableNames = deliverables.map(getDeliverableDisplayName).join(', ');
+      const messages = deliverables
+        .map((deliverable) => deliverable.titleCheckMessage)
+        .filter(Boolean)
+        .join(' ');
+      return {
+        id: `title-${activity.id}`,
+        title: getActivityDisplayTitle(activity),
+        detail: `Titluri neconfirmate: ${deliverableNames}.${messages ? ` ${messages}` : ''}`,
+        meta: `${formatDisplayDate(activity.date)}${activity.saCode ? ` / ${activity.saCode}` : ''}`,
+        actionLabel: 'Rezolva',
+        action: { type: 'edit-activity', activityId: activity.id },
+      };
+    });
+    const aiReviewIssues: SubmitReadinessIssue[] = aiReviewDeliverables.map(({ activity, deliverable }) => ({
+      id: `ai-${activity.id}-${deliverable.id}`,
+      title: getDeliverableDisplayName(deliverable),
+      detail: deliverable.aiReason || 'Livrabilul este in review sau marcat neeligibil.',
+      meta: `${formatDisplayDate(activity.date)} / ${getActivityDisplayTitle(activity)}`,
+      actionLabel: 'Rezolva',
+      action: { type: 'edit-activity', activityId: activity.id },
+    }));
+    const normIssues: SubmitReadinessIssue[] = utilizationPercent >= SUBMIT_MIN_NORM_PERCENT
+      ? []
+      : [{
+          id: 'monthly-norm-threshold',
+          title: 'Pragul minim de submit nu este atins',
+          detail: monthlyBlocking.monthlyNorm > 0
+            ? `Mai sunt necesare aproximativ ${remainingThresholdHours}h pentru pragul de ${SUBMIT_MIN_NORM_PERCENT}%.`
+            : 'Norma lunara nu este configurata pentru luna curenta.',
+          meta: `${monthlyBlocking.totalHours}h raportate / ${monthlyBlocking.monthlyNorm}h norma`,
+          actionLabel: 'Vezi activitati',
+          action: { type: 'review-activities' },
+        }];
+    const pendingSharedIssues: SubmitReadinessIssue[] = pendingSharedDeliverables.map((relation) => {
+      const document = documents.find((item) => item.id === relation.documentId);
+      const isActivitySuggestion = relation.documentId.startsWith('activity:');
+      const action: SubmitReadinessIssueAction = isActivitySuggestion
+        ? { type: 'open-shared-activity', relationId: relation.id }
+        : { type: 'open-shared-deliverable', relationId: relation.id };
+      return {
+        id: `shared-${relation.id}`,
+        title: isActivitySuggestion
+          ? (relation.sourceActivityTitle || relation.sourceActivityType || 'Activitate comuna propusa')
+          : (document?.originalFileName || relation.sourceActivityTitle || 'Livrabil comun in asteptare'),
+        detail: isActivitySuggestion
+          ? 'Activitate comuna propusa de un coleg, in asteptare.'
+          : 'Livrabil comun in asteptare pentru confirmare/inregistrare.',
+        meta: `${relation.sourceExpertName || 'Expert'}${relation.sourceActivityDate ? ` / ${formatDisplayDate(relation.sourceActivityDate)}` : ''}`,
+        actionLabel: 'Rezolva',
+        action,
+      };
+    });
+    const gdprIssues: SubmitReadinessIssue[] = gdprActivitiesWithIssues.map(({ activity, missingFields }) => ({
+      id: `gdpr-${activity.id}`,
+      title: getActivityDisplayTitle(activity),
+      detail: `Campuri/livrabile lipsa: ${missingFields.join(', ') || 'validare GDPR incompleta'}.`,
+      meta: `${formatDisplayDate(activity.date)}${activity.saCode ? ` / ${activity.saCode}` : ''}`,
+      actionLabel: 'Rezolva',
+      action: { type: 'edit-activity', activityId: activity.id },
+    }));
 
     const items: SubmitReadinessItem[] = [
       {
+        key: 'working-days',
         label: 'Zile lucratoare acoperite',
         detail: missingWorkingDays.length === 0
           ? 'Toate zilele lucratoare au pontaj sau exceptie.'
           : `${missingWorkingDays.length} zile lucratoare fara pontaj: ${missingWorkingDays.slice(0, 5).join(', ')}${missingWorkingDays.length > 5 ? '...' : ''}`,
         severity: missingWorkingDays.length === 0 ? 'ok' : 'warning',
+        issues: missingWorkingDayIssues,
       },
       {
+        key: 'deliverables',
         label: 'Livrabile pe activitati',
         detail: activitiesMissingDeliverables.length === 0
           ? 'Toate activitatile ne-exceptie au cel putin un livrabil.'
           : `${activitiesMissingDeliverables.length} activitati fara livrabil.`,
         severity: activitiesMissingDeliverables.length === 0 ? 'ok' : 'blocking',
+        issues: missingDeliverableIssues,
       },
       {
+        key: 'titles',
         label: 'Titluri confirmate',
         detail: unconfirmedTitles.length === 0
           ? 'Toate titlurile livrabilelor sunt confirmate.'
           : `${unconfirmedTitles.length} livrabile au titlul neconfirmat.`,
         severity: unconfirmedTitles.length === 0 ? 'ok' : 'blocking',
+        issues: unconfirmedTitleIssues,
       },
       {
+        key: 'ai',
         label: 'Verificari AI',
         detail: aiReviewDeliverables.length === 0
           ? 'Nu exista livrabile in review sau ineligible.'
           : `${aiReviewDeliverables.length} livrabile sunt in review sau ineligible.`,
         severity: aiReviewDeliverables.length === 0 ? 'ok' : 'blocking',
+        issues: aiReviewIssues,
       },
       {
+        key: 'norm',
         label: 'Norma lunara',
         detail: `${monthlyBlocking.totalHours}h / ${monthlyBlocking.monthlyNorm}h (${utilizationPercent}%). Prag submit: ${SUBMIT_MIN_NORM_PERCENT}%.`,
         severity: utilizationPercent >= SUBMIT_MIN_NORM_PERCENT ? 'ok' : 'warning',
+        issues: normIssues,
       },
       {
+        key: 'shared-deliverables',
         label: 'Livrabile comune',
         detail: pendingSharedDeliverables.length === 0
           ? 'Nu exista livrabile comune in asteptare.'
           : `${pendingSharedDeliverables.length} livrabile comune asteapta confirmare/inregistrare.`,
         severity: pendingSharedDeliverables.length === 0 ? 'ok' : 'warning',
+        issues: pendingSharedIssues,
       },
       {
+        key: 'gdpr',
         label: 'Reguli GDPR',
         detail: selectedExpert.category !== 'gdpr'
           ? 'Nu se aplica pentru categoria curenta.'
@@ -526,6 +669,7 @@ export default function ExpertDashboard() {
             ? 'Toate activitatile GDPR au template, campuri obligatorii si livrabil acolo unde este necesar.'
             : `${gdprActivitiesWithIssues.length} activitati GDPR au campuri/livrabile lipsa.`,
         severity: selectedExpert.category !== 'gdpr' || gdprActivitiesWithIssues.length === 0 ? 'ok' : 'blocking',
+        issues: gdprIssues,
       },
     ];
 
@@ -538,11 +682,19 @@ export default function ExpertDashboard() {
         ? 'Adauga cel putin o activitate inainte de trimitere.'
         : blockingItems[0]?.detail || '',
     };
-  }, [activities, currentMonth, currentYear, monthlyBlocking, selectedExpert.category, sharedDeliverables]);
+  }, [activities, currentMonth, currentYear, documents, monthlyBlocking, selectedExpert.category, sharedDeliverables]);
+
+  const selectedReadinessItem = selectedReadinessKey
+    ? submitReadiness.items.find((item) => item.key === selectedReadinessKey && item.severity !== 'ok') ?? null
+    : null;
 
   const handleSubmitMonth = async () => {
     if (!selectedExpertId || isApproved) return;
     if (submitReadiness.hasBlockingIssues) {
+      const firstIssueItem = submitReadiness.blockingItems[0] || submitReadiness.items.find((item) => item.severity !== 'ok');
+      if (firstIssueItem) {
+        setSelectedReadinessKey(firstIssueItem.key);
+      }
       setSaveError(submitReadiness.disabledReason);
       return;
     }
@@ -599,6 +751,58 @@ export default function ExpertDashboard() {
     setPendingSharedDeliverableRelationId(null);
     setSharedActivityPrefill(null);
     clearSharedRelationQueryParams();
+  };
+
+  const handleReadinessIssueAction = (issue: SubmitReadinessIssue) => {
+    if (!issue.action) return;
+    setSaveError(null);
+
+    if (issue.action.type === 'edit-activity') {
+      const { activityId } = issue.action;
+      const activity = activities.find((item) => item.id === activityId);
+      if (activity) {
+        handleEditActivity(activity);
+      }
+      return;
+    }
+
+    if (issue.action.type === 'add-activity-date') {
+      if (monthlyBlocking.isBlocked) {
+        setSaveError(monthlyBlocking.reason);
+        return;
+      }
+      try {
+        assertCanLogHoursOnDate(issue.action.date);
+      } catch (error) {
+        setSaveError(error instanceof Error ? error.message : 'Ziua selectata este nelucratoare.');
+        return;
+      }
+      syncSelectedDates([issue.action.date]);
+      setEditingActivity(null);
+      setSharedActivityPrefill(null);
+      setShowForm(true);
+      setActiveTab('activitati');
+      return;
+    }
+
+    if (issue.action.type === 'open-shared-activity') {
+      setShowForm(false);
+      setPendingSharedDeliverableRelationId(null);
+      setPendingSharedActivityRelationId(issue.action.relationId);
+      setActiveTab('activitati');
+      return;
+    }
+
+    if (issue.action.type === 'open-shared-deliverable') {
+      setShowForm(false);
+      setPendingSharedActivityRelationId(null);
+      setPendingSharedDeliverableRelationId(issue.action.relationId);
+      setActiveTab('activitati');
+      return;
+    }
+
+    setShowForm(false);
+    setActiveTab('activitati');
   };
 
 
@@ -978,8 +1182,7 @@ export default function ExpertDashboard() {
             <Button
               onClick={handleSubmitMonth}
               disabled={
-                submitReadiness.hasBlockingIssues
-                || isApproved
+                isApproved
                 || currentStatus === 'sent'
                 || currentStatus === 'in_review'
               }
@@ -996,36 +1199,112 @@ export default function ExpertDashboard() {
           </CardHeader>
           <CardContent>
             <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-              {submitReadiness.items.map((item) => (
-                <div
-                  key={item.label}
-                  className="flex items-start gap-2 rounded-md border bg-background p-3"
-                >
-                  {item.severity === 'ok' ? (
-                    <CheckCircle className="mt-0.5 h-4 w-4 shrink-0 text-green-600" />
-                  ) : (
-                    <AlertTriangle
-                      className={
-                        item.severity === 'blocking'
-                          ? 'mt-0.5 h-4 w-4 shrink-0 text-red-600'
-                          : 'mt-0.5 h-4 w-4 shrink-0 text-amber-600'
-                      }
-                    />
-                  )}
-                  <div className="min-w-0 space-y-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-sm font-medium text-foreground">{item.label}</p>
-                      <Badge
-                        variant={item.severity === 'blocking' ? 'destructive' : item.severity === 'warning' ? 'outline' : 'secondary'}
-                      >
-                        {item.severity === 'blocking' ? 'Blocant' : item.severity === 'warning' ? 'Atentie' : 'OK'}
-                      </Badge>
+              {submitReadiness.items.map((item) => {
+                const isActionable = item.severity !== 'ok';
+                const isSelected = selectedReadinessKey === item.key;
+                const cardClassName = [
+                  'flex w-full items-start gap-2 rounded-md border bg-background p-3 text-left transition-colors',
+                  isActionable ? 'hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring' : '',
+                  isSelected ? 'border-primary ring-2 ring-primary/30' : '',
+                ].filter(Boolean).join(' ');
+                const cardContent = (
+                  <>
+                    {item.severity === 'ok' ? (
+                      <CheckCircle className="mt-0.5 h-4 w-4 shrink-0 text-green-600" />
+                    ) : (
+                      <AlertTriangle
+                        className={
+                          item.severity === 'blocking'
+                            ? 'mt-0.5 h-4 w-4 shrink-0 text-red-600'
+                            : 'mt-0.5 h-4 w-4 shrink-0 text-amber-600'
+                        }
+                      />
+                    )}
+                    <div className="min-w-0 space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-medium text-foreground">{item.label}</p>
+                        <Badge
+                          variant={item.severity === 'blocking' ? 'destructive' : item.severity === 'warning' ? 'outline' : 'secondary'}
+                        >
+                          {item.severity === 'blocking' ? 'Blocant' : item.severity === 'warning' ? 'Atentie' : 'OK'}
+                        </Badge>
+                        {isActionable && item.issues.length > 0 && (
+                          <span className="text-[11px] font-medium text-muted-foreground">
+                            {item.issues.length} detalii
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground">{item.detail}</p>
                     </div>
-                    <p className="text-xs text-muted-foreground">{item.detail}</p>
+                  </>
+                );
+
+                return isActionable ? (
+                  <button
+                    key={item.key}
+                    type="button"
+                    className={cardClassName}
+                    aria-pressed={isSelected}
+                    onClick={() => setSelectedReadinessKey(item.key)}
+                  >
+                    {cardContent}
+                  </button>
+                ) : (
+                  <div key={item.key} className={cardClassName}>
+                    {cardContent}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
+
+            {selectedReadinessItem && (
+              <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="space-y-1">
+                    <p className="text-sm font-semibold text-slate-900">
+                      Detalii blocaj: {selectedReadinessItem.label}
+                    </p>
+                    <p className="text-xs text-slate-600">{selectedReadinessItem.detail}</p>
+                  </div>
+                  <Badge variant={selectedReadinessItem.severity === 'blocking' ? 'destructive' : 'outline'}>
+                    {selectedReadinessItem.severity === 'blocking' ? 'Blocant' : 'Atentie'}
+                  </Badge>
+                </div>
+
+                {selectedReadinessItem.issues.length === 0 ? (
+                  <p className="mt-3 text-sm text-muted-foreground">
+                    Nu mai exista detalii active pentru acest blocaj.
+                  </p>
+                ) : (
+                  <div className="mt-3 space-y-2">
+                    {selectedReadinessItem.issues.map((issue) => (
+                      <div
+                        key={issue.id}
+                        className="flex flex-wrap items-start justify-between gap-3 rounded-md border bg-white p-3"
+                      >
+                        <div className="min-w-0 space-y-1">
+                          <p className="text-sm font-medium text-slate-900">{issue.title}</p>
+                          {issue.meta && (
+                            <p className="text-xs text-muted-foreground">{issue.meta}</p>
+                          )}
+                          <p className="text-xs text-slate-700">{issue.detail}</p>
+                        </div>
+                        {issue.action && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleReadinessIssueAction(issue)}
+                          >
+                            {issue.actionLabel || 'Rezolva'}
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
           </>
