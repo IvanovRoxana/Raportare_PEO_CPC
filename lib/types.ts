@@ -324,6 +324,52 @@ export interface GrupTintaEntry {
   createdAt?: string;
 }
 
+export interface GrupTintaEntity {
+  id: string;
+  acronym: string;
+  name: string;
+  type?: string;
+  sector?: string;
+  status: 'active' | 'inactive' | 'pending' | 'archived';
+  registrationDate?: string;
+  contactPerson?: string;
+  contactEmail?: string;
+  eligibilityNotes?: string;
+  documents?: GrupTintaDocument[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GrupTintaDocument {
+  id: string;
+  entityId: string;
+  documentType: string;
+  fileName: string;
+  filePath?: string;
+  uploadedAt: string;
+}
+
+export interface GrupTintaMonitoringRecord {
+  id: string;
+  entityId: string;
+  expertId: string;
+  activityId?: string;
+  date: string;
+  month: number;
+  year: number;
+  activityType?: string;
+  subactivity?: string;
+  theme?: string;
+  description: string;
+  result?: string;
+  relevanceReason?: string;
+  projectLogicLink?: string;
+  memberImpact?: string;
+  capacityIncreaseContribution?: string;
+  generatedByAi?: boolean;
+  confidenceScore?: number;
+}
+
 export interface ActivityCatalog {
   id: string;
   category: string;
