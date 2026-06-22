@@ -45,7 +45,11 @@ import { isGtExpertCategory } from '@/lib/peo-category';
 import { parseGdprMetaJson, validateGdprActivityDraft } from '@/lib/gdpr-reporting';
 import { assertCanLogHoursOnDate, getNonWorkingDayInfo } from '@/lib/non-working-days';
 import { formatDate, formatDateRo } from '@/lib/app-utils';
-import { isExceptionActivity } from '@/lib/peo-constants';
+import {
+  createActivityDeliverableAvailabilityResolver,
+  getActivitiesMissingDeliverables,
+  isActivityExceptionForSubmit,
+} from '@/lib/submit-readiness';
 import { getWorkingDaysListInMonth } from '@/lib/working-hours';
 import {
   buildSelectedHoursForDates,
@@ -91,18 +95,7 @@ interface SubmitReadinessItem {
 
 const SUBMIT_MIN_NORM_PERCENT = 80;
 
-function isActivityException(activity: Activity) {
-  return activity.dayType === 'CO'
-    || activity.dayType === 'CM'
-    || Number(activity.hours) === 0
-    || isExceptionActivity(activity.activityType || activity.title || '');
-}
-
-function hasUsableDeliverable(deliverables?: Deliverable[]) {
-  return (deliverables ?? []).some((deliverable) =>
-    Boolean(deliverable.filePath || deliverable.s3Key || deliverable.fileName || deliverable.documentId),
-  );
-}
+const isActivityException = isActivityExceptionForSubmit;
 
 function needsTitleConfirmation(deliverable: Deliverable) {
   return !deliverable.fileType?.startsWith('image/');
@@ -488,14 +481,13 @@ export default function ExpertDashboard() {
     const workingDays = getWorkingDaysListInMonth(currentMonth + 1, currentYear).map(formatDate);
     const activityDates = new Set(activities.map((activity) => activity.date));
     const missingWorkingDays = workingDays.filter((date) => !activityDates.has(date));
-    const activitiesMissingDeliverables = activities.filter((activity) =>
-      !isActivityException(activity)
-      && !(selectedExpert.category === 'gdpr' && activity.gdprTemplateCode)
-      && !hasUsableDeliverable(activity.deliverables),
-    );
+    const activitiesMissingDeliverables = getActivitiesMissingDeliverables(activities, {
+      expertCategory: selectedExpert.category,
+    });
     const deliverableRefs = activities.flatMap((activity) =>
       (activity.deliverables ?? []).map((deliverable) => ({ activity, deliverable })),
     );
+    const activityHasUsableDeliverable = createActivityDeliverableAvailabilityResolver(activities);
     const unconfirmedTitles = deliverableRefs.filter(({ deliverable }) =>
       needsTitleConfirmation(deliverable) && deliverable.titleConfirmed !== true,
     );
@@ -509,7 +501,7 @@ export default function ExpertDashboard() {
             templateCode: activity.gdprTemplateCode,
             meta: parseGdprMetaJson(activity.gdprMetaJson),
             description: activity.gdprGeneratedText || activity.description,
-            hasDeliverable: hasUsableDeliverable(activity.deliverables),
+            hasDeliverable: activityHasUsableDeliverable(activity),
           });
           return validation.ok ? null : { activity, missingFields: validation.missingFields };
         }).filter((item): item is { activity: Activity; missingFields: string[] } => Boolean(item))
@@ -624,7 +616,7 @@ export default function ExpertDashboard() {
         key: 'deliverables',
         label: 'Livrabile pe activitati',
         detail: activitiesMissingDeliverables.length === 0
-          ? 'Toate activitatile ne-exceptie au cel putin un livrabil.'
+          ? 'Activitatile individuale au livrabil, iar perioadele multi-zi au livrabil final.'
           : `${activitiesMissingDeliverables.length} activitati fara livrabil.`,
         severity: activitiesMissingDeliverables.length === 0 ? 'ok' : 'blocking',
         issues: missingDeliverableIssues,

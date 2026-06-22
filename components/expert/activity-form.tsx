@@ -35,6 +35,7 @@ import { isGtExpertCategory, normalizePeoCategory } from '@/lib/peo-category';
 import { mergeActivityCatalogs } from '@/lib/activity-catalog-merge';
 import { buildDocumentS3Key, findDuplicateCandidates, getDocumentAuditTitle, hashFirstPageText, normalizeDocumentTextForFingerprint, sha256Hex } from '@/lib/document-sharing';
 import { shouldAttachUploadedDeliverablesToDate } from '@/lib/activity-deliverables';
+import { createActivityPeriodGroupId } from '@/lib/submit-readiness';
 import {
   MAX_PONTAJ_HOURS,
   buildSelectedHoursForDates,
@@ -1072,6 +1073,10 @@ export function ActivityForm({
       }
     }
 
+    const activityPeriodGroupId = !initialActivity && activityDatesForSave.length > 1
+      ? createActivityPeriodGroupId(generateId())
+      : initialActivity?.workingGroupId;
+
     const activities: Activity[] = activityDatesForSave.map((date) => {
       // Get hours for this specific date, fallback to default
       const dateHours = isLeave ? 0 : Number(normalizePontajHoursValue(hoursPerDay[date] || initialActivity?.hours, defaultHours));
@@ -1144,6 +1149,7 @@ export function ActivityForm({
           })) : [],
         location,
         dayType,
+        workingGroupId: activityPeriodGroupId,
         shareStatus: activityCommon ? 'shared' : 'private',
         takenByExperts: activityCommon ? collaborators : [],
         gdprTemplateCode: isGdprExpert ? gdprTemplateCode : undefined,
