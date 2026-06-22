@@ -411,6 +411,13 @@
               "isRequired": false,
               "attributes": []
             },
+            "periodGroupId": {
+              "name": "periodGroupId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
             "status": {
               "name": "status",
               "isArray": false,

@@ -39,3 +39,14 @@ test('activitatile fara grup isi pastreaza validarea individuala de livrabil', (
 
   assert.deepEqual(missingDeliverables.map((activity) => activity.id), ['standalone']);
 });
+
+test('activitatile multi-zi raman blocante cand grupul nu are niciun livrabil', () => {
+  const activities: Activity[] = [
+    baseActivity({ id: 'day-1', date: '2026-05-06', periodGroupId: 'period-2', deliverables: [] }),
+    baseActivity({ id: 'day-2', date: '2026-05-07', periodGroupId: 'period-2', deliverables: [] }),
+  ];
+
+  const missingDeliverables = getActivitiesMissingDeliverables(activities);
+
+  assert.deepEqual(missingDeliverables.map((activity) => activity.id), ['day-1', 'day-2']);
+});

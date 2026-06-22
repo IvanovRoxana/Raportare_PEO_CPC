@@ -483,6 +483,19 @@ export default function ExpertDashboard() {
     const deliverableRefs = activities.flatMap((activity) =>
       (activity.deliverables ?? []).map((deliverable) => ({ activity, deliverable })),
     );
+    const periodDeliverableAvailability = new Map<string, boolean>();
+    activities.forEach((activity) => {
+      if (!activity.periodGroupId) return;
+      periodDeliverableAvailability.set(
+        activity.periodGroupId,
+        (periodDeliverableAvailability.get(activity.periodGroupId) ?? false)
+          || hasUsableDeliverable(activity.deliverables),
+      );
+    });
+    const activityHasUsableDeliverable = (activity: Activity) =>
+      activity.periodGroupId
+        ? periodDeliverableAvailability.get(activity.periodGroupId) === true
+        : hasUsableDeliverable(activity.deliverables);
     const unconfirmedTitles = deliverableRefs.filter(({ deliverable }) =>
       needsTitleConfirmation(deliverable) && deliverable.titleConfirmed !== true,
     );
@@ -496,7 +509,7 @@ export default function ExpertDashboard() {
             templateCode: activity.gdprTemplateCode,
             meta: parseGdprMetaJson(activity.gdprMetaJson),
             description: activity.gdprGeneratedText || activity.description,
-            hasDeliverable: hasUsableDeliverable(activity.deliverables),
+            hasDeliverable: activityHasUsableDeliverable(activity),
           });
           return validation.ok ? null : { activity, missingFields: validation.missingFields };
         }).filter((item): item is { activity: Activity; missingFields: string[] } => Boolean(item))
