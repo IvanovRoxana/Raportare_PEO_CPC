@@ -1072,6 +1072,8 @@ export function ActivityForm({
       }
     }
 
+    const periodGroupId = !initialActivity && activityDatesForSave.length > 1 ? generateId() : initialActivity?.periodGroupId;
+
     const activities: Activity[] = activityDatesForSave.map((date) => {
       // Get hours for this specific date, fallback to default
       const dateHours = isLeave ? 0 : Number(normalizePontajHoursValue(hoursPerDay[date] || initialActivity?.hours, defaultHours));
@@ -1144,6 +1146,7 @@ export function ActivityForm({
           })) : [],
         location,
         dayType,
+        periodGroupId,
         shareStatus: activityCommon ? 'shared' : 'private',
         takenByExperts: activityCommon ? collaborators : [],
         gdprTemplateCode: isGdprExpert ? gdprTemplateCode : undefined,
