@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ALL_DELIVERABLE_TYPES, DOCUMENT_STADIU_OPTIONS, type DeliverableSlot } from '@/lib/deliverable-types';
-import { extractDocxFirstPageText, extractDocxText, extractPdfFirstPageText, isImageFile } from '@/lib/document-utils';
+import { extractDocxFirstPageText, extractDocxText, extractImageTextWithSource, extractPdfFirstPageTextWithSource, isImageFile } from '@/lib/document-utils';
 import { DELIVERABLE_ELIGIBILITY_UI_MESSAGE, isDeliverableEligibilityCheckEnabledClient } from '@/lib/feature-flags';
 import { applyAutomaticTitleSuggestion, suggestTitleFromFirstPage, validateDeclaredTitleOnFirstPage } from '@/lib/title-suggestion';
 import { getDocumentAuditTitle, hashFirstPageText, normalizeDocumentTextForFingerprint, sha256Hex, type DuplicateIssueType } from '@/lib/document-sharing';
@@ -77,6 +77,7 @@ export function DeliverableItem({
   const typeOptions = deliverableOptions || ALL_DELIVERABLE_TYPES;
   const fileRef = useRef<HTMLInputElement>(null);
   const [aiLoading, setAiLoading] = useState(false);
+  const [extractingText, setExtractingText] = useState(false);
   const eligibilityCheckEnabled = isDeliverableEligibilityCheckEnabledClient();
 
   const readFileAsDataUrl = (file: File) =>
@@ -100,65 +101,86 @@ export function DeliverableItem({
     let docText: string | null = null;
     let firstPageText: string | null = null;
     let titleSuggestion = suggestTitleFromFirstPage(null);
+    let textExtractionSource: DeliverableSlot['textExtractionSource'];
 
-    if (!isPhoto && isDocx) {
-      firstPageText = await extractDocxFirstPageText(file);
-      titleSuggestion = suggestTitleFromFirstPage(firstPageText);
-      docTitle = titleSuggestion.suggestedTitle;
-      docText = await extractDocxText(file);
-    } else if (!isPhoto && isPdf) {
-      firstPageText = await extractPdfFirstPageText(file);
-      titleSuggestion = suggestTitleFromFirstPage(firstPageText);
-      docTitle = titleSuggestion.suggestedTitle;
-      docText = firstPageText;
+    setExtractingText(true);
+    try {
+      if (isPhoto) {
+        const ocrResult = await extractImageTextWithSource(file);
+        firstPageText = ocrResult.text;
+        docText = ocrResult.text;
+        textExtractionSource = ocrResult.source;
+        titleSuggestion = suggestTitleFromFirstPage(firstPageText);
+        docTitle = titleSuggestion.suggestedTitle;
+      } else if (isDocx) {
+        firstPageText = await extractDocxFirstPageText(file);
+        titleSuggestion = suggestTitleFromFirstPage(firstPageText);
+        docTitle = titleSuggestion.suggestedTitle;
+        docText = await extractDocxText(file);
+        textExtractionSource = docText || firstPageText ? 'native' : undefined;
+      } else if (isPdf) {
+        const pdfResult = await extractPdfFirstPageTextWithSource(file);
+        firstPageText = pdfResult.text;
+        titleSuggestion = suggestTitleFromFirstPage(firstPageText);
+        docTitle = titleSuggestion.suggestedTitle;
+        docText = firstPageText;
+        textExtractionSource = pdfResult.source;
+      }
+
+      const suggestion = applyAutomaticTitleSuggestion({
+        currentDeclaredTitle: deliverable.declaredTitle,
+        suggestedTitle: docTitle,
+      });
+      const validation = isPhoto || !suggestion.declaredTitle
+        ? null
+        : validateDeclaredTitleOnFirstPage({
+            firstPageText,
+            declaredTitle: suggestion.declaredTitle,
+            titleSource: suggestion.titleSource,
+          });
+      const fileData = await readFileAsDataUrl(file);
+      const fileHash = await sha256Hex(await file.arrayBuffer());
+      const firstPageTextHash = await hashFirstPageText(firstPageText || docText);
+      const contentFingerprint = normalizeDocumentTextForFingerprint(firstPageText || docText).slice(0, 500);
+
+      onUpdate({
+        filename: file.name,
+        rawFilename: raw,
+        fileType: file.type || 'application/octet-stream',
+        fileSize: file.size,
+        fileData,
+        uploadedAt: new Date().toISOString(),
+        uploaded: true,
+        isPhoto,
+        docTitle,
+        docText,
+        firstPageText,
+        textExtractionSource,
+        fileHash,
+        firstPageTextHash,
+        contentFingerprint,
+        suggestedTitle: docTitle,
+        titleSuggestionConfidence: titleSuggestion.confidence,
+        titleSuggestionAlternatives: titleSuggestion.alternatives,
+        titleSuggestionReason: titleSuggestion.reason,
+        titleSource: suggestion.titleSource,
+        titleMatch: validation?.titleMatch ?? null,
+        titleCheckStatus: validation?.titleCheckStatus,
+        titleCheckMessage: validation?.titleCheckMessage,
+        aiCheck: null,
+        eligibilityCheck: null,
+        titleConfirmed: false,
+        declaredTitle: suggestion.declaredTitle,
+        duplicateStatus: firstPageTextHash ? 'fingerprinted' : undefined,
+        possibleDuplicateOfDocumentId: undefined,
+      });
+    } catch (error) {
+      console.error('Error reading deliverable file:', error);
+      alert('Nu am putut citi fisierul. Reincarca documentul sau incearca un alt format.');
+    } finally {
+      setExtractingText(false);
+      if (fileRef.current) fileRef.current.value = '';
     }
-
-    const suggestion = applyAutomaticTitleSuggestion({
-      currentDeclaredTitle: deliverable.declaredTitle,
-      suggestedTitle: docTitle,
-    });
-    const validation = isPhoto || !suggestion.declaredTitle
-      ? null
-      : validateDeclaredTitleOnFirstPage({
-          firstPageText,
-          declaredTitle: suggestion.declaredTitle,
-          titleSource: suggestion.titleSource,
-        });
-    const fileData = await readFileAsDataUrl(file);
-    const fileHash = await sha256Hex(await file.arrayBuffer());
-    const firstPageTextHash = await hashFirstPageText(firstPageText || docText);
-    const contentFingerprint = normalizeDocumentTextForFingerprint(firstPageText || docText).slice(0, 500);
-
-    onUpdate({
-      filename: file.name,
-      rawFilename: raw,
-      fileType: file.type || 'application/octet-stream',
-      fileSize: file.size,
-      fileData,
-      uploadedAt: new Date().toISOString(),
-      uploaded: true,
-      isPhoto,
-      docTitle,
-      docText,
-      firstPageText,
-      fileHash,
-      firstPageTextHash,
-      contentFingerprint,
-      suggestedTitle: docTitle,
-      titleSuggestionConfidence: titleSuggestion.confidence,
-      titleSuggestionAlternatives: titleSuggestion.alternatives,
-      titleSuggestionReason: titleSuggestion.reason,
-      titleSource: suggestion.titleSource,
-      titleMatch: validation?.titleMatch ?? null,
-      titleCheckStatus: validation?.titleCheckStatus,
-      titleCheckMessage: validation?.titleCheckMessage,
-      aiCheck: null,
-      eligibilityCheck: null,
-      titleConfirmed: false,
-      declaredTitle: suggestion.declaredTitle,
-      duplicateStatus: firstPageTextHash ? 'fingerprinted' : undefined,
-      possibleDuplicateOfDocumentId: undefined,
-    });
   };
 
   const handleAiCheck = async () => {
@@ -304,6 +326,7 @@ export function DeliverableItem({
       contentFingerprint: undefined,
       docTitle: null,
       docText: null,
+      textExtractionSource: undefined,
       firstPageText: null,
       suggestedTitle: null,
       titleSource: undefined,
@@ -414,10 +437,15 @@ export function DeliverableItem({
             variant="outline"
             size="sm"
             onClick={() => fileRef.current?.click()}
+            disabled={extractingText}
             className="w-full text-xs border-dashed"
           >
-            <Upload className="h-3 w-3 mr-2" />
-            Alege fisier
+            {extractingText ? (
+              <Loader2 className="h-3 w-3 mr-2 animate-spin" />
+            ) : (
+              <Upload className="h-3 w-3 mr-2" />
+            )}
+            {extractingText ? 'Se citeste documentul...' : 'Alege fisier'}
           </Button>
         ) : (
           <div className="flex gap-2 items-center p-2 rounded-md bg-white/60 border border-slate-200/50">
@@ -441,6 +469,14 @@ export function DeliverableItem({
         )}
       </div>
 
+      {deliverable.uploaded && (deliverable.docText || deliverable.firstPageText) && (
+        <div className="rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] text-blue-800">
+          {deliverable.textExtractionSource === 'ocr'
+            ? 'Text OCR extras pentru autocompletare.'
+            : 'Text extras disponibil pentru autocompletare.'}
+        </div>
+      )}
+
       {!deliverable.isPhoto && (
         <div className="space-y-1.5">
           {deliverable.uploaded && (
@@ -459,6 +495,11 @@ export function DeliverableItem({
                 {deliverable.firstPageTextHash && (
                   <Badge variant="outline" className="bg-white text-[10px]">
                     prima pagina amprentata
+                  </Badge>
+                )}
+                {deliverable.textExtractionSource === 'ocr' && (
+                  <Badge variant="outline" className="bg-blue-50 text-[10px] text-blue-700">
+                    OCR
                   </Badge>
                 )}
               </div>

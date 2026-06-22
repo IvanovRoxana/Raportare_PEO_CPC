@@ -159,6 +159,7 @@ export interface DeliverableSlot {
   isPhoto: boolean;
   docTitle: string | null;
   docText: string | null;
+  textExtractionSource?: 'native' | 'ocr';
   declaredTitle: string;
   suggestedTitle?: string | null;
   titleSuggestionConfidence?: TitleSuggestionConfidence;

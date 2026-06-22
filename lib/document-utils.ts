@@ -7,6 +7,28 @@ type PdfTextItem = {
   transform?: number[];
 };
 
+type PdfViewport = {
+  width: number;
+  height: number;
+};
+
+type PdfPage = {
+  getViewport: (options: { scale: number }) => PdfViewport;
+  getTextContent: () => Promise<{ items: PdfTextItem[] }>;
+  render: (options: { canvasContext: CanvasRenderingContext2D; canvas: HTMLCanvasElement; viewport: PdfViewport }) => { promise: Promise<void> };
+};
+
+export type DocumentTextExtractionSource = 'native' | 'ocr';
+
+export type DocumentTextExtractionResult = {
+  text: string | null;
+  source?: DocumentTextExtractionSource;
+};
+
+const MIN_USEFUL_TEXT_LENGTH = 40;
+const MAX_OCR_PDF_PAGES = 3;
+const PDF_OCR_SCALE = 2;
+
 function pdfTextItemsToLines(items: PdfTextItem[]) {
   const rows = new Map<number, string[]>();
 
@@ -22,6 +44,91 @@ function pdfTextItemsToLines(items: PdfTextItem[]) {
     .map(([, values]) => values.join(' ').replace(/\s+/g, ' ').trim())
     .filter(Boolean)
     .join('\n');
+}
+
+function normalizeExtractedText(text: string | null | undefined) {
+  return (text || '').replace(/\s+/g, ' ').trim();
+}
+
+function hasUsefulText(text: string | null | undefined) {
+  return normalizeExtractedText(text).length >= MIN_USEFUL_TEXT_LENGTH;
+}
+
+async function createOcrWorker() {
+  const Tesseract = await import('tesseract.js');
+  const worker = await Tesseract.createWorker(['ron', 'eng']);
+  await worker.setParameters({
+    preserve_interword_spaces: '1',
+    tessedit_pageseg_mode: Tesseract.PSM.AUTO,
+  });
+  return worker;
+}
+
+async function recognizeCanvasText(canvas: HTMLCanvasElement) {
+  const worker = await createOcrWorker();
+  try {
+    const result = await worker.recognize(canvas);
+    return normalizeExtractedText(result.data.text) || null;
+  } catch (error) {
+    console.error('Error running OCR:', error);
+    return null;
+  } finally {
+    await worker.terminate();
+  }
+}
+
+async function renderPdfPageToCanvas(page: PdfPage) {
+  if (typeof document === 'undefined') return null;
+
+  const viewport = page.getViewport({ scale: PDF_OCR_SCALE });
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.ceil(viewport.width);
+  canvas.height = Math.ceil(viewport.height);
+
+  const context = canvas.getContext('2d');
+  if (!context) return null;
+
+  await page.render({ canvasContext: context, canvas, viewport }).promise;
+  return canvas;
+}
+
+async function extractPdfPageTextWithOcrFallback(page: PdfPage) {
+  const textContent = await page.getTextContent();
+  const nativeText = pdfTextItemsToLines(textContent.items);
+  if (hasUsefulText(nativeText)) {
+    return { text: nativeText, source: 'native' as const };
+  }
+
+  const canvas = await renderPdfPageToCanvas(page);
+  const ocrText = canvas ? await recognizeCanvasText(canvas) : null;
+  if (ocrText) {
+    return { text: ocrText, source: 'ocr' as const };
+  }
+
+  return {
+    text: nativeText || null,
+    source: nativeText ? 'native' as const : undefined,
+  };
+}
+
+export async function extractImageTextWithSource(file: File): Promise<DocumentTextExtractionResult> {
+  try {
+    const worker = await createOcrWorker();
+    try {
+      const result = await worker.recognize(file);
+      const text = normalizeExtractedText(result.data.text) || null;
+      return { text, source: text ? 'ocr' : undefined };
+    } finally {
+      await worker.terminate();
+    }
+  } catch (error) {
+    console.error('Error extracting image text with OCR:', error);
+    return { text: null };
+  }
+}
+
+export async function extractImageText(file: File): Promise<string | null> {
+  return (await extractImageTextWithSource(file)).text;
 }
 
 // Extract title from DOCX file (first line or heading)
@@ -73,7 +180,7 @@ export async function extractPdfTitle(file: File): Promise<string | null> {
 }
 
 // Extract text from the first PDF page only.
-export async function extractPdfFirstPageText(file: File): Promise<string | null> {
+export async function extractPdfFirstPageTextWithSource(file: File): Promise<DocumentTextExtractionResult> {
   try {
     const pdfjsLib = await import('pdfjs-dist');
     pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
@@ -81,12 +188,15 @@ export async function extractPdfFirstPageText(file: File): Promise<string | null
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
     const page = await pdf.getPage(1);
-    const textContent = await page.getTextContent();
-    return pdfTextItemsToLines(textContent.items as PdfTextItem[]);
+    return extractPdfPageTextWithOcrFallback(page as unknown as PdfPage);
   } catch (error) {
     console.error('Error extracting PDF first page text:', error);
-    return null;
+    return { text: null };
   }
+}
+
+export async function extractPdfFirstPageText(file: File): Promise<string | null> {
+  return (await extractPdfFirstPageTextWithSource(file)).text;
 }
 
 // Extract text from PDF file
@@ -104,6 +214,22 @@ export async function extractPdfText(file: File): Promise<string | null> {
       const textContent = await page.getTextContent();
       const pageText = pdfTextItemsToLines(textContent.items as PdfTextItem[]);
       fullText += pageText + '\n';
+    }
+
+    if (hasUsefulText(fullText)) {
+      return fullText.trim();
+    }
+
+    const ocrPageCount = Math.min(pdf.numPages, MAX_OCR_PDF_PAGES);
+    const ocrPages: string[] = [];
+    for (let i = 1; i <= ocrPageCount; i++) {
+      const page = await pdf.getPage(i);
+      const pageText = await extractPdfPageTextWithOcrFallback(page as unknown as PdfPage);
+      if (pageText.text) ocrPages.push(pageText.text);
+    }
+
+    if (ocrPages.length > 0) {
+      return ocrPages.join('\n\n').trim();
     }
     
     return fullText.trim();

@@ -488,7 +488,7 @@ export function ActivityForm({
   ), [filteredCatalog]);
 
   const activityAutofillUnavailableMessage = activityAutofillDeliverables.length === 0
-    ? 'Incarca un PDF/DOC/DOCX cu text extras pentru autocompletare.'
+    ? 'Incarca un PDF/DOC/DOCX sau o imagine scanata; aplicatia va extrage textul nativ sau OCR pentru autocompletare.'
     : activityAutofillCatalogCandidates.length === 0
       ? 'Nu exista activitati de catalog disponibile pentru rolul curent.'
       : null;
