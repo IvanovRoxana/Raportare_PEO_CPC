@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { ArrowLeft, CalendarDays, CheckCircle, ClipboardList, Clock3, FileText, Loader2, Plus, Send, Lock, AlertTriangle, Upload } from 'lucide-react';
+import { ArrowLeft, CalendarDays, CheckCircle, ClipboardList, Clock3, FileText, Loader2, Plus, Send, Lock, AlertTriangle, Upload, X } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { DashboardShell, expertNavItems } from '@/components/layout/dashboard-shell';
@@ -757,6 +757,17 @@ export default function ExpertDashboard() {
     clearSharedRelationQueryParams();
   };
 
+  const closeActivityForm = () => {
+    setShowForm(false);
+    setEditingActivity(null);
+    setActivityResolutionHint(null);
+    if (pendingSharedActivityRelationId || pendingSharedDeliverableRelationId) {
+      resetSharedRegistrationFlow();
+    }
+    setSelectedDates([]);
+    setSelectedHours({});
+  };
+
   const handleReadinessIssueAction = (issue: SubmitReadinessIssue) => {
     if (!issue.action) return;
     setSaveError(null);
@@ -1467,9 +1478,9 @@ export default function ExpertDashboard() {
                 </p>
               </div>
               <div className="flex flex-col items-end gap-1">
-                <Button onClick={handleAddActivity} disabled={!selectedExpert.id || isApproved || monthlyBlocking.isBlocked}>
+                <Button onClick={handleAddActivity} disabled={!selectedExpert.id || isApproved || monthlyBlocking.isBlocked || showForm}>
                   <Plus className="h-4 w-4" />
-                  Adaugă activitate
+                  {showForm ? 'Formular deschis' : 'Adaugă activitate'}
                 </Button>
                 <p className="text-xs text-muted-foreground">
                   {monthlyBlocking.remainingHours}h disponibile din {monthlyBlocking.monthlyNorm}h
@@ -1497,67 +1508,29 @@ export default function ExpertDashboard() {
                 {/* Form opens automatically when dates are selected */}
               </div>
 
-              {/* Form / Table Section */}
+              {/* Activities table stays visible while the form opens in a side panel. */}
               <div className="lg:col-span-2">
-                {showForm ? (
-                  <ActivityForm
-                    key={
-                      editingActivity
-                        ? `edit-${editingActivity.id}-${activityResolutionHint?.id || 'manual'}`
-                        : sharedActivityPrefill
-                          ? `prefill-${pendingSharedActivityRelationId || pendingSharedDeliverableRelationId || selectedDates.join('-')}`
-                          : `new-${selectedDates.join('-')}-${activityResolutionHint?.id || 'manual'}`
-                    }
-                    selectedDates={selectedDates}
-                    selectedHours={selectedHours}
-                    onSelectedHoursChange={setSelectedHours}
-                    expertId={selectedExpertId || ''}
-                    expertName={selectedExpert.name}
-                    expert={selectedExpert as import('@/lib/types').Expert}
-                    allExperts={collaborationExperts.length > 0 ? collaborationExperts : experts}
-                    allActivities={allMonthActivities}
-                    documents={documents}
-                    month={currentMonth}
-                    year={currentYear}
-                    onSave={handleSaveActivities}
-                    onCancel={() => {
-                      setShowForm(false);
-                      setEditingActivity(null);
-                      setActivityResolutionHint(null);
-                      if (pendingSharedActivityRelationId || pendingSharedDeliverableRelationId) {
-                        resetSharedRegistrationFlow();
-                      }
-                      setSelectedDates([]);
-                      setSelectedHours({});
-                    }}
-                    initialActivity={editingActivity || undefined}
-                    prefillActivity={sharedActivityPrefill || undefined}
-                    resolutionHint={activityResolutionHint || undefined}
-                    isSaving={isSaving}
-                  />
-                ) : (
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>
-                        Activitati - {selectedExpert.name} - {getMonthName(currentMonth)}{' '}
-                        {currentYear}
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      {activitiesLoading ? (
-                        <div className="flex items-center justify-center py-8">
-                          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                        </div>
-                      ) : (
-                        <ActivitiesTable
-                          activities={activities}
-                          onEdit={handleEditActivity}
-                          onDelete={handleDeleteActivity}
-                        />
-                      )}
-                    </CardContent>
-                  </Card>
-                )}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>
+                      Activitati - {selectedExpert.name} - {getMonthName(currentMonth)}{' '}
+                      {currentYear}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {activitiesLoading ? (
+                      <div className="flex items-center justify-center py-8">
+                        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                      </div>
+                    ) : (
+                      <ActivitiesTable
+                        activities={activities}
+                        onEdit={handleEditActivity}
+                        onDelete={handleDeleteActivity}
+                      />
+                    )}
+                  </CardContent>
+                </Card>
               </div>
             </div>
           </TabsContent>
@@ -1660,6 +1633,66 @@ export default function ExpertDashboard() {
           </TabsContent>
         </Tabs>
       </DashboardShell>
+
+      {showForm && (
+        <div className="pointer-events-none fixed inset-y-0 right-0 z-50 flex w-full justify-end p-0 sm:inset-y-4 sm:right-4 sm:w-[min(760px,calc(100vw-2rem))] lg:w-[min(760px,calc(100vw-24rem))]">
+          <section
+            role="dialog"
+            aria-modal="false"
+            aria-labelledby="activity-form-drawer-title"
+            className="pointer-events-auto flex h-full w-full flex-col overflow-hidden border-l bg-background shadow-2xl sm:rounded-lg sm:border"
+          >
+            <div className="flex items-start justify-between gap-3 border-b bg-background px-4 py-3 sm:px-5">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase text-muted-foreground">
+                  {editingActivity ? 'Editare activitate' : 'Activitate noua'}
+                </p>
+                <h2 id="activity-form-drawer-title" className="truncate text-base font-semibold text-foreground">
+                  {editingActivity
+                    ? getActivityDisplayTitle(editingActivity)
+                    : selectedDates.length === 1
+                      ? `Activitate pentru ${formatDisplayDate(selectedDates[0])}`
+                      : 'Adaugare activitate'}
+                </h2>
+                <p className="text-xs text-muted-foreground">
+                  Calendarul si lista de activitati raman disponibile in pagina.
+                </p>
+              </div>
+              <Button type="button" variant="ghost" size="icon" onClick={closeActivityForm} aria-label="Inchide formularul">
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="flex-1 overflow-y-auto bg-slate-50/70 p-3 sm:p-5">
+              <ActivityForm
+                key={
+                  editingActivity
+                    ? `edit-${editingActivity.id}-${activityResolutionHint?.id || 'manual'}`
+                    : sharedActivityPrefill
+                      ? `prefill-${pendingSharedActivityRelationId || pendingSharedDeliverableRelationId || selectedDates.join('-')}`
+                      : `new-${selectedDates.join('-')}-${activityResolutionHint?.id || 'manual'}`
+                }
+                selectedDates={selectedDates}
+                selectedHours={selectedHours}
+                onSelectedHoursChange={setSelectedHours}
+                expertId={selectedExpertId || ''}
+                expertName={selectedExpert.name}
+                expert={selectedExpert as import('@/lib/types').Expert}
+                allExperts={collaborationExperts.length > 0 ? collaborationExperts : experts}
+                allActivities={allMonthActivities}
+                documents={documents}
+                month={currentMonth}
+                year={currentYear}
+                onSave={handleSaveActivities}
+                onCancel={closeActivityForm}
+                initialActivity={editingActivity || undefined}
+                prefillActivity={sharedActivityPrefill || undefined}
+                resolutionHint={activityResolutionHint || undefined}
+                isSaving={isSaving}
+              />
+            </div>
+          </section>
+        </div>
+      )}
     </>
   );
 }

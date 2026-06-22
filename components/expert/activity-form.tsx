@@ -190,6 +190,7 @@ export function ActivityForm({
   const defaultHours = Number(normalizePontajHoursValue(Math.min(expertNorma, MAX_PONTAJ_HOURS)));
   const hourOptions = useMemo(() => Array.from({ length: MAX_PONTAJ_HOURS }, (_, index) => index + 1), []);
   const activitySeed = initialActivity || prefillActivity;
+  const isEditingActivity = Boolean(initialActivity);
   
   // Per-day hours state - each day can have different hours
   const [hoursPerDay, setHoursPerDay] = useState<Record<string, string>>(() => {
@@ -218,10 +219,18 @@ export function ActivityForm({
   // Update hoursPerDay when selectedDates change (add new dates with default hours)
   useEffect(() => {
     setHoursPerDay(prev => {
+      if (isEditingActivity && initialActivity) {
+        const savedHours = normalizePontajHoursValue(initialActivity.hours, defaultHours);
+        const baseHours = Object.fromEntries(
+          selectedDates.map((date) => [date, prev[date] || savedHours]),
+        );
+        return buildSelectedHoursForDates(selectedDates, baseHours, savedHours);
+      }
+
       const baseHours = { ...prev, ...selectedHours };
       return buildSelectedHoursForDates(selectedDates, baseHours, defaultHours);
     });
-  }, [selectedDates, defaultHours, selectedHours]);
+  }, [selectedDates, defaultHours, selectedHours, isEditingActivity, initialActivity?.hours]);
 
   const updateHoursForDate = (date: string, value: string) => {
     if (!isValidPontajHours(value)) return;
@@ -949,7 +958,7 @@ export function ActivityForm({
       uploadedByExpertName: expertName,
       projectId,
       projectName,
-      activityDate: selectedDates[0],
+      activityDate: initialActivity?.date || selectedDates[0],
       saCode,
       deliverableType: deliverable.type || deliverable.slotType,
       isCommonDeliverable: Boolean(deliverable.common),
@@ -996,11 +1005,12 @@ export function ActivityForm({
       }
     }
 
-    const newActivityDrafts: ActivityDraftForValidation[] = selectedDates.map((date) => ({
+    const activityDatesForSave = initialActivity ? [initialActivity.date] : selectedDates;
+    const newActivityDrafts: ActivityDraftForValidation[] = activityDatesForSave.map((date) => ({
       id: initialActivity?.id,
       expertId,
       date,
-      hours: isLeave ? 0 : Number(normalizePontajHoursValue(hoursPerDay[date], defaultHours)),
+      hours: isLeave ? 0 : Number(normalizePontajHoursValue(hoursPerDay[date] || initialActivity?.hours, defaultHours)),
       status: initialActivity?.status,
       projectCode: expert?.projectCode,
     }));
@@ -1062,10 +1072,10 @@ export function ActivityForm({
       }
     }
 
-    const activities: Activity[] = selectedDates.map((date) => {
+    const activities: Activity[] = activityDatesForSave.map((date) => {
       // Get hours for this specific date, fallback to default
-      const dateHours = isLeave ? 0 : Number(normalizePontajHoursValue(hoursPerDay[date], defaultHours));
-      const shouldAttachDeliverables = shouldAttachUploadedDeliverablesToDate(selectedDates, date);
+      const dateHours = isLeave ? 0 : Number(normalizePontajHoursValue(hoursPerDay[date] || initialActivity?.hours, defaultHours));
+      const shouldAttachDeliverables = shouldAttachUploadedDeliverablesToDate(activityDatesForSave, date);
       
       return {
         id: initialActivity?.id || generateId(),
