@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   buildDocumentS3Key,
+  getDocumentAuditTitle,
   buildPendingSharedActivityAlerts,
   buildPendingSharedDeliverableAlerts,
   buildReturnedSharedActivityAlerts,
@@ -22,6 +23,25 @@ test('genereaza cheia S3 centralizata pentru document', () => {
       originalFileName: 'Raport final.pdf',
     }),
     'projects/302151/documents/doc_123/Raport_final.pdf',
+  );
+});
+
+test('titlul auditabil foloseste titlul confirmat inaintea numelui de fisier', () => {
+  assert.equal(
+    getDocumentAuditTitle({
+      declaredTitle: 'Titlu confirmat pentru audit',
+      suggestedTitle: 'Titlu detectat automat',
+      originalFileName: 'fisier-upload.pdf',
+    }),
+    'Titlu confirmat pentru audit',
+  );
+
+  assert.equal(
+    getDocumentAuditTitle({
+      suggestedTitle: 'Titlu detectat automat',
+      originalFileName: 'fisier-upload.pdf',
+    }),
+    'Titlu detectat automat',
   );
 });
 
@@ -123,6 +143,31 @@ test('detecteaza document identic prin file_hash si similar prin first_page_text
   assert.equal(matches.length, 1);
   assert.ok(matches[0].issues.includes('same_file_hash'));
   assert.ok(matches[0].issues.includes('same_first_page_hash'));
+});
+
+test('detecteaza document existent dupa titlul confirmat normalizat', () => {
+  const matches = findDuplicateCandidates([
+    {
+      id: 'doc_previous_month',
+      s3Key: 'projects/302151/documents/doc_previous_month/raport.pdf',
+      originalFileName: 'raport.pdf',
+      mimeType: 'application/pdf',
+      fileSize: 100,
+      extractedTitleNormalized: 'raport comun dialog social',
+      uploadedByExpertId: 'expert-1',
+      uploadDate: '2026-05-10T00:00:00.000Z',
+      activityDate: '2026-05-10',
+    },
+  ], {
+    id: 'doc_current',
+    extractedTitleNormalized: 'raport comun dialog social',
+    fileSize: 110,
+    mimeType: 'application/pdf',
+  });
+
+  assert.equal(matches.length, 1);
+  assert.ok(matches[0].issues.includes('similar_extracted_title'));
+  assert.ok(matches[0].issues.includes('possible_common_unmarked'));
 });
 
 test('creeaza alerta pentru expertul colaborator cand livrabilul este pending', () => {

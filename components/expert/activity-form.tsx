@@ -20,7 +20,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { FieldGroup, Field, FieldLabel } from '@/components/ui/field';
 import { generateId, formatDateRo } from '@/lib/app-utils';
 import { EventDocsPanel } from './event-docs-panel';
-import { DeliverableItem } from './deliverable-item';
+import { DeliverableItem, type DeliverableDuplicateInfo } from './deliverable-item';
 import { createDeliverableSlot, type DeliverableSlot } from '@/lib/deliverable-types';
 import { 
   ACTS, 
@@ -30,10 +30,10 @@ import {
   getDeliverableOptions 
 } from '@/lib/peo-constants';
 import { useActivityCatalog } from '@/hooks/use-backend-data';
-import type { Activity, Deliverable, GrupTintaEntry, Expert, ActivityCatalog } from '@/lib/types';
+import type { Activity, Deliverable, DocumentMetadata, GrupTintaEntry, Expert, ActivityCatalog } from '@/lib/types';
 import { isGtExpertCategory, normalizePeoCategory } from '@/lib/peo-category';
 import { mergeActivityCatalogs } from '@/lib/activity-catalog-merge';
-import { buildDocumentS3Key, hashFirstPageText, normalizeDocumentTextForFingerprint, sha256Hex } from '@/lib/document-sharing';
+import { buildDocumentS3Key, findDuplicateCandidates, getDocumentAuditTitle, hashFirstPageText, normalizeDocumentTextForFingerprint, sha256Hex } from '@/lib/document-sharing';
 import { shouldAttachUploadedDeliverablesToDate } from '@/lib/activity-deliverables';
 import {
   MAX_PONTAJ_HOURS,
@@ -107,6 +107,7 @@ interface ActivityFormProps {
   expert?: Expert;
   allExperts?: Expert[];
   allActivities?: Activity[];
+  documents?: DocumentMetadata[];
   month: number;
   year: number;
   onSave: (activities: Activity[]) => void | Promise<void>;
@@ -126,6 +127,7 @@ export function ActivityForm({
   expert,
   allExperts = [],
   allActivities = [],
+  documents = [],
   month,
   year,
   onSave,
@@ -355,6 +357,74 @@ export function ActivityForm({
 
     return () => window.clearTimeout(timeoutId);
   }, [resolutionHint, resolutionTargetId]);
+
+  const duplicateInfoByDeliverableId = useMemo(() => {
+    const referenceMonthKey = (selectedDates[0] || `${year}-${String(month + 1).padStart(2, '0')}-01`).slice(0, 7);
+    const matches = new Map<string, DeliverableDuplicateInfo>();
+
+    deliverables.forEach((deliverable) => {
+      if (!deliverable.uploaded || deliverable.isPhoto) return;
+      const documentId = deliverable.documentId || `doc_${deliverable.id}`;
+      const duplicateMatches = findDuplicateCandidates(documents, {
+        id: documentId,
+        fileHash: deliverable.fileHash,
+        firstPageTextHash: deliverable.firstPageTextHash,
+        extractedTitleNormalized: normalizeDocumentTextForFingerprint(getDocumentAuditTitle({
+          ...deliverable,
+          fileName: deliverable.filename || deliverable.name,
+          originalFileName: deliverable.filename || deliverable.name,
+        })),
+        contentFingerprint: deliverable.contentFingerprint,
+        fileSize: deliverable.fileSize || 0,
+        mimeType: deliverable.fileType || 'application/octet-stream',
+      });
+      const duplicate = duplicateMatches[0];
+      if (!duplicate) return;
+
+      const candidateDate = duplicate.document.activityDate || duplicate.document.uploadDate;
+      const candidateMonthKey = candidateDate?.slice(0, 7);
+      matches.set(deliverable.id, {
+        documentId: duplicate.document.id,
+        title: getDocumentAuditTitle(duplicate.document),
+        uploadedByExpertName: duplicate.document.uploadedByExpertName,
+        activityDate: duplicate.document.activityDate || duplicate.document.uploadDate,
+        status: duplicate.issues.includes('same_file_hash')
+          ? 'same_file_hash'
+          : duplicate.issues.includes('same_first_page_hash')
+            ? 'same_first_page_hash'
+            : 'possible_common_unmarked',
+        issues: duplicate.issues,
+        isPreviousPeriod: Boolean(candidateMonthKey && candidateMonthKey < referenceMonthKey),
+        isOtherExpert: Boolean(duplicate.document.uploadedByExpertId && duplicate.document.uploadedByExpertId !== expertId),
+      });
+    });
+
+    return matches;
+  }, [deliverables, documents, expertId, month, selectedDates, year]);
+
+  useEffect(() => {
+    if (duplicateInfoByDeliverableId.size === 0) return;
+    setDeliverables((prev) => {
+      let changed = false;
+      const next = prev.map((deliverable) => {
+        const duplicateInfo = duplicateInfoByDeliverableId.get(deliverable.id);
+        if (!duplicateInfo) return deliverable;
+        if (
+          deliverable.possibleDuplicateOfDocumentId === duplicateInfo.documentId
+          && deliverable.duplicateStatus === duplicateInfo.status
+        ) {
+          return deliverable;
+        }
+        changed = true;
+        return {
+          ...deliverable,
+          possibleDuplicateOfDocumentId: duplicateInfo.documentId,
+          duplicateStatus: duplicateInfo.status,
+        };
+      });
+      return changed ? next : prev;
+    });
+  }, [duplicateInfoByDeliverableId]);
   
   // Get available activities for selected SA from catalog
   const availableActivities = useMemo(() => {
@@ -376,7 +446,11 @@ export function ActivityForm({
     buildActivityAutofillDeliverablesPayload(deliverables.map((deliverable) => ({
       id: deliverable.id,
       fileName: deliverable.filename || deliverable.name,
-      documentTitle: deliverable.declaredTitle || deliverable.suggestedTitle || deliverable.docTitle,
+      documentTitle: getDocumentAuditTitle({
+        ...deliverable,
+        fileName: deliverable.filename || deliverable.name,
+        originalFileName: deliverable.filename || deliverable.name,
+      }),
       deliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
       stadiu: deliverable.stadiu,
       docText: deliverable.docText,
@@ -1778,6 +1852,7 @@ export function ActivityForm({
                             onUpdate={(patch) => updateDeliverable(d.id, patch)}
                             onRemove={() => removeDeliverable(d.id)}
                             deliverableOptions={deliverableOptions}
+                            duplicateInfo={duplicateInfoByDeliverableId.get(d.id)}
                           />
                         </div>
                       );
@@ -2199,7 +2274,11 @@ export function ActivityForm({
                                 className="h-3 w-3"
                               />
                               <span className="flex-1 truncate">
-                                {d.declaredTitle || d.name || d.filename || 'Livrabil fara titlu'}
+                                {getDocumentAuditTitle({
+                                  ...d,
+                                  fileName: d.filename || d.name,
+                                  originalFileName: d.filename || d.name,
+                                })}
                               </span>
                               {d.common && (
                                 <Badge variant="secondary" className="text-[10px]">comun</Badge>
@@ -2258,6 +2337,7 @@ export function ActivityForm({
                         onUpdate={(patch) => updateDeliverable(d.id, patch)}
                         onRemove={() => removeDeliverable(d.id)}
                         required={false}
+                        duplicateInfo={duplicateInfoByDeliverableId.get(d.id)}
                       />
                     ))}
                   </div>
@@ -2298,6 +2378,7 @@ export function ActivityForm({
                           onUpdate={(patch) => updateDeliverable(d.id, patch)}
                           onRemove={() => removeDeliverable(d.id)}
                           required={false}
+                          duplicateInfo={duplicateInfoByDeliverableId.get(d.id)}
                         />
                       ))}
                     </div>

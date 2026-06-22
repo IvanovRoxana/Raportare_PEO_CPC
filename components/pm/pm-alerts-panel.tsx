@@ -1,7 +1,7 @@
 import type React from 'react';
 import { AlertCircle, CheckCircle2, FileWarning } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { isActivitySuggestionRelation } from '@/lib/document-sharing';
+import { getDocumentAuditTitle, isActivitySuggestionRelation } from '@/lib/document-sharing';
 import type { Activity, DashboardComplianceRow, DocumentMetadata, Expert, Neconformitate, SharedDeliverable } from '@/lib/types';
 
 type PendingSharedDeliverable = {
@@ -66,7 +66,7 @@ export function PmAlertsPanel({
           {titleIssues.length > 0 && (
             <AlertCard title={`Documente cu title_mismatch (${titleIssues.length})`} tone="destructive">
               {titleIssues.slice(0, 4).map((document) => (
-                <div key={document.id}>{document.declaredTitle || document.originalFileName}</div>
+                <div key={document.id}>{getDocumentAuditTitle(document)}</div>
               ))}
             </AlertCard>
           )}
@@ -87,7 +87,7 @@ export function PmAlertsPanel({
                     <div className="font-medium">
                       {isActivitySuggestionRelation(relation)
                         ? 'Sugestie activitate comună'
-                        : document?.declaredTitle || document?.suggestedTitle || document?.originalFileName || relation.documentId}
+                        : document ? getDocumentAuditTitle(document) : relation.documentId}
                     </div>
                     <div className="mt-1 text-xs text-muted-foreground">
                       {isActivitySuggestionRelation(relation)

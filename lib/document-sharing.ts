@@ -36,6 +36,30 @@ export function normalizeDocumentTextForFingerprint(text?: string | null) {
   return normalizeTitleForMatch(text || '');
 }
 
+export function getDocumentAuditTitle(input: {
+  declaredTitle?: string | null;
+  suggestedTitle?: string | null;
+  filename?: string | null;
+  fileName?: string | null;
+  name?: string | null;
+  originalFileName?: string | null;
+  extractedTitle?: string | null;
+  docTitle?: string | null;
+}) {
+  const candidates = [
+    input.declaredTitle,
+    input.suggestedTitle,
+    input.extractedTitle,
+    input.docTitle,
+    input.originalFileName,
+    input.fileName,
+    input.filename,
+    input.name,
+  ];
+  return candidates.find((value) => typeof value === 'string' && value.trim())?.trim()
+    || 'Document fara titlu confirmat';
+}
+
 export async function hashFirstPageText(text?: string | null) {
   const normalized = normalizeDocumentTextForFingerprint(text);
   return normalized ? sha256Hex(normalized) : undefined;
@@ -207,7 +231,7 @@ export function buildPendingSharedDeliverableAlerts(args: {
         relationId: relation.id,
         documentId: relation.documentId,
         fileName: document?.originalFileName ?? 'Document comun',
-        title: document?.declaredTitle || document?.suggestedTitle || document?.extractedTitle || document?.originalFileName,
+        title: document ? getDocumentAuditTitle(document) : undefined,
         uploadedByExpertName: document?.uploadedByExpertName,
         projectId: relation.projectId || document?.projectId,
         saCode: document?.saCode,

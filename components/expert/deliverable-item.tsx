@@ -10,6 +10,18 @@ import { ALL_DELIVERABLE_TYPES, DOCUMENT_STADIU_OPTIONS, type DeliverableSlot } 
 import { extractDocxFirstPageText, extractDocxText, extractPdfFirstPageText, isImageFile } from '@/lib/document-utils';
 import { DELIVERABLE_ELIGIBILITY_UI_MESSAGE, isDeliverableEligibilityCheckEnabledClient } from '@/lib/feature-flags';
 import { applyAutomaticTitleSuggestion, suggestTitleFromFirstPage, validateDeclaredTitleOnFirstPage } from '@/lib/title-suggestion';
+import { getDocumentAuditTitle, hashFirstPageText, normalizeDocumentTextForFingerprint, sha256Hex, type DuplicateIssueType } from '@/lib/document-sharing';
+
+export interface DeliverableDuplicateInfo {
+  documentId: string;
+  title: string;
+  uploadedByExpertName?: string;
+  activityDate?: string;
+  status?: string;
+  issues: DuplicateIssueType[];
+  isPreviousPeriod: boolean;
+  isOtherExpert: boolean;
+}
 
 interface DeliverableItemProps {
   deliverable: DeliverableSlot;
@@ -34,6 +46,7 @@ interface DeliverableItemProps {
   label?: string;
   hint?: string;
   deliverableOptions?: string[];
+  duplicateInfo?: DeliverableDuplicateInfo;
 }
 
 export function DeliverableItem({
@@ -59,6 +72,7 @@ export function DeliverableItem({
   label,
   hint,
   deliverableOptions,
+  duplicateInfo,
 }: DeliverableItemProps) {
   const typeOptions = deliverableOptions || ALL_DELIVERABLE_TYPES;
   const fileRef = useRef<HTMLInputElement>(null);
@@ -111,6 +125,9 @@ export function DeliverableItem({
           titleSource: suggestion.titleSource,
         });
     const fileData = await readFileAsDataUrl(file);
+    const fileHash = await sha256Hex(await file.arrayBuffer());
+    const firstPageTextHash = await hashFirstPageText(firstPageText || docText);
+    const contentFingerprint = normalizeDocumentTextForFingerprint(firstPageText || docText).slice(0, 500);
 
     onUpdate({
       filename: file.name,
@@ -124,6 +141,9 @@ export function DeliverableItem({
       docTitle,
       docText,
       firstPageText,
+      fileHash,
+      firstPageTextHash,
+      contentFingerprint,
       suggestedTitle: docTitle,
       titleSuggestionConfidence: titleSuggestion.confidence,
       titleSuggestionAlternatives: titleSuggestion.alternatives,
@@ -136,6 +156,8 @@ export function DeliverableItem({
       eligibilityCheck: null,
       titleConfirmed: false,
       declaredTitle: suggestion.declaredTitle,
+      duplicateStatus: firstPageTextHash ? 'fingerprinted' : undefined,
+      possibleDuplicateOfDocumentId: undefined,
     });
   };
 
@@ -149,7 +171,11 @@ export function DeliverableItem({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          documentTitle: deliverable.declaredTitle || deliverable.suggestedTitle || deliverable.docTitle,
+          documentTitle: getDocumentAuditTitle({
+            ...deliverable,
+            fileName: deliverable.filename || deliverable.name,
+            originalFileName: deliverable.filename || deliverable.name,
+          }),
           fileName: deliverable.filename || deliverable.name,
           extractedText,
           selectedActivityId: selectedActivityId || subActivity,
@@ -273,6 +299,9 @@ export function DeliverableItem({
       fileSize: 0,
       filePath: undefined,
       fileData: undefined,
+      fileHash: undefined,
+      firstPageTextHash: undefined,
+      contentFingerprint: undefined,
       docTitle: null,
       docText: null,
       firstPageText: null,
@@ -287,6 +316,8 @@ export function DeliverableItem({
       aiCheck: null,
       eligibilityCheck: null,
       titleConfirmed: false,
+      duplicateStatus: undefined,
+      possibleDuplicateOfDocumentId: undefined,
     });
     if (fileRef.current) fileRef.current.value = '';
   };
@@ -296,6 +327,16 @@ export function DeliverableItem({
   const step3ok = deliverable.isPhoto || (deliverable.uploaded && !!deliverable.stadiu);
   const step4ok = deliverable.isPhoto || !eligibilityCheckEnabled || (deliverable.uploaded && !!deliverable.aiCheck);
   const allOk = step1ok && step2ok && step3ok && step4ok;
+  const auditTitle = getDocumentAuditTitle({
+    ...deliverable,
+    fileName: deliverable.filename || deliverable.name,
+    originalFileName: deliverable.filename || deliverable.name,
+  });
+  const hasDuplicateSignal = Boolean(duplicateInfo || deliverable.possibleDuplicateOfDocumentId || (
+    deliverable.duplicateStatus
+    && deliverable.duplicateStatus !== 'fingerprinted'
+    && deliverable.duplicateStatus !== 'pending_upload'
+  ));
 
   const borderColor = !step1ok
     ? (required ? 'border-red-300' : 'border-slate-300')
@@ -402,6 +443,28 @@ export function DeliverableItem({
 
       {!deliverable.isPhoto && (
         <div className="space-y-1.5">
+          {deliverable.uploaded && (
+            <div className="rounded border border-slate-200 bg-white p-2 text-[10px] text-slate-700">
+              <div className="font-medium text-slate-900">Titlu auditabil document</div>
+              <div className="mt-0.5 break-words text-xs font-semibold text-slate-950">{auditTitle}</div>
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                <Badge variant="outline" className="bg-white text-[10px]">
+                  {deliverable.titleConfirmed ? 'titlu confirmat' : 'neconfirmat'}
+                </Badge>
+                {deliverable.titleSource && (
+                  <Badge variant="outline" className="bg-white text-[10px]">
+                    sursa: {getTitleSourceLabel(deliverable.titleSource)}
+                  </Badge>
+                )}
+                {deliverable.firstPageTextHash && (
+                  <Badge variant="outline" className="bg-white text-[10px]">
+                    prima pagina amprentata
+                  </Badge>
+                )}
+              </div>
+            </div>
+          )}
+
           {deliverable.suggestedTitle && (
             <div className="rounded border border-blue-200 bg-blue-50 p-2 text-[10px] text-blue-900">
               <div className="flex items-start justify-between gap-2">
@@ -467,6 +530,50 @@ export function DeliverableItem({
           {deliverable.titleMatch === true
             ? (deliverable.titleCheckMessage || 'Titlul se regaseste in prima pagina.')
             : (deliverable.titleCheckMessage || 'Titlul nu a fost gasit in prima pagina.')}
+        </div>
+      )}
+
+      {deliverable.uploaded && !deliverable.isPhoto && hasDuplicateSignal && (
+        <div className="rounded border border-amber-300 bg-amber-50 p-2 text-[10px] text-amber-900">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <AlertTriangle className="h-3 w-3" />
+            <span className="font-semibold">Posibila reutilizare / document existent</span>
+            {duplicateInfo?.isPreviousPeriod && (
+              <Badge variant="outline" className="border-amber-300 bg-white text-[10px] text-amber-800">
+                luna anterioara
+              </Badge>
+            )}
+            {duplicateInfo?.isOtherExpert && (
+              <Badge variant="outline" className="border-amber-300 bg-white text-[10px] text-amber-800">
+                alt expert
+              </Badge>
+            )}
+          </div>
+          {duplicateInfo ? (
+            <div className="mt-1 space-y-0.5">
+              <div className="break-words font-medium">{duplicateInfo.title}</div>
+              <div>
+                {duplicateInfo.uploadedByExpertName || 'Expert necunoscut'}
+                {duplicateInfo.activityDate ? ` / ${duplicateInfo.activityDate}` : ''}
+              </div>
+              <div>Semnale: {duplicateInfo.issues.map(getDuplicateIssueLabel).join(', ')}</div>
+            </div>
+          ) : (
+            <div className="mt-1">
+              Document asociat: {deliverable.possibleDuplicateOfDocumentId || deliverable.duplicateStatus}
+            </div>
+          )}
+        </div>
+      )}
+
+      {deliverable.uploaded && !deliverable.isPhoto && Boolean(deliverable.common || deliverable.isCommonDeliverable) && (
+        <div className="rounded border border-blue-200 bg-blue-50 p-2 text-[10px] text-blue-900">
+          <div className="font-semibold">Document comun / cross-expert</div>
+          <div>
+            {deliverable.sharedWithExpertIds?.length
+              ? `Va fi propus catre ${deliverable.sharedWithExpertIds.length} colaboratori.`
+              : 'Document marcat comun; colaboratorii se confirma in sectiunea de colaborare.'}
+          </div>
         </div>
       )}
 
@@ -568,6 +675,25 @@ function StepBadge({ ok, n, label }: { ok: boolean; n: number; label: string }) 
   );
 }
 
+
+function getTitleSourceLabel(source: string) {
+  if (source === 'auto_detected') return 'detectat automat';
+  if (source === 'edited_by_expert') return 'editat de expert';
+  if (source === 'admin_override') return 'suprascris admin';
+  if (source === 'manual') return 'manual';
+  return source;
+}
+
+function getDuplicateIssueLabel(issue: DuplicateIssueType) {
+  if (issue === 'same_file_hash') return 'fisier identic';
+  if (issue === 'same_first_page_hash') return 'prima pagina identica';
+  if (issue === 'similar_extracted_title') return 'titlu similar';
+  if (issue === 'similar_content_fingerprint') return 'continut similar';
+  if (issue === 'possible_common_unmarked') return 'posibil comun nemarcat';
+  if (issue === 'duplicate_detected') return 'duplicat detectat';
+  if (issue === 'possible_duplicate') return 'posibil duplicat';
+  return issue;
+}
 
 function getEligibilityLabel(status: string) {
   if (status === 'eligibil') return 'Eligibil';

@@ -1516,6 +1516,7 @@ export default function ExpertDashboard() {
                     expert={selectedExpert as import('@/lib/types').Expert}
                     allExperts={collaborationExperts.length > 0 ? collaborationExperts : experts}
                     allActivities={allMonthActivities}
+                    documents={documents}
                     month={currentMonth}
                     year={currentYear}
                     onSave={handleSaveActivities}

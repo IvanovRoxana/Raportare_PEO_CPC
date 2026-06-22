@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { getMonthName } from '@/lib/app-utils';
+import { getDocumentAuditTitle } from '@/lib/document-sharing';
 import type { Activity } from '@/lib/types';
 
 interface ReportGeneratorProps {
@@ -51,7 +52,7 @@ export function ReportGenerator({ activities, month, year, expertName }: ReportG
             location: activity.location,
             gdprTemplateCode: activity.gdprTemplateCode,
             gdprConclusionCode: activity.gdprConclusionCode,
-            deliverables: activity.deliverables?.map((deliverable) => deliverable.declaredTitle || deliverable.fileName).filter(Boolean) || [],
+            deliverables: activity.deliverables?.map((deliverable) => getDocumentAuditTitle(deliverable)).filter(Boolean) || [],
           })),
           month: getMonthName(month),
           year,

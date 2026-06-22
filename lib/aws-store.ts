@@ -54,7 +54,7 @@ import type {
   WorkingGroup,
 } from './types';
 import { createAuditLog, prepareAdminActivityOverride } from './audit-trail';
-import { buildSharedActivitySnapshot, buildSharedActivitySuggestions, buildSharedDeliverables, findDuplicateCandidates, isActivitySuggestionRelation, markSharedDeliverableRegistered } from './document-sharing';
+import { buildSharedActivitySnapshot, buildSharedActivitySuggestions, buildSharedDeliverables, findDuplicateCandidates, getDocumentAuditTitle, isActivitySuggestionRelation, markSharedDeliverableRegistered } from './document-sharing';
 import { buildDefaultConcurrentProjects, mergeConcurrentProjectsWithDefaults } from './default-concurrent-projects';
 import { normalizeTitleForMatch } from './title-suggestion';
 import { parseAwsJsonField, serializeAwsJsonField } from './aws-json';
@@ -668,7 +668,7 @@ async function findExistingDocumentDuplicates(client: any, deliverable: Delivera
     id: deliverable.documentId || '',
     fileHash: deliverable.fileHash,
     firstPageTextHash: deliverable.firstPageTextHash,
-    extractedTitleNormalized: normalizeTitleForMatch(deliverable.suggestedTitle || deliverable.docTitle || deliverable.declaredTitle || ''),
+    extractedTitleNormalized: normalizeTitleForMatch(getDocumentAuditTitle(deliverable)),
     contentFingerprint: deliverable.contentFingerprint,
     fileSize: deliverable.fileSize,
     mimeType: deliverable.fileType,
@@ -715,7 +715,7 @@ async function createDocumentMetadataForDeliverable(
     declaredTitle: deliverable.declaredTitle,
     suggestedTitle: deliverable.suggestedTitle,
     extractedTitle: deliverable.docTitle,
-    extractedTitleNormalized: normalizeTitleForMatch(deliverable.suggestedTitle || deliverable.docTitle || deliverable.declaredTitle || ''),
+    extractedTitleNormalized: normalizeTitleForMatch(getDocumentAuditTitle(deliverable)),
     titleMatch: deliverable.titleMatch ?? undefined,
     titleCheckStatus: deliverable.titleCheckStatus,
     titleSuggestionConfidence: deliverable.titleSuggestionConfidence,
