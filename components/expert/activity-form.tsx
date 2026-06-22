@@ -87,6 +87,17 @@ function resolveSavedSlotType(deliverableType?: string, category?: string): Deli
     : 'livrabil';
 }
 
+export type ActivityResolutionSection = 'details' | 'deliverables' | 'gdpr';
+
+export interface ActivityResolutionHint {
+  id: string;
+  title: string;
+  detail: string;
+  meta?: string;
+  section?: ActivityResolutionSection;
+  deliverableId?: string;
+}
+
 interface ActivityFormProps {
   selectedDates: string[];
   selectedHours?: Record<string, string>;
@@ -102,6 +113,7 @@ interface ActivityFormProps {
   onCancel: () => void;
   initialActivity?: Activity;
   prefillActivity?: Partial<Activity>;
+  resolutionHint?: ActivityResolutionHint;
   isSaving?: boolean;
 }
 
@@ -120,6 +132,7 @@ export function ActivityForm({
   onCancel,
   initialActivity,
   prefillActivity,
+  resolutionHint,
   isSaving = false,
 }: ActivityFormProps) {
   // Fetch activity catalog from database
@@ -323,6 +336,25 @@ export function ActivityForm({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const businessHubPvInputRef = useRef<HTMLInputElement>(null);
+  const resolutionTargetId = resolutionHint?.deliverableId
+    ? `activity-form-deliverable-${resolutionHint.deliverableId}`
+    : resolutionHint?.section === 'deliverables'
+      ? 'activity-form-deliverables-section'
+      : resolutionHint?.section === 'gdpr'
+        ? 'activity-form-gdpr-section'
+        : 'activity-form-details-section';
+
+  useEffect(() => {
+    if (!resolutionHint) return;
+    const timeoutId = window.setTimeout(() => {
+      document.getElementById(resolutionTargetId)?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    }, 120);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [resolutionHint, resolutionTargetId]);
   
   // Get available activities for selected SA from catalog
   const availableActivities = useMemo(() => {
@@ -1412,7 +1444,7 @@ export function ActivityForm({
   };
 
   return (
-    <Card>
+    <Card id="activity-form-panel" className="scroll-mt-24">
       <CardHeader>
         <CardTitle className="text-lg">
           {initialActivity ? 'Editare Activitate' : 'Adaugare Activitate'}
@@ -1426,8 +1458,21 @@ export function ActivityForm({
         )}
       </CardHeader>
       <CardContent className="space-y-6">
+        {resolutionHint && (
+          <div className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <div className="min-w-0 space-y-1">
+              <p className="font-semibold">Rezolvi blocajul: {resolutionHint.title}</p>
+              {resolutionHint.meta && (
+                <p className="text-xs font-medium text-amber-800">{resolutionHint.meta}</p>
+              )}
+              <p className="text-xs text-amber-800">{resolutionHint.detail}</p>
+            </div>
+          </div>
+        )}
+
         {/* Day Type and Hours */}
-        <div className="grid grid-cols-2 gap-4">
+        <div id="activity-form-details-section" className="grid scroll-mt-24 grid-cols-2 gap-4">
           <Field>
             <FieldLabel htmlFor="dayType">Tip zi</FieldLabel>
             <Select value={dayType} onValueChange={(v) => setDayType(v as typeof dayType)}>
@@ -1505,7 +1550,7 @@ export function ActivityForm({
         {!isLeave && (
           <>
             {isGdprExpert && (
-              <div className="space-y-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+              <div id="activity-form-gdpr-section" className="space-y-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4 scroll-mt-24">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <div className="text-sm font-semibold text-emerald-950">Asistent raportare GDPR</div>
@@ -1677,7 +1722,7 @@ export function ActivityForm({
             {!isException && (
               <div className="space-y-4">
                 {/* Livrabile principale */}
-                <div className="bg-slate-50 rounded-lg p-4 border">
+                <div id="activity-form-deliverables-section" className="bg-slate-50 rounded-lg p-4 border scroll-mt-24">
                   <div className="flex items-center justify-between mb-3">
                     <div>
                       <div className="text-sm font-medium text-foreground flex items-center gap-2">
@@ -1706,29 +1751,37 @@ export function ActivityForm({
                   )}
 
                   <div className="space-y-3">
-                    {mainDeliverables.map((d) => (
-                      <DeliverableItem
-                        key={d.id}
-                        deliverable={d}
-                        subActivity={saCode}
-                        activityTitle={activityTitle}
-                        selectedActivityId={selectedCatalogItem?.id}
-                        catalogDescription={selectedCatalogItem?.description}
-                        catalogObjectives={selectedCatalogItem?.objectives}
-                        catalogComponent={selectedCatalogItem?.serviceComponent}
-                        catalogBeneficiaries={selectedCatalogItem?.beneficiaries}
-                        catalogExpectedResults={selectedCatalogItem?.expectedResults}
-                        catalogDeliverables={selectedCatalogItem?.deliverables}
-                        catalogIndicators={selectedCatalogItem?.indicators}
-                        projectCode={expert?.projectCode}
-                        month={month}
-                        year={year}
-                        expertName={expertName}
-                        onUpdate={(patch) => updateDeliverable(d.id, patch)}
-                        onRemove={() => removeDeliverable(d.id)}
-                        deliverableOptions={deliverableOptions}
-                      />
-                    ))}
+                    {mainDeliverables.map((d) => {
+                      const isResolutionDeliverable = resolutionHint?.deliverableId === d.id;
+                      return (
+                        <div
+                          key={d.id}
+                          id={`activity-form-deliverable-${d.id}`}
+                          className={isResolutionDeliverable ? 'scroll-mt-24 rounded-lg ring-2 ring-amber-400 ring-offset-2' : 'scroll-mt-24'}
+                        >
+                          <DeliverableItem
+                            deliverable={d}
+                            subActivity={saCode}
+                            activityTitle={activityTitle}
+                            selectedActivityId={selectedCatalogItem?.id}
+                            catalogDescription={selectedCatalogItem?.description}
+                            catalogObjectives={selectedCatalogItem?.objectives}
+                            catalogComponent={selectedCatalogItem?.serviceComponent}
+                            catalogBeneficiaries={selectedCatalogItem?.beneficiaries}
+                            catalogExpectedResults={selectedCatalogItem?.expectedResults}
+                            catalogDeliverables={selectedCatalogItem?.deliverables}
+                            catalogIndicators={selectedCatalogItem?.indicators}
+                            projectCode={expert?.projectCode}
+                            month={month}
+                            year={year}
+                            expertName={expertName}
+                            onUpdate={(patch) => updateDeliverable(d.id, patch)}
+                            onRemove={() => removeDeliverable(d.id)}
+                            deliverableOptions={deliverableOptions}
+                          />
+                        </div>
+                      );
+                    })}
                   </div>
 
                   <div className="mt-4 rounded-md border border-slate-200 bg-white p-3">

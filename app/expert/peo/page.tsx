@@ -19,7 +19,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { MultiSelectCalendar } from '@/components/expert/multi-select-calendar';
 import { CalendarView } from '@/components/expert/calendar-view';
-import { ActivityForm } from '@/components/expert/activity-form';
+import { ActivityForm, type ActivityResolutionHint, type ActivityResolutionSection } from '@/components/expert/activity-form';
 import { ActivitiesTable } from '@/components/expert/activities-table';
 import { ReportGenerator } from '@/components/expert/report-generator';
 import { MonthlyReportExport } from '@/components/expert/monthly-report-export';
@@ -66,7 +66,7 @@ type SubmitReadinessKey =
   | 'gdpr';
 
 type SubmitReadinessIssueAction =
-  | { type: 'edit-activity'; activityId: string }
+  | { type: 'edit-activity'; activityId: string; section?: ActivityResolutionSection; deliverableId?: string }
   | { type: 'add-activity-date'; date: string }
   | { type: 'open-shared-activity'; relationId: string }
   | { type: 'open-shared-deliverable'; relationId: string }
@@ -155,6 +155,7 @@ export default function ExpertDashboard() {
   const [pendingSharedDeliverableRelationId, setPendingSharedDeliverableRelationId] = useState<string | null>(null);
   const [sharedActivityPrefill, setSharedActivityPrefill] = useState<Partial<Activity> | null>(null);
   const [selectedReadinessKey, setSelectedReadinessKey] = useState<SubmitReadinessKey | null>(null);
+  const [activityResolutionHint, setActivityResolutionHint] = useState<ActivityResolutionHint | null>(null);
 
   // Data hooks
   const { experts, isLoading: expertsLoading } = useExperts();
@@ -433,6 +434,7 @@ export default function ExpertDashboard() {
       setShowForm(false);
       setEditingActivity(null);
       setSharedActivityPrefill(null);
+      setActivityResolutionHint(null);
       setSelectedDates([]);
       setSelectedHours({});
     } catch (error) {
@@ -447,11 +449,12 @@ export default function ExpertDashboard() {
     }
   };
 
-  const handleEditActivity = (activity: Activity) => {
+  const handleEditActivity = (activity: Activity, resolutionHint?: ActivityResolutionHint) => {
     if (reportStatus?.status === 'approved') return;
 
     setEditingActivity(activity);
     setSharedActivityPrefill(null);
+    setActivityResolutionHint(resolutionHint ?? null);
     setSelectedDates([activity.date]);
     setSelectedHours({ [activity.date]: activity.hours.toString() });
     setShowForm(true);
@@ -533,7 +536,7 @@ export default function ExpertDashboard() {
       detail: 'Activitatea nu are niciun livrabil principal atasat.',
       meta: `${formatDisplayDate(activity.date)}${activity.saCode ? ` / ${activity.saCode}` : ''}`,
       actionLabel: 'Rezolva',
-      action: { type: 'edit-activity', activityId: activity.id },
+      action: { type: 'edit-activity', activityId: activity.id, section: 'deliverables' },
     }));
     const unconfirmedTitleGroups = unconfirmedTitles.reduce((groups, item) => {
       const group = groups.get(item.activity.id) || {
@@ -556,7 +559,7 @@ export default function ExpertDashboard() {
         detail: `Titluri neconfirmate: ${deliverableNames}.${messages ? ` ${messages}` : ''}`,
         meta: `${formatDisplayDate(activity.date)}${activity.saCode ? ` / ${activity.saCode}` : ''}`,
         actionLabel: 'Rezolva',
-        action: { type: 'edit-activity', activityId: activity.id },
+        action: { type: 'edit-activity', activityId: activity.id, section: 'deliverables', deliverableId: deliverables[0]?.id },
       };
     });
     const aiReviewIssues: SubmitReadinessIssue[] = aiReviewDeliverables.map(({ activity, deliverable }) => ({
@@ -565,7 +568,7 @@ export default function ExpertDashboard() {
       detail: deliverable.aiReason || 'Livrabilul este in review sau marcat neeligibil.',
       meta: `${formatDisplayDate(activity.date)} / ${getActivityDisplayTitle(activity)}`,
       actionLabel: 'Rezolva',
-      action: { type: 'edit-activity', activityId: activity.id },
+      action: { type: 'edit-activity', activityId: activity.id, section: 'deliverables', deliverableId: deliverable.id },
     }));
     const normIssues: SubmitReadinessIssue[] = utilizationPercent >= SUBMIT_MIN_NORM_PERCENT
       ? []
@@ -604,7 +607,7 @@ export default function ExpertDashboard() {
       detail: `Campuri/livrabile lipsa: ${missingFields.join(', ') || 'validare GDPR incompleta'}.`,
       meta: `${formatDisplayDate(activity.date)}${activity.saCode ? ` / ${activity.saCode}` : ''}`,
       actionLabel: 'Rezolva',
-      action: { type: 'edit-activity', activityId: activity.id },
+      action: { type: 'edit-activity', activityId: activity.id, section: 'gdpr' },
     }));
 
     const items: SubmitReadinessItem[] = [
@@ -750,6 +753,7 @@ export default function ExpertDashboard() {
     setPendingSharedActivityRelationId(null);
     setPendingSharedDeliverableRelationId(null);
     setSharedActivityPrefill(null);
+    setActivityResolutionHint(null);
     clearSharedRelationQueryParams();
   };
 
@@ -758,10 +762,17 @@ export default function ExpertDashboard() {
     setSaveError(null);
 
     if (issue.action.type === 'edit-activity') {
-      const { activityId } = issue.action;
+      const { activityId, deliverableId, section } = issue.action;
       const activity = activities.find((item) => item.id === activityId);
       if (activity) {
-        handleEditActivity(activity);
+        handleEditActivity(activity, {
+          id: `${issue.id}-${Date.now()}`,
+          title: issue.title,
+          detail: issue.detail,
+          meta: issue.meta,
+          section,
+          deliverableId,
+        });
       }
       return;
     }
@@ -780,6 +791,13 @@ export default function ExpertDashboard() {
       syncSelectedDates([issue.action.date]);
       setEditingActivity(null);
       setSharedActivityPrefill(null);
+      setActivityResolutionHint({
+        id: `${issue.id}-${Date.now()}`,
+        title: issue.title,
+        detail: issue.detail,
+        meta: issue.meta,
+        section: 'details',
+      });
       setShowForm(true);
       setActiveTab('activitati');
       return;
@@ -787,6 +805,7 @@ export default function ExpertDashboard() {
 
     if (issue.action.type === 'open-shared-activity') {
       setShowForm(false);
+      setActivityResolutionHint(null);
       setPendingSharedDeliverableRelationId(null);
       setPendingSharedActivityRelationId(issue.action.relationId);
       setActiveTab('activitati');
@@ -795,6 +814,7 @@ export default function ExpertDashboard() {
 
     if (issue.action.type === 'open-shared-deliverable') {
       setShowForm(false);
+      setActivityResolutionHint(null);
       setPendingSharedActivityRelationId(null);
       setPendingSharedDeliverableRelationId(issue.action.relationId);
       setActiveTab('activitati');
@@ -802,6 +822,7 @@ export default function ExpertDashboard() {
     }
 
     setShowForm(false);
+    setActivityResolutionHint(null);
     setActiveTab('activitati');
   };
 
@@ -870,6 +891,7 @@ export default function ExpertDashboard() {
     });
     syncSelectedDates([sourceActivity.date], { [sourceActivity.date]: prefillHours });
     setEditingActivity(null);
+    setActivityResolutionHint(null);
     setShowForm(true);
   }, [
     currentMonth,
@@ -934,6 +956,7 @@ export default function ExpertDashboard() {
     }
     syncSelectedDates([suggestedDate], { [suggestedDate]: suggestedHours });
     setEditingActivity(null);
+    setActivityResolutionHint(null);
     setShowForm(true);
   }, [
     currentMonth,
@@ -959,6 +982,7 @@ export default function ExpertDashboard() {
     }
     setEditingActivity(null);
     setSharedActivityPrefill(null);
+    setActivityResolutionHint(null);
     setShowForm(true);
     setActiveTab('activitati');
   };
@@ -985,9 +1009,11 @@ export default function ExpertDashboard() {
     if (dates.length > 0) {
       setEditingActivity(null);
       setSharedActivityPrefill(null);
+      setActivityResolutionHint(null);
       setShowForm(true);
       setActiveTab('activitati');
     } else {
+      setActivityResolutionHint(null);
       setShowForm(false);
     }
   };
@@ -1475,6 +1501,13 @@ export default function ExpertDashboard() {
               <div className="lg:col-span-2">
                 {showForm ? (
                   <ActivityForm
+                    key={
+                      editingActivity
+                        ? `edit-${editingActivity.id}-${activityResolutionHint?.id || 'manual'}`
+                        : sharedActivityPrefill
+                          ? `prefill-${pendingSharedActivityRelationId || pendingSharedDeliverableRelationId || selectedDates.join('-')}`
+                          : `new-${selectedDates.join('-')}-${activityResolutionHint?.id || 'manual'}`
+                    }
                     selectedDates={selectedDates}
                     selectedHours={selectedHours}
                     onSelectedHoursChange={setSelectedHours}
@@ -1489,6 +1522,7 @@ export default function ExpertDashboard() {
                     onCancel={() => {
                       setShowForm(false);
                       setEditingActivity(null);
+                      setActivityResolutionHint(null);
                       if (pendingSharedActivityRelationId || pendingSharedDeliverableRelationId) {
                         resetSharedRegistrationFlow();
                       }
@@ -1497,6 +1531,7 @@ export default function ExpertDashboard() {
                     }}
                     initialActivity={editingActivity || undefined}
                     prefillActivity={sharedActivityPrefill || undefined}
+                    resolutionHint={activityResolutionHint || undefined}
                     isSaving={isSaving}
                   />
                 ) : (
@@ -1573,6 +1608,7 @@ export default function ExpertDashboard() {
                 setSaveError(null);
                 syncSelectedDates([date]);
                 setSharedActivityPrefill(null);
+                setActivityResolutionHint(null);
                 setShowForm(true);
                 setActiveTab('activitati');
               }}
