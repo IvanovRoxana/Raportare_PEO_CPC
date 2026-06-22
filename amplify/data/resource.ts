@@ -46,7 +46,6 @@ const schema = a.schema({
       location: a.string(),
       dayType: a.string(),
       workingGroupId: a.id(),
-      periodGroupId: a.id(),
       status: a.string().default("draft"),
       shareStatus: a.string().default("private"),
       originActivityId: a.id(),

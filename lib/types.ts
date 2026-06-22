@@ -41,7 +41,6 @@ export interface Activity {
   location?: string;
   dayType?: 'lucratoare' | 'weekend' | 'sarbatoare' | 'CO' | 'CM' | string;
   workingGroupId?: string;
-  periodGroupId?: string;
   status?: 'draft' | 'sent' | 'approved';
   shareStatus?: 'private' | 'public' | 'shared' | string;
   originActivityId?: string;

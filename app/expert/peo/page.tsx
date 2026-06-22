@@ -45,7 +45,7 @@ import { isGtExpertCategory } from '@/lib/peo-category';
 import { parseGdprMetaJson, validateGdprActivityDraft } from '@/lib/gdpr-reporting';
 import { assertCanLogHoursOnDate, getNonWorkingDayInfo } from '@/lib/non-working-days';
 import { formatDate, formatDateRo } from '@/lib/app-utils';
-import { getActivitiesMissingDeliverables, hasUsableDeliverable, isActivityExceptionForSubmit } from '@/lib/submit-readiness';
+import { isExceptionActivity } from '@/lib/peo-constants';
 import { getWorkingDaysListInMonth } from '@/lib/working-hours';
 import {
   buildSelectedHoursForDates,
@@ -91,7 +91,18 @@ interface SubmitReadinessItem {
 
 const SUBMIT_MIN_NORM_PERCENT = 80;
 
-const isActivityException = isActivityExceptionForSubmit;
+function isActivityException(activity: Activity) {
+  return activity.dayType === 'CO'
+    || activity.dayType === 'CM'
+    || Number(activity.hours) === 0
+    || isExceptionActivity(activity.activityType || activity.title || '');
+}
+
+function hasUsableDeliverable(deliverables?: Deliverable[]) {
+  return (deliverables ?? []).some((deliverable) =>
+    Boolean(deliverable.filePath || deliverable.s3Key || deliverable.fileName || deliverable.documentId),
+  );
+}
 
 function needsTitleConfirmation(deliverable: Deliverable) {
   return !deliverable.fileType?.startsWith('image/');
@@ -477,9 +488,11 @@ export default function ExpertDashboard() {
     const workingDays = getWorkingDaysListInMonth(currentMonth + 1, currentYear).map(formatDate);
     const activityDates = new Set(activities.map((activity) => activity.date));
     const missingWorkingDays = workingDays.filter((date) => !activityDates.has(date));
-    const activitiesMissingDeliverables = getActivitiesMissingDeliverables(activities, {
-      expertCategory: selectedExpert.category,
-    });
+    const activitiesMissingDeliverables = activities.filter((activity) =>
+      !isActivityException(activity)
+      && !(selectedExpert.category === 'gdpr' && activity.gdprTemplateCode)
+      && !hasUsableDeliverable(activity.deliverables),
+    );
     const deliverableRefs = activities.flatMap((activity) =>
       (activity.deliverables ?? []).map((deliverable) => ({ activity, deliverable })),
     );
@@ -611,7 +624,7 @@ export default function ExpertDashboard() {
         key: 'deliverables',
         label: 'Livrabile pe activitati',
         detail: activitiesMissingDeliverables.length === 0
-          ? 'Activitatile individuale au livrabil, iar activitatile multi-zi au livrabil final.'
+          ? 'Toate activitatile ne-exceptie au cel putin un livrabil.'
           : `${activitiesMissingDeliverables.length} activitati fara livrabil.`,
         severity: activitiesMissingDeliverables.length === 0 ? 'ok' : 'blocking',
         issues: missingDeliverableIssues,
