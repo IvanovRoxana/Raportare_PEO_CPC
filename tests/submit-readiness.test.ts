@@ -71,3 +71,45 @@ test('workingGroupId fara prefix de perioada nu grupeaza activitatile existente 
 
   assert.deepEqual(missingDeliverables.map((activity) => activity.id), ['day-1']);
 });
+
+test('activitatile istorice fara workingGroupId sunt grupate cand par create in aceeasi salvare multi-zi', () => {
+  const activities: Activity[] = [
+    baseActivity({
+      id: 'legacy-day-1',
+      date: '2026-05-06',
+      createdAt: '2026-05-20T10:00:00.000Z',
+      deliverables: [],
+    }),
+    baseActivity({
+      id: 'legacy-day-2',
+      date: '2026-05-07',
+      createdAt: '2026-05-20T10:00:05.000Z',
+      deliverables: [{ id: 'deliverable-1', fileName: 'raport.pdf', fileType: 'application/pdf', fileSize: 1234 }],
+    }),
+  ];
+
+  const missingDeliverables = getActivitiesMissingDeliverables(activities);
+
+  assert.deepEqual(missingDeliverables.map((activity) => activity.id), []);
+});
+
+test('activitatile istorice similare create separat nu sunt grupate automat', () => {
+  const activities: Activity[] = [
+    baseActivity({
+      id: 'legacy-day-1',
+      date: '2026-05-06',
+      createdAt: '2026-05-20T10:00:00.000Z',
+      deliverables: [],
+    }),
+    baseActivity({
+      id: 'legacy-day-2',
+      date: '2026-05-07',
+      createdAt: '2026-05-20T10:05:00.000Z',
+      deliverables: [{ id: 'deliverable-1', fileName: 'raport.pdf', fileType: 'application/pdf', fileSize: 1234 }],
+    }),
+  ];
+
+  const missingDeliverables = getActivitiesMissingDeliverables(activities);
+
+  assert.deepEqual(missingDeliverables.map((activity) => activity.id), ['legacy-day-1']);
+});
