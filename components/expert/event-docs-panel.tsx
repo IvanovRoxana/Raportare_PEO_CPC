@@ -53,6 +53,7 @@ export function EventDocsPanel({
   const [genDesc, setGenDesc] = useState('');
   const [genLoading, setGenLoading] = useState(false);
   const [genErr, setGenErr] = useState<string | null>(null);
+  const [genWarning, setGenWarning] = useState<string | null>(null);
   const [preview, setPreview] = useState<{ title: string; ds: string } | null>(null);
   const [previewTitle, setPreviewTitle] = useState('');
   const [previewText, setPreviewText] = useState('');
@@ -83,6 +84,50 @@ export function EventDocsPanel({
   const otherExperts = allExperts.filter((ex) => ex.id !== currentExpertId);
   const selectedProofExpert = otherExperts.find((ex) => ex.id === commonEventProof?.uploadedByExpertId);
 
+  const buildFallbackReport = () => {
+    const title = `Raport eveniment - ${activityTitle || date || 'activitate'}`;
+    const formattedDate = date ? formatDate(date) || date : 'nespecificata';
+    const photoSummary = eventReportPhotos.length > 0
+      ? `${eventReportPhotos.length} fotografie/fotografii atasate in anexa foto.`
+      : 'Nu au fost atasate fotografii in formular.';
+    const content = [
+      'RAPORT DE PARTICIPARE EVENIMENT',
+      '',
+      `Titlul activitatii: ${activityTitle || 'Nespecificat'}`,
+      `Data: ${formattedDate}`,
+      `Expert responsabil: ${expertName || 'Nespecificat'}`,
+      `Subactivitate: ${subActivity || 'N/A'}`,
+      '',
+      '1. Context si scop',
+      genDesc.trim(),
+      '',
+      '2. Desfasurarea evenimentului',
+      genDesc.trim(),
+      '',
+      '3. Concluzii si rezultate',
+      'Informatiile au fost consemnate pe baza descrierii introduse de expert si pot fi ajustate inainte de descarcare.',
+      '',
+      '4. Anexe',
+      photoSummary,
+    ].join('\n');
+
+    return { title, content };
+  };
+
+  const applyReportPreview = (title: string, content: string) => {
+    setPreviewTitle(title);
+    setPreviewText(content);
+    setPreview({ title, ds: date });
+    setConfirmed(false);
+
+    onUpsertSlot('event_mom', 'Raport de participare eveniment', {
+      uploaded: false,
+      filename: '',
+      declaredTitle: title,
+      isPendingConfirm: true,
+    });
+  };
+
   const generateReport = async () => {
     if (genDesc.trim().length < 20) {
       setGenErr('Descrierea trebuie sa aiba minim 20 caractere');
@@ -91,6 +136,7 @@ export function EventDocsPanel({
 
     setGenLoading(true);
     setGenErr(null);
+    setGenWarning(null);
 
     try {
       const response = await fetch('/api/ai/generate-event-report', {
@@ -106,25 +152,20 @@ export function EventDocsPanel({
         }),
       });
 
-      if (!response.ok) throw new Error('Failed to generate report');
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error || 'Serviciul AI nu a putut genera raportul.');
+      }
       const title = data.report?.eventTitle || `Raport eveniment - ${activityTitle || date}`;
       const content = data.momText || genDesc;
 
-      setPreviewTitle(title);
-      setPreviewText(content);
-      setPreview({ title, ds: date });
-      setConfirmed(false);
-
-      // Mark as pending
-      onUpsertSlot('event_mom', 'Raport de participare eveniment', {
-        uploaded: false,
-        filename: '',
-        declaredTitle: title,
-        isPendingConfirm: true,
-      });
+      applyReportPreview(title, content);
     } catch (err) {
-      setGenErr('Eroare generare: ' + (err instanceof Error ? err.message : 'Unknown error'));
+      const fallback = buildFallbackReport();
+      applyReportPreview(fallback.title, fallback.content);
+      setGenWarning(
+        `AI-ul nu a raspuns pentru raportul structurat (${err instanceof Error ? err.message : 'eroare necunoscuta'}). Am generat un raport editabil local.`
+      );
     } finally {
       setGenLoading(false);
     }
@@ -267,6 +308,11 @@ export function EventDocsPanel({
                   {genErr && (
                     <div className="mt-2 text-[11px] text-red-700 bg-red-50 p-2 rounded">
                       {genErr}
+                    </div>
+                  )}
+                  {genWarning && (
+                    <div className="mt-2 text-[11px] text-amber-700 bg-amber-50 p-2 rounded">
+                      {genWarning}
                     </div>
                   )}
                 </div>
