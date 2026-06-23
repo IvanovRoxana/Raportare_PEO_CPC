@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ALL_DELIVERABLE_TYPES, DOCUMENT_STADIU_OPTIONS, type DeliverableSlot } from '@/lib/deliverable-types';
-import { extractDocxFirstPageText, extractDocxText, extractImageTextWithSource, extractPdfFirstPageTextWithSource, isImageFile } from '@/lib/document-utils';
+import { extractDocxFirstPageText, extractDocxText, extractImageTextWithSource, extractPdfFirstPageTextWithSource, extractPdfTextWithSource, isImageFile } from '@/lib/document-utils';
 import { DELIVERABLE_ELIGIBILITY_UI_MESSAGE, isDeliverableEligibilityCheckEnabledClient } from '@/lib/feature-flags';
 import { applyAutomaticTitleSuggestion, suggestTitleFromFirstPage, validateDeclaredTitleOnFirstPage } from '@/lib/title-suggestion';
 import { getDocumentAuditTitle, hashFirstPageText, normalizeDocumentTextForFingerprint, sha256Hex, type DuplicateIssueType } from '@/lib/document-sharing';
@@ -120,11 +120,15 @@ export function DeliverableItem({
         textExtractionSource = docText || firstPageText ? 'native' : undefined;
       } else if (isPdf) {
         const pdfResult = await extractPdfFirstPageTextWithSource(file);
+        const fullPdfResult = await extractPdfTextWithSource(file);
         firstPageText = pdfResult.text;
+        if (!firstPageText && fullPdfResult.text) {
+          firstPageText = fullPdfResult.text.slice(0, 5000);
+        }
         titleSuggestion = suggestTitleFromFirstPage(firstPageText);
         docTitle = titleSuggestion.suggestedTitle;
-        docText = firstPageText;
-        textExtractionSource = pdfResult.source;
+        docText = fullPdfResult.text || firstPageText;
+        textExtractionSource = fullPdfResult.source || pdfResult.source;
       }
 
       const suggestion = applyAutomaticTitleSuggestion({

@@ -199,8 +199,8 @@ export async function extractPdfFirstPageText(file: File): Promise<string | null
   return (await extractPdfFirstPageTextWithSource(file)).text;
 }
 
-// Extract text from PDF file
-export async function extractPdfText(file: File): Promise<string | null> {
+// Extract text from PDF file, with OCR fallback for scanned pages.
+export async function extractPdfTextWithSource(file: File): Promise<DocumentTextExtractionResult> {
   try {
     const pdfjsLib = await import('pdfjs-dist');
     pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
@@ -217,26 +217,33 @@ export async function extractPdfText(file: File): Promise<string | null> {
     }
 
     if (hasUsefulText(fullText)) {
-      return fullText.trim();
+      return { text: fullText.trim(), source: 'native' };
     }
 
     const ocrPageCount = Math.min(pdf.numPages, MAX_OCR_PDF_PAGES);
     const ocrPages: string[] = [];
+    let usedOcr = false;
     for (let i = 1; i <= ocrPageCount; i++) {
       const page = await pdf.getPage(i);
       const pageText = await extractPdfPageTextWithOcrFallback(page as unknown as PdfPage);
       if (pageText.text) ocrPages.push(pageText.text);
+      if (pageText.source === 'ocr') usedOcr = true;
     }
 
     if (ocrPages.length > 0) {
-      return ocrPages.join('\n\n').trim();
+      return { text: ocrPages.join('\n\n').trim(), source: usedOcr ? 'ocr' : 'native' };
     }
     
-    return fullText.trim();
+    const fallbackText = fullText.trim();
+    return { text: fallbackText || null, source: fallbackText ? 'native' : undefined };
   } catch (error) {
     console.error('Error extracting PDF text:', error);
-    return null;
+    return { text: null };
   }
+}
+
+export async function extractPdfText(file: File): Promise<string | null> {
+  return (await extractPdfTextWithSource(file)).text;
 }
 
 // Generate DOCX file from title and content
