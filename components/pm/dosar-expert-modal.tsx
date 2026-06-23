@@ -305,7 +305,7 @@ export function DosarExpertModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl max-h-[90vh] flex flex-col">
+      <DialogContent className="flex h-[calc(100vh-1rem)] max-h-[calc(100vh-1rem)] w-[calc(100vw-1rem)] max-w-none flex-col overflow-hidden p-4 sm:max-w-none md:p-6">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-3">
             <div className="p-2 bg-slate-100 rounded-lg">
