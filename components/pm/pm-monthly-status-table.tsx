@@ -109,7 +109,7 @@ export function PmMonthlyStatusTable({
                     {expert && (
                       <Button variant="outline" size="sm" onClick={() => onOpenDossier(expert)}>
                         <FolderOpen className="h-4 w-4" />
-                        Deschide dosar
+                        {monthlyStatus === 'draft' ? 'Deschide dosar' : 'Deschide raportarea'}
                       </Button>
                     )}
                   </td>

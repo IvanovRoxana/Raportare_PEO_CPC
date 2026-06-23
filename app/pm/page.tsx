@@ -102,6 +102,7 @@ import { PmStatusPanel } from '@/components/pm/pm-status-panel';
 import { PmDashboardKpiCards } from '@/components/pm/pm-dashboard-kpi-cards';
 import { PmAlertsPanel } from '@/components/pm/pm-alerts-panel';
 import { PmMonthlyStatusTable } from '@/components/pm/pm-monthly-status-table';
+import { PmSubmittedReportsPanel, type PmSubmittedReportRow } from '@/components/pm/pm-submitted-reports-panel';
 
 const EMPTY_PONTAJ_ROWS: PontajRow[] = [];
 const EMPTY_RAPORT_ROWS: RaportRow[] = [];
@@ -124,8 +125,8 @@ export default function PMDashboard() {
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [isSaving, setIsSaving] = useState(false);
-  const [dossierExpert, setDossierExpert] = useState<Expert | null>(null);
-  const [dossierOpen, setDossierOpen] = useState(false);
+  const [reviewExpertId, setReviewExpertId] = useState<string | null>(null);
+  const [reviewOpen, setReviewOpen] = useState(false);
   const [pmExceptionOpen, setPmExceptionOpen] = useState(false);
   const [pmExceptionType, setPmExceptionType] = useState<'CO' | 'CM' | 'Altele'>('CO');
   const [pmExceptionDate, setPmExceptionDate] = useState('');
@@ -158,8 +159,14 @@ export default function PMDashboard() {
     selectedMonth.toString().padStart(2, '0'),
     selectedYear.toString()
   );
+  const { verification: reviewVerification } = useVerification(
+    reviewExpertId,
+    selectedMonth.toString().padStart(2, '0'),
+    selectedYear.toString()
+  );
   const { create: createVerification, update: updateVerification } = useVerificationMutations();
   const { neconformitati, isLoading: neconformitatiLoading } = useNeconformitati(verification?.id || null);
+  const { neconformitati: reviewNeconformitati } = useNeconformitati(reviewVerification?.id || null);
   const { create: createNeconformitate, resolve: resolveNeconformitate, remove: removeNeconformitate } = useNeconformitateMutations();
   const { notes, isLoading: notesLoading } = useNotes(verification?.id || null);
   const { create: createNote, update: updateNote, remove: removeNote } = useNoteMutations();
@@ -169,6 +176,10 @@ export default function PMDashboard() {
     updateStatus: updateReportStatus,
     isLoading: reportStatusLoading,
   } = useReportStatus(selectedExpertId, selectedMonth, selectedYear);
+  const {
+    status: reviewReportStatus,
+    updateStatus: updateReviewReportStatus,
+  } = useReportStatus(reviewExpertId, selectedMonth, selectedYear);
   const { statuses: allMonthlyReportStatuses } = useReportStatusByMonth(selectedMonth, selectedYear);
   const { activities: allMonthActivities, mutate: refreshMonthActivities } = useActivitiesByMonth(selectedMonth, selectedYear);
   const scopedAuditExpertId = hasExtendedExpertAccess ? null : dataAccessScope.currentExpertId ?? selectedExpertId;
@@ -273,6 +284,9 @@ export default function PMDashboard() {
   const selectedExpert = useMemo(() => {
     return visibleExperts.find((e) => e.id === selectedExpertId) || visibleExperts[0] || { id: '', name: 'Expert', role: '' };
   }, [visibleExperts, selectedExpertId]);
+  const reviewExpert = useMemo(() => {
+    return reviewExpertId ? visibleExperts.find((expert) => expert.id === reviewExpertId) || null : null;
+  }, [visibleExperts, reviewExpertId]);
 
   const saveVerificationData = async () => {
     if (!selectedExpertId || !canManagePmReview) return;
@@ -358,6 +372,35 @@ export default function PMDashboard() {
     const note = window.prompt('Motiv respingere:');
     if (note === null) return;
     await setMonthlyStatus('rejected', note.trim() || 'Respins de PM.');
+  };
+
+  const setReviewMonthlyStatus = async (status: ReportStatus['status'], pmNotes?: string) => {
+    if (!reviewExpertId || !canManagePmReview) return;
+    const currentStatus = reviewReportStatus || monthlyReportStatuses.find((item) => item.expertId === reviewExpertId);
+
+    await updateReviewReportStatus({
+      expertId: reviewExpertId,
+      year: selectedYear,
+      month: selectedMonth,
+      status,
+      sentDate: currentStatus?.sentDate,
+      approvalDate: status === 'approved' ? new Date().toISOString() : currentStatus?.approvalDate,
+      expertAccessApproved: currentStatus?.expertAccessApproved ?? false,
+      expertAccessApprovedAt: currentStatus?.expertAccessApprovedAt,
+      pmNotes,
+    });
+  };
+
+  const requestReviewClarifications = async () => {
+    const note = window.prompt('Ce clarificari soliciti expertului pentru aceasta raportare?');
+    if (note === null) return;
+    await setReviewMonthlyStatus('clarifications', note.trim() || 'Clarificari solicitate de PM.');
+  };
+
+  const rejectReviewMonth = async () => {
+    const note = window.prompt('Motiv respingere pentru aceasta raportare:');
+    if (note === null) return;
+    await setReviewMonthlyStatus('rejected', note.trim() || 'Respins de PM.');
   };
 
   const getDefaultExceptionDate = () =>
@@ -478,6 +521,53 @@ export default function PMDashboard() {
     () => new Map(monthlyReportStatuses.map((status) => [status.expertId, status])),
     [monthlyReportStatuses]
   );
+  const dashboardRowByExpertId = useMemo(
+    () => new Map(dashboardRows.map((row) => [row.expertId, row])),
+    [dashboardRows]
+  );
+  const submittedReportRows = useMemo<PmSubmittedReportRow[]>(() => {
+    const activityGroups = new Map<string, typeof monthActivities>();
+    monthActivities.forEach((activity) => {
+      const current = activityGroups.get(activity.expertId) || [];
+      current.push(activity);
+      activityGroups.set(activity.expertId, current);
+    });
+
+    return monthlyReportStatuses
+      .filter((status) => status.status !== 'draft')
+      .map((status) => {
+        const expert = visibleExperts.find((item) => item.id === status.expertId);
+        if (!expert) return null;
+
+        const activities = activityGroups.get(status.expertId) || [];
+        const dashboardRow = dashboardRowByExpertId.get(status.expertId);
+        const issueFlags = dashboardRow
+          ? [
+              dashboardRow.hasDailyLimitIssue,
+              dashboardRow.hasMonthlyNormIssue,
+              dashboardRow.hasProjectNormIssue,
+              dashboardRow.missingActivityDays.length > 0,
+              dashboardRow.blockedDays.length > 0,
+              dashboardRow.adminInterventions > 0,
+            ].filter(Boolean).length
+          : 0;
+
+        return {
+          expert,
+          status,
+          totalHours: dashboardRow?.totalHours ?? activities.reduce((sum, activity) => sum + (activity.hours || 0), 0),
+          totalDeliverables: activities.reduce((sum, activity) => sum + (activity.deliverables?.length || 0), 0),
+          issuesCount: issueFlags,
+          utilizationPercent: dashboardRow?.utilizationPercent ?? 0,
+        };
+      })
+      .filter((row): row is PmSubmittedReportRow => Boolean(row))
+      .sort((a, b) => {
+        const aDate = a.status.sentDate ? new Date(a.status.sentDate).getTime() : 0;
+        const bDate = b.status.sentDate ? new Date(b.status.sentDate).getTime() : 0;
+        return bDate - aDate || a.expert.name.localeCompare(b.expert.name);
+      });
+  }, [dashboardRowByExpertId, monthActivities, monthlyReportStatuses, visibleExperts]);
   const eventDocumentIssues = useMemo(() => {
     return monthActivities.filter((activity) => {
       if (!isEventActivity(activity.activityType || activity.title || '')) return false;
@@ -499,15 +589,19 @@ export default function PMDashboard() {
     () => documents.filter((document) => document.titleMatch === false || document.titleCheckStatus === 'mismatch'),
     [documents]
   );
-  const selectedExpertActivities = useMemo(
-    () => monthActivities.filter((activity) => activity.expertId === selectedExpertId),
-    [monthActivities, selectedExpertId]
+  const reviewExpertActivities = useMemo(
+    () => (reviewExpertId ? monthActivities.filter((activity) => activity.expertId === reviewExpertId) : []),
+    [monthActivities, reviewExpertId]
+  );
+  const activeReviewReportStatus = useMemo(
+    () => reviewReportStatus || (reviewExpertId ? reportStatusByExpertId.get(reviewExpertId) : undefined) || null,
+    [reportStatusByExpertId, reviewExpertId, reviewReportStatus]
   );
 
-  const openDossier = (expert: Expert) => {
+  const openReviewReport = (expert: Expert) => {
     if (!canAccessExpertId(dataAccessScope, expert.id)) return;
-    setDossierExpert(expert);
-    setDossierOpen(true);
+    setReviewExpertId(expert.id);
+    setReviewOpen(true);
   };
 
   const months = Array.from({ length: 12 }, (_, i) => ({
@@ -763,6 +857,12 @@ export default function PMDashboard() {
         onOpenPmExceptionDialog={openPmExceptionDialog}
       />
 
+      <PmSubmittedReportsPanel
+        rows={submittedReportRows}
+        statusLabels={statusLabels}
+        onOpenReport={openReviewReport}
+      />
+
       <Dialog open={pmExceptionOpen} onOpenChange={setPmExceptionOpen}>
         <DialogContent>
           <DialogHeader>
@@ -849,7 +949,7 @@ export default function PMDashboard() {
           visibleExperts={visibleExperts}
           reportStatusByExpertId={reportStatusByExpertId}
           statusLabels={statusLabels}
-          onOpenDossier={openDossier}
+          onOpenDossier={openReviewReport}
         />
 
         <Tabs id="pm-tabs" defaultValue="pontaj" className="space-y-6 scroll-mt-24">
@@ -942,14 +1042,21 @@ export default function PMDashboard() {
         </Tabs>
       </div>
       <DosarExpertModal
-        open={dossierOpen}
-        onOpenChange={setDossierOpen}
-        expert={dossierExpert}
-        activities={dossierExpert ? monthActivities.filter((activity) => activity.expertId === dossierExpert.id) : selectedExpertActivities}
-        verification={verification || null}
-        neconformitati={localNeconformitati}
+        open={reviewOpen}
+        onOpenChange={setReviewOpen}
+        expert={reviewExpert}
+        activities={reviewExpertActivities}
+        verification={reviewVerification || null}
+        neconformitati={reviewNeconformitati}
         month={selectedMonth}
         year={selectedYear}
+        reportStatus={activeReviewReportStatus}
+        documents={documents}
+        canManagePmReview={canManagePmReview}
+        onSetInReview={() => setReviewMonthlyStatus('in_review', activeReviewReportStatus?.pmNotes)}
+        onRequestClarifications={requestReviewClarifications}
+        onRejectMonth={rejectReviewMonth}
+        onApproveMonth={() => setReviewMonthlyStatus('approved', activeReviewReportStatus?.pmNotes)}
         projectCode="302141"
         projectTitle="Consolidarea capacității Concordia pentru dialog social"
       />
