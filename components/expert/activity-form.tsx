@@ -823,6 +823,11 @@ export function ActivityForm({
     setDeliverables(prev => [...prev, newSlot]);
   };
 
+  const addEventProofSlot = () => {
+    const newSlot = createDeliverableSlot('event_proof', 'Fotografii eveniment');
+    setDeliverables(prev => [...prev, newSlot]);
+  };
+
   const updateDeliverable = (id: string, patch: Partial<DeliverableSlot>) => {
     setDeliverables(prev => prev.map(d => d.id === id ? { ...d, ...patch } : d));
   };
@@ -832,7 +837,10 @@ export function ActivityForm({
   };
   
   const upsertEventSlot = (slotType: 'event_mom' | 'event_proof', name: string, patch: Partial<DeliverableSlot>) => {
-    const existing = deliverables.find(d => d.slotType === slotType);
+    const existing = slotType === 'event_proof' && patch.isCommonDeliverable !== undefined
+      ? deliverables.find(d => d.slotType === slotType && d.isCommonDeliverable)
+        || deliverables.find(d => d.slotType === slotType && !d.uploaded)
+      : deliverables.find(d => d.slotType === slotType);
     if (existing) {
       updateDeliverable(existing.id, patch);
     } else {
@@ -2724,9 +2732,12 @@ export function ActivityForm({
                     activityTitle={activityTitle}
                     date={selectedDates[0] || ''}
                     description={description}
+                    expertName={expertName}
                     allExperts={allExperts}
                     currentExpertId={expertId}
                     onUpdateDeliverable={updateDeliverable}
+                    onAddEventProof={addEventProofSlot}
+                    onRemoveDeliverable={removeDeliverable}
                     onUpsertSlot={upsertEventSlot}
                   />
                 )}

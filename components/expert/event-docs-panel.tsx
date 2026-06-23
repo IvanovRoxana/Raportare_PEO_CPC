@@ -14,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Mic, Loader2, Download, Check, AlertTriangle } from 'lucide-react';
+import { Mic, Loader2, Download, Check, AlertTriangle, Plus } from 'lucide-react';
 import { DeliverableItem } from './deliverable-item';
 import { type DeliverableSlot, extractEventDate, createDeliverableSlot } from '@/lib/deliverable-types';
 import { generateDocx, downloadBlob } from '@/lib/document-utils';
@@ -26,9 +26,12 @@ interface EventDocsPanelProps {
   activityTitle: string;
   date: string;
   description: string;
+  expertName?: string;
   allExperts?: Expert[];
   currentExpertId?: string;
   onUpdateDeliverable: (id: string, patch: Partial<DeliverableSlot>) => void;
+  onAddEventProof: () => void;
+  onRemoveDeliverable: (id: string) => void;
   onUpsertSlot: (slotType: 'event_mom' | 'event_proof', name: string, patch: Partial<DeliverableSlot>) => void;
 }
 
@@ -38,9 +41,12 @@ export function EventDocsPanel({
   activityTitle,
   date,
   description,
+  expertName,
   allExperts = [],
   currentExpertId,
   onUpdateDeliverable,
+  onAddEventProof,
+  onRemoveDeliverable,
   onUpsertSlot,
 }: EventDocsPanelProps) {
   const [hasMOM, setHasMOM] = useState(true);
@@ -54,17 +60,28 @@ export function EventDocsPanel({
 
   // Find event docs
   const eventMOM = deliverables.find(d => d.slotType === 'event_mom');
-  const eventProof = deliverables.find(d => d.slotType === 'event_proof');
+  const eventProofs = deliverables.filter(d => d.slotType === 'event_proof');
+  const commonEventProof = eventProofs.find(d => d.isCommonDeliverable && !d.uploaded)
+    || eventProofs.find(d => d.isCommonDeliverable);
+  const localEventProofs = eventProofs.filter(d => !d.isCommonDeliverable || d.uploaded);
+  const uploadedEventProofs = eventProofs.filter(d => d.uploaded);
+  const eventReportPhotos = uploadedEventProofs
+    .filter((proof) => proof.fileData && proof.fileType?.startsWith('image/'))
+    .map((proof, index) => ({
+      dataUrl: proof.fileData!,
+      filename: proof.filename || proof.name || `Fotografie eveniment ${index + 1}`,
+      altText: proof.declaredTitle || proof.filename || `Fotografie eveniment ${index + 1}`,
+    }));
 
   const proofRequired = !hasMOM;
-  const proofAtOtherExpert = !!eventProof?.isCommonDeliverable && !eventProof?.uploaded;
-  const proofAtOtherExpertValid = proofAtOtherExpert && !!eventProof?.uploadedByExpertId;
-  const proofSatisfied = !proofRequired || !!eventProof?.uploaded || proofAtOtherExpertValid;
+  const proofAtOtherExpert = !!commonEventProof?.isCommonDeliverable && !commonEventProof?.uploaded;
+  const proofAtOtherExpertValid = proofAtOtherExpert && !!commonEventProof?.uploadedByExpertId;
+  const proofSatisfied = !proofRequired || uploadedEventProofs.length > 0 || proofAtOtherExpertValid;
   const momSatisfied = hasMOM ? !!eventMOM?.uploaded : confirmed;
   const missingEventMOM = !momSatisfied;
   const missingEventProof = !proofSatisfied;
   const otherExperts = allExperts.filter((ex) => ex.id !== currentExpertId);
-  const selectedProofExpert = otherExperts.find((ex) => ex.id === eventProof?.uploadedByExpertId);
+  const selectedProofExpert = otherExperts.find((ex) => ex.id === commonEventProof?.uploadedByExpertId);
 
   const generateReport = async () => {
     if (genDesc.trim().length < 20) {
@@ -76,20 +93,23 @@ export function EventDocsPanel({
     setGenErr(null);
 
     try {
-      const response = await fetch('/api/ai/generate-report', {
+      const response = await fetch('/api/ai/generate-event-report', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           subActivity,
           activityTitle,
           date,
+          expertName,
           description: genDesc,
-          hasPhoto: eventProof?.uploaded || false,
+          hasPhoto: uploadedEventProofs.length > 0,
         }),
       });
 
       if (!response.ok) throw new Error('Failed to generate report');
-      const { title, content } = await response.json();
+      const data = await response.json();
+      const title = data.report?.eventTitle || `Raport eveniment - ${activityTitle || date}`;
+      const content = data.momText || genDesc;
 
       setPreviewTitle(title);
       setPreviewText(content);
@@ -112,7 +132,7 @@ export function EventDocsPanel({
 
   const confirmReport = async () => {
     // Generate and download DOCX
-    const blob = await generateDocx(previewTitle, previewText);
+    const blob = await generateDocx(previewTitle, previewText, { images: eventReportPhotos });
     const filename = `Raport_eveniment_${date}.docx`;
     downloadBlob(blob, filename);
 
@@ -127,7 +147,7 @@ export function EventDocsPanel({
   };
 
   const downloadDocx = async () => {
-    const blob = await generateDocx(previewTitle, previewText);
+    const blob = await generateDocx(previewTitle, previewText, { images: eventReportPhotos });
     const filename = `Raport_eveniment_${date}.docx`;
     downloadBlob(blob, filename);
   };
@@ -137,8 +157,8 @@ export function EventDocsPanel({
   const updateProofAtOtherExpert = (checked: boolean) => {
     onUpsertSlot('event_proof', 'Fotografii + link eveniment', {
       isCommonDeliverable: checked,
-      uploadedByExpertId: checked ? eventProof?.uploadedByExpertId : undefined,
-      uploadedByExpertName: checked ? eventProof?.uploadedByExpertName : undefined,
+      uploadedByExpertId: checked ? commonEventProof?.uploadedByExpertId : undefined,
+      uploadedByExpertName: checked ? commonEventProof?.uploadedByExpertName : undefined,
       ...(checked ? { uploaded: false } : {}),
     });
   };
@@ -367,7 +387,7 @@ export function EventDocsPanel({
                 <div className="mt-2">
                   <Label className="text-[10px] text-amber-700">Expertul care detine dovada</Label>
                   <Select
-                    value={eventProof?.uploadedByExpertId || ''}
+                    value={commonEventProof?.uploadedByExpertId || ''}
                     onValueChange={updateProofExpert}
                   >
                     <SelectTrigger className="mt-1 h-8 w-full bg-white text-xs">
@@ -393,7 +413,7 @@ export function EventDocsPanel({
                   )}
                   {proofAtOtherExpertValid && (
                     <div className="mt-1 text-[10px] text-green-700">
-                      Dovada va fi preluata de la {eventProof?.uploadedByExpertName || selectedProofExpert?.name}.
+                      Dovada va fi preluata de la {commonEventProof?.uploadedByExpertName || selectedProofExpert?.name}.
                     </div>
                   )}
                 </div>
@@ -402,16 +422,41 @@ export function EventDocsPanel({
           )}
 
           {!proofAtOtherExpert && (
-            <DeliverableItem
-              deliverable={eventProof || createDeliverableSlot('event_proof', 'Fotografii eveniment')}
-              subActivity={subActivity}
-              activityTitle={activityTitle}
-              onUpdate={(patch) => onUpsertSlot('event_proof', 'Fotografii + link eveniment', patch)}
-              showSteps={false}
-              required={proofRequired}
-              label="Fotografie eveniment SAU Lista prezenta cu semnaturi olografe"
-              hint="JPG/PNG sau document scanat cu semnaturile participantilor."
-            />
+            <div className="space-y-2">
+              {(localEventProofs.length > 0 ? localEventProofs : [createDeliverableSlot('event_proof', 'Fotografii eveniment')]).map((proof, index) => (
+                <DeliverableItem
+                  key={proof.id}
+                  deliverable={proof}
+                  subActivity={subActivity}
+                  activityTitle={activityTitle}
+                  onUpdate={(patch) => (
+                    localEventProofs.length > 0
+                      ? onUpdateDeliverable(proof.id, patch)
+                      : onUpsertSlot('event_proof', 'Fotografii + link eveniment', patch)
+                  )}
+                  onRemove={localEventProofs.length > 1 ? () => onRemoveDeliverable(proof.id) : undefined}
+                  showSteps={false}
+                  required={proofRequired && index === 0}
+                  label={index === 0 ? 'Fotografie eveniment SAU Lista prezenta cu semnaturi olografe' : `Fotografie eveniment ${index + 1}`}
+                  hint="JPG/PNG sau document scanat cu semnaturile participantilor."
+                />
+              ))}
+              <div className="flex items-center justify-between gap-2 rounded-md border border-dashed border-green-300 bg-white/70 px-3 py-2">
+                <div className="text-[10px] text-green-700">
+                  Fotografiile incarcate aici vor fi inserate automat in raportul Word generat.
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={onAddEventProof}
+                  className="h-8 shrink-0 border-green-300 text-xs text-green-700"
+                >
+                  <Plus className="mr-1 h-3 w-3" />
+                  Adauga fotografie
+                </Button>
+              </div>
+            </div>
           )}
         </div>
       </div>

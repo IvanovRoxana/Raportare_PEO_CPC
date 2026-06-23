@@ -246,9 +246,70 @@ export async function extractPdfText(file: File): Promise<string | null> {
   return (await extractPdfTextWithSource(file)).text;
 }
 
+export interface DocxImageAttachment {
+  dataUrl: string;
+  filename?: string;
+  altText?: string;
+}
+
+export interface GenerateDocxOptions {
+  images?: DocxImageAttachment[];
+}
+
+function parseDocxImage(dataUrl: string): { data: Uint8Array; type: 'jpg' | 'png' | 'gif' | 'bmp' } | null {
+  const match = dataUrl.match(/^data:(image\/(?:jpeg|jpg|png|gif|bmp));base64,(.+)$/);
+  if (!match) return null;
+
+  const mimeType = match[1].toLowerCase();
+  const binary = atob(match[2]);
+  const data = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    data[i] = binary.charCodeAt(i);
+  }
+
+  return {
+    data,
+    type: mimeType.includes('png')
+      ? 'png'
+      : mimeType.includes('gif')
+        ? 'gif'
+        : mimeType.includes('bmp')
+          ? 'bmp'
+          : 'jpg',
+  };
+}
+
 // Generate DOCX file from title and content
-export async function generateDocx(title: string, content: string): Promise<Blob> {
-  const { Document, Packer, Paragraph, TextRun, HeadingLevel } = await import('docx');
+export async function generateDocx(title: string, content: string, options: GenerateDocxOptions = {}): Promise<Blob> {
+  const { Document, Packer, Paragraph, TextRun, HeadingLevel, ImageRun } = await import('docx');
+  const imageParagraphs = (options.images || []).flatMap((image, index) => {
+    const parsed = parseDocxImage(image.dataUrl);
+    if (!parsed) return [];
+
+    return [
+      new Paragraph({
+        children: [new TextRun({ text: image.filename || `Fotografie eveniment ${index + 1}`, bold: true })],
+      }),
+      new Paragraph({
+        children: [
+          new ImageRun({
+            data: parsed.data,
+            type: parsed.type,
+            transformation: {
+              width: 520,
+              height: 360,
+            },
+            altText: {
+              title: image.altText || image.filename || `Fotografie eveniment ${index + 1}`,
+              description: image.altText || image.filename || `Fotografie eveniment ${index + 1}`,
+              name: image.filename || `fotografie-eveniment-${index + 1}`,
+            },
+          }),
+        ],
+      }),
+      new Paragraph({ children: [new TextRun('')] }),
+    ];
+  });
   
   const doc = new Document({
     sections: [{
@@ -266,6 +327,18 @@ export async function generateDocx(title: string, content: string): Promise<Blob
             children: [new TextRun(line)],
           })
         ),
+        ...(imageParagraphs.length > 0
+          ? [
+              new Paragraph({
+                children: [new TextRun('')],
+              }),
+              new Paragraph({
+                text: 'Anexe foto eveniment',
+                heading: HeadingLevel.HEADING_2,
+              }),
+              ...imageParagraphs,
+            ]
+          : []),
       ],
     }],
   });
