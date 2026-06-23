@@ -683,6 +683,10 @@ async function createDocumentMetadataForDeliverable(
 ) {
   if (!client.models.Document || !deliverable.documentId || !(deliverable.s3Key || deliverable.filePath)) return;
 
+  const existingDocument = await client.models.Document.get({ id: deliverable.documentId });
+  assertNoErrors(existingDocument, 'AWS get existing document metadata');
+  if (existingDocument.data) return;
+
   const duplicateMatches = await findExistingDocumentDuplicates(client, deliverable);
   const duplicate = duplicateMatches[0];
   const duplicateStatus = duplicate

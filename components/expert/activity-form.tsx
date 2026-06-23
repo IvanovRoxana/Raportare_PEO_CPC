@@ -99,6 +99,47 @@ export interface ActivityResolutionHint {
   deliverableId?: string;
 }
 
+type ExistingDeliverableSource = 'mine' | 'shared';
+
+interface ExistingDeliverableCandidate {
+  key: string;
+  source: ExistingDeliverableSource;
+  title: string;
+  fileName: string;
+  fileType: string;
+  fileSize: number;
+  documentId?: string;
+  s3Bucket?: string;
+  s3Key?: string;
+  fileHash?: string;
+  firstPageTextHash?: string;
+  contentFingerprint?: string;
+  uploadedByExpertId?: string;
+  uploadedByExpertName?: string;
+  uploadDate?: string;
+  sourceActivityId?: string;
+  activityDate?: string;
+  saCode?: string;
+  deliverableType?: string;
+  declaredTitle?: string;
+  docTitle?: string;
+  docText?: string | null;
+  suggestedTitle?: string | null;
+  firstPageText?: string | null;
+  titleSuggestionConfidence?: string;
+  titleSuggestionAlternatives?: string[];
+  titleSuggestionReason?: string;
+  titleSource?: string;
+  titleMatch?: boolean | null;
+  titleConfirmed?: boolean;
+  titleCheckStatus?: string;
+  titleCheckMessage?: string;
+  eligibilityCheck?: DeliverableSlot['eligibilityCheck'];
+  isCommonDeliverable?: boolean;
+  aiStatus?: string;
+  aiReason?: string;
+}
+
 interface ActivityFormProps {
   selectedDates: string[];
   selectedHours?: Record<string, string>;
@@ -256,7 +297,10 @@ export function ActivityForm({
   );
   const [isGeneratingGdprDocx, setIsGeneratingGdprDocx] = useState(false);
   const [isImprovingGdprText, setIsImprovingGdprText] = useState(false);
-  
+  const [existingDeliverablePickerOpen, setExistingDeliverablePickerOpen] = useState(false);
+  const [existingDeliverableSource, setExistingDeliverableSource] = useState<ExistingDeliverableSource>('mine');
+  const [existingDeliverableQuery, setExistingDeliverableQuery] = useState('');
+
   // Deliverables state with slots
   const [deliverables, setDeliverables] = useState<DeliverableSlot[]>(
     initialActivity?.deliverables?.map(d => ({
@@ -1358,6 +1402,204 @@ export function ActivityForm({
     && !deliverable.isPendingConfirm
     && Boolean(deliverable.filename || deliverable.name || deliverable.declaredTitle)
   ));
+  const currentMonthKey = `${year}-${String(month + 1).padStart(2, '0')}`;
+  const attachedDeliverableKeys = useMemo(() => new Set(
+    deliverables
+      .map((deliverable) => deliverable.documentId || deliverable.s3Key || deliverable.filePath || deliverable.filename || deliverable.name)
+      .filter((key): key is string => Boolean(key)),
+  ), [deliverables]);
+  const existingDeliverableCandidates = useMemo<ExistingDeliverableCandidate[]>(() => {
+    const candidates = new Map<string, ExistingDeliverableCandidate>();
+
+    const addCandidate = (candidate: ExistingDeliverableCandidate) => {
+      const monthKey = (candidate.activityDate || candidate.uploadDate || '').slice(0, 7);
+      if (monthKey && monthKey !== currentMonthKey) return;
+      if (attachedDeliverableKeys.has(candidate.key)) return;
+      if (candidate.documentId && attachedDeliverableKeys.has(candidate.documentId)) return;
+      if (candidate.s3Key && attachedDeliverableKeys.has(candidate.s3Key)) return;
+      if (!candidate.documentId && !candidate.s3Key && !candidate.fileName) return;
+
+      candidates.set(candidate.key, candidate);
+    };
+
+    allActivities.forEach((activity) => {
+      if (activity.id === initialActivity?.id) return;
+
+      (activity.deliverables ?? []).forEach((deliverable) => {
+        const fileName = deliverable.originalFileName || deliverable.fileName;
+        const key = deliverable.documentId || deliverable.s3Key || deliverable.filePath || `${activity.id}:${deliverable.id}`;
+        const ownerId = deliverable.uploadedByExpertId || activity.expertId;
+        const isMine = ownerId === expertId;
+        const isShared = !isMine && Boolean(
+          deliverable.isCommonDeliverable
+          || deliverable.sharedWithExpertIds?.includes(expertId)
+          || activity.takenByExperts?.includes(expertId)
+          || activity.shareStatus === 'shared',
+        );
+        if (!isMine && !isShared) return;
+
+        addCandidate({
+          key,
+          source: isMine ? 'mine' : 'shared',
+          title: getDocumentAuditTitle(deliverable),
+          fileName,
+          fileType: deliverable.fileType || '',
+          fileSize: deliverable.fileSize || 0,
+          documentId: deliverable.documentId,
+          s3Bucket: deliverable.s3Bucket,
+          s3Key: deliverable.s3Key || deliverable.filePath,
+          fileHash: deliverable.fileHash,
+          firstPageTextHash: deliverable.firstPageTextHash,
+          contentFingerprint: deliverable.contentFingerprint,
+          uploadedByExpertId: ownerId,
+          uploadedByExpertName: deliverable.uploadedByExpertName || activity.expertName,
+          uploadDate: deliverable.uploadedAt,
+          sourceActivityId: deliverable.sourceActivityId || activity.id,
+          activityDate: deliverable.activityDate || activity.date,
+          saCode: deliverable.saCode || activity.saCode,
+          deliverableType: deliverable.deliverableType,
+          declaredTitle: deliverable.declaredTitle,
+          docTitle: deliverable.docTitle,
+          docText: deliverable.docText,
+          suggestedTitle: deliverable.suggestedTitle,
+          firstPageText: deliverable.firstPageText,
+          titleSuggestionConfidence: deliverable.titleSuggestionConfidence,
+          titleSuggestionAlternatives: deliverable.titleSuggestionAlternatives,
+          titleSuggestionReason: deliverable.titleSuggestionReason,
+          titleSource: deliverable.titleSource,
+          titleMatch: deliverable.titleMatch,
+          titleConfirmed: deliverable.titleConfirmed,
+          titleCheckStatus: deliverable.titleCheckStatus,
+          titleCheckMessage: deliverable.titleCheckMessage,
+          eligibilityCheck: deliverable.eligibilityCheck,
+          isCommonDeliverable: deliverable.isCommonDeliverable,
+          aiStatus: deliverable.aiStatus,
+          aiReason: deliverable.aiReason,
+        });
+      });
+    });
+
+    documents.forEach((document) => {
+      const isMine = document.uploadedByExpertId === expertId;
+      const isShared = !isMine && document.isCommonDeliverable === true;
+      if (!isMine && !isShared) return;
+
+      const key = document.id || document.s3Key;
+      addCandidate({
+        key,
+        source: isMine ? 'mine' : 'shared',
+        title: document.declaredTitle || document.extractedTitle || document.suggestedTitle || document.originalFileName,
+        fileName: document.originalFileName,
+        fileType: document.mimeType || '',
+        fileSize: document.fileSize || 0,
+        documentId: document.id,
+        s3Bucket: document.s3Bucket,
+        s3Key: document.s3Key,
+        fileHash: document.fileHash,
+        firstPageTextHash: document.firstPageTextHash,
+        contentFingerprint: document.contentFingerprint,
+        uploadedByExpertId: document.uploadedByExpertId,
+        uploadedByExpertName: document.uploadedByExpertName,
+        uploadDate: document.uploadDate,
+        sourceActivityId: document.sourceActivityId,
+        activityDate: document.activityDate,
+        saCode: document.saCode,
+        deliverableType: document.deliverableType,
+        declaredTitle: document.declaredTitle,
+        docTitle: document.extractedTitle,
+        suggestedTitle: document.suggestedTitle,
+        titleSuggestionConfidence: document.titleSuggestionConfidence,
+        titleSuggestionAlternatives: document.titleSuggestionAlternatives,
+        titleSuggestionReason: document.titleSuggestionReason,
+        titleMatch: document.titleMatch,
+        titleConfirmed: document.titleCheckStatus === 'matched',
+        titleCheckStatus: document.titleCheckStatus as DeliverableSlot['titleCheckStatus'],
+        eligibilityCheck: document.eligibilityCheck,
+        isCommonDeliverable: document.isCommonDeliverable,
+      });
+    });
+
+    return Array.from(candidates.values()).sort((first, second) =>
+      (second.activityDate || second.uploadDate || '').localeCompare(first.activityDate || first.uploadDate || ''),
+    );
+  }, [allActivities, attachedDeliverableKeys, currentMonthKey, documents, expertId, initialActivity?.id]);
+  const mineExistingDeliverablesCount = existingDeliverableCandidates.filter((candidate) => candidate.source === 'mine').length;
+  const sharedExistingDeliverablesCount = existingDeliverableCandidates.filter((candidate) => candidate.source === 'shared').length;
+  const visibleExistingDeliverableCandidates = existingDeliverableCandidates
+    .filter((candidate) => candidate.source === existingDeliverableSource)
+    .filter((candidate) => {
+      const query = existingDeliverableQuery.trim().toLowerCase();
+      if (!query) return true;
+      return [
+        candidate.title,
+        candidate.fileName,
+        candidate.uploadedByExpertName,
+        candidate.saCode,
+      ].some((value) => value?.toLowerCase().includes(query));
+    })
+    .slice(0, 8);
+
+  const attachExistingDeliverable = (candidate: ExistingDeliverableCandidate) => {
+    const aiCheck = candidate.aiStatus
+      ? {
+          eligible: candidate.aiStatus === 'eligible'
+            ? true
+            : candidate.aiStatus === 'ineligible'
+              ? false
+              : null,
+          reason: candidate.aiReason || '',
+          issues: [],
+        }
+      : null;
+    const slot: DeliverableSlot = {
+      ...createDeliverableSlot('livrabil', candidate.fileName),
+      id: generateId(),
+      name: candidate.fileName,
+      filename: candidate.fileName,
+      rawFilename: candidate.fileName.replace(/\.[^.]+$/, ''),
+      fileType: candidate.fileType,
+      fileSize: candidate.fileSize,
+      filePath: candidate.s3Key,
+      documentId: candidate.documentId,
+      s3Bucket: candidate.s3Bucket,
+      s3Key: candidate.s3Key,
+      fileHash: candidate.fileHash,
+      firstPageTextHash: candidate.firstPageTextHash,
+      contentFingerprint: candidate.contentFingerprint,
+      uploadedByExpertId: candidate.uploadedByExpertId,
+      uploadedByExpertName: candidate.uploadedByExpertName,
+      sourceActivityId: candidate.sourceActivityId,
+      activityDate: candidate.activityDate,
+      saCode: candidate.saCode,
+      deliverableType: candidate.deliverableType || 'livrabil',
+      isCommonDeliverable: candidate.source === 'shared' || candidate.isCommonDeliverable === true,
+      sharedWithExpertIds: [],
+      uploadedAt: candidate.uploadDate,
+      uploaded: true,
+      isPhoto: candidate.fileType.startsWith('image/'),
+      declaredTitle: candidate.declaredTitle || candidate.title,
+      docTitle: candidate.docTitle || candidate.title,
+      docText: candidate.docText || null,
+      suggestedTitle: candidate.suggestedTitle,
+      firstPageText: candidate.firstPageText || null,
+      titleSuggestionConfidence: candidate.titleSuggestionConfidence as DeliverableSlot['titleSuggestionConfidence'],
+      titleSuggestionAlternatives: candidate.titleSuggestionAlternatives || [],
+      titleSuggestionReason: candidate.titleSuggestionReason,
+      titleSource: candidate.titleSource as DeliverableSlot['titleSource'],
+      titleMatch: candidate.titleMatch ?? null,
+      titleConfirmed: candidate.titleConfirmed ?? candidate.titleCheckStatus === 'matched',
+      titleCheckStatus: candidate.titleCheckStatus as DeliverableSlot['titleCheckStatus'],
+      titleCheckMessage: candidate.titleCheckMessage || 'Livrabil selectat din documentele existente.',
+      aiCheck,
+      eligibilityCheck: candidate.eligibilityCheck,
+      common: false,
+      isPendingConfirm: false,
+    };
+
+    setDeliverables((prev) => [...prev, slot]);
+    setExistingDeliverablePickerOpen(false);
+    setExistingDeliverableQuery('');
+  };
 
   const renderGdprField = (field: GdprFieldDefinition) => {
     const value = gdprMeta[field.key];
@@ -1813,7 +2055,7 @@ export function ActivityForm({
               <div className="space-y-4">
                 {/* Livrabile principale */}
                 <div id="activity-form-deliverables-section" className="bg-slate-50 rounded-lg p-4 border scroll-mt-24">
-                  <div className="flex items-center justify-between mb-3">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-3">
                     <div>
                       <div className="text-sm font-medium text-foreground flex items-center gap-2">
                         <FileText className="h-4 w-4" />
@@ -1823,16 +2065,89 @@ export function ActivityForm({
                         Outputurile directe ale activitatii - obligatorii
                       </div>
                     </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => addDeliverableSlot('livrabil')}
-                    >
-                      <Plus className="h-4 w-4 mr-1" />
-                      Adauga livrabil
-                    </Button>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setExistingDeliverablePickerOpen((open) => !open)}
+                      >
+                        <FileText className="h-4 w-4 mr-1" />
+                        Alege existent
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => addDeliverableSlot('livrabil')}
+                      >
+                        <Plus className="h-4 w-4 mr-1" />
+                        Adauga livrabil
+                      </Button>
+                    </div>
                   </div>
+
+                  {existingDeliverablePickerOpen && (
+                    <div className="mb-3 rounded-md border bg-white p-3">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="inline-flex w-fit rounded-md border bg-slate-50 p-0.5">
+                          <button
+                            type="button"
+                            onClick={() => setExistingDeliverableSource('mine')}
+                            className={`rounded px-2.5 py-1 text-xs font-medium ${existingDeliverableSource === 'mine' ? 'bg-white text-foreground shadow-sm' : 'text-muted-foreground'}`}
+                          >
+                            Ale mele ({mineExistingDeliverablesCount})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setExistingDeliverableSource('shared')}
+                            className={`rounded px-2.5 py-1 text-xs font-medium ${existingDeliverableSource === 'shared' ? 'bg-white text-foreground shadow-sm' : 'text-muted-foreground'}`}
+                          >
+                            Comune ({sharedExistingDeliverablesCount})
+                          </button>
+                        </div>
+                        <Input
+                          value={existingDeliverableQuery}
+                          onChange={(event) => setExistingDeliverableQuery(event.target.value)}
+                          placeholder="Cauta titlu, fisier, SA"
+                          className="h-8 text-xs sm:max-w-64"
+                        />
+                      </div>
+
+                      <div className="mt-3 max-h-64 overflow-y-auto rounded-md border">
+                        {visibleExistingDeliverableCandidates.length === 0 ? (
+                          <div className="px-3 py-4 text-center text-xs text-muted-foreground">
+                            Nu exista livrabile disponibile pentru filtrul curent.
+                          </div>
+                        ) : (
+                          visibleExistingDeliverableCandidates.map((candidate) => (
+                            <div key={candidate.key} className="flex flex-col gap-2 border-b px-3 py-2 last:border-b-0 sm:flex-row sm:items-center sm:justify-between">
+                              <div className="min-w-0">
+                                <div className="truncate text-xs font-medium text-foreground">
+                                  {candidate.title || candidate.fileName}
+                                </div>
+                                <div className="mt-0.5 flex flex-wrap gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
+                                  <span>{candidate.fileName}</span>
+                                  {candidate.activityDate && <span>{formatDateRo(candidate.activityDate)}</span>}
+                                  {candidate.saCode && <span>{candidate.saCode}</span>}
+                                  {candidate.uploadedByExpertName && <span>{candidate.uploadedByExpertName}</span>}
+                                </div>
+                              </div>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-8 shrink-0"
+                                onClick={() => attachExistingDeliverable(candidate)}
+                              >
+                                Ataseaza
+                              </Button>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                   {mainDeliverables.length === 0 && (
                     <div className="text-center py-4 text-xs text-muted-foreground border border-dashed rounded-md">
