@@ -476,7 +476,28 @@ export default function ExpertDashboard() {
 
   const currentStatus = reportStatus?.status || 'draft';
   const isApproved = currentStatus === 'approved';
+  const isSent = currentStatus === 'sent';
+  const isInReview = currentStatus === 'in_review';
   const statusMeta = statusLabels[currentStatus as ReportStatus['status']] || statusLabels.draft;
+  const statusDescription = isApproved
+    ? 'Luna este aprobată de PM.'
+    : isInReview
+      ? 'Raportarea este în verificare la PM.'
+      : isSent
+        ? 'Luna a fost trimisă către PM și așteaptă verificarea.'
+        : 'Completează pontajul și trimite luna către PM când pachetul este pregătit.';
+  const submitButtonIcon = isApproved
+    ? <Lock className="h-4 w-4" />
+    : isSent || isInReview
+      ? <CheckCircle className="h-4 w-4" />
+      : <Send className="h-4 w-4" />;
+  const submitButtonLabel = isApproved
+    ? 'Lună aprobată'
+    : isInReview
+      ? 'În verificare PM'
+      : isSent
+        ? 'Luna trimisă către PM'
+        : 'Trimite luna către PM';
   const submitReadiness = useMemo(() => {
     const workingDays = getWorkingDaysListInMonth(currentMonth + 1, currentYear).map(formatDate);
     const activityDates = new Set(activities.map((activity) => activity.date));
@@ -682,6 +703,13 @@ export default function ExpertDashboard() {
   const selectedReadinessItem = selectedReadinessKey
     ? submitReadiness.items.find((item) => item.key === selectedReadinessKey && item.severity !== 'ok') ?? null
     : null;
+  const submitButtonTitle = isApproved
+    ? 'Luna este aprobată.'
+    : isInReview
+      ? 'Raportarea este deja în verificare la PM.'
+      : isSent
+        ? 'Luna a fost deja trimisă către PM.'
+        : submitReadiness.disabledReason || undefined;
 
   const handleSubmitMonth = async () => {
     if (!selectedExpertId || isApproved) return;
@@ -1192,7 +1220,7 @@ export default function ExpertDashboard() {
               <p className="text-sm text-muted-foreground">Observații PM: {reportStatus.pmNotes}</p>
             ) : (
               <p className="text-sm text-muted-foreground">
-                Completează pontajul și trimite luna către PM când pachetul este pregătit.
+                {statusDescription}
               </p>
             )}
             <p className="text-sm text-muted-foreground">
@@ -1205,17 +1233,17 @@ export default function ExpertDashboard() {
               </p>
             )}
           </div>
-          <span title={submitReadiness.disabledReason || undefined}>
+          <span title={submitButtonTitle}>
             <Button
               onClick={handleSubmitMonth}
               disabled={
                 isApproved
-                || currentStatus === 'sent'
-                || currentStatus === 'in_review'
+                || isSent
+                || isInReview
               }
             >
-            {isApproved ? <Lock className="h-4 w-4" /> : <Send className="h-4 w-4" />}
-            {isApproved ? 'Lună aprobată' : 'Trimite luna către PM'}
+            {submitButtonIcon}
+            {submitButtonLabel}
             </Button>
           </span>
         </div>
