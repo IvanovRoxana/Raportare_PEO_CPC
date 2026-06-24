@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
-import { ProjectIdentityBanner } from '@/components/project-identity-banner'
+import { AppHeader } from '@/components/app-header'
 import './globals.css'
 
 const inter = Inter({ subsets: ['latin'], display: 'swap', variable: '--font-inter' })
@@ -37,7 +37,7 @@ export default function RootLayout({
   return (
     <html lang="ro" className="bg-background">
       <body className={`${inter.variable} font-sans antialiased min-h-screen bg-background text-foreground`}>
-        <ProjectIdentityBanner />
+        <AppHeader />
         {children}
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>

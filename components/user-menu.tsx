@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { getSignedInUser, signOutCurrentUser, type AppRole } from '@/lib/aws/auth'
 import { Button } from '@/components/ui/button'
 import {
@@ -37,9 +37,11 @@ export function UserMenu() {
   const [isLoading, setIsLoading] = useState(true)
   const [isLoggingOut, setIsLoggingOut] = useState(false)
   const router = useRouter()
+  const pathname = usePathname()
 
   useEffect(() => {
     let isMounted = true
+    setIsLoading(true)
 
     getSignedInUser().then((currentUser) => {
       if (!isMounted) return
@@ -50,11 +52,12 @@ export function UserMenu() {
     return () => {
       isMounted = false
     }
-  }, [])
+  }, [pathname])
 
   const handleLogout = async () => {
     setIsLoggingOut(true)
     await signOutCurrentUser()
+    setUser(null)
     router.push('/auth/login')
     router.refresh()
   }
