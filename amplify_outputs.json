@@ -1567,6 +1567,83 @@
               "isRequired": false,
               "attributes": []
             },
+            "sourceExpertName": {
+              "name": "sourceExpertName",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "sourceActivityDate": {
+              "name": "sourceActivityDate",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": false,
+              "attributes": []
+            },
+            "sourceActivityHours": {
+              "name": "sourceActivityHours",
+              "isArray": false,
+              "type": "Float",
+              "isRequired": false,
+              "attributes": []
+            },
+            "sourceActivityType": {
+              "name": "sourceActivityType",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "sourceActivityTitle": {
+              "name": "sourceActivityTitle",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "sourceActivityDescription": {
+              "name": "sourceActivityDescription",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "sourceActivityLocation": {
+              "name": "sourceActivityLocation",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "sourceActivityDayType": {
+              "name": "sourceActivityDayType",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "sourceActivitySaCode": {
+              "name": "sourceActivitySaCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "sourceActivityCatalogActivityId": {
+              "name": "sourceActivityCatalogActivityId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "sourceActivityProjectCode": {
+              "name": "sourceActivityProjectCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
             "status": {
               "name": "status",
               "isArray": false,
@@ -2040,6 +2117,782 @@
                       "read"
                     ]
                   },
+                  {
+                    "groupClaim": "cognito:groups",
+                    "provider": "userPools",
+                    "allow": "groups",
+                    "operations": [
+                      "create",
+                      "read",
+                      "update",
+                      "delete"
+                    ],
+                    "groups": [
+                      "pm",
+                      "admin"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "KnowledgeDocument": {
+          "name": "KnowledgeDocument",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "title": {
+              "name": "title",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "sourceType": {
+              "name": "sourceType",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "category": {
+              "name": "category",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "expertId": {
+              "name": "expertId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "expertName": {
+              "name": "expertName",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "expertRole": {
+              "name": "expertRole",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "projectCode": {
+              "name": "projectCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "month": {
+              "name": "month",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "year": {
+              "name": "year",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "saCode": {
+              "name": "saCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "activityName": {
+              "name": "activityName",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "approvalStatus": {
+              "name": "approvalStatus",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "originalFileName": {
+              "name": "originalFileName",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "s3Key": {
+              "name": "s3Key",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "textHash": {
+              "name": "textHash",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "extractedTextPreview": {
+              "name": "extractedTextPreview",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "indexedAt": {
+              "name": "indexedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": []
+            },
+            "createdBy": {
+              "name": "createdBy",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "metadataJson": {
+              "name": "metadataJson",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "KnowledgeDocuments",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "knowledgeDocumentsBySourceType",
+                "queryField": "listKnowledgeDocumentBySourceType",
+                "fields": [
+                  "sourceType"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "knowledgeDocumentsByCategoryAndSourceType",
+                "queryField": "listKnowledgeDocumentByCategoryAndSourceType",
+                "fields": [
+                  "category",
+                  "sourceType"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "knowledgeDocumentsByExpertId",
+                "queryField": "listKnowledgeDocumentByExpertId",
+                "fields": [
+                  "expertId"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "knowledgeDocumentsByProjectCode",
+                "queryField": "listKnowledgeDocumentByProjectCode",
+                "fields": [
+                  "projectCode"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "knowledgeDocumentsBySaCode",
+                "queryField": "listKnowledgeDocumentBySaCode",
+                "fields": [
+                  "saCode"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "knowledgeDocumentsByStatus",
+                "queryField": "listKnowledgeDocumentByStatus",
+                "fields": [
+                  "status"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "groupClaim": "cognito:groups",
+                    "provider": "userPools",
+                    "allow": "groups",
+                    "operations": [
+                      "create",
+                      "read",
+                      "update",
+                      "delete"
+                    ],
+                    "groups": [
+                      "pm",
+                      "admin"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "KnowledgeChunk": {
+          "name": "KnowledgeChunk",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "documentId": {
+              "name": "documentId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "chunkIndex": {
+              "name": "chunkIndex",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "text": {
+              "name": "text",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "textHash": {
+              "name": "textHash",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "embeddingJson": {
+              "name": "embeddingJson",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "embeddingModel": {
+              "name": "embeddingModel",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "tokenEstimate": {
+              "name": "tokenEstimate",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "sourceType": {
+              "name": "sourceType",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "category": {
+              "name": "category",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "expertId": {
+              "name": "expertId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "expertName": {
+              "name": "expertName",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "projectCode": {
+              "name": "projectCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "month": {
+              "name": "month",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "year": {
+              "name": "year",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "saCode": {
+              "name": "saCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "activityName": {
+              "name": "activityName",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "metadataJson": {
+              "name": "metadataJson",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "KnowledgeChunks",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "knowledgeChunksByDocumentId",
+                "queryField": "listKnowledgeChunkByDocumentId",
+                "fields": [
+                  "documentId"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "knowledgeChunksBySourceType",
+                "queryField": "listKnowledgeChunkBySourceType",
+                "fields": [
+                  "sourceType"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "knowledgeChunksByCategoryAndSourceType",
+                "queryField": "listKnowledgeChunkByCategoryAndSourceType",
+                "fields": [
+                  "category",
+                  "sourceType"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "knowledgeChunksByExpertId",
+                "queryField": "listKnowledgeChunkByExpertId",
+                "fields": [
+                  "expertId"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "knowledgeChunksBySaCode",
+                "queryField": "listKnowledgeChunkBySaCode",
+                "fields": [
+                  "saCode"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "knowledgeChunksByStatus",
+                "queryField": "listKnowledgeChunkByStatus",
+                "fields": [
+                  "status"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "groupClaim": "cognito:groups",
+                    "provider": "userPools",
+                    "allow": "groups",
+                    "operations": [
+                      "create",
+                      "read",
+                      "update",
+                      "delete"
+                    ],
+                    "groups": [
+                      "pm",
+                      "admin"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "ActivityAutofillAudit": {
+          "name": "ActivityAutofillAudit",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "expertId": {
+              "name": "expertId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "expertName": {
+              "name": "expertName",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "expertRole": {
+              "name": "expertRole",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "category": {
+              "name": "category",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "projectCode": {
+              "name": "projectCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "month": {
+              "name": "month",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "year": {
+              "name": "year",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "activityId": {
+              "name": "activityId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "deliverableIds": {
+              "name": "deliverableIds",
+              "isArray": true,
+              "type": "String",
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true
+            },
+            "suggestedSaCode": {
+              "name": "suggestedSaCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "suggestedActivityName": {
+              "name": "suggestedActivityName",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "suggestedDescriptionPreview": {
+              "name": "suggestedDescriptionPreview",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "confidence": {
+              "name": "confidence",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "modelAuditId": {
+              "name": "modelAuditId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "retrievalJson": {
+              "name": "retrievalJson",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "candidateJson": {
+              "name": "candidateJson",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "warningsJson": {
+              "name": "warningsJson",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "applied": {
+              "name": "applied",
+              "isArray": false,
+              "type": "Boolean",
+              "isRequired": false,
+              "attributes": []
+            },
+            "appliedAt": {
+              "name": "appliedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": []
+            },
+            "finalSaCode": {
+              "name": "finalSaCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "finalActivityName": {
+              "name": "finalActivityName",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "finalDescriptionPreview": {
+              "name": "finalDescriptionPreview",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "ActivityAutofillAudits",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "activityAutofillAuditsByExpertIdAndYearAndMonth",
+                "queryField": "listActivityAutofillAuditByExpertIdAndYearAndMonth",
+                "fields": [
+                  "expertId",
+                  "year",
+                  "month"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "activityAutofillAuditsByCategoryAndYearAndMonth",
+                "queryField": "listActivityAutofillAuditByCategoryAndYearAndMonth",
+                "fields": [
+                  "category",
+                  "year",
+                  "month"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "activityAutofillAuditsByProjectCode",
+                "queryField": "listActivityAutofillAuditByProjectCode",
+                "fields": [
+                  "projectCode"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "activityAutofillAuditsByModelAuditId",
+                "queryField": "listActivityAutofillAuditByModelAuditId",
+                "fields": [
+                  "modelAuditId"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
                   {
                     "groupClaim": "cognito:groups",
                     "provider": "userPools",

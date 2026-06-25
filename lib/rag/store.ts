@@ -12,6 +12,7 @@ import { hashRagText, normalizeRagText, splitTextIntoRagChunks } from './chunkin
 import type { ActivityAutofillAuditInput, RagIndexDocumentInput, RagIndexDocumentResult } from './types.ts';
 
 type ModelListResult<T> = { data?: T[] | null; errors?: unknown; nextToken?: string | null };
+type RagModelName = 'KnowledgeDocument' | 'KnowledgeChunk' | 'ActivityAutofillAudit';
 
 let configured = false;
 let dataClient: ReturnType<typeof generateClient<Schema>> | null = null;
@@ -29,6 +30,16 @@ function getRagDataClient() {
     dataClient = generateClient<Schema>();
   }
   return dataClient as any;
+}
+
+function getRequiredRagModel(modelName: RagModelName) {
+  const model = getRagDataClient().models?.[modelName];
+  if (!model) {
+    throw new Error(
+      `RAG model ${modelName} is missing from amplify_outputs.json. Regenerate Amplify outputs and redeploy before running RAG imports.`,
+    );
+  }
+  return model;
 }
 
 function assertNoErrors(result: { errors?: unknown }, action: string) {
@@ -140,8 +151,7 @@ function mapActivityAutofillAudit(item: any): ActivityAutofillAudit {
 }
 
 export async function listKnowledgeChunks(filter?: Record<string, unknown>) {
-  const model = getRagDataClient().models?.KnowledgeChunk;
-  if (!model) return [];
+  const model = getRequiredRagModel('KnowledgeChunk');
   const data = await listModel<any>(model, filter);
   return data.map(mapKnowledgeChunk);
 }
@@ -190,7 +200,7 @@ export async function indexKnowledgeDocument(
   });
 
   if (!document) {
-    return { dryRun: false, document: null, chunks: [] };
+    throw new Error('AWS create KnowledgeDocument returned no data.');
   }
 
   const embeddings = await generateEmbeddings(chunks.map((chunk) => chunk.text));
@@ -222,8 +232,7 @@ export async function createKnowledgeDocument(input: RagIndexDocumentInput & {
   textHash: string;
   extractedTextPreview: string;
 }) {
-  const model = getRagDataClient().models?.KnowledgeDocument;
-  if (!model) return null;
+  const model = getRequiredRagModel('KnowledgeDocument');
   const result = await model.create({
     title: input.title,
     sourceType: input.sourceType,
@@ -247,15 +256,20 @@ export async function createKnowledgeDocument(input: RagIndexDocumentInput & {
     metadataJson: input.metadata ? JSON.stringify(input.metadata) : undefined,
   });
   assertNoErrors(result, 'AWS create KnowledgeDocument');
-  return result.data ? mapKnowledgeDocument(result.data) : null;
+  if (!result.data) {
+    throw new Error('AWS create KnowledgeDocument returned no data.');
+  }
+  return mapKnowledgeDocument(result.data);
 }
 
 export async function createKnowledgeChunk(input: Omit<KnowledgeChunk, 'id' | 'createdAt' | 'updatedAt'>) {
-  const model = getRagDataClient().models?.KnowledgeChunk;
-  if (!model) return null;
+  const model = getRequiredRagModel('KnowledgeChunk');
   const result = await model.create(input);
   assertNoErrors(result, 'AWS create KnowledgeChunk');
-  return result.data ? mapKnowledgeChunk(result.data) : null;
+  if (!result.data) {
+    throw new Error('AWS create KnowledgeChunk returned no data.');
+  }
+  return mapKnowledgeChunk(result.data);
 }
 
 export async function createKnowledgeChunks(inputs: Omit<KnowledgeChunk, 'id' | 'createdAt' | 'updatedAt'>[]) {
@@ -268,12 +282,14 @@ export async function createKnowledgeChunks(inputs: Omit<KnowledgeChunk, 'id' | 
 }
 
 export async function createActivityAutofillAudit(input: ActivityAutofillAuditInput) {
-  const model = getRagDataClient().models?.ActivityAutofillAudit;
-  if (!model) return null;
+  const model = getRequiredRagModel('ActivityAutofillAudit');
   const { suggestion: _suggestion, ...payload } = input;
   const result = await model.create(payload);
   assertNoErrors(result, 'AWS create ActivityAutofillAudit');
-  return result.data ? mapActivityAutofillAudit(result.data) : null;
+  if (!result.data) {
+    throw new Error('AWS create ActivityAutofillAudit returned no data.');
+  }
+  return mapActivityAutofillAudit(result.data);
 }
 
 export async function markActivityAutofillAuditApplied(input: {
@@ -283,8 +299,7 @@ export async function markActivityAutofillAuditApplied(input: {
   finalActivityName?: string;
   finalDescriptionPreview?: string;
 }) {
-  const model = getRagDataClient().models?.ActivityAutofillAudit;
-  if (!model) return null;
+  const model = getRequiredRagModel('ActivityAutofillAudit');
 
   let id = input.id;
   if (!id && input.modelAuditId) {
@@ -303,12 +318,14 @@ export async function markActivityAutofillAuditApplied(input: {
     finalDescriptionPreview: input.finalDescriptionPreview,
   });
   assertNoErrors(result, 'AWS update ActivityAutofillAudit');
-  return result.data ? mapActivityAutofillAudit(result.data) : null;
+  if (!result.data) {
+    throw new Error('AWS update ActivityAutofillAudit returned no data.');
+  }
+  return mapActivityAutofillAudit(result.data);
 }
 
 export async function listActivityAutofillAudits(filter?: Record<string, unknown>) {
-  const model = getRagDataClient().models?.ActivityAutofillAudit;
-  if (!model) return [];
+  const model = getRequiredRagModel('ActivityAutofillAudit');
   const data = await listModel<any>(model, filter);
   return data.map(mapActivityAutofillAudit).sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''));
 }
