@@ -72,6 +72,7 @@ import {
   type ActivityAutofillCatalogCandidate,
   type ActivityAutofillSuggestion,
 } from '@/lib/activity-autofill';
+import { DELIVERABLE_ELIGIBILITY_UI_MESSAGE, isDeliverableEligibilityCheckEnabledClient } from '@/lib/feature-flags';
 
 const SAVED_SLOT_TYPES = new Set<DeliverableSlot['slotType']>([
   'livrabil',
@@ -162,6 +163,63 @@ interface ActivityFormProps {
   layout?: 'card' | 'workspace';
 }
 
+type ObservationGroup = 'form' | 'deliverables' | 'ai';
+type ObservationTone = 'info' | 'success' | 'warning' | 'danger';
+
+interface ObservationRailItem {
+  id: string;
+  group: ObservationGroup;
+  tone: ObservationTone;
+  title: string;
+  detail?: string;
+  meta?: string[];
+}
+
+const OBSERVATION_GROUP_LABELS: Record<ObservationGroup, string> = {
+  form: 'Formular',
+  deliverables: 'Livrabile',
+  ai: 'AI',
+};
+
+function getObservationToneClass(tone: ObservationTone) {
+  if (tone === 'danger') return 'border-red-200 bg-red-50 text-red-900';
+  if (tone === 'warning') return 'border-amber-200 bg-amber-50 text-amber-900';
+  if (tone === 'success') return 'border-emerald-200 bg-emerald-50 text-emerald-900';
+  return 'border-blue-200 bg-blue-50 text-blue-900';
+}
+
+function getObservationBadgeClass(tone: ObservationTone) {
+  if (tone === 'danger') return 'bg-red-600';
+  if (tone === 'warning') return 'bg-amber-500';
+  if (tone === 'success') return 'bg-emerald-600';
+  return 'bg-blue-600';
+}
+
+function getRailDuplicateIssueLabel(issue: string) {
+  if (issue === 'same_file_hash') return 'fisier identic';
+  if (issue === 'same_first_page_hash') return 'prima pagina identica';
+  if (issue === 'similar_extracted_title') return 'titlu similar';
+  if (issue === 'similar_content_fingerprint') return 'continut similar';
+  if (issue === 'possible_common_unmarked') return 'posibil comun nemarcat';
+  if (issue === 'duplicate_detected') return 'duplicat detectat';
+  if (issue === 'possible_duplicate') return 'posibil duplicat';
+  return issue;
+}
+
+function getEligibilityRailTone(status?: string): ObservationTone {
+  if (status === 'eligibil') return 'success';
+  if (status === 'neeligibil' || status === 'neconcludent') return 'danger';
+  return 'warning';
+}
+
+function getEligibilityRailLabel(status?: string) {
+  if (status === 'eligibil') return 'Eligibil';
+  if (status === 'eligibil_cu_observatii') return 'Eligibil cu observatii';
+  if (status === 'neeligibil') return 'Neeligibil';
+  if (status === 'neconcludent') return 'Neconcludent';
+  return 'Verificare eligibilitate';
+}
+
 export function ActivityForm({
   selectedDates,
   selectedHours,
@@ -183,6 +241,7 @@ export function ActivityForm({
   layout = 'card',
 }: ActivityFormProps) {
   const isWorkspaceLayout = layout === 'workspace';
+  const eligibilityCheckEnabled = isDeliverableEligibilityCheckEnabledClient();
   // Fetch activity catalog from database
   const { catalog, isLoading: catalogLoading } = useActivityCatalog();
 
@@ -1454,6 +1513,243 @@ export function ActivityForm({
     && !deliverable.isPendingConfirm
     && Boolean(deliverable.filename || deliverable.name || deliverable.declaredTitle)
   ));
+  const observationRailItems = useMemo<ObservationRailItem[]>(() => {
+    if (!isWorkspaceLayout) return [];
+
+    const items: ObservationRailItem[] = [];
+
+    if (resolutionHint) {
+      items.push({
+        id: `form-resolution-${resolutionHint.id}`,
+        group: 'form',
+        tone: 'warning',
+        title: `Rezolvi blocajul: ${resolutionHint.title}`,
+        detail: resolutionHint.detail,
+        meta: resolutionHint.meta ? [resolutionHint.meta] : undefined,
+      });
+    }
+
+    if (!isLeave && !isException && mainDeliverables.length === 0 && !hasEventMomAsMainDeliverable) {
+      items.push({
+        id: 'form-missing-main-deliverable',
+        group: 'form',
+        tone: 'warning',
+        title: 'Lipseste livrabilul principal',
+        detail: 'Activitatea necesita cel putin un livrabil principal.',
+      });
+    }
+
+    if (validationError) {
+      items.push({
+        id: 'form-validation-error',
+        group: 'form',
+        tone: 'danger',
+        title: 'Atentionare salvare',
+        detail: validationError,
+      });
+    }
+
+    if (isSaveDisabled && !isSaving) {
+      saveBlockers.forEach((blocker, index) => {
+        items.push({
+          id: `form-save-blocker-${index}`,
+          group: 'form',
+          tone: 'warning',
+          title: 'Activitatea nu poate fi salvata inca',
+          detail: blocker,
+        });
+      });
+    }
+
+    deliverables.forEach((deliverable) => {
+      if (!deliverable.uploaded || deliverable.isPhoto) return;
+
+      const deliverableTitle = getDocumentAuditTitle({
+        ...deliverable,
+        fileName: deliverable.filename || deliverable.name,
+        originalFileName: deliverable.filename || deliverable.name,
+      });
+      const notePrefix = deliverableTitle || deliverable.filename || deliverable.name || 'Livrabil';
+      const duplicateInfo = duplicateInfoByDeliverableId.get(deliverable.id);
+      const hasDuplicateSignal = Boolean(duplicateInfo || deliverable.possibleDuplicateOfDocumentId || (
+        deliverable.duplicateStatus
+        && deliverable.duplicateStatus !== 'fingerprinted'
+        && deliverable.duplicateStatus !== 'pending_upload'
+      ));
+
+      if (deliverable.docText || deliverable.firstPageText) {
+        items.push({
+          id: `deliverable-text-${deliverable.id}`,
+          group: 'deliverables',
+          tone: 'info',
+          title: notePrefix,
+          detail: deliverable.textExtractionSource === 'ocr'
+            ? 'Text OCR extras pentru autocompletare.'
+            : 'Text extras disponibil pentru autocompletare.',
+        });
+      }
+
+      if (deliverable.suggestedTitle) {
+        const meta = [
+          deliverable.titleSuggestionConfidence ? `Incredere: ${deliverable.titleSuggestionConfidence}` : null,
+          ...(deliverable.titleSuggestionAlternatives?.length
+            ? [`Alternative: ${deliverable.titleSuggestionAlternatives.join(' / ')}`]
+            : []),
+        ].filter((item): item is string => Boolean(item));
+        items.push({
+          id: `deliverable-suggested-title-${deliverable.id}`,
+          group: 'deliverables',
+          tone: deliverable.titleSuggestionConfidence === 'low' ? 'warning' : 'info',
+          title: 'Titlu sugerat automat',
+          detail: deliverable.suggestedTitle,
+          meta,
+        });
+      }
+
+      if (deliverable.declaredTitle) {
+        items.push({
+          id: `deliverable-title-match-${deliverable.id}`,
+          group: 'deliverables',
+          tone: deliverable.titleMatch === true
+            ? 'success'
+            : deliverable.titleMatch === false
+              ? 'warning'
+              : 'info',
+          title: notePrefix,
+          detail: deliverable.titleMatch === true
+            ? (deliverable.titleCheckMessage || 'Titlul se regaseste in prima pagina.')
+            : (deliverable.titleCheckMessage || 'Titlul nu a fost gasit in prima pagina.'),
+        });
+      }
+
+      if (hasDuplicateSignal) {
+        const duplicateMeta = duplicateInfo
+          ? [
+              duplicateInfo.uploadedByExpertName || 'Expert necunoscut',
+              duplicateInfo.activityDate,
+              `Semnale: ${duplicateInfo.issues.map(getRailDuplicateIssueLabel).join(', ')}`,
+            ].filter((item): item is string => Boolean(item))
+          : [String(deliverable.possibleDuplicateOfDocumentId || deliverable.duplicateStatus || '')].filter(Boolean);
+        items.push({
+          id: `deliverable-duplicate-${deliverable.id}`,
+          group: 'deliverables',
+          tone: 'warning',
+          title: 'Posibila reutilizare / document existent',
+          detail: duplicateInfo?.title || notePrefix,
+          meta: duplicateMeta,
+        });
+      }
+
+      if (deliverable.common || deliverable.isCommonDeliverable) {
+        items.push({
+          id: `deliverable-common-${deliverable.id}`,
+          group: 'deliverables',
+          tone: 'info',
+          title: 'Document comun / cross-expert',
+          detail: deliverable.sharedWithExpertIds?.length
+            ? `Va fi propus catre ${deliverable.sharedWithExpertIds.length} colaboratori.`
+            : 'Document marcat comun; colaboratorii se confirma in sectiunea de colaborare.',
+          meta: [notePrefix],
+        });
+      }
+
+      const deliverableEligibilityGateReason = !deliverable.titleConfirmed
+        ? 'Confirma titlul livrabilului inainte de verificarea eligibilitatii.'
+        : !deliverable.stadiu
+          ? 'Selecteaza stadiul documentului inainte de verificarea eligibilitatii.'
+          : eligibilityBlockedReason;
+
+      if (eligibilityCheckEnabled && deliverableEligibilityGateReason) {
+        items.push({
+          id: `deliverable-eligibility-gate-${deliverable.id}`,
+          group: 'deliverables',
+          tone: 'warning',
+          title: 'Eligibilitatea nu poate fi verificata inca',
+          detail: deliverableEligibilityGateReason,
+          meta: [notePrefix],
+        });
+      } else if (!eligibilityCheckEnabled) {
+        items.push({
+          id: `deliverable-eligibility-disabled-${deliverable.id}`,
+          group: 'deliverables',
+          tone: 'warning',
+          title: 'Verificare eligibilitate suspendata temporar',
+          detail: DELIVERABLE_ELIGIBILITY_UI_MESSAGE,
+          meta: [notePrefix],
+        });
+      }
+
+      if (deliverable.eligibilityCheck) {
+        const check = deliverable.eligibilityCheck;
+        const meta = [
+          typeof check.score === 'number' ? `Scor: ${check.score}/100` : null,
+          ...(check.missingElements || []).slice(0, 3),
+          ...(check.riskFlags || []).slice(0, 3),
+          ...(check.recommendations || []).slice(0, 2),
+        ].filter((item): item is string => Boolean(item));
+        items.push({
+          id: `deliverable-eligibility-result-${deliverable.id}`,
+          group: 'deliverables',
+          tone: getEligibilityRailTone(check.status),
+          title: `${getEligibilityRailLabel(check.status)} - ${notePrefix}`,
+          detail: check.summary,
+          meta,
+        });
+      }
+    });
+
+    if (activityAutofillUnavailableMessage) {
+      items.push({
+        id: 'ai-autofill-unavailable',
+        group: 'ai',
+        tone: 'warning',
+        title: 'Autocompletare indisponibila',
+        detail: activityAutofillUnavailableMessage,
+      });
+    }
+
+    if (activityAutofillError) {
+      items.push({
+        id: 'ai-autofill-error',
+        group: 'ai',
+        tone: 'danger',
+        title: 'Eroare autocompletare',
+        detail: activityAutofillError,
+      });
+    }
+
+    if (activityAutofillSuggestion?.warnings.length) {
+      activityAutofillSuggestion.warnings.forEach((warning, index) => {
+        items.push({
+          id: `ai-autofill-warning-${index}`,
+          group: 'ai',
+          tone: 'warning',
+          title: 'Sugestie AI de revizuit',
+          detail: warning,
+        });
+      });
+    }
+
+    return items;
+  }, [
+    activityAutofillError,
+    activityAutofillSuggestion,
+    activityAutofillUnavailableMessage,
+    deliverables,
+    duplicateInfoByDeliverableId,
+    eligibilityBlockedReason,
+    eligibilityCheckEnabled,
+    hasEventMomAsMainDeliverable,
+    isException,
+    isLeave,
+    isSaveDisabled,
+    isSaving,
+    isWorkspaceLayout,
+    mainDeliverables.length,
+    resolutionHint,
+    saveBlockers,
+    validationError,
+  ]);
   const currentMonthKey = `${year}-${String(month + 1).padStart(2, '0')}`;
   const attachedDeliverableKeys = useMemo(() => new Set(
     deliverables
@@ -1827,8 +2123,8 @@ export function ActivityForm({
     );
   };
 
-  return (
-    <Card id="activity-form-panel" className={isWorkspaceLayout ? 'scroll-mt-24 overflow-hidden border-slate-200 shadow-sm' : 'scroll-mt-24'}>
+  const formPanel = (
+    <Card id={isWorkspaceLayout ? undefined : 'activity-form-panel'} className={isWorkspaceLayout ? 'scroll-mt-24 overflow-hidden border-slate-200 shadow-sm' : 'scroll-mt-24'}>
       {isWorkspaceLayout ? (
         <div className="flex flex-col gap-3 border-b bg-white px-4 py-3 sm:flex-row sm:items-start sm:justify-between sm:px-5">
           <div className="min-w-0">
@@ -1866,7 +2162,7 @@ export function ActivityForm({
         </CardHeader>
       )}
       <CardContent className={isWorkspaceLayout ? 'space-y-5 bg-slate-50/60 p-4 sm:p-5' : 'space-y-6'}>
-        {resolutionHint && (
+        {!isWorkspaceLayout && resolutionHint && (
           <div className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
             <div className="min-w-0 space-y-1">
@@ -1915,7 +2211,7 @@ export function ActivityForm({
                 </Button>
               </div>
             </div>
-            {activityAutofillUnavailableMessage && (
+            {!isWorkspaceLayout && activityAutofillUnavailableMessage && (
               <p className="mt-3 text-xs text-amber-700">{activityAutofillUnavailableMessage}</p>
             )}
           </div>
@@ -2304,6 +2600,7 @@ export function ActivityForm({
                             duplicateInfo={duplicateInfoByDeliverableId.get(d.id)}
                             canCheckEligibility={canCheckDeliverableEligibility}
                             eligibilityBlockedReason={eligibilityBlockedReason}
+                            notesMode={isWorkspaceLayout ? 'external' : 'inline'}
                           />
                         </div>
                       );
@@ -2334,13 +2631,13 @@ export function ActivityForm({
                       </Button>
                     </div>
 
-                    {activityAutofillUnavailableMessage && (
+                    {!isWorkspaceLayout && activityAutofillUnavailableMessage && (
                       <div className="mt-2 text-xs text-amber-700">
                         {activityAutofillUnavailableMessage}
                       </div>
                     )}
 
-                    {activityAutofillError && (
+                    {!isWorkspaceLayout && activityAutofillError && (
                       <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
                         {activityAutofillError}
                       </div>
@@ -2862,6 +3159,7 @@ export function ActivityForm({
                         duplicateInfo={duplicateInfoByDeliverableId.get(d.id)}
                         canCheckEligibility={canCheckDeliverableEligibility}
                         eligibilityBlockedReason={eligibilityBlockedReason}
+                        notesMode={isWorkspaceLayout ? 'external' : 'inline'}
                       />
                     ))}
                   </div>
@@ -2909,6 +3207,7 @@ export function ActivityForm({
                           duplicateInfo={duplicateInfoByDeliverableId.get(d.id)}
                           canCheckEligibility={canCheckDeliverableEligibility}
                           eligibilityBlockedReason={eligibilityBlockedReason}
+                          notesMode={isWorkspaceLayout ? 'external' : 'inline'}
                         />
                       ))}
                     </div>
@@ -2937,6 +3236,7 @@ export function ActivityForm({
                         onUpsertSlot={upsertEventSlot}
                         canCheckEligibility={canCheckDeliverableEligibility}
                         eligibilityBlockedReason={eligibilityBlockedReason}
+                        deliverableNotesMode={isWorkspaceLayout ? 'external' : 'inline'}
                       />
                     </div>
                   </details>
@@ -2996,7 +3296,7 @@ export function ActivityForm({
         )}
 
         {/* Validation warnings */}
-        {!isLeave && !isException && mainDeliverables.length === 0 && !hasEventMomAsMainDeliverable && (
+        {!isWorkspaceLayout && !isLeave && !isException && mainDeliverables.length === 0 && !hasEventMomAsMainDeliverable && (
           <div className="flex items-center gap-2 p-3 bg-amber-50 rounded-lg border border-amber-200">
             <AlertTriangle className="h-4 w-4 text-amber-600" />
             <span className="text-sm text-amber-800">
@@ -3005,14 +3305,14 @@ export function ActivityForm({
           </div>
         )}
 
-        {validationError && (
+        {!isWorkspaceLayout && validationError && (
           <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
             <span>{validationError}</span>
           </div>
         )}
 
-        {isSaveDisabled && !isSaving && (
+        {!isWorkspaceLayout && isSaveDisabled && !isSaving && (
           <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
             <div>
@@ -3046,6 +3346,83 @@ export function ActivityForm({
         </div>
       </CardContent>
     </Card>
+  );
+
+  if (!isWorkspaceLayout) {
+    return formPanel;
+  }
+
+  return (
+    <div
+      id="activity-form-panel"
+      className="grid scroll-mt-24 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(280px,340px)] xl:items-start"
+    >
+      <div className="min-w-0">
+        {formPanel}
+      </div>
+      <ActivityObservationRail items={observationRailItems} />
+    </div>
+  );
+}
+
+function ActivityObservationRail({ items }: { items: ObservationRailItem[] }) {
+  const groups: ObservationGroup[] = ['form', 'deliverables', 'ai'];
+
+  return (
+    <aside className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm xl:sticky xl:top-24 xl:max-h-[calc(100vh-7rem)] xl:overflow-y-auto">
+      <div className="mb-3">
+        <div className="text-sm font-semibold text-slate-950">Observatii si atentionari</div>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Raman vizibile cat timp completezi formularul.
+        </p>
+      </div>
+
+      {items.length === 0 ? (
+        <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">
+          Nu exista atentionari active.
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {groups.map((group) => {
+            const groupItems = items.filter((item) => item.group === group);
+            if (groupItems.length === 0) return null;
+
+            return (
+              <section key={group} className="space-y-2">
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  {OBSERVATION_GROUP_LABELS[group]}
+                </div>
+                {groupItems.map((item) => (
+                  <div
+                    key={item.id}
+                    className={`rounded-md border p-2 text-xs ${getObservationToneClass(item.tone)}`}
+                  >
+                    <div className="flex items-start gap-2">
+                      <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${getObservationBadgeClass(item.tone)}`} />
+                      <div className="min-w-0 space-y-1">
+                        <div className="font-semibold leading-5">{item.title}</div>
+                        {item.detail && (
+                          <p className="whitespace-pre-wrap leading-5">{item.detail}</p>
+                        )}
+                        {item.meta && item.meta.length > 0 && (
+                          <ul className="space-y-0.5 text-[11px] opacity-90">
+                            {item.meta.map((meta, index) => (
+                              <li key={`${item.id}-${index}`} className="break-words">
+                                {meta}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </section>
+            );
+          })}
+        </div>
+      )}
+    </aside>
   );
 }
 

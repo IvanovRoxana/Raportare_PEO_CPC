@@ -49,6 +49,7 @@ interface DeliverableItemProps {
   duplicateInfo?: DeliverableDuplicateInfo;
   canCheckEligibility?: boolean;
   eligibilityBlockedReason?: string;
+  notesMode?: 'inline' | 'external';
 }
 
 export function DeliverableItem({
@@ -77,7 +78,9 @@ export function DeliverableItem({
   duplicateInfo,
   canCheckEligibility = true,
   eligibilityBlockedReason,
+  notesMode = 'inline',
 }: DeliverableItemProps) {
+  const renderInlineNotes = notesMode === 'inline';
   const typeOptions = deliverableOptions || ALL_DELIVERABLE_TYPES;
   const fileRef = useRef<HTMLInputElement>(null);
   const [aiLoading, setAiLoading] = useState(false);
@@ -374,7 +377,7 @@ export function DeliverableItem({
     && deliverable.duplicateStatus !== 'fingerprinted'
     && deliverable.duplicateStatus !== 'pending_upload'
   ));
-  const hasSideNotes = deliverable.uploaded && !deliverable.isPhoto && Boolean(
+  const hasSideNotes = renderInlineNotes && deliverable.uploaded && !deliverable.isPhoto && Boolean(
     deliverable.docText
     || deliverable.firstPageText
     || deliverable.suggestedTitle
@@ -399,9 +402,9 @@ export function DeliverableItem({
       : 'bg-green-50';
 
   return (
-    <div className={`grid gap-2 rounded-lg border p-3 ${borderColor} ${bgColor} xl:grid-cols-[minmax(0,1fr)_minmax(280px,340px)] xl:items-start`}>
+    <div className={`${renderInlineNotes ? 'grid xl:grid-cols-[minmax(0,1fr)_minmax(280px,340px)] xl:items-start' : 'flex flex-col'} gap-2 rounded-lg border p-3 ${borderColor} ${bgColor}`}>
       {showSteps && !deliverable.isPhoto && (
-        <div className="mb-1 flex flex-wrap gap-3 rounded-md bg-white/50 p-2 xl:col-span-2">
+        <div className={`mb-1 flex flex-wrap gap-3 rounded-md bg-white/50 p-2 ${renderInlineNotes ? 'xl:col-span-2' : ''}`}>
           <StepBadge ok={step1ok} n={1} label="Fisier incarcat" />
           <StepBadge ok={step2ok} n={2} label="Titlu confirmat" />
           <StepBadge ok={step3ok} n={3} label="Stadiu selectat" />
@@ -409,7 +412,7 @@ export function DeliverableItem({
         </div>
       )}
 
-      <div className="flex items-center gap-2 xl:col-start-1">
+      <div className={`flex items-center gap-2 ${renderInlineNotes ? 'xl:col-start-1' : ''}`}>
         {label ? (
           <div className="flex-1">
             <div className="text-xs font-medium text-slate-900">
@@ -448,7 +451,7 @@ export function DeliverableItem({
         )}
       </div>
 
-      <div className="xl:col-start-1">
+      <div className={renderInlineNotes ? 'xl:col-start-1' : ''}>
         <input
           type="file"
           ref={fileRef}
@@ -500,7 +503,7 @@ export function DeliverableItem({
         </div>
       )}
 
-      {deliverable.uploaded && (deliverable.docText || deliverable.firstPageText) && (
+      {renderInlineNotes && deliverable.uploaded && (deliverable.docText || deliverable.firstPageText) && (
         <div className="rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] text-blue-800 xl:col-start-2">
           {deliverable.textExtractionSource === 'ocr'
             ? 'Text OCR extras pentru autocompletare.'
@@ -509,9 +512,9 @@ export function DeliverableItem({
       )}
 
       {!deliverable.isPhoto && (
-        <div className="space-y-1.5 xl:contents">
+        <div className={`space-y-1.5 ${renderInlineNotes ? 'xl:contents' : ''}`}>
           {deliverable.uploaded && (
-            <div className="rounded border border-slate-200 bg-white p-2 text-[10px] text-slate-700 xl:col-start-1">
+            <div className={`rounded border border-slate-200 bg-white p-2 text-[10px] text-slate-700 ${renderInlineNotes ? 'xl:col-start-1' : ''}`}>
               <div className="font-medium text-slate-900">Titlu auditabil document</div>
               <div className="mt-0.5 break-words text-xs font-semibold text-slate-950">{auditTitle}</div>
               <div className="mt-1 flex flex-wrap gap-1.5">
@@ -537,7 +540,7 @@ export function DeliverableItem({
             </div>
           )}
 
-          {deliverable.suggestedTitle && (
+          {renderInlineNotes && deliverable.suggestedTitle && (
             <div className="rounded border border-blue-200 bg-blue-50 p-2 text-[10px] text-blue-900 xl:col-start-2">
               <div className="flex items-start justify-between gap-2">
                 <div>
@@ -569,7 +572,7 @@ export function DeliverableItem({
             </div>
           )}
 
-          <div className="relative xl:col-start-1">
+          <div className={`relative ${renderInlineNotes ? 'xl:col-start-1' : ''}`}>
             <Input
               value={deliverable.declaredTitle}
               onChange={(event) => handleTitleChange(event.target.value)}
@@ -588,10 +591,21 @@ export function DeliverableItem({
               </span>
             )}
           </div>
+          {!renderInlineNotes && deliverable.suggestedTitle && deliverable.suggestedTitle !== deliverable.declaredTitle && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleUseSuggestedTitle}
+              className="h-8 w-fit border-blue-300 px-2 text-[10px] text-blue-800 hover:bg-blue-100"
+            >
+              Foloseste titlul sugerat
+            </Button>
+          )}
         </div>
       )}
 
-      {deliverable.uploaded && !deliverable.isPhoto && deliverable.declaredTitle && (
+      {renderInlineNotes && deliverable.uploaded && !deliverable.isPhoto && deliverable.declaredTitle && (
         <div className={`rounded p-1.5 text-[10px] xl:col-start-2 ${
           deliverable.titleMatch === true
             ? 'bg-green-100 text-green-700'
@@ -605,7 +619,7 @@ export function DeliverableItem({
         </div>
       )}
 
-      {deliverable.uploaded && !deliverable.isPhoto && hasDuplicateSignal && (
+      {renderInlineNotes && deliverable.uploaded && !deliverable.isPhoto && hasDuplicateSignal && (
         <div className="rounded border border-amber-300 bg-amber-50 p-2 text-[10px] text-amber-900 xl:col-start-2">
           <div className="flex flex-wrap items-center gap-1.5">
             <AlertTriangle className="h-3 w-3" />
@@ -638,7 +652,7 @@ export function DeliverableItem({
         </div>
       )}
 
-      {deliverable.uploaded && !deliverable.isPhoto && Boolean(deliverable.common || deliverable.isCommonDeliverable) && (
+      {renderInlineNotes && deliverable.uploaded && !deliverable.isPhoto && Boolean(deliverable.common || deliverable.isCommonDeliverable) && (
         <div className="rounded border border-blue-200 bg-blue-50 p-2 text-[10px] text-blue-900 xl:col-start-2">
           <div className="font-semibold">Document comun / cross-expert</div>
           <div>
@@ -655,7 +669,7 @@ export function DeliverableItem({
           size="sm"
           onClick={handleConfirmTitle}
           disabled={deliverable.titleCheckStatus === 'mismatch' || deliverable.titleCheckStatus === 'extraction_failed'}
-          className="justify-self-start border-green-400 text-xs text-green-700 hover:bg-green-50 disabled:border-amber-300 disabled:text-amber-700 xl:col-start-1"
+          className={`justify-self-start border-green-400 text-xs text-green-700 hover:bg-green-50 disabled:border-amber-300 disabled:text-amber-700 ${renderInlineNotes ? 'xl:col-start-1' : ''}`}
         >
           {deliverable.titleCheckStatus === 'mismatch' || deliverable.titleCheckStatus === 'extraction_failed' ? (
             <AlertTriangle className="h-3 w-3 mr-1" />
@@ -667,14 +681,14 @@ export function DeliverableItem({
       )}
 
       {deliverable.titleConfirmed && (
-        <Badge variant="outline" className="w-fit border-green-300 bg-green-50 text-[10px] text-green-700 xl:col-start-1">
+        <Badge variant="outline" className={`w-fit border-green-300 bg-green-50 text-[10px] text-green-700 ${renderInlineNotes ? 'xl:col-start-1' : ''}`}>
           <Check className="h-3 w-3 mr-1" />
           Titlu confirmat
         </Badge>
       )}
 
       {deliverable.uploaded && !deliverable.isPhoto && (
-        <div className="xl:col-start-1">
+        <div className={renderInlineNotes ? 'xl:col-start-1' : ''}>
           <Select
             value={deliverable.stadiu}
             onValueChange={(value: string) => onUpdate({ stadiu: value })}
@@ -693,7 +707,7 @@ export function DeliverableItem({
         </div>
       )}
 
-      {deliverable.uploaded && !deliverable.isPhoto && (
+      {renderInlineNotes && deliverable.uploaded && !deliverable.isPhoto && (
         <div className="space-y-2 xl:col-start-2">
           {eligibilityCheckEnabled && canRunEligibilityCheck ? (
             <Button
@@ -740,6 +754,22 @@ export function DeliverableItem({
             <EligibilityResultCard check={deliverable.eligibilityCheck} />
           )}
         </div>
+      )}
+      {!renderInlineNotes && deliverable.uploaded && !deliverable.isPhoto && eligibilityCheckEnabled && canRunEligibilityCheck && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleAiCheck}
+          disabled={aiLoading}
+          className="w-fit border-indigo-300 text-xs text-indigo-700 hover:bg-indigo-50"
+        >
+          {aiLoading ? (
+            <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+          ) : (
+            <Sparkles className="h-3 w-3 mr-1" />
+          )}
+          {aiLoading ? 'Se verifică...' : 'Verifică eligibilitatea livrabilului'}
+        </Button>
       )}
     </div>
   );
