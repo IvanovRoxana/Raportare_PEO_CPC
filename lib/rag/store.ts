@@ -66,12 +66,14 @@ async function listModel<T>(args: {
   resultKey: string;
   filter?: Record<string, unknown>,
   limit?: number,
+  maxItems?: number,
   options: RagAuthContext,
 }) {
   assertCanAccessRagModel(args.modelName, args.options);
   const items: T[] = [];
   let nextToken: string | null | undefined = null;
   const limit = args.limit ?? 1000;
+  const maxItems = args.maxItems && args.maxItems > 0 ? args.maxItems : undefined;
 
   do {
     const data: Record<string, ModelListResult<T>> = await graphqlRequest<Record<string, ModelListResult<T>>>(
@@ -83,9 +85,9 @@ async function listModel<T>(args: {
     const result: ModelListResult<T> | undefined = data[args.resultKey];
     items.push(...(result?.data ?? []));
     nextToken = result?.nextToken;
-  } while (nextToken);
+  } while (nextToken && (!maxItems || items.length < maxItems));
 
-  return items;
+  return maxItems ? items.slice(0, maxItems) : items;
 }
 
 const KNOWLEDGE_DOCUMENT_FIELDS = `
@@ -304,12 +306,17 @@ function mapActivityAutofillAudit(item: any): ActivityAutofillAudit {
   };
 }
 
-export async function listKnowledgeChunks(filter?: Record<string, unknown>, options: RagAuthContext = {}) {
+export async function listKnowledgeChunks(
+  filter?: Record<string, unknown>,
+  options: ({ limit?: number; maxItems?: number } & RagAuthContext) = {},
+) {
   const data = await listModel<any>({
     modelName: 'KnowledgeChunk',
     query: LIST_KNOWLEDGE_CHUNKS_QUERY,
     resultKey: 'listKnowledgeChunks',
     filter,
+    limit: options.limit,
+    maxItems: options.maxItems,
     options,
   });
   return data.map(mapKnowledgeChunk);

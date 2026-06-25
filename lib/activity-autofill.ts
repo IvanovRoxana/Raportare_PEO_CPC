@@ -70,8 +70,29 @@ export const activityAutofillSuggestionSchema = z.object({
 export type ActivityAutofillDeliverable = z.infer<typeof activityAutofillDeliverableSchema>;
 export type ActivityAutofillCatalogCandidate = z.infer<typeof activityAutofillCatalogCandidateSchema>;
 export type ActivityAutofillRequest = z.infer<typeof activityAutofillRequestSchema>;
+export type ActivityAutofillRagSource = {
+  rank: number;
+  score: number;
+  sourceType?: string;
+  expertName?: string;
+  month?: number;
+  year?: number;
+  saCode?: string;
+  activityName?: string;
+};
+
+export type ActivityAutofillRagStatus = {
+  enabled: boolean;
+  used: boolean;
+  skippedReason?: string;
+  chunks: number;
+  warnings: string[];
+  sources: ActivityAutofillRagSource[];
+};
+
 export type ActivityAutofillSuggestion = z.infer<typeof activityAutofillSuggestionSchema> & {
   modelAuditId?: string;
+  rag?: ActivityAutofillRagStatus;
 };
 
 export type ActivityAutofillDeliverableDraft = {

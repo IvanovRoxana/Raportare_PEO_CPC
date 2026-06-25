@@ -771,6 +771,35 @@ export function DeliverableItem({
           {aiLoading ? 'Se verifică...' : 'Verifică eligibilitatea livrabilului'}
         </Button>
       )}
+      {!renderInlineNotes && deliverable.uploaded && !deliverable.isPhoto && eligibilityCheckEnabled && !canRunEligibilityCheck && (
+        <div className="w-fit max-w-full rounded border border-amber-200 bg-amber-50 p-2 text-[10px] text-amber-800">
+          <div className="flex items-start gap-1.5">
+            <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+            <span>
+              {eligibilityGateReason || 'Completeaza contextul activitatii inainte de verificarea eligibilitatii.'}
+            </span>
+          </div>
+        </div>
+      )}
+      {!renderInlineNotes && deliverable.uploaded && !deliverable.isPhoto && !eligibilityCheckEnabled && (
+        <div className="space-y-1.5">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled
+            className="w-fit border-slate-300 text-xs text-slate-600"
+          >
+            <AlertTriangle className="h-3 w-3 mr-1" />
+            Verificare eligibilitate suspendata temporar
+          </Button>
+          <div className="w-fit max-w-full rounded border border-amber-200 bg-amber-50 p-2 text-[10px] text-amber-800">
+            {DELIVERABLE_ELIGIBILITY_UI_MESSAGE}
+          </div>
+        </div>
+      )}
+      {!renderInlineNotes && deliverable.uploaded && !deliverable.isPhoto && deliverable.eligibilityCheck && (
+        <EligibilityResultCard check={deliverable.eligibilityCheck} />
+      )}
     </div>
   );
 }

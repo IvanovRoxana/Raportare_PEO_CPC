@@ -1,8 +1,7 @@
 'use client';
 
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Upload, X, FileText, Loader2, Users, Plus, AlertTriangle, CheckCircle, Sparkles } from 'lucide-react';
-import { fetchAuthSession } from 'aws-amplify/auth';
 import { uploadData } from 'aws-amplify/storage';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,6 +22,11 @@ import { Field, FieldLabel } from '@/components/ui/field';
 import { generateId, formatDateRo } from '@/lib/app-utils';
 import { EventDocsPanel } from './event-docs-panel';
 import { DeliverableItem, type DeliverableDuplicateInfo } from './deliverable-item';
+import {
+  ExistingDeliverablePicker,
+  type ExistingDeliverableCandidate,
+  type ExistingDeliverableSource,
+} from './existing-deliverable-picker';
 import { createDeliverableSlot, type DeliverableSlot } from '@/lib/deliverable-types';
 import { 
   ACTS, 
@@ -73,7 +77,17 @@ import {
   type ActivityAutofillCatalogCandidate,
   type ActivityAutofillSuggestion,
 } from '@/lib/activity-autofill';
-import { DELIVERABLE_ELIGIBILITY_UI_MESSAGE, isDeliverableEligibilityCheckEnabledClient } from '@/lib/feature-flags';
+import { isDeliverableEligibilityCheckEnabledClient } from '@/lib/feature-flags';
+import {
+  useActivityObservationRailItems,
+  type ActivityResolutionHint,
+  type ObservationGroup,
+  type ObservationRailItem,
+  type ObservationTone,
+} from './use-activity-observation-rail';
+import { useActivityAutofill } from './use-activity-autofill';
+
+export type { ActivityResolutionHint, ActivityResolutionSection } from './use-activity-observation-rail';
 
 const SAVED_SLOT_TYPES = new Set<DeliverableSlot['slotType']>([
   'livrabil',
@@ -89,58 +103,6 @@ function resolveSavedSlotType(deliverableType?: string, category?: string): Deli
   return SAVED_SLOT_TYPES.has(savedType as DeliverableSlot['slotType'])
     ? (savedType as DeliverableSlot['slotType'])
     : 'livrabil';
-}
-
-export type ActivityResolutionSection = 'details' | 'deliverables' | 'gdpr';
-
-export interface ActivityResolutionHint {
-  id: string;
-  title: string;
-  detail: string;
-  meta?: string;
-  section?: ActivityResolutionSection;
-  deliverableId?: string;
-}
-
-type ExistingDeliverableSource = 'mine' | 'shared';
-
-interface ExistingDeliverableCandidate {
-  key: string;
-  source: ExistingDeliverableSource;
-  title: string;
-  fileName: string;
-  fileType: string;
-  fileSize: number;
-  documentId?: string;
-  s3Bucket?: string;
-  s3Key?: string;
-  fileHash?: string;
-  firstPageTextHash?: string;
-  contentFingerprint?: string;
-  uploadedByExpertId?: string;
-  uploadedByExpertName?: string;
-  uploadDate?: string;
-  sourceActivityId?: string;
-  activityDate?: string;
-  saCode?: string;
-  deliverableType?: string;
-  declaredTitle?: string;
-  docTitle?: string;
-  docText?: string | null;
-  suggestedTitle?: string | null;
-  firstPageText?: string | null;
-  titleSuggestionConfidence?: string;
-  titleSuggestionAlternatives?: string[];
-  titleSuggestionReason?: string;
-  titleSource?: string;
-  titleMatch?: boolean | null;
-  titleConfirmed?: boolean;
-  titleCheckStatus?: string;
-  titleCheckMessage?: string;
-  eligibilityCheck?: DeliverableSlot['eligibilityCheck'];
-  isCommonDeliverable?: boolean;
-  aiStatus?: string;
-  aiReason?: string;
 }
 
 interface ActivityFormProps {
@@ -164,18 +126,6 @@ interface ActivityFormProps {
   layout?: 'card' | 'workspace';
 }
 
-type ObservationGroup = 'form' | 'deliverables' | 'ai';
-type ObservationTone = 'info' | 'success' | 'warning' | 'danger';
-
-interface ObservationRailItem {
-  id: string;
-  group: ObservationGroup;
-  tone: ObservationTone;
-  title: string;
-  detail?: string;
-  meta?: string[];
-}
-
 const OBSERVATION_GROUP_LABELS: Record<ObservationGroup, string> = {
   form: 'Formular',
   deliverables: 'Livrabile',
@@ -196,40 +146,28 @@ function getObservationBadgeClass(tone: ObservationTone) {
   return 'bg-blue-600';
 }
 
-function getRailDuplicateIssueLabel(issue: string) {
-  if (issue === 'same_file_hash') return 'fisier identic';
-  if (issue === 'same_first_page_hash') return 'prima pagina identica';
-  if (issue === 'similar_extracted_title') return 'titlu similar';
-  if (issue === 'similar_content_fingerprint') return 'continut similar';
-  if (issue === 'possible_common_unmarked') return 'posibil comun nemarcat';
-  if (issue === 'duplicate_detected') return 'duplicat detectat';
-  if (issue === 'possible_duplicate') return 'posibil duplicat';
-  return issue;
+function getAutofillConfidenceLabel(confidence: ActivityAutofillSuggestion['confidence']) {
+  if (confidence === 'high') return 'incredere ridicata';
+  if (confidence === 'medium') return 'incredere medie';
+  return 'incredere scazuta';
 }
 
-function getEligibilityRailTone(status?: string): ObservationTone {
-  if (status === 'eligibil') return 'success';
-  if (status === 'neeligibil' || status === 'neconcludent') return 'danger';
-  return 'warning';
+function getAutofillRagLabel(suggestion: ActivityAutofillSuggestion) {
+  if (!suggestion.rag) return 'RAG: necunoscut';
+  if (!suggestion.rag.enabled) return 'RAG: inactiv';
+  if (suggestion.rag.used) return `RAG: ${suggestion.rag.chunks} fragmente`;
+  if (suggestion.rag.skippedReason === 'retrieval_failed') return 'RAG: indisponibil';
+  return 'RAG: fara potriviri';
 }
 
-function getEligibilityRailLabel(status?: string) {
-  if (status === 'eligibil') return 'Eligibil';
-  if (status === 'eligibil_cu_observatii') return 'Eligibil cu observatii';
-  if (status === 'neeligibil') return 'Neeligibil';
-  if (status === 'neconcludent') return 'Neconcludent';
-  return 'Verificare eligibilitate';
-}
-
-async function getJsonAuthHeaders() {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  try {
-    const token = (await fetchAuthSession()).tokens?.accessToken?.toString();
-    if (token) headers.Authorization = `Bearer ${token}`;
-  } catch {
-    // AI endpoints still handle the no-token path; RAG retrieval/audit will be skipped server-side.
-  }
-  return headers;
+function formatAutofillRagSource(source: NonNullable<ActivityAutofillSuggestion['rag']>['sources'][number]) {
+  return [
+    source.sourceType,
+    source.expertName,
+    source.saCode,
+    source.activityName,
+    source.month && source.year ? `${source.month}/${source.year}` : undefined,
+  ].filter(Boolean).join(' - ');
 }
 
 export function ActivityForm({
@@ -461,9 +399,6 @@ export function ActivityForm({
   // Verification
   const [isVerifyingTitle, setIsVerifyingTitle] = useState(false);
   const [titleVerificationResult, setTitleVerificationResult] = useState<string | null>(null);
-  const [isAutofillingActivity, setIsAutofillingActivity] = useState(false);
-  const [activityAutofillSuggestion, setActivityAutofillSuggestion] = useState<ActivityAutofillSuggestion | null>(null);
-  const [activityAutofillError, setActivityAutofillError] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const businessHubPvInputRef = useRef<HTMLInputElement>(null);
@@ -607,13 +542,35 @@ export function ActivityForm({
     }))
   ), [filteredCatalog]);
 
-  const activityAutofillUnavailableMessage = activityAutofillDeliverables.length === 0
-    ? 'Incarca un PDF/DOC/DOCX sau o imagine scanata; aplicatia va extrage textul nativ sau OCR pentru autocompletare.'
-    : activityAutofillCatalogCandidates.length === 0
-      ? 'Nu exista activitati de catalog disponibile pentru rolul curent.'
-      : null;
-
   const lastAutoDescriptionRef = useRef('');
+  const applyActivityAutofillFields = useCallback((suggestion: ActivityAutofillSuggestion) => {
+    setSaCode(suggestion.recommended.saCode);
+    setActivityTitle(suggestion.recommended.activityName);
+    setDescription(suggestion.recommended.description);
+    lastAutoDescriptionRef.current = '__activity_autofill_applied__';
+    setTitleVerificationResult(null);
+  }, []);
+
+  const {
+    activityAutofillError,
+    activityAutofillSuggestion,
+    activityAutofillUnavailableMessage,
+    applyActivityAutofillSuggestion,
+    isAutofillingActivity,
+    suggestActivityFromDeliverables: handleSuggestActivityFromDeliverables,
+  } = useActivityAutofill({
+    catalogCandidates: activityAutofillCatalogCandidates,
+    category: expert?.category,
+    deliverables: activityAutofillDeliverables,
+    expertId,
+    expertName,
+    expertRole: expert?.positionInProject || expert?.role,
+    month,
+    onApplySuggestion: applyActivityAutofillFields,
+    projectCode: expert?.projectCode,
+    selectedDates,
+    year,
+  });
 
   useEffect(() => {
     if (initialActivity?.id || prefillActivity?.description?.trim()) return;
@@ -985,88 +942,6 @@ export function ActivityForm({
     } finally {
       setIsVerifyingTitle(false);
     }
-  };
-
-  const handleSuggestActivityFromDeliverables = async () => {
-    if (activityAutofillUnavailableMessage) return;
-
-    setIsAutofillingActivity(true);
-    setActivityAutofillError(null);
-    setActivityAutofillSuggestion(null);
-
-    try {
-      const headers = await getJsonAuthHeaders();
-      const response = await fetch('/api/ai/suggest-activity-from-deliverables', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          deliverables: activityAutofillDeliverables,
-          catalogCandidates: activityAutofillCatalogCandidates,
-          expertName,
-          expertId,
-          expertRole: expert?.positionInProject || expert?.role,
-          category: expert?.category,
-          projectCode: expert?.projectCode,
-          month,
-          year,
-          selectedDates,
-        }),
-      });
-
-      const data = await response.json();
-      if (!response.ok || data.error) {
-        throw new Error(data.error || 'Autocompletarea activitatii a esuat.');
-      }
-
-      setActivityAutofillSuggestion(data);
-    } catch (error) {
-      setActivityAutofillError(error instanceof Error ? error.message : 'Eroare la autocompletarea activitatii.');
-    } finally {
-      setIsAutofillingActivity(false);
-    }
-  };
-
-  const markActivityAutofillSuggestionApplied = (suggestion: ActivityAutofillSuggestion) => {
-    if (!suggestion.modelAuditId) return;
-
-    void (async () => {
-      const headers = await getJsonAuthHeaders();
-      await fetch('/api/ai/suggest-activity-from-deliverables/applied', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          modelAuditId: suggestion.modelAuditId,
-          finalSaCode: suggestion.recommended.saCode,
-          finalActivityName: suggestion.recommended.activityName,
-          finalDescriptionPreview: suggestion.recommended.description.slice(0, 500),
-        }),
-      });
-    })().catch((error) => {
-      console.warn('Nu s-a putut marca auditul AI ca aplicat.', error);
-    });
-  };
-
-  const applyActivityAutofillSuggestion = () => {
-    if (!activityAutofillSuggestion) return;
-
-    const catalogMatch = activityAutofillCatalogCandidates.find((candidate) => (
-      candidate.saCode === activityAutofillSuggestion.recommended.saCode
-      && candidate.activityName === activityAutofillSuggestion.recommended.activityName
-    ));
-
-    if (!catalogMatch) {
-      setActivityAutofillError('Sugestia nu mai exista in catalogul disponibil pentru rolul curent.');
-      return;
-    }
-
-    setSaCode(activityAutofillSuggestion.recommended.saCode);
-    setActivityTitle(activityAutofillSuggestion.recommended.activityName);
-    setDescription(activityAutofillSuggestion.recommended.description);
-    lastAutoDescriptionRef.current = '__activity_autofill_applied__';
-    setTitleVerificationResult(null);
-    setActivityAutofillError(null);
-    setActivityAutofillSuggestion(null);
-    markActivityAutofillSuggestionApplied(activityAutofillSuggestion);
   };
 
   const dataUrlToBlob = (dataUrl: string, fallbackType: string) => {
@@ -1552,213 +1427,7 @@ export function ActivityForm({
     && !deliverable.isPendingConfirm
     && Boolean(deliverable.filename || deliverable.name || deliverable.declaredTitle)
   ));
-  const observationRailItems = useMemo<ObservationRailItem[]>(() => {
-    if (!isWorkspaceLayout) return [];
-
-    const items: ObservationRailItem[] = [];
-
-    if (resolutionHint) {
-      items.push({
-        id: `form-resolution-${resolutionHint.id}`,
-        group: 'form',
-        tone: 'warning',
-        title: `Rezolvi blocajul: ${resolutionHint.title}`,
-        detail: resolutionHint.detail,
-        meta: resolutionHint.meta ? [resolutionHint.meta] : undefined,
-      });
-    }
-
-    if (!isLeave && !isException && mainDeliverables.length === 0 && !hasEventMomAsMainDeliverable) {
-      items.push({
-        id: 'form-missing-main-deliverable',
-        group: 'form',
-        tone: 'warning',
-        title: 'Lipseste livrabilul principal',
-        detail: 'Activitatea necesita cel putin un livrabil principal.',
-      });
-    }
-
-    if (validationError) {
-      items.push({
-        id: 'form-validation-error',
-        group: 'form',
-        tone: 'danger',
-        title: 'Atentionare salvare',
-        detail: validationError,
-      });
-    }
-
-    if (isSaveDisabled && !isSaving) {
-      saveBlockers.forEach((blocker, index) => {
-        items.push({
-          id: `form-save-blocker-${index}`,
-          group: 'form',
-          tone: 'warning',
-          title: 'Activitatea nu poate fi salvata inca',
-          detail: blocker,
-        });
-      });
-    }
-
-    deliverables.forEach((deliverable) => {
-      if (!deliverable.uploaded || deliverable.isPhoto) return;
-
-      const deliverableTitle = getDocumentAuditTitle({
-        ...deliverable,
-        fileName: deliverable.filename || deliverable.name,
-        originalFileName: deliverable.filename || deliverable.name,
-      });
-      const notePrefix = deliverableTitle || deliverable.filename || deliverable.name || 'Livrabil';
-      const duplicateInfo = duplicateInfoByDeliverableId.get(deliverable.id);
-      const hasDuplicateSignal = Boolean(duplicateInfo || deliverable.possibleDuplicateOfDocumentId || (
-        deliverable.duplicateStatus
-        && deliverable.duplicateStatus !== 'fingerprinted'
-        && deliverable.duplicateStatus !== 'pending_upload'
-      ));
-
-      if (deliverable.docText || deliverable.firstPageText) {
-        items.push({
-          id: `deliverable-text-${deliverable.id}`,
-          group: 'deliverables',
-          tone: 'info',
-          title: notePrefix,
-          detail: deliverable.textExtractionSource === 'ocr'
-            ? 'Text OCR extras pentru autocompletare.'
-            : 'Text extras disponibil pentru autocompletare.',
-        });
-      }
-
-      if (deliverable.suggestedTitle) {
-        const meta = [
-          deliverable.titleSuggestionConfidence ? `Incredere: ${deliverable.titleSuggestionConfidence}` : null,
-          ...(deliverable.titleSuggestionAlternatives?.length
-            ? [`Alternative: ${deliverable.titleSuggestionAlternatives.join(' / ')}`]
-            : []),
-        ].filter((item): item is string => Boolean(item));
-        items.push({
-          id: `deliverable-suggested-title-${deliverable.id}`,
-          group: 'deliverables',
-          tone: deliverable.titleSuggestionConfidence === 'low' ? 'warning' : 'info',
-          title: 'Titlu sugerat automat',
-          detail: deliverable.suggestedTitle,
-          meta,
-        });
-      }
-
-      if (deliverable.declaredTitle) {
-        items.push({
-          id: `deliverable-title-match-${deliverable.id}`,
-          group: 'deliverables',
-          tone: deliverable.titleMatch === true
-            ? 'success'
-            : deliverable.titleMatch === false
-              ? 'warning'
-              : 'info',
-          title: notePrefix,
-          detail: deliverable.titleMatch === true
-            ? (deliverable.titleCheckMessage || 'Titlul se regaseste in prima pagina.')
-            : (deliverable.titleCheckMessage || 'Titlul nu a fost gasit in prima pagina.'),
-        });
-      }
-
-      if (hasDuplicateSignal) {
-        const duplicateMeta = duplicateInfo
-          ? [
-              duplicateInfo.uploadedByExpertName || 'Expert necunoscut',
-              duplicateInfo.activityDate,
-              `Semnale: ${duplicateInfo.issues.map(getRailDuplicateIssueLabel).join(', ')}`,
-            ].filter((item): item is string => Boolean(item))
-          : [String(deliverable.possibleDuplicateOfDocumentId || deliverable.duplicateStatus || '')].filter(Boolean);
-        items.push({
-          id: `deliverable-duplicate-${deliverable.id}`,
-          group: 'deliverables',
-          tone: 'warning',
-          title: 'Posibila reutilizare / document existent',
-          detail: duplicateInfo?.title || notePrefix,
-          meta: duplicateMeta,
-        });
-      }
-
-      if (deliverable.common || deliverable.isCommonDeliverable) {
-        items.push({
-          id: `deliverable-common-${deliverable.id}`,
-          group: 'deliverables',
-          tone: 'info',
-          title: 'Document comun / cross-expert',
-          detail: deliverable.sharedWithExpertIds?.length
-            ? `Va fi propus catre ${deliverable.sharedWithExpertIds.length} colaboratori.`
-            : 'Document marcat comun; colaboratorii se confirma in sectiunea de colaborare.',
-          meta: [notePrefix],
-        });
-      }
-
-      const deliverableEligibilityGateReason = !deliverable.titleConfirmed
-        ? 'Confirma titlul livrabilului inainte de verificarea eligibilitatii.'
-        : !deliverable.stadiu
-          ? 'Selecteaza stadiul documentului inainte de verificarea eligibilitatii.'
-          : eligibilityBlockedReason;
-
-      if (eligibilityCheckEnabled && deliverableEligibilityGateReason) {
-        items.push({
-          id: `deliverable-eligibility-gate-${deliverable.id}`,
-          group: 'deliverables',
-          tone: 'warning',
-          title: 'Eligibilitatea nu poate fi verificata inca',
-          detail: deliverableEligibilityGateReason,
-          meta: [notePrefix],
-        });
-      } else if (!eligibilityCheckEnabled) {
-        items.push({
-          id: `deliverable-eligibility-disabled-${deliverable.id}`,
-          group: 'deliverables',
-          tone: 'warning',
-          title: 'Verificare eligibilitate suspendata temporar',
-          detail: DELIVERABLE_ELIGIBILITY_UI_MESSAGE,
-          meta: [notePrefix],
-        });
-      }
-
-      if (deliverable.eligibilityCheck) {
-        const check = deliverable.eligibilityCheck;
-        const meta = [
-          typeof check.score === 'number' ? `Scor: ${check.score}/100` : null,
-          ...(check.missingElements || []).slice(0, 3),
-          ...(check.riskFlags || []).slice(0, 3),
-          ...(check.recommendations || []).slice(0, 2),
-        ].filter((item): item is string => Boolean(item));
-        items.push({
-          id: `deliverable-eligibility-result-${deliverable.id}`,
-          group: 'deliverables',
-          tone: getEligibilityRailTone(check.status),
-          title: `${getEligibilityRailLabel(check.status)} - ${notePrefix}`,
-          detail: check.summary,
-          meta,
-        });
-      }
-    });
-
-    if (activityAutofillUnavailableMessage) {
-      items.push({
-        id: 'ai-autofill-unavailable',
-        group: 'ai',
-        tone: 'warning',
-        title: 'Autocompletare indisponibila',
-        detail: activityAutofillUnavailableMessage,
-      });
-    }
-
-    if (activityAutofillError) {
-      items.push({
-        id: 'ai-autofill-error',
-        group: 'ai',
-        tone: 'danger',
-        title: 'Eroare autocompletare',
-        detail: activityAutofillError,
-      });
-    }
-
-    return items;
-  }, [
+  const observationRailItems = useActivityObservationRailItems({
     activityAutofillError,
     activityAutofillUnavailableMessage,
     deliverables,
@@ -1771,11 +1440,11 @@ export function ActivityForm({
     isSaveDisabled,
     isSaving,
     isWorkspaceLayout,
-    mainDeliverables.length,
+    mainDeliverablesCount: mainDeliverables.length,
     resolutionHint,
     saveBlockers,
     validationError,
-  ]);
+  });
   const currentMonthKey = `${year}-${String(month + 1).padStart(2, '0')}`;
   const attachedDeliverableKeys = useMemo(() => new Set(
     deliverables
@@ -2595,65 +2264,16 @@ export function ActivityForm({
                   </div>
 
                   {existingDeliverablePickerOpen && (
-                    <div className="mb-3 rounded-md border bg-white p-3">
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                        <div className="inline-flex w-fit rounded-md border bg-slate-50 p-0.5">
-                          <button
-                            type="button"
-                            onClick={() => setExistingDeliverableSource('mine')}
-                            className={`rounded px-2.5 py-1 text-xs font-medium ${existingDeliverableSource === 'mine' ? 'bg-white text-foreground shadow-sm' : 'text-muted-foreground'}`}
-                          >
-                            Ale mele ({mineExistingDeliverablesCount})
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setExistingDeliverableSource('shared')}
-                            className={`rounded px-2.5 py-1 text-xs font-medium ${existingDeliverableSource === 'shared' ? 'bg-white text-foreground shadow-sm' : 'text-muted-foreground'}`}
-                          >
-                            Comune ({sharedExistingDeliverablesCount})
-                          </button>
-                        </div>
-                        <Input
-                          value={existingDeliverableQuery}
-                          onChange={(event) => setExistingDeliverableQuery(event.target.value)}
-                          placeholder="Cauta titlu, fisier, SA"
-                          className="h-8 text-xs sm:max-w-64"
-                        />
-                      </div>
-
-                      <div className="mt-3 max-h-64 overflow-y-auto rounded-md border">
-                        {visibleExistingDeliverableCandidates.length === 0 ? (
-                          <div className="px-3 py-4 text-center text-xs text-muted-foreground">
-                            Nu exista livrabile disponibile pentru filtrul curent.
-                          </div>
-                        ) : (
-                          visibleExistingDeliverableCandidates.map((candidate) => (
-                            <div key={candidate.key} className="flex flex-col gap-2 border-b px-3 py-2 last:border-b-0 sm:flex-row sm:items-center sm:justify-between">
-                              <div className="min-w-0">
-                                <div className="truncate text-xs font-medium text-foreground">
-                                  {candidate.title || candidate.fileName}
-                                </div>
-                                <div className="mt-0.5 flex flex-wrap gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
-                                  <span>{candidate.fileName}</span>
-                                  {candidate.activityDate && <span>{formatDateRo(candidate.activityDate)}</span>}
-                                  {candidate.saCode && <span>{candidate.saCode}</span>}
-                                  {candidate.uploadedByExpertName && <span>{candidate.uploadedByExpertName}</span>}
-                                </div>
-                              </div>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="h-8 shrink-0"
-                                onClick={() => attachExistingDeliverable(candidate)}
-                              >
-                                Ataseaza
-                              </Button>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </div>
+                    <ExistingDeliverablePicker
+                      candidates={visibleExistingDeliverableCandidates}
+                      mineCount={mineExistingDeliverablesCount}
+                      onAttach={attachExistingDeliverable}
+                      onQueryChange={setExistingDeliverableQuery}
+                      onSourceChange={setExistingDeliverableSource}
+                      query={existingDeliverableQuery}
+                      sharedCount={sharedExistingDeliverablesCount}
+                      source={existingDeliverableSource}
+                    />
                   )}
 
                   {mainDeliverables.length === 0 && (
@@ -2740,6 +2360,14 @@ export function ActivityForm({
                       <div className="mt-3 space-y-3 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-950">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <div className="font-medium">Sugestie pregatita pentru revizuire</div>
+                          <div className="flex flex-wrap gap-1.5">
+                            <Badge variant="outline" className="border-emerald-300 bg-white text-[10px] text-emerald-800">
+                              {getAutofillConfidenceLabel(activityAutofillSuggestion.confidence)}
+                            </Badge>
+                            <Badge variant="outline" className="border-emerald-300 bg-white text-[10px] text-emerald-800">
+                              {getAutofillRagLabel(activityAutofillSuggestion)}
+                            </Badge>
+                          </div>
                         </div>
                         <div className="grid gap-2 md:grid-cols-2">
                           <div>
@@ -2757,6 +2385,51 @@ export function ActivityForm({
                             {activityAutofillSuggestion.recommended.description}
                           </div>
                         </div>
+                        {(activityAutofillSuggestion.evidence.length > 0 || activityAutofillSuggestion.warnings.length > 0) && (
+                          <div className="grid gap-2 md:grid-cols-2">
+                            {activityAutofillSuggestion.evidence.length > 0 && (
+                              <div className="rounded border border-emerald-200 bg-white p-2 text-xs text-slate-800">
+                                <div className="font-medium text-emerald-800">Dovezi folosite</div>
+                                <ul className="mt-1 list-disc space-y-1 pl-4">
+                                  {activityAutofillSuggestion.evidence.slice(0, 4).map((item, index) => (
+                                    <li key={`activity-autofill-evidence-${index}`}>{item}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            {activityAutofillSuggestion.warnings.length > 0 && (
+                              <div className="rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
+                                <div className="font-medium">Atentionari</div>
+                                <ul className="mt-1 list-disc space-y-1 pl-4">
+                                  {activityAutofillSuggestion.warnings.slice(0, 4).map((item, index) => (
+                                    <li key={`activity-autofill-warning-${index}`}>{item}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {activityAutofillSuggestion.rag && (
+                          <div className="rounded border border-emerald-200 bg-white p-2 text-xs text-slate-800">
+                            <div className="font-medium text-emerald-800">Context RAG</div>
+                            {activityAutofillSuggestion.rag.warnings.length > 0 && (
+                              <div className="mt-1 text-amber-700">
+                                {activityAutofillSuggestion.rag.warnings.join(' ')}
+                              </div>
+                            )}
+                            {activityAutofillSuggestion.rag.sources.length > 0 ? (
+                              <ul className="mt-1 list-disc space-y-1 pl-4">
+                                {activityAutofillSuggestion.rag.sources.map((source) => (
+                                  <li key={`activity-autofill-rag-source-${source.rank}`}>
+                                    #{source.rank} ({Math.round(source.score * 100)}%) {formatAutofillRagSource(source)}
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <div className="mt-1 text-slate-600">Nu au fost returnate fragmente RAG pentru aceasta sugestie.</div>
+                            )}
+                          </div>
+                        )}
                         <div className="flex justify-end">
                           <Button type="button" size="sm" onClick={applyActivityAutofillSuggestion}>
                             <CheckCircle className="h-4 w-4 mr-2" />
