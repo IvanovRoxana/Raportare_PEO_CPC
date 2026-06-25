@@ -93,6 +93,10 @@ export interface RagIndexDocumentResult {
   dryRun: boolean;
 }
 
+export interface RagAuthContext {
+  authToken?: string;
+}
+
 export interface ActivityAutofillAuditInput extends Omit<ActivityAutofillAudit, 'id' | 'createdAt' | 'updatedAt'> {
   suggestion?: ActivityAutofillSuggestion;
 }

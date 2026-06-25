@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { guardRagAdminRequest } from '@/lib/rag/admin-auth';
+import { getCognitoAccessTokenFromRequest } from '@/lib/rag/cognito-auth';
 import { indexKnowledgeDocument } from '@/lib/rag/store';
 
 export const runtime = 'nodejs';
@@ -16,9 +17,16 @@ export async function POST(req: Request) {
     const title = typeof body?.title === 'string' ? body.title : body?.originalFileName;
     const sourceType = typeof body?.sourceType === 'string' ? body.sourceType : 'other';
     const dryRun = body?.dryRun === true || url.searchParams.get('dryRun') === 'true';
+    const authToken = getCognitoAccessTokenFromRequest(req, {
+      allowAuthorizationHeader: Boolean(req.headers.get('x-rag-admin-token')),
+    });
 
     if (!text.trim() || !title) {
       return NextResponse.json({ error: 'Documentul RAG are nevoie de title si text.' }, { status: 400 });
+    }
+
+    if (!dryRun && !authToken) {
+      return NextResponse.json({ error: 'Importul RAG real necesita x-cognito-access-token pentru scrierea in AppSync.' }, { status: 401 });
     }
 
     const result = await indexKnowledgeDocument({
@@ -39,7 +47,7 @@ export async function POST(req: Request) {
       s3Key: typeof body?.s3Key === 'string' ? body.s3Key : undefined,
       createdBy: typeof body?.createdBy === 'string' ? body.createdBy : 'admin-rag-index',
       metadata: body?.metadata && typeof body.metadata === 'object' ? body.metadata : undefined,
-    }, { dryRun });
+    }, { dryRun, authToken });
 
     return NextResponse.json({
       ok: true,

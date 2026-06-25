@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { splitTextIntoRagChunks } from '../lib/rag/chunking.ts';
 import { guardRagAdminRequest } from '../lib/rag/admin-auth.ts';
+import { getCognitoAccessTokenFromRequest } from '../lib/rag/cognito-auth.ts';
 import {
   retrieveActivityAutofillContext,
   shouldRunActivityAutofillRag,
@@ -87,4 +88,31 @@ test('RAG admin guard accepts matching header token only', () => {
   assert.equal(allowed, null);
 
   restoreEnv('RAG_ADMIN_IMPORT_TOKEN', previousToken);
+});
+
+test('Cognito token helper reads explicit and bearer tokens without using admin token header', () => {
+  const explicit = getCognitoAccessTokenFromRequest(new Request('http://localhost/api/admin/rag/index-document', {
+    method: 'POST',
+    headers: {
+      'x-rag-admin-token': 'admin-token',
+      'x-cognito-access-token': 'cognito-token',
+    },
+  }));
+  assert.equal(explicit, 'cognito-token');
+
+  const bearer = getCognitoAccessTokenFromRequest(new Request('http://localhost/api/ai/suggest-activity-from-deliverables', {
+    method: 'POST',
+    headers: {
+      authorization: 'Bearer cognito-bearer-token',
+    },
+  }), { allowAuthorizationHeader: true });
+  assert.equal(bearer, 'cognito-bearer-token');
+
+  const ignoredBearer = getCognitoAccessTokenFromRequest(new Request('http://localhost/api/admin/rag/index-document', {
+    method: 'POST',
+    headers: {
+      authorization: 'Bearer admin-token',
+    },
+  }));
+  assert.equal(ignoredBearer, '');
 });

@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { Upload, X, FileText, Loader2, Users, Plus, AlertTriangle, CheckCircle, Sparkles } from 'lucide-react';
+import { fetchAuthSession } from 'aws-amplify/auth';
 import { uploadData } from 'aws-amplify/storage';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -218,6 +219,17 @@ function getEligibilityRailLabel(status?: string) {
   if (status === 'neeligibil') return 'Neeligibil';
   if (status === 'neconcludent') return 'Neconcludent';
   return 'Verificare eligibilitate';
+}
+
+async function getJsonAuthHeaders() {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  try {
+    const token = (await fetchAuthSession()).tokens?.accessToken?.toString();
+    if (token) headers.Authorization = `Bearer ${token}`;
+  } catch {
+    // AI endpoints still handle the no-token path; RAG retrieval/audit will be skipped server-side.
+  }
+  return headers;
 }
 
 export function ActivityForm({
@@ -983,9 +995,10 @@ export function ActivityForm({
     setActivityAutofillSuggestion(null);
 
     try {
+      const headers = await getJsonAuthHeaders();
       const response = await fetch('/api/ai/suggest-activity-from-deliverables', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           deliverables: activityAutofillDeliverables,
           catalogCandidates: activityAutofillCatalogCandidates,
@@ -1016,16 +1029,19 @@ export function ActivityForm({
   const markActivityAutofillSuggestionApplied = (suggestion: ActivityAutofillSuggestion) => {
     if (!suggestion.modelAuditId) return;
 
-    void fetch('/api/ai/suggest-activity-from-deliverables/applied', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        modelAuditId: suggestion.modelAuditId,
-        finalSaCode: suggestion.recommended.saCode,
-        finalActivityName: suggestion.recommended.activityName,
-        finalDescriptionPreview: suggestion.recommended.description.slice(0, 500),
-      }),
-    }).catch((error) => {
+    void (async () => {
+      const headers = await getJsonAuthHeaders();
+      await fetch('/api/ai/suggest-activity-from-deliverables/applied', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          modelAuditId: suggestion.modelAuditId,
+          finalSaCode: suggestion.recommended.saCode,
+          finalActivityName: suggestion.recommended.activityName,
+          finalDescriptionPreview: suggestion.recommended.description.slice(0, 500),
+        }),
+      });
+    })().catch((error) => {
       console.warn('Nu s-a putut marca auditul AI ca aplicat.', error);
     });
   };

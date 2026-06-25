@@ -5,7 +5,7 @@ import {
 import { normalizePeoCategory } from '../peo-category.ts';
 import { normalizeRagText } from './chunking.ts';
 import { cosineSimilarity, generateEmbedding, getRagEmbeddingModelName, parseEmbedding } from './embeddings.ts';
-import type { RagRetrievalRequest, RagRetrievalResult } from './types.ts';
+import type { RagAuthContext, RagRetrievalRequest, RagRetrievalResult } from './types.ts';
 
 const MAX_QUERY_CHARS = 5000;
 const MAX_CANDIDATES_FOR_QUERY = 12;
@@ -67,7 +67,7 @@ export function buildActivityAutofillRagQuery(request: RagRetrievalRequest) {
 
 export async function retrieveActivityAutofillContext(
   request: RagRetrievalRequest,
-  options: { topK?: number } = {},
+  options: { topK?: number } & RagAuthContext = {},
 ): Promise<RagRetrievalResult> {
   const guard = shouldRunActivityAutofillRag(request);
   if (!guard.ok) {
@@ -90,7 +90,7 @@ export async function retrieveActivityAutofillContext(
     const chunks = await listKnowledgeChunks({
       status: { eq: 'active' },
       ...(category ? { category: { eq: category } } : {}),
-    });
+    }, options);
 
     const scored = chunks
       .slice(0, MAX_CHUNKS_TO_SCORE)

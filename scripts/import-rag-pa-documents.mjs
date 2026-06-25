@@ -23,6 +23,8 @@ function parseArgs(argv) {
     endpoint: '',
     token: '',
     tokenEnv: 'RAG_ADMIN_IMPORT_TOKEN',
+    cognitoToken: '',
+    cognitoTokenEnv: 'RAG_COGNITO_ACCESS_TOKEN',
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -32,6 +34,8 @@ function parseArgs(argv) {
     if (arg === '--endpoint') args.endpoint = argv[++index] || '';
     if (arg === '--token') args.token = argv[++index] || '';
     if (arg === '--token-env') args.tokenEnv = argv[++index] || 'RAG_ADMIN_IMPORT_TOKEN';
+    if (arg === '--cognito-token') args.cognitoToken = argv[++index] || '';
+    if (arg === '--cognito-token-env') args.cognitoTokenEnv = argv[++index] || 'RAG_COGNITO_ACCESS_TOKEN';
   }
 
   return args;
@@ -226,12 +230,13 @@ async function collectDocuments(rootDir) {
   return { documents, skipped };
 }
 
-async function postDocument(endpoint, token, document, dryRun) {
+async function postDocument(endpoint, token, cognitoToken, document, dryRun) {
   const response = await fetch(endpoint, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'x-rag-admin-token': token,
+      ...(cognitoToken ? { 'x-cognito-access-token': cognitoToken } : {}),
     },
     body: JSON.stringify({ ...document, dryRun }),
   });
@@ -277,9 +282,13 @@ async function main() {
   if (!token) {
     throw new Error(`Pentru import real seteaza ${args.tokenEnv} sau foloseste --token. Tokenul nu este afisat in output.`);
   }
+  const cognitoToken = args.cognitoToken || process.env[args.cognitoTokenEnv]?.trim() || '';
+  if (!cognitoToken) {
+    throw new Error(`Pentru import real seteaza ${args.cognitoTokenEnv} sau foloseste --cognito-token. Tokenul Cognito nu este afisat in output.`);
+  }
 
   for (const document of documents) {
-    const result = await postDocument(args.endpoint, token, document, false);
+    const result = await postDocument(args.endpoint, token, cognitoToken, document, false);
     console.log(JSON.stringify({
       fileName: document.originalFileName,
       ok: result.ok,

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { normalizePeoCategory } from '@/lib/peo-category';
 import { guardRagAdminRequest } from '@/lib/rag/admin-auth';
 import { normalizeRagText } from '@/lib/rag/chunking';
+import { getCognitoAccessTokenFromRequest } from '@/lib/rag/cognito-auth';
 import { cosineSimilarity, generateEmbedding, parseEmbedding } from '@/lib/rag/embeddings';
 import { listKnowledgeChunks } from '@/lib/rag/store';
 
@@ -17,16 +18,23 @@ export async function POST(req: Request) {
     const query = normalizeRagText(body?.query);
     const category = normalizePeoCategory(typeof body?.category === 'string' ? body.category : 'ap');
     const topK = Math.max(1, Math.min(Number(body?.topK) || 10, 25));
+    const authToken = getCognitoAccessTokenFromRequest(req, {
+      allowAuthorizationHeader: Boolean(req.headers.get('x-rag-admin-token')),
+    });
 
     if (!query) {
       return NextResponse.json({ error: 'Query lipsa pentru cautarea RAG.' }, { status: 400 });
+    }
+
+    if (!authToken) {
+      return NextResponse.json({ error: 'Cautarea RAG necesita x-cognito-access-token pentru citirea din AppSync.' }, { status: 401 });
     }
 
     const queryEmbedding = await generateEmbedding(query);
     const chunks = await listKnowledgeChunks({
       status: { eq: 'active' },
       ...(category ? { category: { eq: category } } : {}),
-    });
+    }, { authToken });
 
     const results = chunks
       .map((chunk) => ({

@@ -11,6 +11,7 @@ import {
   validateActivityAutofillSuggestionAgainstCatalog,
 } from '@/lib/activity-autofill';
 import { buildActivityAutofillAuditPayload, buildCompactActivityAutofillRagContext } from '@/lib/rag/activity-autofill-rag';
+import { getCognitoAccessTokenFromRequest } from '@/lib/rag/cognito-auth';
 import { retrieveActivityAutofillContext } from '@/lib/rag/retrieval';
 import { createActivityAutofillAudit } from '@/lib/rag/store';
 
@@ -35,6 +36,7 @@ export async function POST(req: Request) {
     }
 
     const request = normalizeActivityAutofillRequest(parsed.data);
+    const authToken = getCognitoAccessTokenFromRequest(req, { allowAuthorizationHeader: true });
     if (request.deliverables.length === 0) {
       return NextResponse.json(
         { error: 'Nu exista text extras din livrabile pentru autocompletare.' },
@@ -46,7 +48,7 @@ export async function POST(req: Request) {
       ...request,
       category: request.category || request.catalogCandidates.find((candidate) => candidate.category)?.category,
     };
-    const retrieval = await retrieveActivityAutofillContext(ragRequest);
+    const retrieval = await retrieveActivityAutofillContext(ragRequest, { authToken });
     const ragContext = buildCompactActivityAutofillRagContext(retrieval);
     const promptRequest = ragContext
       ? normalizeActivityAutofillRequest({
@@ -94,14 +96,14 @@ export async function POST(req: Request) {
       );
     }
 
-    if (isActivityAutofillRagAuditEnabled()) {
+    if (isActivityAutofillRagAuditEnabled() && authToken) {
       try {
         await createActivityAutofillAudit(buildActivityAutofillAuditPayload({
           request: ragRequest,
           suggestion: suggestion.data,
           modelAuditId: result.auditId,
           ragContext,
-        }));
+        }), { authToken });
       } catch (auditError) {
         console.warn('[activity-autofill-rag] Audit save failed; returning suggestion anyway.', auditError);
       }

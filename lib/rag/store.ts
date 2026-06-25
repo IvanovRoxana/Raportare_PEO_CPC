@@ -9,7 +9,12 @@ import type {
 } from '../types.ts';
 import { getRagEmbeddingModelName, generateEmbeddings, serializeEmbedding } from './embeddings.ts';
 import { hashRagText, normalizeRagText, splitTextIntoRagChunks } from './chunking.ts';
-import type { ActivityAutofillAuditInput, RagIndexDocumentInput, RagIndexDocumentResult } from './types.ts';
+import type {
+  ActivityAutofillAuditInput,
+  RagAuthContext,
+  RagIndexDocumentInput,
+  RagIndexDocumentResult,
+} from './types.ts';
 
 type ModelListResult<T> = { data?: T[] | null; errors?: unknown; nextToken?: string | null };
 type RagModelName = 'KnowledgeDocument' | 'KnowledgeChunk' | 'ActivityAutofillAudit';
@@ -24,16 +29,26 @@ function configureAmplifyForRag() {
   }
 }
 
-function getRagDataClient() {
+function getRagDataClient(options: RagAuthContext = {}) {
   configureAmplifyForRag();
+  if (options.authToken) {
+    return generateClient<Schema>({
+      authMode: 'userPool',
+      authToken: options.authToken,
+    }) as any;
+  }
   if (!dataClient) {
     dataClient = generateClient<Schema>();
   }
   return dataClient as any;
 }
 
-function getRequiredRagModel(modelName: RagModelName) {
-  const model = getRagDataClient().models?.[modelName];
+function getRequiredRagModel(modelName: RagModelName, options: RagAuthContext = {}) {
+  if (!options.authToken) {
+    throw new Error(`RAG model ${modelName} requires a Cognito access token for server-side access.`);
+  }
+
+  const model = getRagDataClient(options).models?.[modelName];
   if (!model) {
     throw new Error(
       `RAG model ${modelName} is missing from amplify_outputs.json. Regenerate Amplify outputs and redeploy before running RAG imports.`,
@@ -150,15 +165,15 @@ function mapActivityAutofillAudit(item: any): ActivityAutofillAudit {
   };
 }
 
-export async function listKnowledgeChunks(filter?: Record<string, unknown>) {
-  const model = getRequiredRagModel('KnowledgeChunk');
+export async function listKnowledgeChunks(filter?: Record<string, unknown>, options: RagAuthContext = {}) {
+  const model = getRequiredRagModel('KnowledgeChunk', options);
   const data = await listModel<any>(model, filter);
   return data.map(mapKnowledgeChunk);
 }
 
 export async function indexKnowledgeDocument(
   input: RagIndexDocumentInput,
-  options: { dryRun?: boolean } = {},
+  options: { dryRun?: boolean } & RagAuthContext = {},
 ): Promise<RagIndexDocumentResult> {
   const text = normalizeRagText(input.text);
   const chunks = splitTextIntoRagChunks({ text });
@@ -197,7 +212,7 @@ export async function indexKnowledgeDocument(
     ...input,
     textHash,
     extractedTextPreview,
-  });
+  }, options);
 
   if (!document) {
     throw new Error('AWS create KnowledgeDocument returned no data.');
@@ -223,7 +238,7 @@ export async function indexKnowledgeDocument(
     activityName: input.activityName,
     status: 'active',
     metadataJson: input.metadata ? JSON.stringify(input.metadata) : undefined,
-  })));
+  })), options);
 
   return { dryRun: false, document, chunks: savedChunks };
 }
@@ -231,8 +246,8 @@ export async function indexKnowledgeDocument(
 export async function createKnowledgeDocument(input: RagIndexDocumentInput & {
   textHash: string;
   extractedTextPreview: string;
-}) {
-  const model = getRequiredRagModel('KnowledgeDocument');
+}, options: RagAuthContext = {}) {
+  const model = getRequiredRagModel('KnowledgeDocument', options);
   const result = await model.create({
     title: input.title,
     sourceType: input.sourceType,
@@ -262,8 +277,11 @@ export async function createKnowledgeDocument(input: RagIndexDocumentInput & {
   return mapKnowledgeDocument(result.data);
 }
 
-export async function createKnowledgeChunk(input: Omit<KnowledgeChunk, 'id' | 'createdAt' | 'updatedAt'>) {
-  const model = getRequiredRagModel('KnowledgeChunk');
+export async function createKnowledgeChunk(
+  input: Omit<KnowledgeChunk, 'id' | 'createdAt' | 'updatedAt'>,
+  options: RagAuthContext = {},
+) {
+  const model = getRequiredRagModel('KnowledgeChunk', options);
   const result = await model.create(input);
   assertNoErrors(result, 'AWS create KnowledgeChunk');
   if (!result.data) {
@@ -272,17 +290,23 @@ export async function createKnowledgeChunk(input: Omit<KnowledgeChunk, 'id' | 'c
   return mapKnowledgeChunk(result.data);
 }
 
-export async function createKnowledgeChunks(inputs: Omit<KnowledgeChunk, 'id' | 'createdAt' | 'updatedAt'>[]) {
+export async function createKnowledgeChunks(
+  inputs: Omit<KnowledgeChunk, 'id' | 'createdAt' | 'updatedAt'>[],
+  options: RagAuthContext = {},
+) {
   const chunks: KnowledgeChunk[] = [];
   for (const input of inputs) {
-    const chunk = await createKnowledgeChunk(input);
+    const chunk = await createKnowledgeChunk(input, options);
     if (chunk) chunks.push(chunk);
   }
   return chunks;
 }
 
-export async function createActivityAutofillAudit(input: ActivityAutofillAuditInput) {
-  const model = getRequiredRagModel('ActivityAutofillAudit');
+export async function createActivityAutofillAudit(
+  input: ActivityAutofillAuditInput,
+  options: RagAuthContext = {},
+) {
+  const model = getRequiredRagModel('ActivityAutofillAudit', options);
   const { suggestion: _suggestion, ...payload } = input;
   const result = await model.create(payload);
   assertNoErrors(result, 'AWS create ActivityAutofillAudit');
@@ -298,8 +322,8 @@ export async function markActivityAutofillAuditApplied(input: {
   finalSaCode?: string;
   finalActivityName?: string;
   finalDescriptionPreview?: string;
-}) {
-  const model = getRequiredRagModel('ActivityAutofillAudit');
+}, options: RagAuthContext = {}) {
+  const model = getRequiredRagModel('ActivityAutofillAudit', options);
 
   let id = input.id;
   if (!id && input.modelAuditId) {
@@ -324,8 +348,8 @@ export async function markActivityAutofillAuditApplied(input: {
   return mapActivityAutofillAudit(result.data);
 }
 
-export async function listActivityAutofillAudits(filter?: Record<string, unknown>) {
-  const model = getRequiredRagModel('ActivityAutofillAudit');
+export async function listActivityAutofillAudits(filter?: Record<string, unknown>, options: RagAuthContext = {}) {
+  const model = getRequiredRagModel('ActivityAutofillAudit', options);
   const data = await listModel<any>(model, filter);
   return data.map(mapActivityAutofillAudit).sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''));
 }
