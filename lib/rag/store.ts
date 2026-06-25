@@ -1,7 +1,4 @@
-import { Amplify } from 'aws-amplify';
-import { generateClient } from 'aws-amplify/data';
 import outputs from '../../amplify_outputs.json';
-import type { Schema } from '../../amplify/data/resource';
 import type {
   ActivityAutofillAudit,
   KnowledgeChunk,
@@ -19,67 +16,209 @@ import type {
 type ModelListResult<T> = { data?: T[] | null; errors?: unknown; nextToken?: string | null };
 type RagModelName = 'KnowledgeDocument' | 'KnowledgeChunk' | 'ActivityAutofillAudit';
 
-let configured = false;
-let dataClient: ReturnType<typeof generateClient<Schema>> | null = null;
+const RAG_API_URL = (outputs as any)?.data?.url;
 
-function configureAmplifyForRag() {
-  if (!configured) {
-    Amplify.configure(outputs, { ssr: true });
-    configured = true;
-  }
-}
-
-function getRagDataClient(options: RagAuthContext = {}) {
-  configureAmplifyForRag();
-  if (options.authToken) {
-    return generateClient<Schema>({
-      authMode: 'userPool',
-      authToken: options.authToken,
-    }) as any;
-  }
-  if (!dataClient) {
-    dataClient = generateClient<Schema>();
-  }
-  return dataClient as any;
-}
-
-function getRequiredRagModel(modelName: RagModelName, options: RagAuthContext = {}) {
+function assertCanAccessRagModel(modelName: RagModelName, options: RagAuthContext = {}) {
   if (!options.authToken) {
     throw new Error(`RAG model ${modelName} requires a Cognito access token for server-side access.`);
   }
 
-  const model = getRagDataClient(options).models?.[modelName];
-  if (!model) {
+  if (!(outputs as any)?.data?.model_introspection?.models?.[modelName]) {
     throw new Error(
       `RAG model ${modelName} is missing from amplify_outputs.json. Regenerate Amplify outputs and redeploy before running RAG imports.`,
     );
   }
-  return model;
-}
 
-function assertNoErrors(result: { errors?: unknown }, action: string) {
-  if (result.errors) {
-    throw new Error(`${action} failed: ${JSON.stringify(result.errors)}`);
+  if (!RAG_API_URL) {
+    throw new Error('RAG AppSync endpoint is missing from amplify_outputs.json.');
   }
 }
 
-async function listModel<T>(
-  model: { list: (args?: { filter?: Record<string, unknown>; limit?: number; nextToken?: string | null }) => Promise<ModelListResult<T>> },
+async function graphqlRequest<T>(
+  action: string,
+  query: string,
+  variables: Record<string, unknown>,
+  options: RagAuthContext,
+): Promise<T> {
+  if (!options.authToken) {
+    throw new Error(`${action} requires a Cognito access token.`);
+  }
+
+  const response = await fetch(RAG_API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: options.authToken,
+    },
+    body: JSON.stringify({ query, variables }),
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || payload.errors) {
+    throw new Error(`${action} failed: ${JSON.stringify(payload.errors ?? payload)}`);
+  }
+  return payload.data as T;
+}
+
+async function listModel<T>(args: {
+  modelName: RagModelName;
+  query: string;
+  resultKey: string;
   filter?: Record<string, unknown>,
-  limit = 1000,
-) {
+  limit?: number,
+  options: RagAuthContext,
+}) {
+  assertCanAccessRagModel(args.modelName, args.options);
   const items: T[] = [];
   let nextToken: string | null | undefined = null;
+  const limit = args.limit ?? 1000;
 
   do {
-    const result = await model.list({ filter, limit, nextToken });
-    assertNoErrors(result, 'AWS list RAG model');
-    items.push(...(result.data ?? []));
-    nextToken = result.nextToken;
+    const data: Record<string, ModelListResult<T>> = await graphqlRequest<Record<string, ModelListResult<T>>>(
+      `AWS list ${args.modelName}`,
+      args.query,
+      { filter: args.filter, limit, nextToken },
+      args.options,
+    );
+    const result: ModelListResult<T> | undefined = data[args.resultKey];
+    items.push(...(result?.data ?? []));
+    nextToken = result?.nextToken;
   } while (nextToken);
 
   return items;
 }
+
+const KNOWLEDGE_DOCUMENT_FIELDS = `
+  id
+  title
+  sourceType
+  category
+  expertId
+  expertName
+  expertRole
+  projectCode
+  month
+  year
+  saCode
+  activityName
+  approvalStatus
+  originalFileName
+  s3Key
+  textHash
+  extractedTextPreview
+  status
+  indexedAt
+  createdBy
+  metadataJson
+  createdAt
+  updatedAt
+`;
+
+const KNOWLEDGE_CHUNK_FIELDS = `
+  id
+  documentId
+  chunkIndex
+  text
+  textHash
+  embeddingJson
+  embeddingModel
+  tokenEstimate
+  sourceType
+  category
+  expertId
+  expertName
+  projectCode
+  month
+  year
+  saCode
+  activityName
+  status
+  metadataJson
+  createdAt
+  updatedAt
+`;
+
+const ACTIVITY_AUTOFILL_AUDIT_FIELDS = `
+  id
+  expertId
+  expertName
+  expertRole
+  category
+  projectCode
+  month
+  year
+  activityId
+  deliverableIds
+  suggestedSaCode
+  suggestedActivityName
+  suggestedDescriptionPreview
+  confidence
+  modelAuditId
+  retrievalJson
+  candidateJson
+  warningsJson
+  applied
+  appliedAt
+  finalSaCode
+  finalActivityName
+  finalDescriptionPreview
+  createdAt
+  updatedAt
+`;
+
+const LIST_KNOWLEDGE_CHUNKS_QUERY = `
+  query ListKnowledgeChunks($filter: ModelKnowledgeChunkFilterInput, $limit: Int, $nextToken: String) {
+    listKnowledgeChunks(filter: $filter, limit: $limit, nextToken: $nextToken) {
+      data: items {
+        ${KNOWLEDGE_CHUNK_FIELDS}
+      }
+      nextToken
+    }
+  }
+`;
+
+const CREATE_KNOWLEDGE_DOCUMENT_MUTATION = `
+  mutation CreateKnowledgeDocument($input: CreateKnowledgeDocumentInput!) {
+    createKnowledgeDocument(input: $input) {
+      ${KNOWLEDGE_DOCUMENT_FIELDS}
+    }
+  }
+`;
+
+const CREATE_KNOWLEDGE_CHUNK_MUTATION = `
+  mutation CreateKnowledgeChunk($input: CreateKnowledgeChunkInput!) {
+    createKnowledgeChunk(input: $input) {
+      ${KNOWLEDGE_CHUNK_FIELDS}
+    }
+  }
+`;
+
+const LIST_ACTIVITY_AUTOFILL_AUDITS_QUERY = `
+  query ListActivityAutofillAudits($filter: ModelActivityAutofillAuditFilterInput, $limit: Int, $nextToken: String) {
+    listActivityAutofillAudits(filter: $filter, limit: $limit, nextToken: $nextToken) {
+      data: items {
+        ${ACTIVITY_AUTOFILL_AUDIT_FIELDS}
+      }
+      nextToken
+    }
+  }
+`;
+
+const CREATE_ACTIVITY_AUTOFILL_AUDIT_MUTATION = `
+  mutation CreateActivityAutofillAudit($input: CreateActivityAutofillAuditInput!) {
+    createActivityAutofillAudit(input: $input) {
+      ${ACTIVITY_AUTOFILL_AUDIT_FIELDS}
+    }
+  }
+`;
+
+const UPDATE_ACTIVITY_AUTOFILL_AUDIT_MUTATION = `
+  mutation UpdateActivityAutofillAudit($input: UpdateActivityAutofillAuditInput!) {
+    updateActivityAutofillAudit(input: $input) {
+      ${ACTIVITY_AUTOFILL_AUDIT_FIELDS}
+    }
+  }
+`;
 
 function mapKnowledgeDocument(item: any): KnowledgeDocument {
   return {
@@ -166,8 +305,13 @@ function mapActivityAutofillAudit(item: any): ActivityAutofillAudit {
 }
 
 export async function listKnowledgeChunks(filter?: Record<string, unknown>, options: RagAuthContext = {}) {
-  const model = getRequiredRagModel('KnowledgeChunk', options);
-  const data = await listModel<any>(model, filter);
+  const data = await listModel<any>({
+    modelName: 'KnowledgeChunk',
+    query: LIST_KNOWLEDGE_CHUNKS_QUERY,
+    resultKey: 'listKnowledgeChunks',
+    filter,
+    options,
+  });
   return data.map(mapKnowledgeChunk);
 }
 
@@ -247,8 +391,8 @@ export async function createKnowledgeDocument(input: RagIndexDocumentInput & {
   textHash: string;
   extractedTextPreview: string;
 }, options: RagAuthContext = {}) {
-  const model = getRequiredRagModel('KnowledgeDocument', options);
-  const result = await model.create({
+  assertCanAccessRagModel('KnowledgeDocument', options);
+  const inputPayload = {
     title: input.title,
     sourceType: input.sourceType,
     category: input.category,
@@ -269,25 +413,34 @@ export async function createKnowledgeDocument(input: RagIndexDocumentInput & {
     indexedAt: new Date().toISOString(),
     createdBy: input.createdBy,
     metadataJson: input.metadata ? JSON.stringify(input.metadata) : undefined,
-  });
-  assertNoErrors(result, 'AWS create KnowledgeDocument');
-  if (!result.data) {
+  };
+  const data = await graphqlRequest<{ createKnowledgeDocument?: unknown }>(
+    'AWS create KnowledgeDocument',
+    CREATE_KNOWLEDGE_DOCUMENT_MUTATION,
+    { input: inputPayload },
+    options,
+  );
+  if (!data.createKnowledgeDocument) {
     throw new Error('AWS create KnowledgeDocument returned no data.');
   }
-  return mapKnowledgeDocument(result.data);
+  return mapKnowledgeDocument(data.createKnowledgeDocument);
 }
 
 export async function createKnowledgeChunk(
   input: Omit<KnowledgeChunk, 'id' | 'createdAt' | 'updatedAt'>,
   options: RagAuthContext = {},
 ) {
-  const model = getRequiredRagModel('KnowledgeChunk', options);
-  const result = await model.create(input);
-  assertNoErrors(result, 'AWS create KnowledgeChunk');
-  if (!result.data) {
+  assertCanAccessRagModel('KnowledgeChunk', options);
+  const data = await graphqlRequest<{ createKnowledgeChunk?: unknown }>(
+    'AWS create KnowledgeChunk',
+    CREATE_KNOWLEDGE_CHUNK_MUTATION,
+    { input },
+    options,
+  );
+  if (!data.createKnowledgeChunk) {
     throw new Error('AWS create KnowledgeChunk returned no data.');
   }
-  return mapKnowledgeChunk(result.data);
+  return mapKnowledgeChunk(data.createKnowledgeChunk);
 }
 
 export async function createKnowledgeChunks(
@@ -306,14 +459,18 @@ export async function createActivityAutofillAudit(
   input: ActivityAutofillAuditInput,
   options: RagAuthContext = {},
 ) {
-  const model = getRequiredRagModel('ActivityAutofillAudit', options);
+  assertCanAccessRagModel('ActivityAutofillAudit', options);
   const { suggestion: _suggestion, ...payload } = input;
-  const result = await model.create(payload);
-  assertNoErrors(result, 'AWS create ActivityAutofillAudit');
-  if (!result.data) {
+  const data = await graphqlRequest<{ createActivityAutofillAudit?: unknown }>(
+    'AWS create ActivityAutofillAudit',
+    CREATE_ACTIVITY_AUTOFILL_AUDIT_MUTATION,
+    { input: payload },
+    options,
+  );
+  if (!data.createActivityAutofillAudit) {
     throw new Error('AWS create ActivityAutofillAudit returned no data.');
   }
-  return mapActivityAutofillAudit(result.data);
+  return mapActivityAutofillAudit(data.createActivityAutofillAudit);
 }
 
 export async function markActivityAutofillAuditApplied(input: {
@@ -323,33 +480,49 @@ export async function markActivityAutofillAuditApplied(input: {
   finalActivityName?: string;
   finalDescriptionPreview?: string;
 }, options: RagAuthContext = {}) {
-  const model = getRequiredRagModel('ActivityAutofillAudit', options);
-
   let id = input.id;
   if (!id && input.modelAuditId) {
-    const matches = await listModel<any>(model, { modelAuditId: { eq: input.modelAuditId } });
+    const matches = await listModel<any>({
+      modelName: 'ActivityAutofillAudit',
+      query: LIST_ACTIVITY_AUTOFILL_AUDITS_QUERY,
+      resultKey: 'listActivityAutofillAudits',
+      filter: { modelAuditId: { eq: input.modelAuditId } },
+      options,
+    });
     id = matches[0]?.id;
   }
 
   if (!id) return null;
 
-  const result = await model.update({
-    id,
-    applied: true,
-    appliedAt: new Date().toISOString(),
-    finalSaCode: input.finalSaCode,
-    finalActivityName: input.finalActivityName,
-    finalDescriptionPreview: input.finalDescriptionPreview,
-  });
-  assertNoErrors(result, 'AWS update ActivityAutofillAudit');
-  if (!result.data) {
+  assertCanAccessRagModel('ActivityAutofillAudit', options);
+  const data = await graphqlRequest<{ updateActivityAutofillAudit?: unknown }>(
+    'AWS update ActivityAutofillAudit',
+    UPDATE_ACTIVITY_AUTOFILL_AUDIT_MUTATION,
+    {
+      input: {
+        id,
+        applied: true,
+        appliedAt: new Date().toISOString(),
+        finalSaCode: input.finalSaCode,
+        finalActivityName: input.finalActivityName,
+        finalDescriptionPreview: input.finalDescriptionPreview,
+      },
+    },
+    options,
+  );
+  if (!data.updateActivityAutofillAudit) {
     throw new Error('AWS update ActivityAutofillAudit returned no data.');
   }
-  return mapActivityAutofillAudit(result.data);
+  return mapActivityAutofillAudit(data.updateActivityAutofillAudit);
 }
 
 export async function listActivityAutofillAudits(filter?: Record<string, unknown>, options: RagAuthContext = {}) {
-  const model = getRequiredRagModel('ActivityAutofillAudit', options);
-  const data = await listModel<any>(model, filter);
+  const data = await listModel<any>({
+    modelName: 'ActivityAutofillAudit',
+    query: LIST_ACTIVITY_AUTOFILL_AUDITS_QUERY,
+    resultKey: 'listActivityAutofillAudits',
+    filter,
+    options,
+  });
   return data.map(mapActivityAutofillAudit).sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''));
 }
