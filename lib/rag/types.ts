@@ -95,6 +95,7 @@ export interface RagIndexDocumentResult {
 
 export interface RagAuthContext {
   authToken?: string;
+  timeoutMs?: number;
 }
 
 export interface ActivityAutofillAuditInput extends Omit<ActivityAutofillAudit, 'id' | 'createdAt' | 'updatedAt'> {

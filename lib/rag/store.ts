@@ -44,14 +44,25 @@ async function graphqlRequest<T>(
     throw new Error(`${action} requires a Cognito access token.`);
   }
 
-  const response = await fetch(RAG_API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: options.authToken,
-    },
-    body: JSON.stringify({ query, variables }),
-  });
+  const controller = options.timeoutMs && options.timeoutMs > 0 ? new AbortController() : undefined;
+  const timeout = controller
+    ? setTimeout(() => controller.abort(), options.timeoutMs)
+    : undefined;
+
+  let response: Response;
+  try {
+    response = await fetch(RAG_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: options.authToken,
+      },
+      body: JSON.stringify({ query, variables }),
+      signal: controller?.signal,
+    });
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
 
   const payload = await response.json().catch(() => ({}));
   if (!response.ok || payload.errors) {
@@ -65,6 +76,7 @@ async function listModel<T>(args: {
   query: string;
   resultKey: string;
   filter?: Record<string, unknown>,
+  variables?: Record<string, unknown>,
   limit?: number,
   maxItems?: number,
   options: RagAuthContext,
@@ -79,7 +91,7 @@ async function listModel<T>(args: {
     const data: Record<string, ModelListResult<T>> = await graphqlRequest<Record<string, ModelListResult<T>>>(
       `AWS list ${args.modelName}`,
       args.query,
-      { filter: args.filter, limit, nextToken },
+      { ...(args.variables ?? {}), filter: args.filter, limit, nextToken },
       args.options,
     );
     const result: ModelListResult<T> | undefined = data[args.resultKey];
@@ -171,6 +183,39 @@ const ACTIVITY_AUTOFILL_AUDIT_FIELDS = `
 const LIST_KNOWLEDGE_CHUNKS_QUERY = `
   query ListKnowledgeChunks($filter: ModelKnowledgeChunkFilterInput, $limit: Int, $nextToken: String) {
     listKnowledgeChunks(filter: $filter, limit: $limit, nextToken: $nextToken) {
+      data: items {
+        ${KNOWLEDGE_CHUNK_FIELDS}
+      }
+      nextToken
+    }
+  }
+`;
+
+const LIST_KNOWLEDGE_CHUNKS_BY_EXPERT_ID_QUERY = `
+  query ListKnowledgeChunksByExpertId($expertId: ID!, $filter: ModelKnowledgeChunkFilterInput, $limit: Int, $nextToken: String) {
+    listKnowledgeChunkByExpertId(expertId: $expertId, filter: $filter, limit: $limit, nextToken: $nextToken) {
+      data: items {
+        ${KNOWLEDGE_CHUNK_FIELDS}
+      }
+      nextToken
+    }
+  }
+`;
+
+const LIST_KNOWLEDGE_CHUNKS_BY_CATEGORY_AND_SOURCE_TYPE_QUERY = `
+  query ListKnowledgeChunksByCategoryAndSourceType($category: String!, $sourceType: ModelStringKeyConditionInput, $filter: ModelKnowledgeChunkFilterInput, $limit: Int, $nextToken: String) {
+    listKnowledgeChunkByCategoryAndSourceType(category: $category, sourceType: $sourceType, filter: $filter, limit: $limit, nextToken: $nextToken) {
+      data: items {
+        ${KNOWLEDGE_CHUNK_FIELDS}
+      }
+      nextToken
+    }
+  }
+`;
+
+const LIST_KNOWLEDGE_CHUNKS_BY_SA_CODE_QUERY = `
+  query ListKnowledgeChunksBySaCode($saCode: String!, $filter: ModelKnowledgeChunkFilterInput, $limit: Int, $nextToken: String) {
+    listKnowledgeChunkBySaCode(saCode: $saCode, filter: $filter, limit: $limit, nextToken: $nextToken) {
       data: items {
         ${KNOWLEDGE_CHUNK_FIELDS}
       }
@@ -314,6 +359,61 @@ export async function listKnowledgeChunks(
     modelName: 'KnowledgeChunk',
     query: LIST_KNOWLEDGE_CHUNKS_QUERY,
     resultKey: 'listKnowledgeChunks',
+    filter,
+    limit: options.limit,
+    maxItems: options.maxItems,
+    options,
+  });
+  return data.map(mapKnowledgeChunk);
+}
+
+export async function listKnowledgeChunksByExpertId(
+  expertId: string,
+  filter?: Record<string, unknown>,
+  options: ({ limit?: number; maxItems?: number } & RagAuthContext) = {},
+) {
+  const data = await listModel<any>({
+    modelName: 'KnowledgeChunk',
+    query: LIST_KNOWLEDGE_CHUNKS_BY_EXPERT_ID_QUERY,
+    resultKey: 'listKnowledgeChunkByExpertId',
+    variables: { expertId },
+    filter,
+    limit: options.limit,
+    maxItems: options.maxItems,
+    options,
+  });
+  return data.map(mapKnowledgeChunk);
+}
+
+export async function listKnowledgeChunksByCategoryAndSourceType(
+  category: string,
+  sourceType: string,
+  filter?: Record<string, unknown>,
+  options: ({ limit?: number; maxItems?: number } & RagAuthContext) = {},
+) {
+  const data = await listModel<any>({
+    modelName: 'KnowledgeChunk',
+    query: LIST_KNOWLEDGE_CHUNKS_BY_CATEGORY_AND_SOURCE_TYPE_QUERY,
+    resultKey: 'listKnowledgeChunkByCategoryAndSourceType',
+    variables: { category, sourceType: { eq: sourceType } },
+    filter,
+    limit: options.limit,
+    maxItems: options.maxItems,
+    options,
+  });
+  return data.map(mapKnowledgeChunk);
+}
+
+export async function listKnowledgeChunksBySaCode(
+  saCode: string,
+  filter?: Record<string, unknown>,
+  options: ({ limit?: number; maxItems?: number } & RagAuthContext) = {},
+) {
+  const data = await listModel<any>({
+    modelName: 'KnowledgeChunk',
+    query: LIST_KNOWLEDGE_CHUNKS_BY_SA_CODE_QUERY,
+    resultKey: 'listKnowledgeChunkBySaCode',
+    variables: { saCode },
     filter,
     limit: options.limit,
     maxItems: options.maxItems,

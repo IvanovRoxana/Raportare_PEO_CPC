@@ -33,6 +33,23 @@ async function getJsonAuthHeaders() {
   return headers;
 }
 
+async function readJsonResponse(response: Response) {
+  const text = await response.text();
+  if (!text.trim()) {
+    throw new Error(
+      response.ok
+        ? 'Serverul nu a returnat un raspuns pentru autocompletare.'
+        : `Autocompletarea a esuat fara detalii de la server (${response.status}).`,
+    );
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(`Raspuns invalid de la server pentru autocompletare (${response.status}).`);
+  }
+}
+
 export function useActivityAutofill({
   catalogCandidates,
   category,
@@ -82,7 +99,7 @@ export function useActivityAutofill({
         }),
       });
 
-      const data = await response.json();
+      const data = await readJsonResponse(response);
       if (!response.ok || data.error) {
         throw new Error(data.error || 'Autocompletarea activitatii a esuat.');
       }
