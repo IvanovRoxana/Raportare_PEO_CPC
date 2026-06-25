@@ -31,6 +31,7 @@ import { assertCanLogHoursOnDate, getNonWorkingDayInfo } from '@/lib/non-working
 import type {
   Activity,
   ActivityCatalog,
+  ActivityAutofillAudit,
   AdminInterventionRequest,
   AppSettings,
   AuditLog,
@@ -390,6 +391,36 @@ function mapAuditLog(item: any): AuditLog {
     newValue: item.newValue ?? undefined,
     justification: item.justification ?? undefined,
     source: item.source,
+  };
+}
+
+function mapActivityAutofillAudit(item: any): ActivityAutofillAudit {
+  return {
+    id: item.id,
+    expertId: item.expertId ?? undefined,
+    expertName: item.expertName ?? undefined,
+    expertRole: item.expertRole ?? undefined,
+    category: item.category ?? undefined,
+    projectCode: item.projectCode ?? undefined,
+    month: item.month ?? undefined,
+    year: item.year ?? undefined,
+    activityId: item.activityId ?? undefined,
+    deliverableIds: item.deliverableIds ?? [],
+    suggestedSaCode: item.suggestedSaCode ?? undefined,
+    suggestedActivityName: item.suggestedActivityName ?? undefined,
+    suggestedDescriptionPreview: item.suggestedDescriptionPreview ?? undefined,
+    confidence: item.confidence ?? undefined,
+    modelAuditId: item.modelAuditId ?? undefined,
+    retrievalJson: item.retrievalJson ?? undefined,
+    candidateJson: item.candidateJson ?? undefined,
+    warningsJson: item.warningsJson ?? undefined,
+    applied: item.applied ?? false,
+    appliedAt: item.appliedAt ?? undefined,
+    finalSaCode: item.finalSaCode ?? undefined,
+    finalActivityName: item.finalActivityName ?? undefined,
+    finalDescriptionPreview: item.finalDescriptionPreview ?? undefined,
+    createdAt: item.createdAt ?? undefined,
+    updatedAt: item.updatedAt ?? undefined,
   };
 }
 
@@ -1340,6 +1371,42 @@ export const auditLogsService = {
 
     assertNoErrors(result, 'AWS create audit log');
     return mapAuditLog(result.data);
+  },
+};
+
+export const activityAutofillAuditsService = {
+  async getAll(month?: number, year?: number): Promise<ActivityAutofillAudit[]> {
+    const client = getAwsDataClient() as any;
+    const model = client.models.ActivityAutofillAudit;
+    if (!model) return [];
+
+    const scope = await getCurrentDataAccessScope(client);
+    if (!scope.canUsePmDashboard) return [];
+
+    const filter: Record<string, unknown> = {
+      ...(month !== undefined ? { month: { eq: month } } : {}),
+      ...(year !== undefined ? { year: { eq: year } } : {}),
+      ...(scope.canAccessAllExperts ? {} : { expertId: { eq: scope.currentExpertId } }),
+    };
+    const data = await listModel<any>(model, Object.keys(filter).length ? filter : undefined);
+    return data.map(mapActivityAutofillAudit).sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''));
+  },
+
+  async getByExpertAndMonth(expertId: string, month: number, year: number): Promise<ActivityAutofillAudit[]> {
+    const client = getAwsDataClient() as any;
+    const model = client.models.ActivityAutofillAudit;
+    if (!model) return [];
+
+    const scope = await getCurrentDataAccessScope(client);
+    if (!scope.canUsePmDashboard) return [];
+    if (!scope.canAccessAllExperts && scope.currentExpertId !== expertId) return [];
+
+    const data = await listModel<any>(model, {
+      expertId: { eq: expertId },
+      month: { eq: month },
+      year: { eq: year },
+    });
+    return data.map(mapActivityAutofillAudit).sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''));
   },
 };
 

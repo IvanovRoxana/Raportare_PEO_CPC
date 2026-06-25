@@ -387,6 +387,84 @@ export interface ActivityCatalog {
   createdAt?: string;
 }
 
+export interface KnowledgeDocument {
+  id: string;
+  title: string;
+  sourceType: string;
+  category?: string;
+  expertId?: string;
+  expertName?: string;
+  expertRole?: string;
+  projectCode?: string;
+  month?: number;
+  year?: number;
+  saCode?: string;
+  activityName?: string;
+  approvalStatus?: string;
+  originalFileName?: string;
+  s3Key?: string;
+  textHash?: string;
+  extractedTextPreview?: string;
+  status?: string;
+  indexedAt?: string;
+  createdBy?: string;
+  metadataJson?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface KnowledgeChunk {
+  id: string;
+  documentId: string;
+  chunkIndex: number;
+  text: string;
+  textHash?: string;
+  embeddingJson?: string;
+  embeddingModel?: string;
+  tokenEstimate?: number;
+  sourceType?: string;
+  category?: string;
+  expertId?: string;
+  expertName?: string;
+  projectCode?: string;
+  month?: number;
+  year?: number;
+  saCode?: string;
+  activityName?: string;
+  status?: string;
+  metadataJson?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ActivityAutofillAudit {
+  id: string;
+  expertId?: string;
+  expertName?: string;
+  expertRole?: string;
+  category?: string;
+  projectCode?: string;
+  month?: number;
+  year?: number;
+  activityId?: string;
+  deliverableIds?: string[];
+  suggestedSaCode?: string;
+  suggestedActivityName?: string;
+  suggestedDescriptionPreview?: string;
+  confidence?: string;
+  modelAuditId?: string;
+  retrievalJson?: string;
+  candidateJson?: string;
+  warningsJson?: string;
+  applied?: boolean;
+  appliedAt?: string;
+  finalSaCode?: string;
+  finalActivityName?: string;
+  finalDescriptionPreview?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface WorkingGroup {
   id: string;
   name: string;

@@ -103,6 +103,7 @@ import { PmDashboardKpiCards } from '@/components/pm/pm-dashboard-kpi-cards';
 import { PmAlertsPanel } from '@/components/pm/pm-alerts-panel';
 import { PmMonthlyStatusTable } from '@/components/pm/pm-monthly-status-table';
 import { PmSubmittedReportsPanel, type PmSubmittedReportRow } from '@/components/pm/pm-submitted-reports-panel';
+import { AiRagAuditTab } from '@/components/pm/ai-rag-audit-tab';
 
 const EMPTY_PONTAJ_ROWS: PontajRow[] = [];
 const EMPTY_RAPORT_ROWS: RaportRow[] = [];
@@ -961,6 +962,7 @@ export default function PMDashboard() {
             <TabsTrigger value="double-funding">Dublă finanțare</TabsTrigger>
             <TabsTrigger value="progres">Raport Progres</TabsTrigger>
             <TabsTrigger value="gt">Progres GT</TabsTrigger>
+            {hasExtendedExpertAccess && <TabsTrigger value="ai-rag">AI RAG</TabsTrigger>}
             <TabsTrigger value="neconformitati">
               Neconformitati
               {unresolvedIssues > 0 && (
@@ -1031,6 +1033,16 @@ export default function PMDashboard() {
               year={selectedYear}
             />
           </TabsContent>
+
+          {hasExtendedExpertAccess && (
+            <TabsContent value="ai-rag">
+              <AiRagAuditTab
+                month={selectedMonth}
+                year={selectedYear}
+                expertId={selectedExpertId}
+              />
+            </TabsContent>
+          )}
 
           <TabsContent value="neconformitati">
             <NeconformitatiTab data={localNeconformitati} onDataChange={handleNeconformitatiChange} />

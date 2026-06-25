@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  getActivityAutofillEmbeddingModel,
+  isActivityAutofillRagAuditEnabled,
+  isActivityAutofillRagEnabled,
+  isActivityAutofillRagPaOnly,
   isDeliverableEligibilityCheckEnabled,
   isDeliverableEligibilityCheckEnabledClient,
 } from '../lib/feature-flags.ts';
@@ -57,4 +61,47 @@ test('server eligibility endpoint can be enabled from the public build flag', ()
 
   restoreEnv('ENABLE_DELIVERABLE_ELIGIBILITY_CHECK', previousServer);
   restoreEnv('NEXT_PUBLIC_ENABLE_DELIVERABLE_ELIGIBILITY_CHECK', previousClient);
+});
+
+test('activity autofill RAG flags are safe by default', () => {
+  const previousEnabled = process.env.ACTIVITY_AUTOFILL_RAG_ENABLED;
+  const previousPaOnly = process.env.ACTIVITY_AUTOFILL_RAG_PA_ONLY;
+  const previousAudit = process.env.ACTIVITY_AUTOFILL_RAG_AUDIT_ENABLED;
+  const previousEmbedding = process.env.OPENAI_EMBEDDING_MODEL;
+
+  delete process.env.ACTIVITY_AUTOFILL_RAG_ENABLED;
+  delete process.env.ACTIVITY_AUTOFILL_RAG_PA_ONLY;
+  delete process.env.ACTIVITY_AUTOFILL_RAG_AUDIT_ENABLED;
+  delete process.env.OPENAI_EMBEDDING_MODEL;
+
+  assert.equal(isActivityAutofillRagEnabled(), false);
+  assert.equal(isActivityAutofillRagPaOnly(), true);
+  assert.equal(isActivityAutofillRagAuditEnabled(), true);
+  assert.equal(getActivityAutofillEmbeddingModel(), 'text-embedding-3-small');
+
+  restoreEnv('ACTIVITY_AUTOFILL_RAG_ENABLED', previousEnabled);
+  restoreEnv('ACTIVITY_AUTOFILL_RAG_PA_ONLY', previousPaOnly);
+  restoreEnv('ACTIVITY_AUTOFILL_RAG_AUDIT_ENABLED', previousAudit);
+  restoreEnv('OPENAI_EMBEDDING_MODEL', previousEmbedding);
+});
+
+test('activity autofill RAG enables only on explicit true', () => {
+  const previousEnabled = process.env.ACTIVITY_AUTOFILL_RAG_ENABLED;
+  const previousPaOnly = process.env.ACTIVITY_AUTOFILL_RAG_PA_ONLY;
+  const previousAudit = process.env.ACTIVITY_AUTOFILL_RAG_AUDIT_ENABLED;
+
+  process.env.ACTIVITY_AUTOFILL_RAG_ENABLED = 'false';
+  process.env.ACTIVITY_AUTOFILL_RAG_PA_ONLY = 'false';
+  process.env.ACTIVITY_AUTOFILL_RAG_AUDIT_ENABLED = 'false';
+
+  assert.equal(isActivityAutofillRagEnabled(), false);
+  assert.equal(isActivityAutofillRagPaOnly(), false);
+  assert.equal(isActivityAutofillRagAuditEnabled(), false);
+
+  process.env.ACTIVITY_AUTOFILL_RAG_ENABLED = 'true';
+  assert.equal(isActivityAutofillRagEnabled(), true);
+
+  restoreEnv('ACTIVITY_AUTOFILL_RAG_ENABLED', previousEnabled);
+  restoreEnv('ACTIVITY_AUTOFILL_RAG_PA_ONLY', previousPaOnly);
+  restoreEnv('ACTIVITY_AUTOFILL_RAG_AUDIT_ENABLED', previousAudit);
 });

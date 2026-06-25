@@ -20,6 +20,7 @@ export const reportStatusService = awsStore.reportStatusService;
 export const grupTintaService = awsStore.grupTintaService;
 export const historicalImportService = awsStore.historicalImportService;
 export const auditLogsService = awsStore.auditLogsService;
+export const activityAutofillAuditsService = awsStore.activityAutofillAuditsService;
 export const documentsService = awsStore.documentsService;
 export const sharedDeliverablesService = awsStore.sharedDeliverablesService;
 export const procurementProjectsService = awsStore.procurementProjectsService;

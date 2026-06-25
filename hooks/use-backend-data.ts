@@ -18,6 +18,7 @@ import {
   auditLogsService,
   documentsService,
   historicalImportService,
+  activityAutofillAuditsService,
   procurementChecklistsService,
   procurementContractsService,
   procurementDeliverablesService,
@@ -32,7 +33,7 @@ import {
   procurementSuppliersService,
   sharedDeliverablesService,
 } from '@/lib/backend-store';
-import type { Activity, Expert, VerificationData, Neconformitate, VerificationNote, AppSettings, ActivityCatalog, WorkingGroup, ConcurrentProject, ConcurrentProjectTimesheetEntry, ReportStatus, GrupTintaEntry, AuditLog, AdminInterventionRequest, HistoricalImportBatch, HistoricalTimesheetDayEntry, MonthlyActivityItem, MonthlyExpertReport, UploadedReportingFile } from '@/lib/types';
+import type { Activity, Expert, VerificationData, Neconformitate, VerificationNote, AppSettings, ActivityCatalog, WorkingGroup, ConcurrentProject, ConcurrentProjectTimesheetEntry, ReportStatus, GrupTintaEntry, AuditLog, ActivityAutofillAudit, AdminInterventionRequest, HistoricalImportBatch, HistoricalTimesheetDayEntry, MonthlyActivityItem, MonthlyExpertReport, UploadedReportingFile } from '@/lib/types';
 import { getContractedProcurementProjects, type ProcurementChecklist, type ProcurementContract, type ProcurementDeliverable, type ProcurementDocument, type ProcurementEvaluation, type ProcurementInvoice, type ProcurementLaunch, type ProcurementOffer, type ProcurementProject, type ProcurementReception, type ProcurementStatusHistory, type ProcurementSupplier } from '@/lib/procurement';
 
 const EMPTY_LIST: readonly never[] = Object.freeze([]);
@@ -875,6 +876,29 @@ export function useAuditLogMutations() {
   };
 
   return { create };
+}
+
+export function useActivityAutofillAudits(month?: number, year?: number, expertId?: string | null) {
+  const key = expertId && month !== undefined && year !== undefined
+    ? `activity-autofill-audits-${expertId}-${month}-${year}`
+    : month !== undefined && year !== undefined
+      ? `activity-autofill-audits-${month}-${year}`
+      : 'activity-autofill-audits';
+  const fetcher = expertId && month !== undefined && year !== undefined
+    ? () => activityAutofillAuditsService.getByExpertAndMonth(expertId, month, year)
+    : () => activityAutofillAuditsService.getAll(month, year);
+
+  const { data, error, isLoading } = useSWR(
+    isBackendAvailable() ? key : null,
+    safeFetcher(fetcher)
+  );
+
+  return {
+    audits: stableList(data as ActivityAutofillAudit[] | null | undefined),
+    isLoading,
+    error,
+    mutate: () => mutate(key),
+  };
 }
 
 // ============================================

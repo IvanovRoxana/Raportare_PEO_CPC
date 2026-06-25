@@ -2,6 +2,7 @@ import { Output } from 'ai';
 import { NextResponse } from 'next/server';
 import { aiErrorResponse, assertAllowedAiRequest, governedGenerateText } from '@/lib/ai-governance';
 import { openaiModel } from '@/lib/openai';
+import { isActivityAutofillRagAuditEnabled } from '@/lib/feature-flags';
 import {
   activityAutofillRequestSchema,
   activityAutofillSuggestionSchema,
@@ -9,6 +10,9 @@ import {
   normalizeActivityAutofillRequest,
   validateActivityAutofillSuggestionAgainstCatalog,
 } from '@/lib/activity-autofill';
+import { buildActivityAutofillAuditPayload, buildCompactActivityAutofillRagContext } from '@/lib/rag/activity-autofill-rag';
+import { retrieveActivityAutofillContext } from '@/lib/rag/retrieval';
+import { createActivityAutofillAudit } from '@/lib/rag/store';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -38,11 +42,33 @@ export async function POST(req: Request) {
       );
     }
 
-    const { system, prompt } = buildActivityAutofillPrompt(request);
+    const ragRequest = {
+      ...request,
+      category: request.category || request.catalogCandidates.find((candidate) => candidate.category)?.category,
+    };
+    const retrieval = await retrieveActivityAutofillContext(ragRequest);
+    const ragContext = buildCompactActivityAutofillRagContext(retrieval);
+    const promptRequest = ragContext
+      ? normalizeActivityAutofillRequest({
+          ...request,
+          category: ragRequest.category,
+          internalRagContext: ragContext,
+        })
+      : request;
+
+    const { system, prompt } = buildActivityAutofillPrompt(promptRequest);
     const result = await governedGenerateText({
       endpoint: '/api/ai/suggest-activity-from-deliverables',
       operation: 'suggest-activity-from-deliverables',
-      request,
+      request: {
+        ...request,
+        rag: {
+          enabled: retrieval.enabled,
+          skippedReason: retrieval.skippedReason,
+          chunks: retrieval.chunks.length,
+          warnings: retrieval.warnings,
+        },
+      },
       actorName: request.expertName,
       projectCode: request.projectCode,
       month: request.month,
@@ -68,8 +94,29 @@ export async function POST(req: Request) {
       );
     }
 
+    if (isActivityAutofillRagAuditEnabled()) {
+      try {
+        await createActivityAutofillAudit(buildActivityAutofillAuditPayload({
+          request: ragRequest,
+          suggestion: suggestion.data,
+          modelAuditId: result.auditId,
+          ragContext,
+        }));
+      } catch (auditError) {
+        console.warn('[activity-autofill-rag] Audit save failed; returning suggestion anyway.', auditError);
+      }
+    }
+
     return NextResponse.json({
-      ...suggestion.data,
+      recommended: suggestion.data.recommended,
+      confidence: suggestion.data.confidence,
+      fieldInstructions: {
+        saCode: '',
+        activityName: '',
+        description: '',
+      },
+      evidence: [],
+      warnings: [],
       modelAuditId: result.auditId,
     });
   } catch (error) {

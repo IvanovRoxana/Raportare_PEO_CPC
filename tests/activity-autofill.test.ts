@@ -91,6 +91,32 @@ test('promptul cere instructiuni clare pentru fiecare linie completata din formu
   assert.match(prompt, /fieldInstructions\.description/);
 });
 
+test('promptul include context RAG doar cand este furnizat', () => {
+  const baseRequest = {
+    deliverables: [
+      {
+        fileName: 'raport.docx',
+        documentTitle: 'Raport de analiza',
+        extractedText: 'Analiza documentara si recomandari pentru politici publice.',
+      },
+    ],
+    catalogCandidates,
+    expertName: 'Expert Test',
+  };
+
+  const withoutRag = buildActivityAutofillPrompt(baseRequest);
+  assert.doesNotMatch(withoutRag.prompt, /Context RAG intern/);
+
+  const withRag = buildActivityAutofillPrompt({
+    ...baseRequest,
+    internalRagContext: {
+      promptContext: '[{"sourceType":"raportare_aprobata_oir","text":"context aprobat"}]',
+    },
+  });
+  assert.match(withRag.prompt, /Context RAG intern/);
+  assert.match(withRag.prompt, /context aprobat/);
+});
+
 test('validarea respinge sugestiile care nu exista exact in catalog', () => {
   const result = validateActivityAutofillSuggestionAgainstCatalog(
     {

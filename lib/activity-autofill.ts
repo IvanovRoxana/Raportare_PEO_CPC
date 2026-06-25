@@ -34,12 +34,21 @@ export const activityAutofillCatalogCandidateSchema = z.object({
 export const activityAutofillRequestSchema = z.object({
   deliverables: z.array(activityAutofillDeliverableSchema).min(1),
   catalogCandidates: z.array(activityAutofillCatalogCandidateSchema).min(1),
+  expertId: z.string().optional(),
   expertName: z.string().optional(),
   expertRole: z.string().optional(),
+  category: z.string().optional(),
   projectCode: z.string().optional(),
   month: z.union([z.number(), z.string()]).optional(),
   year: z.union([z.number(), z.string()]).optional(),
   selectedDates: z.array(z.string()).optional(),
+  knowledgeContext: z.string().optional(),
+  internalRagContext: z.object({
+    promptContext: z.string().optional(),
+    retrievalJson: z.string().optional(),
+    candidateJson: z.string().optional(),
+    warnings: z.array(z.string()).optional(),
+  }).optional(),
 });
 
 export const activityAutofillSuggestionSchema = z.object({
@@ -132,6 +141,13 @@ export function normalizeActivityAutofillRequest(input: ActivityAutofillRequest)
       deliverables: trimText(candidate.deliverables, 1200) || undefined,
       indicators: trimText(candidate.indicators, 800) || undefined,
     })),
+    knowledgeContext: trimText(input.knowledgeContext, 6000) || undefined,
+    internalRagContext: input.internalRagContext
+      ? {
+          ...input.internalRagContext,
+          promptContext: trimText(input.internalRagContext.promptContext, 6000) || undefined,
+        }
+      : undefined,
   };
 }
 
@@ -140,6 +156,10 @@ export function buildActivityAutofillPrompt(input: ActivityAutofillRequest) {
   const catalogPairs = normalized.catalogCandidates
     .map((candidate) => `${candidate.saCode} :: ${candidate.activityName}`)
     .join('\n');
+  const ragPromptContext = normalized.internalRagContext?.promptContext || normalized.knowledgeContext;
+  const ragSection = ragPromptContext
+    ? `\nContext RAG intern (folosit doar pentru orientare, nu pentru inventare):\n${ragPromptContext}\n`
+    : '';
 
   return {
     system: `Esti un asistent de raportare PEO. Sugerezi completarea formularului de activitate pe baza livrabilelor incarcate si a Catalogului activitatilor. Nu inventa informatii. Returneaza doar JSON valid, fara text in afara JSON.`,
@@ -154,6 +174,10 @@ Reguli obligatorii pentru fiecare camp:
 - fieldInstructions.description: explica ce informatii din documente/catalog trebuie sa se regaseasca in descriere.
 - Daca documentele nu sustin clar alegerea, foloseste confidence "low" si pune avertisment explicit in warnings.
 - Nu propune modificari pentru ore, tip zi, locatie, colaborare, GDPR sau eligibilitatea livrabilelor.
+- Catalogul ramane sursa obligatorie pentru recommended.saCode si recommended.activityName.
+- Contextul RAG intern ajuta doar la alegerea dintre activitatile permise si la redactarea descrierii.
+- Daca sursele RAG contrazic orice element din catalog, catalogul are prioritate.
+- Poti inspira stilul descrierii din raportari aprobate, dar nu copia mecanic fragmente lungi.
 
 Activitati permise:
 ${catalogPairs}
@@ -162,11 +186,13 @@ Context:
 ${JSON.stringify({
   expertName: normalized.expertName,
   expertRole: normalized.expertRole,
+  category: normalized.category,
   projectCode: normalized.projectCode,
   month: normalized.month,
   year: normalized.year,
   selectedDates: normalized.selectedDates,
 }, null, 2)}
+${ragSection}
 
 Catalog activitati:
 ${JSON.stringify(normalized.catalogCandidates, null, 2)}

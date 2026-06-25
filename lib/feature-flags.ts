@@ -16,3 +16,19 @@ export function isDeliverableEligibilityCheckEnabled() {
 export function isDeliverableEligibilityCheckEnabledClient() {
   return process.env.NEXT_PUBLIC_ENABLE_DELIVERABLE_ELIGIBILITY_CHECK === 'true';
 }
+
+export function isActivityAutofillRagEnabled() {
+  return process.env.ACTIVITY_AUTOFILL_RAG_ENABLED === 'true';
+}
+
+export function isActivityAutofillRagPaOnly() {
+  return process.env.ACTIVITY_AUTOFILL_RAG_PA_ONLY !== 'false';
+}
+
+export function isActivityAutofillRagAuditEnabled() {
+  return process.env.ACTIVITY_AUTOFILL_RAG_AUDIT_ENABLED !== 'false';
+}
+
+export function getActivityAutofillEmbeddingModel() {
+  return process.env.OPENAI_EMBEDDING_MODEL?.trim() || 'text-embedding-3-small';
+}

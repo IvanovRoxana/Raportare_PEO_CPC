@@ -698,8 +698,10 @@ export function ActivityForm({
   useEffect(() => {
     if (isEvent) {
       setActivityFormTab('event');
+    } else if (effectiveActivityTitle.trim()) {
+      setActivityFormTab('standard');
     }
-  }, [isEvent]);
+  }, [effectiveActivityTitle, isEvent]);
   
   // Check if leave day
   const isLeave = dayType === 'CO' || dayType === 'CM';
@@ -988,7 +990,9 @@ export function ActivityForm({
           deliverables: activityAutofillDeliverables,
           catalogCandidates: activityAutofillCatalogCandidates,
           expertName,
+          expertId,
           expertRole: expert?.positionInProject || expert?.role,
+          category: expert?.category,
           projectCode: expert?.projectCode,
           month,
           year,
@@ -1007,6 +1011,23 @@ export function ActivityForm({
     } finally {
       setIsAutofillingActivity(false);
     }
+  };
+
+  const markActivityAutofillSuggestionApplied = (suggestion: ActivityAutofillSuggestion) => {
+    if (!suggestion.modelAuditId) return;
+
+    void fetch('/api/ai/suggest-activity-from-deliverables/applied', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        modelAuditId: suggestion.modelAuditId,
+        finalSaCode: suggestion.recommended.saCode,
+        finalActivityName: suggestion.recommended.activityName,
+        finalDescriptionPreview: suggestion.recommended.description.slice(0, 500),
+      }),
+    }).catch((error) => {
+      console.warn('Nu s-a putut marca auditul AI ca aplicat.', error);
+    });
   };
 
   const applyActivityAutofillSuggestion = () => {
@@ -1028,6 +1049,8 @@ export function ActivityForm({
     lastAutoDescriptionRef.current = '__activity_autofill_applied__';
     setTitleVerificationResult(null);
     setActivityAutofillError(null);
+    setActivityAutofillSuggestion(null);
+    markActivityAutofillSuggestionApplied(activityAutofillSuggestion);
   };
 
   const dataUrlToBlob = (dataUrl: string, fallbackType: string) => {
@@ -1718,22 +1741,9 @@ export function ActivityForm({
       });
     }
 
-    if (activityAutofillSuggestion?.warnings.length) {
-      activityAutofillSuggestion.warnings.forEach((warning, index) => {
-        items.push({
-          id: `ai-autofill-warning-${index}`,
-          group: 'ai',
-          tone: 'warning',
-          title: 'Sugestie AI de revizuit',
-          detail: warning,
-        });
-      });
-    }
-
     return items;
   }, [
     activityAutofillError,
-    activityAutofillSuggestion,
     activityAutofillUnavailableMessage,
     deliverables,
     duplicateInfoByDeliverableId,
@@ -2173,6 +2183,73 @@ export function ActivityForm({
               <p className="text-xs text-amber-800">{resolutionHint.detail}</p>
             </div>
           </div>
+        )}
+
+        {isWorkspaceLayout && (
+          <Tabs
+            value={activityFormTab}
+            onValueChange={(value) => setActivityFormTab(value as 'standard' | 'event')}
+            className="rounded-lg border bg-white p-3 shadow-sm"
+          >
+            <TabsList className="grid w-full grid-cols-2 rounded-lg">
+              <TabsTrigger value="standard">Activitate standard</TabsTrigger>
+              <TabsTrigger value="event">Eveniment</TabsTrigger>
+            </TabsList>
+            <TabsContent value="standard" className="pt-3">
+              <p className="text-xs text-muted-foreground">
+                Alege acest flux pentru activitati obisnuite, apoi foloseste livrabilul si AI pentru completare.
+              </p>
+            </TabsContent>
+            <TabsContent value="event" className="space-y-3 pt-3">
+              {!isEvent ? (
+                <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                  Selecteaza o activitate de tip eveniment ca sa completezi durata, explicatiile si documentele specifice.
+                </div>
+              ) : (
+                <Field>
+                  <FieldLabel>Durata evenimentului (ore) - optional</FieldLabel>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+                    <Input
+                      type="number"
+                      min="0.5"
+                      max="8"
+                      step="0.5"
+                      value={eventDuration}
+                      onChange={(e) => setEventDuration(e.target.value)}
+                      placeholder="ex: 2"
+                      className="w-28"
+                    />
+                    {eventDur > 0 && totalHours > eventDur && (
+                      <span className="text-xs text-amber-700">
+                        Ai pontat {totalHours}h dar evenimentul a durat {eventDur}h - explica orele suplimentare.
+                      </span>
+                    )}
+                    {eventDur > 0 && totalHours <= eventDur && (
+                      <span className="flex items-center gap-1 text-xs text-green-700">
+                        <CheckCircle className="h-3 w-3" />
+                        Ore pontate ({totalHours}h) = durata evenimentului ({eventDur}h)
+                      </span>
+                    )}
+                  </div>
+                  {needsExtendedDesc && (
+                    <div className="mt-2">
+                      <Label className="text-xs text-amber-700">Activitati conexe evenimentului - obligatoriu</Label>
+                      <div className="text-xs text-amber-600 mb-2">
+                        Ai pontat mai multe ore decat durata evenimentului. Descrie ce ai realizat in orele suplimentare.
+                      </div>
+                      <Textarea
+                        value={eventExtendedDesc}
+                        onChange={(e) => setEventExtendedDesc(e.target.value)}
+                        rows={3}
+                        placeholder="Ex: 1h pregatire materiale de prezentare inainte de eveniment, 1h redactare minuta si sinteza concluzii dupa eveniment..."
+                        className="border-amber-500"
+                      />
+                    </div>
+                  )}
+                </Field>
+              )}
+            </TabsContent>
+          </Tabs>
         )}
 
         {isWorkspaceLayout && !isLeave && !isException && (
@@ -2647,9 +2724,6 @@ export function ActivityForm({
                       <div className="mt-3 space-y-3 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-950">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <div className="font-medium">Sugestie pregatita pentru revizuire</div>
-                          <Badge variant="outline" className="border-emerald-300 bg-white text-emerald-800">
-                            incredere {activityAutofillSuggestion.confidence}
-                          </Badge>
                         </div>
                         <div className="grid gap-2 md:grid-cols-2">
                           <div>
@@ -2667,40 +2741,6 @@ export function ActivityForm({
                             {activityAutofillSuggestion.recommended.description}
                           </div>
                         </div>
-                        <div className="grid gap-2 md:grid-cols-3">
-                          <div>
-                            <div className="text-xs font-medium text-emerald-800">Linia Subactivitate</div>
-                            <p className="text-xs">{activityAutofillSuggestion.fieldInstructions.saCode}</p>
-                          </div>
-                          <div>
-                            <div className="text-xs font-medium text-emerald-800">Linia Activitate</div>
-                            <p className="text-xs">{activityAutofillSuggestion.fieldInstructions.activityName}</p>
-                          </div>
-                          <div>
-                            <div className="text-xs font-medium text-emerald-800">Linia Descriere</div>
-                            <p className="text-xs">{activityAutofillSuggestion.fieldInstructions.description}</p>
-                          </div>
-                        </div>
-                        {activityAutofillSuggestion.evidence.length > 0 && (
-                          <div>
-                            <div className="text-xs font-medium text-emerald-800">Dovezi folosite</div>
-                            <ul className="mt-1 list-disc pl-4 text-xs">
-                              {activityAutofillSuggestion.evidence.map((item, index) => (
-                                <li key={`${item}-${index}`}>{item}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                        {activityAutofillSuggestion.warnings.length > 0 && (
-                          <div className="rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
-                            <div className="font-medium">De revizuit</div>
-                            <ul className="mt-1 list-disc pl-4">
-                              {activityAutofillSuggestion.warnings.map((item, index) => (
-                                <li key={`${item}-${index}`}>{item}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
                         <div className="flex justify-end">
                           <Button type="button" size="sm" onClick={applyActivityAutofillSuggestion}>
                             <CheckCircle className="h-4 w-4 mr-2" />
@@ -2721,73 +2761,6 @@ export function ActivityForm({
                   />
                 </div>
               </div>
-            )}
-
-            {isWorkspaceLayout && (
-              <Tabs
-                value={activityFormTab}
-                onValueChange={(value) => setActivityFormTab(value as 'standard' | 'event')}
-                className="rounded-lg border bg-white p-3"
-              >
-                <TabsList className="grid w-full grid-cols-2 rounded-lg">
-                  <TabsTrigger value="standard">Activitate standard</TabsTrigger>
-                  <TabsTrigger value="event">Eveniment</TabsTrigger>
-                </TabsList>
-                <TabsContent value="standard" className="pt-3">
-                  <p className="text-xs text-muted-foreground">
-                    Completeaza sau ajusteaza manual subactivitatea, activitatea si descrierea raportarii.
-                  </p>
-                </TabsContent>
-                <TabsContent value="event" className="space-y-3 pt-3">
-                  {!isEvent ? (
-                    <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-                      Selecteaza o activitate de tip eveniment ca sa completezi durata, explicatiile si documentele specifice.
-                    </div>
-                  ) : (
-                    <Field>
-                      <FieldLabel>Durata evenimentului (ore) - optional</FieldLabel>
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
-                        <Input
-                          type="number"
-                          min="0.5"
-                          max="8"
-                          step="0.5"
-                          value={eventDuration}
-                          onChange={(e) => setEventDuration(e.target.value)}
-                          placeholder="ex: 2"
-                          className="w-28"
-                        />
-                        {eventDur > 0 && totalHours > eventDur && (
-                          <span className="text-xs text-amber-700">
-                            Ai pontat {totalHours}h dar evenimentul a durat {eventDur}h - explica orele suplimentare.
-                          </span>
-                        )}
-                        {eventDur > 0 && totalHours <= eventDur && (
-                          <span className="flex items-center gap-1 text-xs text-green-700">
-                            <CheckCircle className="h-3 w-3" />
-                            Ore pontate ({totalHours}h) = durata evenimentului ({eventDur}h)
-                          </span>
-                        )}
-                      </div>
-                      {needsExtendedDesc && (
-                        <div className="mt-2">
-                          <Label className="text-xs text-amber-700">Activitati conexe evenimentului - obligatoriu</Label>
-                          <div className="text-xs text-amber-600 mb-2">
-                            Ai pontat mai multe ore decat durata evenimentului. Descrie ce ai realizat in orele suplimentare.
-                          </div>
-                          <Textarea
-                            value={eventExtendedDesc}
-                            onChange={(e) => setEventExtendedDesc(e.target.value)}
-                            rows={3}
-                            placeholder="Ex: 1h pregatire materiale de prezentare inainte de eveniment, 1h redactare minuta si sinteza concluzii dupa eveniment..."
-                            className="border-amber-500"
-                          />
-                        </div>
-                      )}
-                    </Field>
-                  )}
-                </TabsContent>
-              </Tabs>
             )}
 
             {/* Sub-activity and Activity */}
