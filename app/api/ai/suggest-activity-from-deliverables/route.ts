@@ -6,6 +6,7 @@ import { isActivityAutofillRagAuditEnabled } from '@/lib/feature-flags';
 import {
   activityAutofillRequestSchema,
   activityAutofillSuggestionSchema,
+  buildActivityAutofillCatalogShortlist,
   buildActivityAutofillPrompt,
   normalizeActivityAutofillRequest,
   validateActivityAutofillSuggestionAgainstCatalog,
@@ -79,13 +80,18 @@ export async function POST(req: Request) {
     };
     const retrieval = await retrieveActivityAutofillContext(ragRequest, { authToken });
     const ragContext = buildCompactActivityAutofillRagContext(retrieval);
-    const promptRequest = ragContext
+    const contextRequest = ragContext
       ? normalizeActivityAutofillRequest({
           ...request,
           category: ragRequest.category,
           internalRagContext: ragContext,
         })
       : request;
+    const shortlistedCatalogCandidates = buildActivityAutofillCatalogShortlist(contextRequest);
+    const promptRequest = normalizeActivityAutofillRequest({
+      ...contextRequest,
+      catalogCandidates: shortlistedCatalogCandidates,
+    });
 
     const { system, prompt } = buildActivityAutofillPrompt(promptRequest);
     const result = await governedGenerateText({
@@ -99,6 +105,8 @@ export async function POST(req: Request) {
           chunks: retrieval.chunks.length,
           warnings: retrieval.warnings,
         },
+        catalogCandidatesTotal: request.catalogCandidates.length,
+        catalogCandidatesPrompted: promptRequest.catalogCandidates.length,
       },
       actorName: request.expertName,
       projectCode: request.projectCode,
@@ -112,7 +120,7 @@ export async function POST(req: Request) {
 
     const suggestion = validateActivityAutofillSuggestionAgainstCatalog(
       result.output,
-      request.catalogCandidates,
+      promptRequest.catalogCandidates,
     );
 
     if (!suggestion.ok) {

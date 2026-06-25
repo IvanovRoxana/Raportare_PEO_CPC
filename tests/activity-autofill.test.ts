@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  buildActivityAutofillCatalogShortlist,
   buildActivityAutofillDeliverablesPayload,
   buildActivityAutofillPrompt,
   validateActivityAutofillSuggestionAgainstCatalog,
@@ -89,6 +90,8 @@ test('promptul cere instructiuni clare pentru fiecare linie completata din formu
   assert.match(prompt, /fieldInstructions\.saCode/);
   assert.match(prompt, /fieldInstructions\.activityName/);
   assert.match(prompt, /fieldInstructions\.description/);
+  assert.match(prompt, /persoana I singular/);
+  assert.match(prompt, /Ghid de incadrare AP\/PA/);
 });
 
 test('promptul include context RAG doar cand este furnizat', () => {
@@ -161,4 +164,43 @@ test('validarea accepta sugestiile care corespund unei activitati din catalog', 
   );
 
   assert.equal(result.ok, true);
+});
+
+test('shortlistul favorizeaza activitatea cea mai apropiata de livrabil', () => {
+  const candidates: ActivityAutofillCatalogCandidate[] = [
+    {
+      id: 'cat-1',
+      category: 'ap',
+      saCode: 'SA3.4',
+      activityName: 'Redactare Newsletter lunar CPC',
+      description: 'Newsletter si informari pentru membri.',
+    },
+    {
+      id: 'cat-2',
+      category: 'ap',
+      saCode: 'SA3.4',
+      activityName: 'Organizare eveniment / masa rotunda / dezbatere',
+      description: 'Organizare evenimente si dezbateri.',
+    },
+    {
+      id: 'cat-3',
+      category: 'ap',
+      saCode: 'SA3.5',
+      activityName: 'Vizita de studiu / schimb experienta federatie europeana',
+      description: 'Schimb de bune practici europene.',
+    },
+  ];
+
+  const shortlist = buildActivityAutofillCatalogShortlist({
+    deliverables: [
+      {
+        documentTitle: 'Newsletter lunar CPC - mai 2026',
+        extractedText: 'Am redactat newsletterul lunar CPC cu informari legislative relevante pentru companiile membre.',
+      },
+    ],
+    catalogCandidates: candidates,
+    expertRole: 'Expert Afaceri Publice',
+  }, 1);
+
+  assert.equal(shortlist[0].activityName, 'Redactare Newsletter lunar CPC');
 });
