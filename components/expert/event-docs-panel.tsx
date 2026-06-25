@@ -33,6 +33,8 @@ interface EventDocsPanelProps {
   onAddEventProof: () => void;
   onRemoveDeliverable: (id: string) => void;
   onUpsertSlot: (slotType: 'event_mom' | 'event_proof', name: string, patch: Partial<DeliverableSlot>) => void;
+  canCheckEligibility?: boolean;
+  eligibilityBlockedReason?: string;
 }
 
 export function EventDocsPanel({
@@ -48,6 +50,8 @@ export function EventDocsPanel({
   onAddEventProof,
   onRemoveDeliverable,
   onUpsertSlot,
+  canCheckEligibility = true,
+  eligibilityBlockedReason,
 }: EventDocsPanelProps) {
   const [hasMOM, setHasMOM] = useState(true);
   const [genDesc, setGenDesc] = useState('');
@@ -270,6 +274,8 @@ export function EventDocsPanel({
               required={true}
               label="MOM / Proces verbal / Raport de eveniment"
               hint="Document cu data, participanti, agenda, concluzii. MOM: semnaturi olografe obligatorii."
+              canCheckEligibility={canCheckEligibility}
+              eligibilityBlockedReason={eligibilityBlockedReason}
             />
           )}
 
@@ -485,6 +491,8 @@ export function EventDocsPanel({
                   required={proofRequired && index === 0}
                   label={index === 0 ? 'Fotografie eveniment SAU Lista prezenta cu semnaturi olografe' : `Fotografie eveniment ${index + 1}`}
                   hint="JPG/PNG sau document scanat cu semnaturile participantilor."
+                  canCheckEligibility={canCheckEligibility}
+                  eligibilityBlockedReason={eligibilityBlockedReason}
                 />
               ))}
               <div className="flex items-center justify-between gap-2 rounded-md border border-dashed border-green-300 bg-white/70 px-3 py-2">

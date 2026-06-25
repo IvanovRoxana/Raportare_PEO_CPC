@@ -17,7 +17,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { FieldGroup, Field, FieldLabel } from '@/components/ui/field';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Field, FieldLabel } from '@/components/ui/field';
 import { generateId, formatDateRo } from '@/lib/app-utils';
 import { EventDocsPanel } from './event-docs-panel';
 import { DeliverableItem, type DeliverableDuplicateInfo } from './deliverable-item';
@@ -158,6 +159,7 @@ interface ActivityFormProps {
   prefillActivity?: Partial<Activity>;
   resolutionHint?: ActivityResolutionHint;
   isSaving?: boolean;
+  layout?: 'card' | 'workspace';
 }
 
 export function ActivityForm({
@@ -178,7 +180,9 @@ export function ActivityForm({
   prefillActivity,
   resolutionHint,
   isSaving = false,
+  layout = 'card',
 }: ActivityFormProps) {
+  const isWorkspaceLayout = layout === 'workspace';
   // Fetch activity catalog from database
   const { catalog, isLoading: catalogLoading } = useActivityCatalog();
 
@@ -629,6 +633,14 @@ export function ActivityForm({
   
   // Check if current activity is event
   const isEvent = isEventActivity(effectiveActivityTitle);
+
+  const [activityFormTab, setActivityFormTab] = useState<'standard' | 'event'>('standard');
+
+  useEffect(() => {
+    if (isEvent) {
+      setActivityFormTab('event');
+    }
+  }, [isEvent]);
   
   // Check if leave day
   const isLeave = dayType === 'CO' || dayType === 'CM';
@@ -1404,6 +1416,38 @@ export function ActivityForm({
   const mainDeliverables = deliverables.filter(d => !d.slotType || d.slotType === 'livrabil');
   const prelimDeliverables = deliverables.filter(d => d.slotType === 'raport_preliminar');
   const justifDeliverables = deliverables.filter(d => d.slotType === 'justificativ');
+  const descriptionTrimmed = (description || '').trim();
+  const descriptionReadyForEligibility = activityCommon
+    ? descriptionTrimmed.length >= 30
+    : descriptionTrimmed.length >= 15;
+  const eligibilityBlockedReason = !effectiveSaCode
+    ? 'Selecteaza subactivitatea inainte de verificarea eligibilitatii.'
+    : !effectiveActivityTitle
+      ? 'Selecteaza activitatea inainte de verificarea eligibilitatii.'
+      : !descriptionReadyForEligibility
+        ? activityCommon
+          ? 'Completeaza descrierea contributiei individuale, minimum 30 de caractere.'
+          : 'Completeaza descrierea activitatii, minimum 15 caractere.'
+        : undefined;
+  const canCheckDeliverableEligibility = !eligibilityBlockedReason;
+  const scrollToDeliverables = () => {
+    window.setTimeout(() => {
+      document.getElementById('activity-form-deliverables-section')?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    }, 0);
+  };
+  const startDeliverableFlow = () => {
+    if (mainDeliverables.length === 0) {
+      addDeliverableSlot('livrabil');
+    }
+    scrollToDeliverables();
+  };
+  const openExistingDeliverableFlow = () => {
+    setExistingDeliverablePickerOpen(true);
+    scrollToDeliverables();
+  };
   const hasEventMomAsMainDeliverable = isEvent && deliverables.some((deliverable) => (
     deliverable.slotType === 'event_mom'
     && deliverable.uploaded
@@ -1784,20 +1828,44 @@ export function ActivityForm({
   };
 
   return (
-    <Card id="activity-form-panel" className="scroll-mt-24">
-      <CardHeader>
-        <CardTitle className="text-lg">
-          {initialActivity ? 'Editare Activitate' : 'Adaugare Activitate'}
-        </CardTitle>
-        {selectedDates.length > 0 && (
-          <p className="text-sm text-muted-foreground">
-            {selectedDates.length === 1
-              ? `Data: ${formatDateRo(selectedDates[0])}`
-              : `${selectedDates.length} zile selectate`}
-          </p>
-        )}
-      </CardHeader>
-      <CardContent className="space-y-6">
+    <Card id="activity-form-panel" className={isWorkspaceLayout ? 'scroll-mt-24 overflow-hidden border-slate-200 shadow-sm' : 'scroll-mt-24'}>
+      {isWorkspaceLayout ? (
+        <div className="flex flex-col gap-3 border-b bg-white px-4 py-3 sm:flex-row sm:items-start sm:justify-between sm:px-5">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              {initialActivity ? 'Editare activitate' : 'Activitate noua'}
+            </p>
+            <h2 className="truncate text-base font-semibold text-foreground">
+              {initialActivity ? 'Actualizeaza raportarea' : 'Completeaza activitatea selectata'}
+            </h2>
+            {selectedDates.length > 0 && (
+              <p className="text-xs text-muted-foreground">
+                {selectedDates.length === 1
+                  ? `Data: ${formatDateRo(selectedDates[0])}`
+                  : `${selectedDates.length} zile selectate`}
+              </p>
+            )}
+          </div>
+          <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
+            <X className="h-4 w-4 mr-1" />
+            Inchide
+          </Button>
+        </div>
+      ) : (
+        <CardHeader>
+          <CardTitle className="text-lg">
+            {initialActivity ? 'Editare Activitate' : 'Adaugare Activitate'}
+          </CardTitle>
+          {selectedDates.length > 0 && (
+            <p className="text-sm text-muted-foreground">
+              {selectedDates.length === 1
+                ? `Data: ${formatDateRo(selectedDates[0])}`
+                : `${selectedDates.length} zile selectate`}
+            </p>
+          )}
+        </CardHeader>
+      )}
+      <CardContent className={isWorkspaceLayout ? 'space-y-5 bg-slate-50/60 p-4 sm:p-5' : 'space-y-6'}>
         {resolutionHint && (
           <div className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -1808,6 +1876,48 @@ export function ActivityForm({
               )}
               <p className="text-xs text-amber-800">{resolutionHint.detail}</p>
             </div>
+          </div>
+        )}
+
+        {isWorkspaceLayout && !isLeave && !isException && (
+          <div className="rounded-lg border border-indigo-200 bg-white p-4 shadow-sm">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 text-sm font-semibold text-slate-950">
+                  <Sparkles className="h-4 w-4 text-indigo-600" />
+                  Porneste de la livrabil
+                </div>
+                <p className="mt-1 text-xs text-slate-600">
+                  Incarca sau ataseaza un livrabil existent, apoi foloseste AI pentru subactivitate, activitate si descriere. Completarea manuala ramane disponibila mai jos.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="outline" size="sm" onClick={openExistingDeliverableFlow}>
+                  <FileText className="h-4 w-4 mr-1" />
+                  Alege existent
+                </Button>
+                <Button type="button" variant="outline" size="sm" onClick={startDeliverableFlow}>
+                  <Plus className="h-4 w-4 mr-1" />
+                  Adauga livrabil
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={handleSuggestActivityFromDeliverables}
+                  disabled={Boolean(activityAutofillUnavailableMessage) || isAutofillingActivity}
+                >
+                  {isAutofillingActivity ? (
+                    <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-4 w-4 mr-1" />
+                  )}
+                  Autocompletare cu AI
+                </Button>
+              </div>
+            </div>
+            {activityAutofillUnavailableMessage && (
+              <p className="mt-3 text-xs text-amber-700">{activityAutofillUnavailableMessage}</p>
+            )}
           </div>
         )}
 
@@ -2192,6 +2302,8 @@ export function ActivityForm({
                             onRemove={() => removeDeliverable(d.id)}
                             deliverableOptions={deliverableOptions}
                             duplicateInfo={duplicateInfoByDeliverableId.get(d.id)}
+                            canCheckEligibility={canCheckDeliverableEligibility}
+                            eligibilityBlockedReason={eligibilityBlockedReason}
                           />
                         </div>
                       );
@@ -2312,6 +2424,73 @@ export function ActivityForm({
                   />
                 </div>
               </div>
+            )}
+
+            {isWorkspaceLayout && (
+              <Tabs
+                value={activityFormTab}
+                onValueChange={(value) => setActivityFormTab(value as 'standard' | 'event')}
+                className="rounded-lg border bg-white p-3"
+              >
+                <TabsList className="grid w-full grid-cols-2 rounded-lg">
+                  <TabsTrigger value="standard">Activitate standard</TabsTrigger>
+                  <TabsTrigger value="event">Eveniment</TabsTrigger>
+                </TabsList>
+                <TabsContent value="standard" className="pt-3">
+                  <p className="text-xs text-muted-foreground">
+                    Completeaza sau ajusteaza manual subactivitatea, activitatea si descrierea raportarii.
+                  </p>
+                </TabsContent>
+                <TabsContent value="event" className="space-y-3 pt-3">
+                  {!isEvent ? (
+                    <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                      Selecteaza o activitate de tip eveniment ca sa completezi durata, explicatiile si documentele specifice.
+                    </div>
+                  ) : (
+                    <Field>
+                      <FieldLabel>Durata evenimentului (ore) - optional</FieldLabel>
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+                        <Input
+                          type="number"
+                          min="0.5"
+                          max="8"
+                          step="0.5"
+                          value={eventDuration}
+                          onChange={(e) => setEventDuration(e.target.value)}
+                          placeholder="ex: 2"
+                          className="w-28"
+                        />
+                        {eventDur > 0 && totalHours > eventDur && (
+                          <span className="text-xs text-amber-700">
+                            Ai pontat {totalHours}h dar evenimentul a durat {eventDur}h - explica orele suplimentare.
+                          </span>
+                        )}
+                        {eventDur > 0 && totalHours <= eventDur && (
+                          <span className="flex items-center gap-1 text-xs text-green-700">
+                            <CheckCircle className="h-3 w-3" />
+                            Ore pontate ({totalHours}h) = durata evenimentului ({eventDur}h)
+                          </span>
+                        )}
+                      </div>
+                      {needsExtendedDesc && (
+                        <div className="mt-2">
+                          <Label className="text-xs text-amber-700">Activitati conexe evenimentului - obligatoriu</Label>
+                          <div className="text-xs text-amber-600 mb-2">
+                            Ai pontat mai multe ore decat durata evenimentului. Descrie ce ai realizat in orele suplimentare.
+                          </div>
+                          <Textarea
+                            value={eventExtendedDesc}
+                            onChange={(e) => setEventExtendedDesc(e.target.value)}
+                            rows={3}
+                            placeholder="Ex: 1h pregatire materiale de prezentare inainte de eveniment, 1h redactare minuta si sinteza concluzii dupa eveniment..."
+                            className="border-amber-500"
+                          />
+                        </div>
+                      )}
+                    </Field>
+                  )}
+                </TabsContent>
+              </Tabs>
             )}
 
             {/* Sub-activity and Activity */}
@@ -2444,7 +2623,7 @@ export function ActivityForm({
             </Field>
 
             {/* Event duration (for event activities) */}
-            {isEvent && (
+            {isEvent && !isWorkspaceLayout && (
               <Field>
                 <FieldLabel>Durata evenimentului (ore) - optional</FieldLabel>
                 <div className="flex items-center gap-4">
@@ -2492,13 +2671,13 @@ export function ActivityForm({
             {!isException && (
               <div className="space-y-4">
                 {/* Colaborare */}
-                <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
-                  <div className="text-sm font-medium text-blue-800 mb-3 flex items-center gap-2">
+                <details open={activityCommon} className="bg-blue-50 rounded-lg p-4 border border-blue-200">
+                  <summary className="text-sm font-medium text-blue-800 flex cursor-pointer list-none items-center gap-2">
                     <Users className="h-4 w-4" />
                     Colaborare
-                  </div>
+                  </summary>
                   
-                  <div className="space-y-3">
+                  <div className="mt-3 space-y-3">
                     <div className="flex items-center space-x-2">
                       <Checkbox
                         id="activityCommon"
@@ -2628,11 +2807,15 @@ export function ActivityForm({
                       </div>
                     )}
                   </div>
-                </div>
+                </details>
 
                 {/* Raport preliminar (optional) */}
-                <div className="bg-purple-50 rounded-lg p-4 border border-purple-200">
-                  <div className="flex items-center justify-between mb-3">
+                <details open={prelimDeliverables.length > 0} className="bg-purple-50 rounded-lg p-4 border border-purple-200">
+                  <summary className="cursor-pointer list-none text-sm font-medium text-purple-800">
+                    Raport preliminar / descriptiv
+                    <Badge variant="outline" className="ml-2 text-[10px] text-purple-600">optional</Badge>
+                  </summary>
+                  <div className="mt-3 flex items-center justify-between mb-3">
                     <div>
                       <div className="text-sm font-medium text-purple-800 flex items-center gap-2">
                         <FileText className="h-4 w-4" />
@@ -2677,14 +2860,20 @@ export function ActivityForm({
                         onRemove={() => removeDeliverable(d.id)}
                         required={false}
                         duplicateInfo={duplicateInfoByDeliverableId.get(d.id)}
+                        canCheckEligibility={canCheckDeliverableEligibility}
+                        eligibilityBlockedReason={eligibilityBlockedReason}
                       />
                     ))}
                   </div>
-                </div>
+                </details>
 
                 {/* Alte documente justificative (optional) */}
-                <div className="bg-amber-50 rounded-lg p-4 border border-amber-200">
-                  <div className="flex items-center justify-between mb-3">
+                <details open={justifDeliverables.length > 0} className="bg-amber-50 rounded-lg p-4 border border-amber-200">
+                  <summary className="cursor-pointer list-none text-sm font-medium text-amber-800">
+                    Alte documente justificative
+                    <Badge variant="outline" className="ml-2 text-[10px] text-amber-600">optional</Badge>
+                  </summary>
+                  <div className="mt-3 flex items-center justify-between mb-3">
                     <div>
                       <div className="text-sm font-medium text-amber-800 flex items-center gap-2">
                         <FileText className="h-4 w-4" />
@@ -2718,28 +2907,39 @@ export function ActivityForm({
                           onRemove={() => removeDeliverable(d.id)}
                           required={false}
                           duplicateInfo={duplicateInfoByDeliverableId.get(d.id)}
+                          canCheckEligibility={canCheckDeliverableEligibility}
+                          eligibilityBlockedReason={eligibilityBlockedReason}
                         />
                       ))}
                     </div>
                   )}
-                </div>
+                </details>
 
                 {/* Event Documents Panel */}
                 {isEvent && (
-                  <EventDocsPanel
-                    deliverables={deliverables}
-                    subActivity={saCode}
-                    activityTitle={activityTitle}
-                    date={selectedDates[0] || ''}
-                    description={description}
-                    expertName={expertName}
-                    allExperts={allExperts}
-                    currentExpertId={expertId}
-                    onUpdateDeliverable={updateDeliverable}
-                    onAddEventProof={addEventProofSlot}
-                    onRemoveDeliverable={removeDeliverable}
-                    onUpsertSlot={upsertEventSlot}
-                  />
+                  <details open className="rounded-lg border border-green-200 bg-green-50 p-4">
+                    <summary className="cursor-pointer list-none text-sm font-medium text-green-800">
+                      Eveniment
+                    </summary>
+                    <div className="mt-3">
+                      <EventDocsPanel
+                        deliverables={deliverables}
+                        subActivity={saCode}
+                        activityTitle={activityTitle}
+                        date={selectedDates[0] || ''}
+                        description={description}
+                        expertName={expertName}
+                        allExperts={allExperts}
+                        currentExpertId={expertId}
+                        onUpdateDeliverable={updateDeliverable}
+                        onAddEventProof={addEventProofSlot}
+                        onRemoveDeliverable={removeDeliverable}
+                        onUpsertSlot={upsertEventSlot}
+                        canCheckEligibility={canCheckDeliverableEligibility}
+                        eligibilityBlockedReason={eligibilityBlockedReason}
+                      />
+                    </div>
+                  </details>
                 )}
               </div>
             )}

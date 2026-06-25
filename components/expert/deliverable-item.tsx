@@ -47,6 +47,8 @@ interface DeliverableItemProps {
   hint?: string;
   deliverableOptions?: string[];
   duplicateInfo?: DeliverableDuplicateInfo;
+  canCheckEligibility?: boolean;
+  eligibilityBlockedReason?: string;
 }
 
 export function DeliverableItem({
@@ -73,6 +75,8 @@ export function DeliverableItem({
   hint,
   deliverableOptions,
   duplicateInfo,
+  canCheckEligibility = true,
+  eligibilityBlockedReason,
 }: DeliverableItemProps) {
   const typeOptions = deliverableOptions || ALL_DELIVERABLE_TYPES;
   const fileRef = useRef<HTMLInputElement>(null);
@@ -353,6 +357,12 @@ export function DeliverableItem({
   const step2ok = deliverable.isPhoto || (deliverable.uploaded && deliverable.titleConfirmed);
   const step3ok = deliverable.isPhoto || (deliverable.uploaded && !!deliverable.stadiu);
   const step4ok = deliverable.isPhoto || !eligibilityCheckEnabled || (deliverable.uploaded && !!deliverable.aiCheck);
+  const eligibilityGateReason = !deliverable.titleConfirmed
+    ? 'Confirma titlul livrabilului inainte de verificarea eligibilitatii.'
+    : !deliverable.stadiu
+      ? 'Selecteaza stadiul documentului inainte de verificarea eligibilitatii.'
+      : eligibilityBlockedReason;
+  const canRunEligibilityCheck = canCheckEligibility && !eligibilityGateReason;
   const allOk = step1ok && step2ok && step3ok && step4ok;
   const auditTitle = getDocumentAuditTitle({
     ...deliverable,
@@ -666,7 +676,7 @@ export function DeliverableItem({
 
       {deliverable.uploaded && !deliverable.isPhoto && (
         <div className="space-y-2">
-          {eligibilityCheckEnabled ? (
+          {eligibilityCheckEnabled && canRunEligibilityCheck ? (
             <Button
               variant="outline"
               size="sm"
@@ -681,6 +691,15 @@ export function DeliverableItem({
               )}
               {aiLoading ? 'Se verifică...' : 'Verifică eligibilitatea livrabilului'}
             </Button>
+          ) : eligibilityCheckEnabled ? (
+            <div className="rounded border border-amber-200 bg-amber-50 p-2 text-[10px] text-amber-800">
+              <div className="flex items-start gap-1.5">
+                <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+                <span>
+                  {eligibilityGateReason || 'Completeaza contextul activitatii inainte de verificarea eligibilitatii.'}
+                </span>
+              </div>
+            </div>
           ) : (
             <div className="space-y-1.5">
               <Button
