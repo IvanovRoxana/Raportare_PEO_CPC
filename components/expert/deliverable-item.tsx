@@ -374,6 +374,17 @@ export function DeliverableItem({
     && deliverable.duplicateStatus !== 'fingerprinted'
     && deliverable.duplicateStatus !== 'pending_upload'
   ));
+  const hasSideNotes = deliverable.uploaded && !deliverable.isPhoto && Boolean(
+    deliverable.docText
+    || deliverable.firstPageText
+    || deliverable.suggestedTitle
+    || deliverable.declaredTitle
+    || hasDuplicateSignal
+    || deliverable.common
+    || deliverable.isCommonDeliverable
+    || eligibilityCheckEnabled
+    || deliverable.eligibilityCheck
+  );
 
   const borderColor = !step1ok
     ? (required ? 'border-red-300' : 'border-slate-300')
@@ -388,9 +399,9 @@ export function DeliverableItem({
       : 'bg-green-50';
 
   return (
-    <div className={`border rounded-lg p-3 ${borderColor} ${bgColor} flex flex-col gap-2`}>
+    <div className={`grid gap-2 rounded-lg border p-3 ${borderColor} ${bgColor} xl:grid-cols-[minmax(0,1fr)_minmax(280px,340px)] xl:items-start`}>
       {showSteps && !deliverable.isPhoto && (
-        <div className="flex gap-3 flex-wrap p-2 rounded-md bg-white/50 mb-1">
+        <div className="mb-1 flex flex-wrap gap-3 rounded-md bg-white/50 p-2 xl:col-span-2">
           <StepBadge ok={step1ok} n={1} label="Fisier incarcat" />
           <StepBadge ok={step2ok} n={2} label="Titlu confirmat" />
           <StepBadge ok={step3ok} n={3} label="Stadiu selectat" />
@@ -398,7 +409,7 @@ export function DeliverableItem({
         </div>
       )}
 
-      <div className="flex gap-2 items-center">
+      <div className="flex items-center gap-2 xl:col-start-1">
         {label ? (
           <div className="flex-1">
             <div className="text-xs font-medium text-slate-900">
@@ -437,7 +448,7 @@ export function DeliverableItem({
         )}
       </div>
 
-      <div>
+      <div className="xl:col-start-1">
         <input
           type="file"
           ref={fileRef}
@@ -483,8 +494,14 @@ export function DeliverableItem({
         )}
       </div>
 
+      {hasSideNotes && (
+        <div className="rounded-md border border-slate-200 bg-white/70 px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600 xl:col-start-2 xl:row-start-2">
+          Observatii si atentionari
+        </div>
+      )}
+
       {deliverable.uploaded && (deliverable.docText || deliverable.firstPageText) && (
-        <div className="rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] text-blue-800">
+        <div className="rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] text-blue-800 xl:col-start-2">
           {deliverable.textExtractionSource === 'ocr'
             ? 'Text OCR extras pentru autocompletare.'
             : 'Text extras disponibil pentru autocompletare.'}
@@ -492,9 +509,9 @@ export function DeliverableItem({
       )}
 
       {!deliverable.isPhoto && (
-        <div className="space-y-1.5">
+        <div className="space-y-1.5 xl:contents">
           {deliverable.uploaded && (
-            <div className="rounded border border-slate-200 bg-white p-2 text-[10px] text-slate-700">
+            <div className="rounded border border-slate-200 bg-white p-2 text-[10px] text-slate-700 xl:col-start-1">
               <div className="font-medium text-slate-900">Titlu auditabil document</div>
               <div className="mt-0.5 break-words text-xs font-semibold text-slate-950">{auditTitle}</div>
               <div className="mt-1 flex flex-wrap gap-1.5">
@@ -521,7 +538,7 @@ export function DeliverableItem({
           )}
 
           {deliverable.suggestedTitle && (
-            <div className="rounded border border-blue-200 bg-blue-50 p-2 text-[10px] text-blue-900">
+            <div className="rounded border border-blue-200 bg-blue-50 p-2 text-[10px] text-blue-900 xl:col-start-2">
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <div className="font-medium">Titlu sugerat automat{deliverable.titleSuggestionConfidence ? ` (${deliverable.titleSuggestionConfidence})` : ''}</div>
@@ -552,7 +569,7 @@ export function DeliverableItem({
             </div>
           )}
 
-          <div className="relative">
+          <div className="relative xl:col-start-1">
             <Input
               value={deliverable.declaredTitle}
               onChange={(event) => handleTitleChange(event.target.value)}
@@ -575,7 +592,7 @@ export function DeliverableItem({
       )}
 
       {deliverable.uploaded && !deliverable.isPhoto && deliverable.declaredTitle && (
-        <div className={`text-[10px] p-1.5 rounded ${
+        <div className={`rounded p-1.5 text-[10px] xl:col-start-2 ${
           deliverable.titleMatch === true
             ? 'bg-green-100 text-green-700'
             : deliverable.titleMatch === false
@@ -589,7 +606,7 @@ export function DeliverableItem({
       )}
 
       {deliverable.uploaded && !deliverable.isPhoto && hasDuplicateSignal && (
-        <div className="rounded border border-amber-300 bg-amber-50 p-2 text-[10px] text-amber-900">
+        <div className="rounded border border-amber-300 bg-amber-50 p-2 text-[10px] text-amber-900 xl:col-start-2">
           <div className="flex flex-wrap items-center gap-1.5">
             <AlertTriangle className="h-3 w-3" />
             <span className="font-semibold">Posibila reutilizare / document existent</span>
@@ -622,7 +639,7 @@ export function DeliverableItem({
       )}
 
       {deliverable.uploaded && !deliverable.isPhoto && Boolean(deliverable.common || deliverable.isCommonDeliverable) && (
-        <div className="rounded border border-blue-200 bg-blue-50 p-2 text-[10px] text-blue-900">
+        <div className="rounded border border-blue-200 bg-blue-50 p-2 text-[10px] text-blue-900 xl:col-start-2">
           <div className="font-semibold">Document comun / cross-expert</div>
           <div>
             {deliverable.sharedWithExpertIds?.length
@@ -638,7 +655,7 @@ export function DeliverableItem({
           size="sm"
           onClick={handleConfirmTitle}
           disabled={deliverable.titleCheckStatus === 'mismatch' || deliverable.titleCheckStatus === 'extraction_failed'}
-          className="text-xs border-green-400 text-green-700 hover:bg-green-50 disabled:border-amber-300 disabled:text-amber-700"
+          className="justify-self-start border-green-400 text-xs text-green-700 hover:bg-green-50 disabled:border-amber-300 disabled:text-amber-700 xl:col-start-1"
         >
           {deliverable.titleCheckStatus === 'mismatch' || deliverable.titleCheckStatus === 'extraction_failed' ? (
             <AlertTriangle className="h-3 w-3 mr-1" />
@@ -650,32 +667,34 @@ export function DeliverableItem({
       )}
 
       {deliverable.titleConfirmed && (
-        <Badge variant="outline" className="bg-green-50 text-green-700 border-green-300 text-[10px]">
+        <Badge variant="outline" className="w-fit border-green-300 bg-green-50 text-[10px] text-green-700 xl:col-start-1">
           <Check className="h-3 w-3 mr-1" />
           Titlu confirmat
         </Badge>
       )}
 
       {deliverable.uploaded && !deliverable.isPhoto && (
-        <Select
-          value={deliverable.stadiu}
-          onValueChange={(value: string) => onUpdate({ stadiu: value })}
-        >
-          <SelectTrigger className="text-xs">
-            <SelectValue placeholder="Stadiu document" />
-          </SelectTrigger>
-          <SelectContent>
-            {DOCUMENT_STADIU_OPTIONS.map((opt) => (
-              <SelectItem key={opt.value} value={opt.value} className="text-xs">
-                {opt.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="xl:col-start-1">
+          <Select
+            value={deliverable.stadiu}
+            onValueChange={(value: string) => onUpdate({ stadiu: value })}
+          >
+            <SelectTrigger className="text-xs">
+              <SelectValue placeholder="Stadiu document" />
+            </SelectTrigger>
+            <SelectContent>
+              {DOCUMENT_STADIU_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       )}
 
       {deliverable.uploaded && !deliverable.isPhoto && (
-        <div className="space-y-2">
+        <div className="space-y-2 xl:col-start-2">
           {eligibilityCheckEnabled && canRunEligibilityCheck ? (
             <Button
               variant="outline"
