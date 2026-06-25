@@ -271,6 +271,109 @@ const schema = a.schema({
       allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
     ]),
 
+  KnowledgeDocument: a
+    .model({
+      title: a.string().required(),
+      sourceType: a.string().required(),
+      category: a.string(),
+      expertId: a.id(),
+      expertName: a.string(),
+      expertRole: a.string(),
+      projectCode: a.string(),
+      month: a.integer(),
+      year: a.integer(),
+      saCode: a.string(),
+      activityName: a.string(),
+      approvalStatus: a.string(),
+      originalFileName: a.string(),
+      s3Key: a.string(),
+      textHash: a.string(),
+      extractedTextPreview: a.string(),
+      status: a.string().default("active"),
+      indexedAt: a.datetime(),
+      createdBy: a.string(),
+      metadataJson: a.string(),
+    })
+    .secondaryIndexes((index) => [
+      index("sourceType"),
+      index("category").sortKeys(["sourceType"]),
+      index("projectCode"),
+      index("saCode"),
+      index("expertId"),
+      index("status"),
+    ])
+    .authorization((allow) => [
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
+  KnowledgeChunk: a
+    .model({
+      documentId: a.id().required(),
+      chunkIndex: a.integer().required(),
+      text: a.string().required(),
+      textHash: a.string(),
+      embeddingJson: a.string(),
+      embeddingModel: a.string(),
+      tokenEstimate: a.integer(),
+      sourceType: a.string(),
+      category: a.string(),
+      expertId: a.id(),
+      expertName: a.string(),
+      projectCode: a.string(),
+      month: a.integer(),
+      year: a.integer(),
+      saCode: a.string(),
+      activityName: a.string(),
+      status: a.string().default("active"),
+      metadataJson: a.string(),
+    })
+    .secondaryIndexes((index) => [
+      index("documentId"),
+      index("category").sortKeys(["sourceType"]),
+      index("sourceType"),
+      index("saCode"),
+      index("expertId"),
+      index("status"),
+    ])
+    .authorization((allow) => [
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
+  ActivityAutofillAudit: a
+    .model({
+      expertId: a.id(),
+      expertName: a.string(),
+      expertRole: a.string(),
+      category: a.string(),
+      projectCode: a.string(),
+      month: a.integer(),
+      year: a.integer(),
+      activityId: a.id(),
+      deliverableIds: a.string().array(),
+      suggestedSaCode: a.string(),
+      suggestedActivityName: a.string(),
+      suggestedDescriptionPreview: a.string(),
+      confidence: a.string(),
+      modelAuditId: a.string(),
+      retrievalJson: a.string(),
+      candidateJson: a.string(),
+      warningsJson: a.string(),
+      applied: a.boolean().default(false),
+      appliedAt: a.datetime(),
+      finalSaCode: a.string(),
+      finalActivityName: a.string(),
+      finalDescriptionPreview: a.string(),
+    })
+    .secondaryIndexes((index) => [
+      index("expertId").sortKeys(["year", "month"]),
+      index("category").sortKeys(["year", "month"]),
+      index("projectCode"),
+      index("modelAuditId"),
+    ])
+    .authorization((allow) => [
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
   WorkingGroup: a
     .model({
       name: a.string().required(),
