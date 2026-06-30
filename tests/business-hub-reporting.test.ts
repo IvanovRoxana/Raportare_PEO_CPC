@@ -6,7 +6,7 @@ import {
   parseBusinessHubMetaJson,
   serializeBusinessHubMeta,
 } from '../lib/business-hub-reporting.ts';
-import { getActivityFormRoleConfig } from '../lib/roles/business-hub.ts';
+import { BUSINESS_HUB_REGISTRY_ACTIVITY_TITLE, getActivityFormRoleConfig } from '../lib/roles/business-hub.ts';
 import type { Activity } from '../lib/types.ts';
 
 test('role resolver enables Business Hub preset only for BH category', () => {
@@ -15,7 +15,9 @@ test('role resolver enables Business Hub preset only for BH category', () => {
 
   assert.equal(bh.category, 'bh');
   assert.equal(bh.enabledSections.businessHubTab, true);
+  assert.equal(bh.enabledSections.entityRequestUpload, false);
   assert.equal(bh.defaultSaCode, 'SA3.2');
+  assert.equal(bh.defaultActivityTitle, BUSINESS_HUB_REGISTRY_ACTIVITY_TITLE);
   assert.equal(gdpr.enabledSections.businessHubTab, false);
   assert.equal(gdpr.enabledSections.gdprAssistant, true);
 });
@@ -88,9 +90,9 @@ function activity(id: string, date: string, businessHubMetaJson?: string): Activ
     expertId: 'alexandru-enache',
     expertName: 'Alexandru Enache',
     hours: 8,
-    activityType: 'S4 — Activitate Business HUB Bucuresti',
+    activityType: BUSINESS_HUB_REGISTRY_ACTIVITY_TITLE,
     saCode: 'SA3.2',
-    title: 'S4 — Activitate Business HUB Bucuresti',
+    title: BUSINESS_HUB_REGISTRY_ACTIVITY_TITLE,
     businessHubMetaJson,
   };
 }

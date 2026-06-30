@@ -1,5 +1,7 @@
 import type { Activity, Deliverable } from './types.ts';
 import { isExceptionActivity } from './peo-constants.ts';
+import { getBusinessHubMetaMissingFields, parseBusinessHubMetaJson } from './business-hub-reporting.ts';
+import { normalizePeoCategory } from './peo-category.ts';
 
 export const ACTIVITY_PERIOD_GROUP_PREFIX = 'activity-period:';
 const LEGACY_ACTIVITY_PERIOD_GROUP_PREFIX = 'legacy-activity-period:';
@@ -114,6 +116,13 @@ interface GetActivitiesMissingDeliverablesOptions {
 }
 
 function needsDeliverableValidation(activity: Activity, expertCategory?: string) {
+  if (normalizePeoCategory(expertCategory) === 'bh') {
+    const businessHubMeta = parseBusinessHubMetaJson(activity.businessHubMetaJson);
+    if (businessHubMeta && getBusinessHubMetaMissingFields(businessHubMeta).length === 0) {
+      return false;
+    }
+  }
+
   return !isActivityExceptionForSubmit(activity)
     && !(expertCategory === 'gdpr' && activity.gdprTemplateCode);
 }

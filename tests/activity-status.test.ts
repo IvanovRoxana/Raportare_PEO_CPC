@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { getActivityStatus } from '../lib/activity-status.ts';
+import { serializeBusinessHubMeta } from '../lib/business-hub-reporting.ts';
 
 function restoreEnv(key: string, value: string | undefined) {
   if (value === undefined) {
@@ -138,5 +139,49 @@ test('event status still requires event proof even when MOM exists', () => {
       ],
     }),
     'missing'
+  );
+});
+
+test('Business Hub registry activity is complete without individual deliverable', () => {
+  assert.equal(
+    getActivityStatus({
+      id: 'bh-event',
+      expertId: 'alexandru-enache',
+      expertName: 'Alexandru Enache',
+      date: '2026-05-15',
+      hours: 8,
+      activityType: 'Coordonarea activitatilor Business Hub',
+      title: 'Coordonarea activitatilor Business Hub',
+      saCode: 'SA3.2',
+      businessHubMetaJson: serializeBusinessHubMeta({
+        entityName: 'CPBR',
+        eventTitle: 'Sedinta de lucru',
+        date: '2026-05-15',
+        startTime: '10:00',
+        endTime: '12:00',
+      }),
+      deliverables: [],
+    }),
+    'complete',
+  );
+});
+
+test('Business Hub registry activity with incomplete metadata still needs monthly evidence', () => {
+  assert.equal(
+    getActivityStatus({
+      id: 'bh-event-incomplete',
+      expertId: 'alexandru-enache',
+      date: '2026-05-15',
+      hours: 8,
+      activityType: 'Coordonarea activitatilor Business Hub',
+      title: 'Coordonarea activitatilor Business Hub',
+      saCode: 'SA3.2',
+      businessHubMetaJson: serializeBusinessHubMeta({
+        entityName: 'CPBR',
+        date: '2026-05-15',
+      }),
+      deliverables: [],
+    }),
+    'missing',
   );
 });

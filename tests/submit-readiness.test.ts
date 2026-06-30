@@ -4,6 +4,7 @@ import {
   createActivityPeriodGroupId,
   getActivitiesMissingDeliverables,
 } from '../lib/submit-readiness.ts';
+import { serializeBusinessHubMeta } from '../lib/business-hub-reporting.ts';
 import type { Activity } from '../lib/types.ts';
 
 const baseActivity = (overrides: Partial<Activity>): Activity => ({
@@ -42,6 +43,49 @@ test('activitatile fara grup isi pastreaza validarea individuala de livrabil', (
   const missingDeliverables = getActivitiesMissingDeliverables(activities);
 
   assert.deepEqual(missingDeliverables.map((activity) => activity.id), ['standalone']);
+});
+
+test('activitatile Business Hub cu registru structurat nu cer livrabil individual', () => {
+  const activities: Activity[] = [
+    baseActivity({
+      id: 'bh-registry',
+      activityType: 'Coordonarea activitatilor Business Hub',
+      title: 'Coordonarea activitatilor Business Hub',
+      saCode: 'SA3.2',
+      deliverables: [],
+      businessHubMetaJson: serializeBusinessHubMeta({
+        entityName: 'CPBR',
+        eventTitle: 'Sedinta de lucru',
+        date: '2026-05-06',
+        startTime: '10:00',
+        endTime: '12:00',
+      }),
+    }),
+  ];
+
+  const missingDeliverables = getActivitiesMissingDeliverables(activities, { expertCategory: 'bh' });
+
+  assert.deepEqual(missingDeliverables.map((activity) => activity.id), []);
+});
+
+test('activitatile Business Hub cu registru incomplet raman in validarea de livrabil', () => {
+  const activities: Activity[] = [
+    baseActivity({
+      id: 'bh-incomplete',
+      activityType: 'Coordonarea activitatilor Business Hub',
+      title: 'Coordonarea activitatilor Business Hub',
+      saCode: 'SA3.2',
+      deliverables: [],
+      businessHubMetaJson: serializeBusinessHubMeta({
+        entityName: 'CPBR',
+        date: '2026-05-06',
+      }),
+    }),
+  ];
+
+  const missingDeliverables = getActivitiesMissingDeliverables(activities, { expertCategory: 'bh' });
+
+  assert.deepEqual(missingDeliverables.map((activity) => activity.id), ['bh-incomplete']);
 });
 
 test('activitatile multi-zi raman blocante cand grupul nu are niciun livrabil', () => {

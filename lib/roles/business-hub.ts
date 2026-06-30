@@ -1,14 +1,17 @@
 import type { Expert } from '../types.ts';
 import { normalizePeoCategory } from '../peo-category.ts';
 
+export const BUSINESS_HUB_REGISTRY_ACTIVITY_TITLE =
+  'Coordonarea și supervizarea activităților de interes pentru membrii Confederației Patronale Concordia, derulate în BusinessHUB pentru asigurarea unei funcționări eficiente și corespunzătoare';
+
 export const BUSINESS_HUB_ROLE = {
   category: 'bh',
   saCodes: ['SA3.2'],
   defaultSaCode: 'SA3.2',
-  defaultActivityTitle: 'S4 — Activitate Business HUB Bucuresti',
+  defaultActivityTitle: BUSINESS_HUB_REGISTRY_ACTIVITY_TITLE,
   enabledSections: {
     businessHubTab: true,
-    entityRequestUpload: true,
+    entityRequestUpload: false,
     momDeliverable: true,
     monthlyPv: true,
     gdprAssistant: false,

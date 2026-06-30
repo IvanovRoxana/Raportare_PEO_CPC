@@ -71,7 +71,7 @@ import {
 import { useActivityAutofill } from '@/hooks/use-activity-autofill';
 import { useGdprActivity } from '@/hooks/use-gdpr-activity';
 import { ObservationRail } from './observation-rail';
-import { getActivityFormRoleConfig } from '@/lib/roles/business-hub';
+import { BUSINESS_HUB_REGISTRY_ACTIVITY_TITLE, getActivityFormRoleConfig } from '@/lib/roles/business-hub';
 import {
   getBusinessHubMetaMissingFields,
   parseBusinessHubMetaJson,
@@ -139,6 +139,15 @@ function formatAutofillRagSource(source: NonNullable<ActivityAutofillSuggestion[
     source.activityName,
     source.month && source.year ? `${source.month}/${source.year}` : undefined,
   ].filter(Boolean).join(' - ');
+}
+
+function normalizeActivityLabel(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
 }
 
 export function ActivityForm({
@@ -508,6 +517,20 @@ export function ActivityForm({
       .filter(item => item.saCode === saCode)
       .map(item => item.activityName);
   }, [saCode, filteredCatalog]);
+
+  const businessHubRegistryCatalogItem = useMemo(() => {
+    if (!isBusinessHubExpert) return null;
+    const targetTitle = normalizeActivityLabel(BUSINESS_HUB_REGISTRY_ACTIVITY_TITLE);
+    return filteredCatalog.find((item) =>
+      item.saCode === (roleConfig.defaultSaCode || 'SA3.2')
+      && normalizeActivityLabel(item.activityName) === targetTitle
+    ) || null;
+  }, [filteredCatalog, isBusinessHubExpert, roleConfig.defaultSaCode]);
+
+  const businessHubRegistryActivityTitle =
+    businessHubRegistryCatalogItem?.activityName
+    || roleConfig.defaultActivityTitle
+    || BUSINESS_HUB_REGISTRY_ACTIVITY_TITLE;
   
   // Get full activity catalog item for selected activity
   const selectedCatalogItem = useMemo(() => {
@@ -640,11 +663,12 @@ export function ActivityForm({
   const [activityFormTab, setActivityFormTab] = useState<'business_hub' | 'standard' | 'event'>(
     () => isBusinessHubExpert && !initialActivity?.businessHubMetaJson ? 'business_hub' : 'standard',
   );
-  const isBusinessHubTabActive = isBusinessHubExpert && activityFormTab === 'business_hub';
+  const isBusinessHubTabActive = isWorkspaceLayout && isBusinessHubExpert && activityFormTab === 'business_hub';
+  const showStandardActivityWorkflow = !isBusinessHubTabActive;
   const effectiveActivityTitle = isGdprExpert && selectedGdprTemplate
     ? selectedGdprTemplate.activityTitle
     : isBusinessHubTabActive
-      ? roleConfig.defaultActivityTitle || activityTitle
+      ? businessHubRegistryActivityTitle
       : activityTitle;
   const effectiveSaCode = isGdprExpert && selectedGdprTemplate
     ? selectedGdprTemplate.saCode
@@ -672,14 +696,14 @@ export function ActivityForm({
     if (saCode !== (roleConfig.defaultSaCode || 'SA3.2')) {
       setSaCode(roleConfig.defaultSaCode || 'SA3.2');
     }
-    if (activityTitle !== (roleConfig.defaultActivityTitle || 'S4 — Activitate Business HUB Bucuresti')) {
-      setActivityTitle(roleConfig.defaultActivityTitle || 'S4 — Activitate Business HUB Bucuresti');
+    if (activityTitle !== businessHubRegistryActivityTitle) {
+      setActivityTitle(businessHubRegistryActivityTitle);
     }
   }, [
     activityFormTab,
     activityTitle,
+    businessHubRegistryActivityTitle,
     isBusinessHubExpert,
-    roleConfig.defaultActivityTitle,
     roleConfig.defaultSaCode,
     saCode,
   ]);
@@ -784,17 +808,6 @@ export function ActivityForm({
     const newSlot = createDeliverableSlot('event_proof', 'Fotografii eveniment');
     setDeliverables(prev => [...prev, newSlot]);
   }, []);
-
-  const addBusinessHubRequestSlot = useCallback(() => {
-    const entityLabel = businessHubEntityName.trim() || 'entitate';
-    setDeliverables((prev) => [
-      ...prev,
-      {
-        ...createDeliverableSlot('justificativ', `Cerere utilizare facilitati BH - ${entityLabel}`),
-        declaredTitle: `Cerere utilizare facilitati BH - ${entityLabel}`,
-      },
-    ]);
-  }, [businessHubEntityName]);
 
   const updateDeliverable = useCallback((id: string, patch: Partial<DeliverableSlot>) => {
     setDeliverables(prev => prev.map(d => d.id === id ? { ...d, ...patch } : d));
@@ -1071,7 +1084,9 @@ export function ActivityForm({
         hours: dateHours,
         activityType: effectiveActivityTitle,
         saCode: effectiveSaCode,
-        catalogActivityId: selectedCatalogItem?.id,
+        catalogActivityId: isBusinessHubTabActive
+          ? businessHubRegistryCatalogItem?.id
+          : selectedCatalogItem?.id,
         title: effectiveActivityTitle,
         description,
         deliverables: shouldAttachDeliverables ? uploadedDeliverables
@@ -1166,6 +1181,7 @@ export function ActivityForm({
     grupTinta,
     hoursPerDay,
     initialActivity,
+    businessHubRegistryCatalogItem?.id,
     businessHubMetaDraft,
     isBusinessHubTabActive,
     isGdprExpert,
@@ -1574,6 +1590,13 @@ export function ActivityForm({
                 <div className="rounded-md border border-sky-200 bg-sky-50 p-3 text-xs text-sky-900">
                   Inregistreaza evenimentul organizat in Business Hub. Data vine din calendar, iar activitatea se salveaza pe SA3.2.
                 </div>
+                <div className="rounded-md border border-slate-200 bg-white p-3 text-xs text-slate-700">
+                  <div className="font-medium text-slate-950">Subactivitate</div>
+                  <div className="mt-1">{businessHubRegistryActivityTitle}</div>
+                  <div className="mt-2 text-slate-500">
+                    Livrabilele aferente registrului Business Hub se genereaza lunar: proces-verbal si adrese catre entitati.
+                  </div>
+                </div>
                 <div className="grid gap-4 md:grid-cols-2">
                   <Field>
                     <FieldLabel htmlFor="bh-entity">Entitate organizatoare *</FieldLabel>
@@ -1626,14 +1649,6 @@ export function ActivityForm({
                       placeholder="optional"
                     />
                   </Field>
-                  {show.entityRequestUpload && (
-                    <div className="flex items-end">
-                      <Button type="button" variant="outline" onClick={addBusinessHubRequestSlot}>
-                        <Plus className="h-4 w-4 mr-2" />
-                        Adauga cerere utilizare
-                      </Button>
-                    </div>
-                  )}
                 </div>
               </TabsContent>
             )}
@@ -1694,7 +1709,7 @@ export function ActivityForm({
           </Tabs>
         )}
 
-        {isWorkspaceLayout && !isLeave && !isException && (
+        {isWorkspaceLayout && showStandardActivityWorkflow && !isLeave && !isException && (
           <div className="rounded-lg border border-indigo-200 bg-white p-4 shadow-sm">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0">
@@ -1984,7 +1999,7 @@ export function ActivityForm({
             )}
 
             {/* Main Deliverables */}
-            {!isException && (
+            {showStandardActivityWorkflow && !isException && (
               <div className="space-y-4">
                 {/* Livrabile principale */}
                 <div id="activity-form-deliverables-section" className="bg-slate-50 rounded-lg p-4 border scroll-mt-24">
@@ -2208,102 +2223,106 @@ export function ActivityForm({
             )}
 
             {/* Sub-activity and Activity */}
-            <div className="grid grid-cols-2 gap-4">
-              <Field>
-                <FieldLabel htmlFor="saCode">Subactivitate (Rol: {expert?.role})</FieldLabel>
-                {isGdprExpert ? (
-                  <Input id="saCode" value={saCode || selectedGdprTemplate?.saCode || 'SA1.1'} disabled />
-                ) : (
-                  <Select value={saCode} onValueChange={setSaCode} disabled={catalogLoading && catalog.length === 0}>
-                    <SelectTrigger id="saCode">
-                      <SelectValue placeholder={catalogLoading && catalog.length === 0 ? "Se incarca..." : "Selecteaza SA"} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availableSaCodes.length === 0 ? (
-                        <div className="px-2 py-1.5 text-sm text-muted-foreground">Nicio subactivitate disponibila</div>
-                      ) : (
-                        availableSaCodes.map((sa) => (
-                          <SelectItem key={sa} value={sa}>{sa}</SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                )}
-                {availableSaCodes.length === 0 && !catalogLoading && (
-                  <p className="text-xs text-amber-600 mt-1">
-                    Nu exista subactivitati alocate pentru rolul tau. Contacteaza PM.
-                  </p>
-                )}
-              </Field>
-
-              <Field>
-                <FieldLabel htmlFor="location">Locatie</FieldLabel>
-                <Select value={location} onValueChange={setLocation}>
-                  <SelectTrigger id="location">
-                    <SelectValue placeholder="Selecteaza locatia" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Birou">Birou</SelectItem>
-                    <SelectItem value="Teren">Teren</SelectItem>
-                    <SelectItem value="Online">Online</SelectItem>
-                    <SelectItem value="Sediu CPC">Sediu CPC</SelectItem>
-                  </SelectContent>
-                </Select>
-              </Field>
-            </div>
-
-            {/* Activity from catalog */}
-            {!isGdprExpert && (
-            <Field>
-              <div className="flex items-center justify-between">
-                <FieldLabel htmlFor="activity">Activitate</FieldLabel>
-                {activityTitle && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={verifyTitleWithAI}
-                    disabled={isVerifyingTitle}
-                  >
-                    {isVerifyingTitle ? (
-                      <>
-                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                        Verificare...
-                      </>
+            {showStandardActivityWorkflow && (
+              <>
+                <div className="grid grid-cols-2 gap-4">
+                  <Field>
+                    <FieldLabel htmlFor="saCode">Subactivitate (Rol: {expert?.role})</FieldLabel>
+                    {isGdprExpert ? (
+                      <Input id="saCode" value={saCode || selectedGdprTemplate?.saCode || 'SA1.1'} disabled />
                     ) : (
-                      'Verifica cu AI'
+                      <Select value={saCode} onValueChange={setSaCode} disabled={catalogLoading && catalog.length === 0}>
+                        <SelectTrigger id="saCode">
+                          <SelectValue placeholder={catalogLoading && catalog.length === 0 ? "Se incarca..." : "Selecteaza SA"} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableSaCodes.length === 0 ? (
+                            <div className="px-2 py-1.5 text-sm text-muted-foreground">Nicio subactivitate disponibila</div>
+                          ) : (
+                            availableSaCodes.map((sa) => (
+                              <SelectItem key={sa} value={sa}>{sa}</SelectItem>
+                            ))
+                          )}
+                        </SelectContent>
+                      </Select>
                     )}
-                  </Button>
-                )}
-              </div>
-              <Select value={activityTitle} onValueChange={setActivityTitle} disabled={!saCode || availableActivities.length === 0}>
-                <SelectTrigger id="activity">
-                  <SelectValue placeholder={!saCode ? "Selecteaza SA mai intai" : "— Selecteaza activitatea —"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableActivities.length === 0 ? (
-                    <div className="px-2 py-1.5 text-sm text-muted-foreground">Nicio activitate pentru acest SA</div>
-                  ) : (
-                    availableActivities.map((act) => (
-                      <SelectItem key={act} value={act}>{act}</SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
-              {selectedCatalogItem && (
-                <p className="text-xs text-muted-foreground mt-1">
-                  {selectedCatalogItem.serviceCategory} - {selectedCatalogItem.description}
-                </p>
-              )}
-              {titleVerificationResult && (
-                <p className="text-sm text-muted-foreground mt-1 p-2 bg-muted rounded">
-                  {titleVerificationResult}
-                </p>
-              )}
-            </Field>
-            )}
+                    {availableSaCodes.length === 0 && !catalogLoading && (
+                      <p className="text-xs text-amber-600 mt-1">
+                        Nu exista subactivitati alocate pentru rolul tau. Contacteaza PM.
+                      </p>
+                    )}
+                  </Field>
 
+                  <Field>
+                    <FieldLabel htmlFor="location">Locatie</FieldLabel>
+                    <Select value={location} onValueChange={setLocation}>
+                      <SelectTrigger id="location">
+                        <SelectValue placeholder="Selecteaza locatia" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Birou">Birou</SelectItem>
+                        <SelectItem value="Teren">Teren</SelectItem>
+                        <SelectItem value="Online">Online</SelectItem>
+                        <SelectItem value="Sediu CPC">Sediu CPC</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                </div>
+
+                {/* Activity from catalog */}
+                {!isGdprExpert && (
+                  <Field>
+                    <div className="flex items-center justify-between">
+                      <FieldLabel htmlFor="activity">Activitate</FieldLabel>
+                      {activityTitle && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={verifyTitleWithAI}
+                          disabled={isVerifyingTitle}
+                        >
+                          {isVerifyingTitle ? (
+                            <>
+                              <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                              Verificare...
+                            </>
+                          ) : (
+                            'Verifica cu AI'
+                          )}
+                        </Button>
+                      )}
+                    </div>
+                    <Select value={activityTitle} onValueChange={setActivityTitle} disabled={!saCode || availableActivities.length === 0}>
+                      <SelectTrigger id="activity">
+                        <SelectValue placeholder={!saCode ? "Selecteaza SA mai intai" : "Selecteaza activitatea"} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableActivities.length === 0 ? (
+                          <div className="px-2 py-1.5 text-sm text-muted-foreground">Nicio activitate pentru acest SA</div>
+                        ) : (
+                          availableActivities.map((act) => (
+                            <SelectItem key={act} value={act}>{act}</SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                    {selectedCatalogItem && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {selectedCatalogItem.serviceCategory} - {selectedCatalogItem.description}
+                      </p>
+                    )}
+                    {titleVerificationResult && (
+                      <p className="text-sm text-muted-foreground mt-1 p-2 bg-muted rounded">
+                        {titleVerificationResult}
+                      </p>
+                    )}
+                  </Field>
+                )}
+              </>
+            )}
             {/* Description */}
+            {showStandardActivityWorkflow && (
             <Field>
               <FieldLabel htmlFor="description">
                 {isException 
@@ -2335,8 +2354,9 @@ export function ActivityForm({
                 </div>
               )}
             </Field>
+            )}
 
-            {mainDeliverableForEligibility && !isLeave && !isException && (
+            {showStandardActivityWorkflow && mainDeliverableForEligibility && !isLeave && !isException && (
               <div className="rounded-lg border border-indigo-100 bg-white p-3 shadow-sm">
                 <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0">
@@ -2376,7 +2396,7 @@ export function ActivityForm({
             )}
 
             {/* Event duration (for event activities) */}
-            {isEvent && !isWorkspaceLayout && (
+            {showStandardActivityWorkflow && isEvent && !isWorkspaceLayout && (
               <Field>
                 <FieldLabel>Durata evenimentului (ore) - optional</FieldLabel>
                 <div className="flex items-center gap-4">
@@ -2421,7 +2441,7 @@ export function ActivityForm({
             )}
 
             {/* Supporting deliverable settings */}
-            {!isException && (
+            {showStandardActivityWorkflow && !isException && (
               <div className="space-y-4">
                 {/* Colaborare */}
                 <details open={activityCommon} className="bg-blue-50 rounded-lg p-4 border border-blue-200">
@@ -2752,7 +2772,7 @@ export function ActivityForm({
         )}
 
         {/* Validation warnings */}
-        {!isWorkspaceLayout && !isLeave && !isException && mainDeliverables.length === 0 && !hasEventMomAsMainDeliverable && (
+        {!isWorkspaceLayout && showStandardActivityWorkflow && !isLeave && !isException && mainDeliverables.length === 0 && !hasEventMomAsMainDeliverable && (
           <div className="flex items-center gap-2 p-3 bg-amber-50 rounded-lg border border-amber-200">
             <AlertTriangle className="h-4 w-4 text-amber-600" />
             <span className="text-sm text-amber-800">

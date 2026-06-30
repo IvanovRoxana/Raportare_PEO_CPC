@@ -4,6 +4,7 @@
 
 import { EXCEPTIONS, EVENT_ACTS, isEventActivity } from './peo-constants.ts';
 import { isDeliverableEligibilityCheckEnabledClient } from './feature-flags.ts';
+import { getBusinessHubMetaMissingFields, parseBusinessHubMetaJson } from './business-hub-reporting.ts';
 import type { Activity, Deliverable } from './types.ts';
 
 export type ActivityStatus = 
@@ -61,6 +62,11 @@ export function getActivityStatus(entry: ActivityEntry): ActivityStatus {
   // Exception activities (Elaborare RA/OPIS, Sedinta interna, Verificare planning)
   if (EXCEPTIONS.includes(entry.activityType || '')) {
     return (entry.description || '').length >= 15 ? 'exception' : 'exc_desc';
+  }
+
+  const businessHubMeta = parseBusinessHubMetaJson(entry.businessHubMetaJson);
+  if (businessHubMeta && getBusinessHubMetaMissingFields(businessHubMeta).length === 0) {
+    return 'complete';
   }
   
   const delivs = entry.deliverables || [];
