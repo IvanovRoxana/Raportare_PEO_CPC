@@ -38,6 +38,8 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { expertIdentityKey } from '@/lib/expert-merge';
+import { syncCognitoGroupsForUser } from '@/lib/admin-cognito';
+import { cognitoGroupsForRole } from '@/lib/cognito-roles';
 
 type RoleOption = 'Expert' | 'PM' | 'Expert/PM' | 'Admin';
 
@@ -130,7 +132,7 @@ function buildEditForm(expert: Expert): EditFormState {
     beneficiary: expert.beneficiary || '',
     projectCode: expert.projectCode || '',
     positionInProject: expert.positionInProject || '',
-    hasPmAccess: expert.hasPmAccess ?? role.includes('PM'),
+    hasPmAccess: expert.hasPmAccess ?? (role.includes('PM') || role === 'Admin'),
     isActive: expert.isActive ?? true,
   };
 }
@@ -329,8 +331,12 @@ export function AdminUsersTable({ fallbackUsers = [] }: { fallbackUsers?: AdminU
       hasPmAccess: form.hasPmAccess,
       isActive: form.isActive,
     };
+    const cognitoGroups = cognitoGroupsForRole(form.role, form.hasPmAccess || form.role === 'Admin');
+    updates.cognitoGroups = cognitoGroups;
 
     try {
+      await syncCognitoGroupsForUser(updates.email, cognitoGroups);
+
       const savedExpert = isPersistedExpert(editingExpert)
         ? { ...editingExpert, id: getPersistedExpertId(editingExpert) }
         : await expertsService.create(buildExpertCreateInput(editingExpert, updates));
@@ -641,7 +647,7 @@ export function AdminUsersTable({ fallbackUsers = [] }: { fallbackUsers?: AdminU
                     setForm({
                       ...form,
                       role: value as RoleOption,
-                      hasPmAccess: value.includes('PM') || form.hasPmAccess,
+                      hasPmAccess: value.includes('PM') || value === 'Admin' || form.hasPmAccess,
                     })
                   }
                 >

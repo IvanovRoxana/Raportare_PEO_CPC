@@ -155,7 +155,7 @@ export function useActivityObservationRailItems({
         && deliverable.duplicateStatus !== 'pending_upload'
       ));
 
-      if (deliverable.docText || deliverable.firstPageText) {
+      if (!deliverable.titleConfirmed && (deliverable.docText || deliverable.firstPageText)) {
         items.push({
           id: `deliverable-text-${deliverable.id}`,
           group: 'deliverables',
@@ -167,7 +167,7 @@ export function useActivityObservationRailItems({
         });
       }
 
-      if (deliverable.suggestedTitle) {
+      if (!deliverable.titleConfirmed && deliverable.suggestedTitle) {
         const meta = [
           deliverable.titleSuggestionConfidence ? `Incredere: ${deliverable.titleSuggestionConfidence}` : null,
           ...(deliverable.titleSuggestionAlternatives?.length
@@ -184,7 +184,11 @@ export function useActivityObservationRailItems({
         });
       }
 
-      if (deliverable.declaredTitle) {
+      const hasTitleProblem = deliverable.titleMatch === false
+        || deliverable.titleCheckStatus === 'mismatch'
+        || deliverable.titleCheckStatus === 'extraction_failed';
+
+      if (deliverable.declaredTitle && (!deliverable.titleConfirmed || hasTitleProblem)) {
         items.push({
           id: `deliverable-title-match-${deliverable.id}`,
           group: 'deliverables',

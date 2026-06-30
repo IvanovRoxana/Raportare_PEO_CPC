@@ -50,6 +50,7 @@ interface DeliverableItemProps {
   canCheckEligibility?: boolean;
   eligibilityBlockedReason?: string;
   notesMode?: 'inline' | 'external';
+  showEligibilityControl?: boolean;
 }
 
 export function DeliverableItem({
@@ -79,12 +80,14 @@ export function DeliverableItem({
   canCheckEligibility = true,
   eligibilityBlockedReason,
   notesMode = 'inline',
+  showEligibilityControl = true,
 }: DeliverableItemProps) {
   const renderInlineNotes = notesMode === 'inline';
   const typeOptions = deliverableOptions || ALL_DELIVERABLE_TYPES;
   const fileRef = useRef<HTMLInputElement>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [extractingText, setExtractingText] = useState(false);
+  const [isEditingConfirmedTitle, setIsEditingConfirmedTitle] = useState(false);
   const eligibilityCheckEnabled = isDeliverableEligibilityCheckEnabledClient();
 
   const readFileAsDataUrl = (file: File) =>
@@ -321,6 +324,7 @@ export function DeliverableItem({
       titleCheckStatus: validation.titleCheckStatus,
       titleCheckMessage: validation.titleCheckMessage,
     });
+    setIsEditingConfirmedTitle(false);
   };
 
   const handleRemoveFile = () => {
@@ -353,6 +357,7 @@ export function DeliverableItem({
       duplicateStatus: undefined,
       possibleDuplicateOfDocumentId: undefined,
     });
+    setIsEditingConfirmedTitle(false);
     if (fileRef.current) fileRef.current.value = '';
   };
 
@@ -377,16 +382,14 @@ export function DeliverableItem({
     && deliverable.duplicateStatus !== 'fingerprinted'
     && deliverable.duplicateStatus !== 'pending_upload'
   ));
+  const showCompactConfirmedTitle = deliverable.uploaded && deliverable.titleConfirmed && !isEditingConfirmedTitle;
   const hasSideNotes = renderInlineNotes && deliverable.uploaded && !deliverable.isPhoto && Boolean(
-    deliverable.docText
-    || deliverable.firstPageText
-    || deliverable.suggestedTitle
-    || deliverable.declaredTitle
+    (!deliverable.titleConfirmed && (deliverable.docText || deliverable.firstPageText || deliverable.suggestedTitle || deliverable.declaredTitle))
     || hasDuplicateSignal
     || deliverable.common
     || deliverable.isCommonDeliverable
-    || eligibilityCheckEnabled
-    || deliverable.eligibilityCheck
+    || (showEligibilityControl && eligibilityCheckEnabled)
+    || (showEligibilityControl && deliverable.eligibilityCheck)
   );
 
   const borderColor = !step1ok
@@ -503,7 +506,7 @@ export function DeliverableItem({
         </div>
       )}
 
-      {renderInlineNotes && deliverable.uploaded && (deliverable.docText || deliverable.firstPageText) && (
+      {renderInlineNotes && deliverable.uploaded && !deliverable.titleConfirmed && (deliverable.docText || deliverable.firstPageText) && (
         <div className="rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] text-blue-800 xl:col-start-2">
           {deliverable.textExtractionSource === 'ocr'
             ? 'Text OCR extras pentru autocompletare.'
@@ -511,9 +514,29 @@ export function DeliverableItem({
         </div>
       )}
 
+      {showCompactConfirmedTitle && !deliverable.isPhoto && (
+        <div className={`flex min-w-0 items-center justify-between gap-3 rounded-md border border-green-200 bg-white px-3 py-2 text-xs ${renderInlineNotes ? 'xl:col-start-1' : ''}`}>
+          <div className="flex min-w-0 items-center gap-2 text-green-800">
+            <Check className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate font-medium text-slate-950">
+              {deliverable.declaredTitle || auditTitle}
+            </span>
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setIsEditingConfirmedTitle(true)}
+            className="h-7 shrink-0 px-2 text-[10px] text-slate-600 hover:text-slate-950"
+          >
+            Editeaza
+          </Button>
+        </div>
+      )}
+
       {!deliverable.isPhoto && (
         <div className={`space-y-1.5 ${renderInlineNotes ? 'xl:contents' : ''}`}>
-          {deliverable.uploaded && (
+          {deliverable.uploaded && !deliverable.titleConfirmed && (
             <div className={`rounded border border-slate-200 bg-white p-2 text-[10px] text-slate-700 ${renderInlineNotes ? 'xl:col-start-1' : ''}`}>
               <div className="font-medium text-slate-900">Titlu auditabil document</div>
               <div className="mt-0.5 break-words text-xs font-semibold text-slate-950">{auditTitle}</div>
@@ -540,7 +563,7 @@ export function DeliverableItem({
             </div>
           )}
 
-          {renderInlineNotes && deliverable.suggestedTitle && (
+          {renderInlineNotes && !deliverable.titleConfirmed && deliverable.suggestedTitle && (
             <div className="rounded border border-blue-200 bg-blue-50 p-2 text-[10px] text-blue-900 xl:col-start-2">
               <div className="flex items-start justify-between gap-2">
                 <div>
@@ -572,6 +595,7 @@ export function DeliverableItem({
             </div>
           )}
 
+          {!showCompactConfirmedTitle && (
           <div className={`relative ${renderInlineNotes ? 'xl:col-start-1' : ''}`}>
             <Input
               value={deliverable.declaredTitle}
@@ -591,7 +615,8 @@ export function DeliverableItem({
               </span>
             )}
           </div>
-          {!renderInlineNotes && deliverable.suggestedTitle && deliverable.suggestedTitle !== deliverable.declaredTitle && (
+          )}
+          {!renderInlineNotes && !deliverable.titleConfirmed && deliverable.suggestedTitle && deliverable.suggestedTitle !== deliverable.declaredTitle && (
             <Button
               type="button"
               variant="outline"
@@ -605,7 +630,7 @@ export function DeliverableItem({
         </div>
       )}
 
-      {renderInlineNotes && deliverable.uploaded && !deliverable.isPhoto && deliverable.declaredTitle && (
+      {renderInlineNotes && deliverable.uploaded && !deliverable.isPhoto && !deliverable.titleConfirmed && deliverable.declaredTitle && (
         <div className={`rounded p-1.5 text-[10px] xl:col-start-2 ${
           deliverable.titleMatch === true
             ? 'bg-green-100 text-green-700'
@@ -680,13 +705,6 @@ export function DeliverableItem({
         </Button>
       )}
 
-      {deliverable.titleConfirmed && (
-        <Badge variant="outline" className={`w-fit border-green-300 bg-green-50 text-[10px] text-green-700 ${renderInlineNotes ? 'xl:col-start-1' : ''}`}>
-          <Check className="h-3 w-3 mr-1" />
-          Titlu confirmat
-        </Badge>
-      )}
-
       {deliverable.uploaded && !deliverable.isPhoto && (
         <div className={renderInlineNotes ? 'xl:col-start-1' : ''}>
           <Select
@@ -707,7 +725,7 @@ export function DeliverableItem({
         </div>
       )}
 
-      {renderInlineNotes && deliverable.uploaded && !deliverable.isPhoto && (
+      {showEligibilityControl && renderInlineNotes && deliverable.uploaded && !deliverable.isPhoto && (
         <div className="space-y-2 xl:col-start-2">
           {eligibilityCheckEnabled && canRunEligibilityCheck ? (
             <Button
@@ -755,7 +773,7 @@ export function DeliverableItem({
           )}
         </div>
       )}
-      {!renderInlineNotes && deliverable.uploaded && !deliverable.isPhoto && eligibilityCheckEnabled && canRunEligibilityCheck && (
+      {showEligibilityControl && !renderInlineNotes && deliverable.uploaded && !deliverable.isPhoto && eligibilityCheckEnabled && canRunEligibilityCheck && (
         <Button
           variant="outline"
           size="sm"
@@ -771,7 +789,7 @@ export function DeliverableItem({
           {aiLoading ? 'Se verifică...' : 'Verifică eligibilitatea livrabilului'}
         </Button>
       )}
-      {!renderInlineNotes && deliverable.uploaded && !deliverable.isPhoto && eligibilityCheckEnabled && !canRunEligibilityCheck && (
+      {showEligibilityControl && !renderInlineNotes && deliverable.uploaded && !deliverable.isPhoto && eligibilityCheckEnabled && !canRunEligibilityCheck && (
         <div className="w-fit max-w-full rounded border border-amber-200 bg-amber-50 p-2 text-[10px] text-amber-800">
           <div className="flex items-start gap-1.5">
             <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
@@ -781,7 +799,7 @@ export function DeliverableItem({
           </div>
         </div>
       )}
-      {!renderInlineNotes && deliverable.uploaded && !deliverable.isPhoto && !eligibilityCheckEnabled && (
+      {showEligibilityControl && !renderInlineNotes && deliverable.uploaded && !deliverable.isPhoto && !eligibilityCheckEnabled && (
         <div className="space-y-1.5">
           <Button
             variant="outline"
@@ -797,7 +815,188 @@ export function DeliverableItem({
           </div>
         </div>
       )}
-      {!renderInlineNotes && deliverable.uploaded && !deliverable.isPhoto && deliverable.eligibilityCheck && (
+      {showEligibilityControl && !renderInlineNotes && deliverable.uploaded && !deliverable.isPhoto && deliverable.eligibilityCheck && (
+        <EligibilityResultCard check={deliverable.eligibilityCheck} />
+      )}
+    </div>
+  );
+}
+
+export interface DeliverableEligibilityControlProps {
+  deliverable: DeliverableSlot;
+  subActivity: string;
+  activityTitle: string;
+  selectedActivityId?: string;
+  catalogDescription?: string;
+  catalogObjectives?: string;
+  catalogComponent?: string;
+  catalogBeneficiaries?: string;
+  catalogExpectedResults?: string;
+  catalogDeliverables?: string;
+  catalogIndicators?: string;
+  projectCode?: string;
+  month?: number;
+  year?: number;
+  expertName?: string;
+  onUpdate: (patch: Partial<DeliverableSlot>) => void;
+  canCheckEligibility?: boolean;
+  eligibilityBlockedReason?: string;
+  className?: string;
+}
+
+export function DeliverableEligibilityControl({
+  deliverable,
+  subActivity,
+  activityTitle,
+  selectedActivityId,
+  catalogDescription,
+  catalogObjectives,
+  catalogComponent,
+  catalogBeneficiaries,
+  catalogExpectedResults,
+  catalogDeliverables,
+  catalogIndicators,
+  projectCode,
+  month,
+  year,
+  expertName,
+  onUpdate,
+  canCheckEligibility = true,
+  eligibilityBlockedReason,
+  className = 'space-y-2',
+}: DeliverableEligibilityControlProps) {
+  const [aiLoading, setAiLoading] = useState(false);
+  const eligibilityCheckEnabled = isDeliverableEligibilityCheckEnabledClient();
+
+  if (!deliverable.uploaded || deliverable.isPhoto) return null;
+
+  const eligibilityGateReason = !deliverable.titleConfirmed
+    ? 'Confirma titlul livrabilului inainte de verificarea eligibilitatii.'
+    : !deliverable.stadiu
+      ? 'Selecteaza stadiul documentului inainte de verificarea eligibilitatii.'
+      : eligibilityBlockedReason;
+  const canRunEligibilityCheck = canCheckEligibility && !eligibilityGateReason;
+
+  const handleAiCheck = async () => {
+    if (!eligibilityCheckEnabled) return;
+
+    setAiLoading(true);
+    try {
+      const extractedText = (deliverable.docText || deliverable.firstPageText || '').slice(0, 12000);
+      const response = await fetch('/api/ai/check-deliverable-eligibility', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          documentTitle: getDocumentAuditTitle({
+            ...deliverable,
+            fileName: deliverable.filename || deliverable.name,
+            originalFileName: deliverable.filename || deliverable.name,
+          }),
+          fileName: deliverable.filename || deliverable.name,
+          extractedText,
+          selectedActivityId: selectedActivityId || subActivity,
+          selectedActivityName: activityTitle,
+          deliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
+          catalogDescription,
+          catalogObjectives,
+          catalogComponent,
+          catalogBeneficiaries,
+          catalogExpectedResults,
+          catalogDeliverables,
+          catalogIndicators,
+          projectCode,
+          month,
+          year,
+          expertName,
+          textScope: deliverable.docText && deliverable.docText !== deliverable.firstPageText
+            ? 'Text extras disponibil din document'
+            : 'Prima pagina / inceputul documentului',
+        }),
+      });
+
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Verificarea eligibilitatii a esuat');
+
+      onUpdate({
+        eligibilityCheck: {
+          ...result,
+          checkedAt: new Date().toISOString(),
+          checkedBy: expertName,
+          modelAuditId: result.modelAuditId,
+        },
+        aiCheck: {
+          eligible: result.status === 'eligibil' || result.status === 'eligibil_cu_observatii'
+            ? true
+            : result.status === 'neeligibil'
+              ? false
+              : null,
+          reason: result.summary || 'Verificare eligibilitate finalizata.',
+          issues: [...(result.missingElements || []), ...(result.riskFlags || [])],
+        },
+      });
+    } catch (error) {
+      onUpdate({
+        eligibilityCheck: {
+          status: 'neconcludent',
+          score: 0,
+          summary: 'Eroare: ' + (error instanceof Error ? error.message : 'Eroare necunoscuta'),
+          checks: [],
+          missingElements: [],
+          recommendations: ['Reincearca verificarea sau valideaza manual livrabilul.'],
+          riskFlags: ['Verificarea API nu a putut fi finalizata.'],
+          checkedAt: new Date().toISOString(),
+          checkedBy: expertName,
+        },
+      });
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  return (
+    <div className={className}>
+      {eligibilityCheckEnabled && canRunEligibilityCheck ? (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleAiCheck}
+          disabled={aiLoading}
+          className="w-fit border-indigo-300 text-xs text-indigo-700 hover:bg-indigo-50"
+        >
+          {aiLoading ? (
+            <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+          ) : (
+            <Sparkles className="h-3 w-3 mr-1" />
+          )}
+          {aiLoading ? 'Se verifica...' : 'Verifica eligibilitatea livrabilului'}
+        </Button>
+      ) : eligibilityCheckEnabled ? (
+        <div className="w-fit max-w-full rounded border border-amber-200 bg-amber-50 p-2 text-[10px] text-amber-800">
+          <div className="flex items-start gap-1.5">
+            <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+            <span>
+              {eligibilityGateReason || 'Completeaza contextul activitatii inainte de verificarea eligibilitatii.'}
+            </span>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-1.5">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled
+            className="w-fit border-slate-300 text-xs text-slate-600"
+          >
+            <AlertTriangle className="h-3 w-3 mr-1" />
+            Verificare eligibilitate suspendata temporar
+          </Button>
+          <div className="w-fit max-w-full rounded border border-amber-200 bg-amber-50 p-2 text-[10px] text-amber-800">
+            {DELIVERABLE_ELIGIBILITY_UI_MESSAGE}
+          </div>
+        </div>
+      )}
+
+      {deliverable.eligibilityCheck && (
         <EligibilityResultCard check={deliverable.eligibilityCheck} />
       )}
     </div>

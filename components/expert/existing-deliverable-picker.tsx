@@ -1,9 +1,12 @@
 'use client';
 
+import { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { formatDateRo } from '@/lib/app-utils';
+import { getDocumentAuditTitle } from '@/lib/document-sharing';
 import type { DeliverableSlot } from '@/lib/deliverable-types';
+import type { Activity, DocumentMetadata } from '@/lib/types';
 
 export type ExistingDeliverableSource = 'mine' | 'shared';
 
@@ -47,40 +50,194 @@ export interface ExistingDeliverableCandidate {
 }
 
 interface ExistingDeliverablePickerProps {
-  candidates: ExistingDeliverableCandidate[];
-  mineCount: number;
+  activities: Activity[];
+  attachedDeliverables: DeliverableSlot[];
+  currentExpertId: string;
+  documents: DocumentMetadata[];
+  excludedActivityId?: string;
+  month: number;
   onAttach: (candidate: ExistingDeliverableCandidate) => void;
-  onQueryChange: (query: string) => void;
-  onSourceChange: (source: ExistingDeliverableSource) => void;
-  query: string;
-  sharedCount: number;
-  source: ExistingDeliverableSource;
+  onOpenChange: (open: boolean) => void;
+  open: boolean;
+  year: number;
 }
 
 export function ExistingDeliverablePicker({
-  candidates,
-  mineCount,
+  activities,
+  attachedDeliverables,
+  currentExpertId,
+  documents,
+  excludedActivityId,
+  month,
   onAttach,
-  onQueryChange,
-  onSourceChange,
-  query,
-  sharedCount,
-  source,
+  onOpenChange,
+  open,
+  year,
 }: ExistingDeliverablePickerProps) {
+  const [source, setSource] = useState<ExistingDeliverableSource>('mine');
+  const [query, setQuery] = useState('');
+
+  const currentMonthKey = `${year}-${String(month + 1).padStart(2, '0')}`;
+  const attachedDeliverableKeys = useMemo(() => new Set(
+    attachedDeliverables
+      .map((deliverable) => deliverable.documentId || deliverable.s3Key || deliverable.filePath || deliverable.filename || deliverable.name)
+      .filter((key): key is string => Boolean(key)),
+  ), [attachedDeliverables]);
+
+  const candidates = useMemo<ExistingDeliverableCandidate[]>(() => {
+    const nextCandidates = new Map<string, ExistingDeliverableCandidate>();
+
+    const addCandidate = (candidate: ExistingDeliverableCandidate) => {
+      const monthKey = (candidate.activityDate || candidate.uploadDate || '').slice(0, 7);
+      if (monthKey && monthKey !== currentMonthKey) return;
+      if (attachedDeliverableKeys.has(candidate.key)) return;
+      if (candidate.documentId && attachedDeliverableKeys.has(candidate.documentId)) return;
+      if (candidate.s3Key && attachedDeliverableKeys.has(candidate.s3Key)) return;
+      if (!candidate.documentId && !candidate.s3Key && !candidate.fileName) return;
+
+      nextCandidates.set(candidate.key, candidate);
+    };
+
+    activities.forEach((activity) => {
+      if (activity.id === excludedActivityId) return;
+
+      (activity.deliverables ?? []).forEach((deliverable) => {
+        const fileName = deliverable.originalFileName || deliverable.fileName;
+        const key = deliverable.documentId || deliverable.s3Key || deliverable.filePath || `${activity.id}:${deliverable.id}`;
+        const ownerId = deliverable.uploadedByExpertId || activity.expertId;
+        const isMine = ownerId === currentExpertId;
+        const isShared = !isMine && Boolean(
+          deliverable.isCommonDeliverable
+          || deliverable.sharedWithExpertIds?.includes(currentExpertId)
+          || activity.takenByExperts?.includes(currentExpertId)
+          || activity.shareStatus === 'shared',
+        );
+        if (!isMine && !isShared) return;
+
+        addCandidate({
+          key,
+          source: isMine ? 'mine' : 'shared',
+          title: getDocumentAuditTitle(deliverable),
+          fileName,
+          fileType: deliverable.fileType || '',
+          fileSize: deliverable.fileSize || 0,
+          documentId: deliverable.documentId,
+          s3Bucket: deliverable.s3Bucket,
+          s3Key: deliverable.s3Key || deliverable.filePath,
+          fileHash: deliverable.fileHash,
+          firstPageTextHash: deliverable.firstPageTextHash,
+          contentFingerprint: deliverable.contentFingerprint,
+          uploadedByExpertId: ownerId,
+          uploadedByExpertName: deliverable.uploadedByExpertName || activity.expertName,
+          uploadDate: deliverable.uploadedAt,
+          sourceActivityId: deliverable.sourceActivityId || activity.id,
+          activityDate: deliverable.activityDate || activity.date,
+          saCode: deliverable.saCode || activity.saCode,
+          deliverableType: deliverable.deliverableType,
+          declaredTitle: deliverable.declaredTitle,
+          docTitle: deliverable.docTitle,
+          docText: deliverable.docText,
+          suggestedTitle: deliverable.suggestedTitle,
+          firstPageText: deliverable.firstPageText,
+          titleSuggestionConfidence: deliverable.titleSuggestionConfidence,
+          titleSuggestionAlternatives: deliverable.titleSuggestionAlternatives,
+          titleSuggestionReason: deliverable.titleSuggestionReason,
+          titleSource: deliverable.titleSource,
+          titleMatch: deliverable.titleMatch,
+          titleConfirmed: deliverable.titleConfirmed,
+          titleCheckStatus: deliverable.titleCheckStatus,
+          titleCheckMessage: deliverable.titleCheckMessage,
+          eligibilityCheck: deliverable.eligibilityCheck,
+          isCommonDeliverable: deliverable.isCommonDeliverable,
+          aiStatus: deliverable.aiStatus,
+          aiReason: deliverable.aiReason,
+        });
+      });
+    });
+
+    documents.forEach((document) => {
+      const isMine = document.uploadedByExpertId === currentExpertId;
+      const isShared = !isMine && document.isCommonDeliverable === true;
+      if (!isMine && !isShared) return;
+
+      const key = document.id || document.s3Key;
+      addCandidate({
+        key,
+        source: isMine ? 'mine' : 'shared',
+        title: document.declaredTitle || document.extractedTitle || document.suggestedTitle || document.originalFileName,
+        fileName: document.originalFileName,
+        fileType: document.mimeType || '',
+        fileSize: document.fileSize || 0,
+        documentId: document.id,
+        s3Bucket: document.s3Bucket,
+        s3Key: document.s3Key,
+        fileHash: document.fileHash,
+        firstPageTextHash: document.firstPageTextHash,
+        contentFingerprint: document.contentFingerprint,
+        uploadedByExpertId: document.uploadedByExpertId,
+        uploadedByExpertName: document.uploadedByExpertName,
+        uploadDate: document.uploadDate,
+        sourceActivityId: document.sourceActivityId,
+        activityDate: document.activityDate,
+        saCode: document.saCode,
+        deliverableType: document.deliverableType,
+        declaredTitle: document.declaredTitle,
+        docTitle: document.extractedTitle,
+        suggestedTitle: document.suggestedTitle,
+        titleSuggestionConfidence: document.titleSuggestionConfidence,
+        titleSuggestionAlternatives: document.titleSuggestionAlternatives,
+        titleSuggestionReason: document.titleSuggestionReason,
+        titleMatch: document.titleMatch,
+        titleConfirmed: document.titleCheckStatus === 'matched',
+        titleCheckStatus: document.titleCheckStatus,
+        eligibilityCheck: document.eligibilityCheck,
+        isCommonDeliverable: document.isCommonDeliverable,
+      });
+    });
+
+    return Array.from(nextCandidates.values()).sort((first, second) =>
+      (second.activityDate || second.uploadDate || '').localeCompare(first.activityDate || first.uploadDate || ''),
+    );
+  }, [activities, attachedDeliverableKeys, currentExpertId, currentMonthKey, documents, excludedActivityId]);
+
+  const mineCount = candidates.filter((candidate) => candidate.source === 'mine').length;
+  const sharedCount = candidates.filter((candidate) => candidate.source === 'shared').length;
+  const visibleCandidates = candidates
+    .filter((candidate) => candidate.source === source)
+    .filter((candidate) => {
+      const normalizedQuery = query.trim().toLowerCase();
+      if (!normalizedQuery) return true;
+      return [
+        candidate.title,
+        candidate.fileName,
+        candidate.uploadedByExpertName,
+        candidate.saCode,
+      ].some((value) => value?.toLowerCase().includes(normalizedQuery));
+    })
+    .slice(0, 8);
+
+  const attachCandidate = (candidate: ExistingDeliverableCandidate) => {
+    onAttach(candidate);
+    setQuery('');
+    onOpenChange(false);
+  };
+
+  if (!open) return null;
+
   return (
     <div className="mb-3 rounded-md border bg-white p-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="inline-flex w-fit rounded-md border bg-slate-50 p-0.5">
           <button
             type="button"
-            onClick={() => onSourceChange('mine')}
+            onClick={() => setSource('mine')}
             className={`rounded px-2.5 py-1 text-xs font-medium ${source === 'mine' ? 'bg-white text-foreground shadow-sm' : 'text-muted-foreground'}`}
           >
             Ale mele ({mineCount})
           </button>
           <button
             type="button"
-            onClick={() => onSourceChange('shared')}
+            onClick={() => setSource('shared')}
             className={`rounded px-2.5 py-1 text-xs font-medium ${source === 'shared' ? 'bg-white text-foreground shadow-sm' : 'text-muted-foreground'}`}
           >
             Comune ({sharedCount})
@@ -88,19 +245,19 @@ export function ExistingDeliverablePicker({
         </div>
         <Input
           value={query}
-          onChange={(event) => onQueryChange(event.target.value)}
+          onChange={(event) => setQuery(event.target.value)}
           placeholder="Cauta titlu, fisier, SA"
           className="h-8 text-xs sm:max-w-64"
         />
       </div>
 
       <div className="mt-3 max-h-64 overflow-y-auto rounded-md border">
-        {candidates.length === 0 ? (
+        {visibleCandidates.length === 0 ? (
           <div className="px-3 py-4 text-center text-xs text-muted-foreground">
             Nu exista livrabile disponibile pentru filtrul curent.
           </div>
         ) : (
-          candidates.map((candidate) => (
+          visibleCandidates.map((candidate) => (
             <div key={candidate.key} className="flex flex-col gap-2 border-b px-3 py-2 last:border-b-0 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">
                 <div className="truncate text-xs font-medium text-foreground">
@@ -118,7 +275,7 @@ export function ExistingDeliverablePicker({
                 variant="outline"
                 size="sm"
                 className="h-8 shrink-0"
-                onClick={() => onAttach(candidate)}
+                onClick={() => attachCandidate(candidate)}
               >
                 Ataseaza
               </Button>

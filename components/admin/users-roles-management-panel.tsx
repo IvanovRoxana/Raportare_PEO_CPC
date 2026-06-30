@@ -9,6 +9,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { requestPasswordReset, getSignedInUser, signUpWithEmail } from '@/lib/aws/auth';
 import { expertIdentityKey } from '@/lib/expert-merge';
+import { syncCognitoGroupsForUser } from '@/lib/admin-cognito';
+import { cognitoGroupsForRole } from '@/lib/cognito-roles';
 
 type RoleOption = 'Expert' | 'PM' | 'Expert/PM' | 'Admin';
 
@@ -112,13 +114,17 @@ export function UsersRolesManagementPanel() {
         // If reset flow is not yet available for unconfirmed users, we still continue with profile provisioning.
       }
 
+      const cognitoGroups = cognitoGroupsForRole(role, role.includes('PM') || role === 'Admin');
+      await syncCognitoGroupsForUser(normalizedEmail, cognitoGroups);
+
       await expertsService.create({
         name: name.trim(),
         email: normalizedEmail,
         role,
         norma: 8,
         isActive: true,
-        hasPmAccess: role.includes('PM'),
+        hasPmAccess: role.includes('PM') || role === 'Admin',
+        cognitoGroups,
         saCodes: [],
       });
       const actor = await getSignedInUser({ ignoreViewAs: true });
@@ -151,9 +157,13 @@ export function UsersRolesManagementPanel() {
     setError(null);
     setOk(null);
     try {
+      const hasPmAccess = nextRole.includes('PM') || nextRole === 'Admin';
+      const cognitoGroups = cognitoGroupsForRole(nextRole, hasPmAccess);
+      await syncCognitoGroupsForUser(expert.email, cognitoGroups);
       const updates = {
         role: nextRole,
-        hasPmAccess: nextRole.includes('PM'),
+        hasPmAccess,
+        cognitoGroups,
       };
       if (isPersistedExpert(expert)) {
         await expertsService.update(getPersistedExpertId(expert), updates);

@@ -36,6 +36,8 @@ $users = foreach ($expert in $experts) {
   }
 }
 
+$managedRoles = @("expert", "pm", "admin")
+
 function New-TemporaryPassword {
   $letters = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ"
   $digits = "23456789"
@@ -104,7 +106,22 @@ foreach ($user in $users) {
     throw "Nu am putut seta parola temporara permanenta pentru $email"
   }
 
-  foreach ($role in $user.Roles) {
+  $currentGroupsJson = & $Aws cognito-idp admin-list-groups-for-user `
+    --user-pool-id $userPoolId `
+    --username $email `
+    --profile $Profile `
+    --region $Region `
+    --query "Groups[].GroupName" `
+    --output json
+
+  if ($LASTEXITCODE -ne 0) {
+    throw "Nu am putut citi grupurile Cognito pentru $email"
+  }
+
+  $currentGroups = @($currentGroupsJson | ConvertFrom-Json)
+  $desiredRoles = @($user.Roles | Where-Object { $_ })
+
+  foreach ($role in $desiredRoles) {
     & $Aws cognito-idp admin-add-user-to-group `
       --user-pool-id $userPoolId `
       --username $email `
@@ -117,7 +134,22 @@ foreach ($user in $users) {
     }
   }
 
-  Write-Host "OK $email -> $($user.Roles -join ', ')"
+  foreach ($role in $managedRoles) {
+    if (($currentGroups -contains $role) -and -not ($desiredRoles -contains $role)) {
+      & $Aws cognito-idp admin-remove-user-from-group `
+        --user-pool-id $userPoolId `
+        --username $email `
+        --group-name $role `
+        --profile $Profile `
+        --region $Region *> $null
+
+      if ($LASTEXITCODE -ne 0) {
+        throw "Nu am putut elimina $email din grupul $role"
+      }
+    }
+  }
+
+  Write-Host "OK $email -> $($desiredRoles -join ', ')"
 }
 
 Write-Host "Import finalizat pentru $($users.Count) utilizatori. Emailurile de invitatie au fost suprimate; utilizatorii folosesc fluxul Am uitat parola."

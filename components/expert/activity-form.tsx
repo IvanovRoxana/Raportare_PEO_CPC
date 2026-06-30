@@ -21,11 +21,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Field, FieldLabel } from '@/components/ui/field';
 import { generateId, formatDateRo } from '@/lib/app-utils';
 import { EventDocsPanel } from './event-docs-panel';
-import { DeliverableItem, type DeliverableDuplicateInfo } from './deliverable-item';
+import { DeliverableEligibilityControl, DeliverableItem, type DeliverableDuplicateInfo } from './deliverable-item';
 import {
   ExistingDeliverablePicker,
   type ExistingDeliverableCandidate,
-  type ExistingDeliverableSource,
 } from './existing-deliverable-picker';
 import { createDeliverableSlot, type DeliverableSlot } from '@/lib/deliverable-types';
 import { 
@@ -53,28 +52,15 @@ import {
 import {
   GDPR_CONCLUSION_OPTIONS,
   GDPR_TEMPLATES,
-  buildGdprActivityDescription,
-  buildDefaultGdprMeta,
-  buildGdprObjectVerification,
-  buildGdprDeliverableDocx,
-  createGeneratedGdprDeliverableSlot,
   getGdprDeliverableRequirementLabel,
-  getGdprFieldDefinitions,
   getGdprMinimumEvidenceLabels,
   getGdprOptionLabel,
   getGdprOptionValue,
-  getGdprTemplate,
-  parseGdprMetaJson,
   serializeGdprMeta,
   validateGdprActivityDraft,
-  type GdprBusinessHubEvent,
   type GdprFieldDefinition,
-  type GdprMeta,
-  type GdprMetaValue,
 } from '@/lib/gdpr-reporting';
 import {
-  buildActivityAutofillDeliverablesPayload,
-  type ActivityAutofillCatalogCandidate,
   type ActivityAutofillSuggestion,
 } from '@/lib/activity-autofill';
 import { isDeliverableEligibilityCheckEnabledClient } from '@/lib/feature-flags';
@@ -85,7 +71,8 @@ import {
   type ObservationRailItem,
   type ObservationTone,
 } from './use-activity-observation-rail';
-import { useActivityAutofill } from './use-activity-autofill';
+import { useActivityAutofill } from '@/hooks/use-activity-autofill';
+import { useGdprActivity } from '@/hooks/use-gdpr-activity';
 
 export type { ActivityResolutionHint, ActivityResolutionSection } from './use-activity-observation-rail';
 
@@ -302,17 +289,7 @@ export function ActivityForm({
   const [description, setDescription] = useState(activitySeed?.description || '');
   const [location, setLocation] = useState(activitySeed?.location || 'Birou');
   const [validationError, setValidationError] = useState<string | null>(null);
-  const [gdprTemplateCode, setGdprTemplateCode] = useState(activitySeed?.gdprTemplateCode || '');
-  const [gdprMeta, setGdprMeta] = useState<GdprMeta>(() => buildDefaultGdprMeta(activitySeed?.gdprTemplateCode, parseGdprMetaJson(activitySeed?.gdprMetaJson), `${reportMonthName} ${year}`));
-  const [gdprGeneratedText, setGdprGeneratedText] = useState(activitySeed?.gdprGeneratedText || '');
-  const [gdprConclusionCode, setGdprConclusionCode] = useState(
-    activitySeed?.gdprConclusionCode || String(parseGdprMetaJson(activitySeed?.gdprMetaJson).concluzie || 'conform_fara_neconformitati')
-  );
-  const [isGeneratingGdprDocx, setIsGeneratingGdprDocx] = useState(false);
-  const [isImprovingGdprText, setIsImprovingGdprText] = useState(false);
   const [existingDeliverablePickerOpen, setExistingDeliverablePickerOpen] = useState(false);
-  const [existingDeliverableSource, setExistingDeliverableSource] = useState<ExistingDeliverableSource>('mine');
-  const [existingDeliverableQuery, setExistingDeliverableQuery] = useState('');
 
   // Deliverables state with slots
   const [deliverables, setDeliverables] = useState<DeliverableSlot[]>(
@@ -368,6 +345,43 @@ export function ActivityForm({
       isPendingConfirm: false,
     })) || []
   );
+
+  const gdprActivity = useGdprActivity({
+    activitySeed,
+    reportMonthLabel: reportMonthName,
+    year,
+    month,
+    selectedDates,
+    defaultHours,
+    description,
+    expertName,
+    expert,
+    setDescription,
+    setValidationError,
+    setSaCode,
+    setActivityTitle,
+    setHours,
+    setHoursPerDay,
+    setDeliverables,
+    onSelectedHoursChange,
+  });
+  const {
+    gdprTemplateCode,
+    gdprMeta,
+    gdprGeneratedText,
+    gdprConclusionCode,
+    isGeneratingGdprDocx,
+    isImprovingGdprText,
+    isBusinessHubGdpr,
+  } = gdprActivity.state;
+  const selectedGdprTemplate = gdprActivity.selectedTemplate;
+  const gdprFieldDefinitions = gdprActivity.fieldDefinitions;
+  const updateGdprMeta = gdprActivity.updateMeta;
+  const handleGdprTemplateChange = gdprActivity.changeTemplate;
+  const handleGdprConclusionChange = gdprActivity.changeConclusion;
+  const generateGdprDescription = gdprActivity.generateDescription;
+  const improveGdprDescriptionWithAI = gdprActivity.improveDescription;
+  const generateGdprDeliverable = gdprActivity.generateDeliverable;
   
   const initialCollaborators = useMemo(() => {
     const ids = new Set<string>(initialActivity?.takenByExperts || []);
@@ -506,70 +520,31 @@ export function ActivityForm({
     ) || null;
   }, [activityTitle, saCode, filteredCatalog]);
 
-  const activityAutofillDeliverables = useMemo(() => (
-    buildActivityAutofillDeliverablesPayload(deliverables.map((deliverable) => ({
-      id: deliverable.id,
-      fileName: deliverable.filename || deliverable.name,
-      documentTitle: getDocumentAuditTitle({
-        ...deliverable,
-        fileName: deliverable.filename || deliverable.name,
-        originalFileName: deliverable.filename || deliverable.name,
-      }),
-      deliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
-      stadiu: deliverable.stadiu,
-      docText: deliverable.docText,
-      firstPageText: deliverable.firstPageText,
-      eligibilityStatus: deliverable.eligibilityCheck?.status,
-      eligibilitySummary: deliverable.eligibilityCheck?.summary || deliverable.aiCheck?.reason,
-    })))
-  ), [deliverables]);
-
-  const activityAutofillCatalogCandidates = useMemo<ActivityAutofillCatalogCandidate[]>(() => (
-    filteredCatalog.map((item) => ({
-      id: item.id,
-      category: item.category,
-      saCode: item.saCode,
-      serviceCategory: item.serviceCategory,
-      activityNumber: item.activityNumber,
-      activityName: item.activityName,
-      description: item.description,
-      objectives: item.objectives,
-      serviceComponent: item.serviceComponent,
-      beneficiaries: item.beneficiaries,
-      expectedResults: item.expectedResults,
-      deliverables: item.deliverables,
-      indicators: item.indicators,
-    }))
-  ), [filteredCatalog]);
-
   const lastAutoDescriptionRef = useRef('');
-  const applyActivityAutofillFields = useCallback((suggestion: ActivityAutofillSuggestion) => {
-    setSaCode(suggestion.recommended.saCode);
-    setActivityTitle(suggestion.recommended.activityName);
-    setDescription(suggestion.recommended.description);
-    lastAutoDescriptionRef.current = '__activity_autofill_applied__';
-    setTitleVerificationResult(null);
-  }, []);
-
   const {
-    activityAutofillError,
-    activityAutofillSuggestion,
-    activityAutofillUnavailableMessage,
-    applyActivityAutofillSuggestion,
-    isAutofillingActivity,
-    suggestActivityFromDeliverables: handleSuggestActivityFromDeliverables,
+    error: activityAutofillError,
+    suggestion: activityAutofillSuggestion,
+    apply: applyActivityAutofillSuggestion,
+    isLoading: isAutofillingActivity,
+    suggest: handleSuggestActivityFromDeliverables,
+    dismiss: dismissActivityAutofillSuggestion,
   } = useActivityAutofill({
-    catalogCandidates: activityAutofillCatalogCandidates,
-    category: expert?.category,
-    deliverables: activityAutofillDeliverables,
+    catalog: filteredCatalog,
+    deliverables,
+    expert,
     expertId,
     expertName,
-    expertRole: expert?.positionInProject || expert?.role,
     month,
-    onApplySuggestion: applyActivityAutofillFields,
-    projectCode: expert?.projectCode,
     selectedDates,
+    setActivityTitle,
+    setDescription,
+    setDeliverables,
+    setSaCode,
     year,
+    onApplied: () => {
+      lastAutoDescriptionRef.current = '__activity_autofill_applied__';
+      setTitleVerificationResult(null);
+    },
   });
 
   useEffect(() => {
@@ -647,14 +622,8 @@ export function ActivityForm({
     return getDeliverableOptions(expertCategory || 'ap');
   }, [expertCategory]);
 
-  const selectedGdprTemplate = useMemo(() => getGdprTemplate(gdprTemplateCode), [gdprTemplateCode]);
-  const isBusinessHubGdpr = selectedGdprTemplate?.code === 'GDPR_BUSINESS_HUB';
   const effectiveActivityTitle = isGdprExpert && selectedGdprTemplate ? selectedGdprTemplate.activityTitle : activityTitle;
   const effectiveSaCode = isGdprExpert && selectedGdprTemplate ? selectedGdprTemplate.saCode : saCode;
-  const gdprFieldDefinitions = useMemo(
-    () => getGdprFieldDefinitions(gdprTemplateCode, gdprMeta),
-    [gdprTemplateCode, gdprMeta]
-  );
   
   // Check if current activity is exception (no deliverable required)
   const isException = isExceptionActivity(effectiveActivityTitle);
@@ -747,113 +716,12 @@ export function ActivityForm({
     }
   };
 
-  const fileToDataUrl = (file: File) =>
-    new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = () => reject(reader.error);
-      reader.readAsDataURL(file);
-    });
-
   const handleBusinessHubPvUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    setIsGeneratingGdprDocx(true);
-    setValidationError(null);
     try {
-      const XLSX = await import('xlsx');
-      const buffer = await file.arrayBuffer();
-      const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
-      const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json<unknown[]>(worksheet, { header: 1, defval: '' });
-      const parsed = parseBusinessHubPvRows(rows);
-      const pvDataUrl = await fileToDataUrl(file);
-      const nextMeta: GdprMeta = buildDefaultGdprMeta('GDPR_BUSINESS_HUB', {
-        ...gdprMeta,
-        lunaAnalizata: parsed.monthLabel || `${reportMonthName} ${year}`,
-        numarEvenimente: parsed.events.length,
-        inregistrareBd: file.name,
-        responsabilHub: gdprMeta.responsabilHub || 'Alexandru Enache',
-        rolHub: gdprMeta.rolHub || 'suport logistic',
-        documenteAnalizate: { selected: ['proces_verbal', 'altele'], altele: 'Proces-verbal evenimente Business HUB' },
-        datePersonale: ['nume si prenume', 'functie', 'organizatie', 'semnatura'],
-        temeiGdpr: ['interes legitim', 'interes public / implementare proiect'],
-        concluzie: gdprConclusionCode || 'fara_prelucrari_directe',
-        businessHubEvents: parsed.events,
-      }, parsed.monthLabel || `${reportMonthName} ${year}`);
-      const objectText = buildGdprObjectVerification('GDPR_BUSINESS_HUB', nextMeta);
-      const completedMeta: GdprMeta = {
-        ...nextMeta,
-        obiectVerificare: objectText,
-      };
-      setGdprTemplateCode('GDPR_BUSINESS_HUB');
-      setSaCode('SA1.1');
-      setActivityTitle('Verificare GDPR Business HUB');
-      setHours('6');
-      setHoursPerDay((prev) => {
-        const next = { ...prev };
-        selectedDates.forEach((date) => {
-          next[date] = '6';
-        });
-        onSelectedHoursChange?.(next);
-        return next;
-      });
-      setGdprConclusionCode(String(completedMeta.concluzie || 'fara_prelucrari_directe'));
-      setGdprMeta(completedMeta);
-
-      const input = {
-        templateCode: 'GDPR_BUSINESS_HUB' as const,
-        meta: completedMeta,
-        date: selectedDates[0] || '',
-        expertName,
-        expertRole: expert?.positionInProject || expert?.role,
-        projectCode: expert?.projectCode,
-        projectTitle: expert?.projectTitle,
-      };
-      const generatedDescription = buildGdprActivityDescription(input);
-      const generatedBlob = await buildGdprDeliverableDocx(input);
-      const generatedDataUrl = await blobToDataUrl(generatedBlob);
-      const generatedSlot = createGeneratedGdprDeliverableSlot({
-        ...input,
-        fileData: generatedDataUrl,
-        fileSize: generatedBlob.size,
-      });
-      const pvSlot: DeliverableSlot = {
-        ...createDeliverableSlot('livrabil', file.name),
-        name: file.name,
-        filename: file.name,
-        rawFilename: file.name.replace(/\.[^.]+$/, ''),
-        fileType: file.type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        fileSize: file.size,
-        fileData: pvDataUrl,
-        uploadedAt: new Date().toISOString(),
-        uploaded: true,
-        declaredTitle: `Proces-verbal evenimente Business HUB - ${parsed.monthLabel || reportMonthName}`,
-        docTitle: `Proces-verbal evenimente Business HUB - ${parsed.monthLabel || reportMonthName}`,
-        titleConfirmed: true,
-        titleSource: 'auto_detected',
-        titleMatch: true,
-        titleCheckStatus: 'matched',
-        titleCheckMessage: 'Procesul-verbal Business HUB a fost atasat ca dovada minima.',
-        documentId: `doc_bh_pv_${generateId()}`,
-        isCommonDeliverable: false,
-        sharedWithExpertIds: [],
-      };
-
-      setDescription(generatedDescription);
-      setGdprGeneratedText(generatedDescription);
-      setDeliverables((prev) => [
-        ...prev.filter((deliverable) =>
-          !deliverable.documentId?.startsWith('doc_bh_pv_')
-          && (deliverable.declaredTitle !== generatedSlot.declaredTitle || !deliverable.documentId?.startsWith('doc_gdpr_')),
-        ),
-        pvSlot,
-        generatedSlot,
-      ]);
-    } catch (error) {
-      setValidationError(error instanceof Error ? error.message : 'Nu am putut citi procesul-verbal Business HUB.');
+      await generateGdprDeliverable(file);
     } finally {
-      setIsGeneratingGdprDocx(false);
       if (businessHubPvInputRef.current) {
         businessHubPvInputRef.current.value = '';
       }
@@ -1224,169 +1092,9 @@ export function ActivityForm({
     ])));
   };
 
-  const updateGdprMeta = (key: string, value: GdprMetaValue) => {
-    setGdprMeta((prev) => {
-      const next = { ...prev, [key]: value };
-      if (selectedGdprTemplate && key !== 'obiectVerificare') {
-        const previousGeneratedObject = buildGdprObjectVerification(selectedGdprTemplate.code, prev);
-        const currentObject = typeof prev.obiectVerificare === 'string' ? prev.obiectVerificare.trim() : '';
-        if (!currentObject || currentObject === previousGeneratedObject) {
-          next.obiectVerificare = buildGdprObjectVerification(selectedGdprTemplate.code, next);
-        }
-      }
-      return buildDefaultGdprMeta(gdprTemplateCode, next, `${reportMonthName} ${year}`);
-    });
-  };
-
-  const handleGdprConclusionChange = (code: string) => {
-    setGdprConclusionCode(code);
-    updateGdprMeta('concluzie', code);
-  };
-
-  const handleGdprTemplateChange = (code: string) => {
-    const template = getGdprTemplate(code);
-    setGdprTemplateCode(code);
-    setGdprGeneratedText('');
-
-    if (!template) return;
-
-    setSaCode(template.saCode);
-    setActivityTitle(template.activityTitle);
-    setGdprMeta((prev) => buildDefaultGdprMeta(code, {
-      ...prev,
-      concluzie: gdprConclusionCode || 'conform_fara_neconformitati',
-    }, `${reportMonthName} ${year}`));
-
-    const templateHours = normalizePontajHoursValue(Math.min(template.defaultHours, defaultHours), defaultHours);
-    setHours(templateHours);
-    setHoursPerDay((prev) => {
-      const next = { ...prev };
-      selectedDates.forEach((date) => {
-        next[date] = templateHours;
-      });
-      onSelectedHoursChange?.(next);
-      return next;
-    });
-  };
-
-  const buildGdprInput = () => {
-    if (!selectedGdprTemplate) return null;
-    return {
-      templateCode: selectedGdprTemplate.code,
-      meta: {
-        ...gdprMeta,
-        concluzie: gdprConclusionCode,
-      },
-      date: selectedDates[0] || '',
-      expertName,
-      expertRole: expert?.positionInProject || expert?.role,
-      projectCode: expert?.projectCode,
-      projectTitle: expert?.projectTitle,
-    };
-  };
-
-  const generateGdprDescription = () => {
-    const input = buildGdprInput();
-    if (!input) {
-      setValidationError('Selecteaza mai intai tipul de activitate GDPR.');
-      return;
-    }
-    const generated = buildGdprActivityDescription(input);
-    setDescription(generated);
-    setGdprGeneratedText(generated);
-    setValidationError(null);
-  };
-
-  const improveGdprDescriptionWithAI = async () => {
-    const input = buildGdprInput();
-    const textToImprove = gdprGeneratedText || description || (input ? buildGdprActivityDescription(input) : '');
-    if (!input || !textToImprove.trim()) {
-      setValidationError('Genereaza descrierea GDPR inainte de imbunatatirea cu AI.');
-      return;
-    }
-
-    setIsImprovingGdprText(true);
-    setValidationError(null);
-    try {
-      const response = await fetch('/api/ai/improve-gdpr-text', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text: textToImprove,
-          templateLabel: selectedGdprTemplate?.label,
-          expertName,
-          month,
-          year,
-          projectCode: expert?.projectCode,
-        }),
-      });
-      const data = await response.json();
-      if (!response.ok || data.error) {
-        throw new Error(data.error || 'Nu am putut imbunatati textul cu AI.');
-      }
-      setDescription(data.text);
-      setGdprGeneratedText(data.text);
-    } catch (error) {
-      setValidationError(error instanceof Error ? error.message : 'Eroare la imbunatatirea textului GDPR.');
-    } finally {
-      setIsImprovingGdprText(false);
-    }
-  };
-
-  const blobToDataUrl = (blob: Blob) =>
-    new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = () => reject(reader.error);
-      reader.readAsDataURL(blob);
-    });
-
-  const generateGdprDeliverable = async () => {
-    const input = buildGdprInput();
-    if (!input) {
-      setValidationError('Selecteaza mai intai tipul de activitate GDPR.');
-      return;
-    }
-
-    const draftValidation = validateGdprActivityDraft({
-      templateCode: gdprTemplateCode,
-      meta: input.meta,
-      description,
-      hasDeliverable: true,
-    });
-    if (draftValidation.missingFields.length > 0) {
-      setValidationError(`Completeaza campurile GDPR obligatorii: ${draftValidation.missingFields.join(', ')}.`);
-      return;
-    }
-
-    setIsGeneratingGdprDocx(true);
-    setValidationError(null);
-    try {
-      const blob = await buildGdprDeliverableDocx(input);
-      const fileData = await blobToDataUrl(blob);
-      const generatedSlot = createGeneratedGdprDeliverableSlot({
-        ...input,
-        fileData,
-        fileSize: blob.size,
-      });
-
-      setDeliverables((prev) => [
-        ...prev.filter((deliverable) => deliverable.declaredTitle !== generatedSlot.declaredTitle || !deliverable.documentId?.startsWith('doc_gdpr_')),
-        generatedSlot,
-      ]);
-
-      const generated = gdprGeneratedText || buildGdprActivityDescription(input);
-      setDescription(generated);
-      setGdprGeneratedText(generated);
-    } catch (error) {
-      setValidationError(error instanceof Error ? error.message : 'Eroare la generarea livrabilului GDPR.');
-    } finally {
-      setIsGeneratingGdprDocx(false);
-    }
-  };
-
   // Filter deliverables by type
   const mainDeliverables = deliverables.filter(d => !d.slotType || d.slotType === 'livrabil');
+  const mainDeliverableForEligibility = mainDeliverables.find((d) => d.uploaded && !d.isPhoto);
   const prelimDeliverables = deliverables.filter(d => d.slotType === 'raport_preliminar');
   const justifDeliverables = deliverables.filter(d => d.slotType === 'justificativ');
   const descriptionTrimmed = (description || '').trim();
@@ -1429,7 +1137,7 @@ export function ActivityForm({
   ));
   const observationRailItems = useActivityObservationRailItems({
     activityAutofillError,
-    activityAutofillUnavailableMessage,
+    activityAutofillUnavailableMessage: null,
     deliverables,
     duplicateInfoByDeliverableId,
     eligibilityBlockedReason,
@@ -1445,143 +1153,6 @@ export function ActivityForm({
     saveBlockers,
     validationError,
   });
-  const currentMonthKey = `${year}-${String(month + 1).padStart(2, '0')}`;
-  const attachedDeliverableKeys = useMemo(() => new Set(
-    deliverables
-      .map((deliverable) => deliverable.documentId || deliverable.s3Key || deliverable.filePath || deliverable.filename || deliverable.name)
-      .filter((key): key is string => Boolean(key)),
-  ), [deliverables]);
-  const existingDeliverableCandidates = useMemo<ExistingDeliverableCandidate[]>(() => {
-    const candidates = new Map<string, ExistingDeliverableCandidate>();
-
-    const addCandidate = (candidate: ExistingDeliverableCandidate) => {
-      const monthKey = (candidate.activityDate || candidate.uploadDate || '').slice(0, 7);
-      if (monthKey && monthKey !== currentMonthKey) return;
-      if (attachedDeliverableKeys.has(candidate.key)) return;
-      if (candidate.documentId && attachedDeliverableKeys.has(candidate.documentId)) return;
-      if (candidate.s3Key && attachedDeliverableKeys.has(candidate.s3Key)) return;
-      if (!candidate.documentId && !candidate.s3Key && !candidate.fileName) return;
-
-      candidates.set(candidate.key, candidate);
-    };
-
-    allActivities.forEach((activity) => {
-      if (activity.id === initialActivity?.id) return;
-
-      (activity.deliverables ?? []).forEach((deliverable) => {
-        const fileName = deliverable.originalFileName || deliverable.fileName;
-        const key = deliverable.documentId || deliverable.s3Key || deliverable.filePath || `${activity.id}:${deliverable.id}`;
-        const ownerId = deliverable.uploadedByExpertId || activity.expertId;
-        const isMine = ownerId === expertId;
-        const isShared = !isMine && Boolean(
-          deliverable.isCommonDeliverable
-          || deliverable.sharedWithExpertIds?.includes(expertId)
-          || activity.takenByExperts?.includes(expertId)
-          || activity.shareStatus === 'shared',
-        );
-        if (!isMine && !isShared) return;
-
-        addCandidate({
-          key,
-          source: isMine ? 'mine' : 'shared',
-          title: getDocumentAuditTitle(deliverable),
-          fileName,
-          fileType: deliverable.fileType || '',
-          fileSize: deliverable.fileSize || 0,
-          documentId: deliverable.documentId,
-          s3Bucket: deliverable.s3Bucket,
-          s3Key: deliverable.s3Key || deliverable.filePath,
-          fileHash: deliverable.fileHash,
-          firstPageTextHash: deliverable.firstPageTextHash,
-          contentFingerprint: deliverable.contentFingerprint,
-          uploadedByExpertId: ownerId,
-          uploadedByExpertName: deliverable.uploadedByExpertName || activity.expertName,
-          uploadDate: deliverable.uploadedAt,
-          sourceActivityId: deliverable.sourceActivityId || activity.id,
-          activityDate: deliverable.activityDate || activity.date,
-          saCode: deliverable.saCode || activity.saCode,
-          deliverableType: deliverable.deliverableType,
-          declaredTitle: deliverable.declaredTitle,
-          docTitle: deliverable.docTitle,
-          docText: deliverable.docText,
-          suggestedTitle: deliverable.suggestedTitle,
-          firstPageText: deliverable.firstPageText,
-          titleSuggestionConfidence: deliverable.titleSuggestionConfidence,
-          titleSuggestionAlternatives: deliverable.titleSuggestionAlternatives,
-          titleSuggestionReason: deliverable.titleSuggestionReason,
-          titleSource: deliverable.titleSource,
-          titleMatch: deliverable.titleMatch,
-          titleConfirmed: deliverable.titleConfirmed,
-          titleCheckStatus: deliverable.titleCheckStatus,
-          titleCheckMessage: deliverable.titleCheckMessage,
-          eligibilityCheck: deliverable.eligibilityCheck,
-          isCommonDeliverable: deliverable.isCommonDeliverable,
-          aiStatus: deliverable.aiStatus,
-          aiReason: deliverable.aiReason,
-        });
-      });
-    });
-
-    documents.forEach((document) => {
-      const isMine = document.uploadedByExpertId === expertId;
-      const isShared = !isMine && document.isCommonDeliverable === true;
-      if (!isMine && !isShared) return;
-
-      const key = document.id || document.s3Key;
-      addCandidate({
-        key,
-        source: isMine ? 'mine' : 'shared',
-        title: document.declaredTitle || document.extractedTitle || document.suggestedTitle || document.originalFileName,
-        fileName: document.originalFileName,
-        fileType: document.mimeType || '',
-        fileSize: document.fileSize || 0,
-        documentId: document.id,
-        s3Bucket: document.s3Bucket,
-        s3Key: document.s3Key,
-        fileHash: document.fileHash,
-        firstPageTextHash: document.firstPageTextHash,
-        contentFingerprint: document.contentFingerprint,
-        uploadedByExpertId: document.uploadedByExpertId,
-        uploadedByExpertName: document.uploadedByExpertName,
-        uploadDate: document.uploadDate,
-        sourceActivityId: document.sourceActivityId,
-        activityDate: document.activityDate,
-        saCode: document.saCode,
-        deliverableType: document.deliverableType,
-        declaredTitle: document.declaredTitle,
-        docTitle: document.extractedTitle,
-        suggestedTitle: document.suggestedTitle,
-        titleSuggestionConfidence: document.titleSuggestionConfidence,
-        titleSuggestionAlternatives: document.titleSuggestionAlternatives,
-        titleSuggestionReason: document.titleSuggestionReason,
-        titleMatch: document.titleMatch,
-        titleConfirmed: document.titleCheckStatus === 'matched',
-        titleCheckStatus: document.titleCheckStatus as DeliverableSlot['titleCheckStatus'],
-        eligibilityCheck: document.eligibilityCheck,
-        isCommonDeliverable: document.isCommonDeliverable,
-      });
-    });
-
-    return Array.from(candidates.values()).sort((first, second) =>
-      (second.activityDate || second.uploadDate || '').localeCompare(first.activityDate || first.uploadDate || ''),
-    );
-  }, [allActivities, attachedDeliverableKeys, currentMonthKey, documents, expertId, initialActivity?.id]);
-  const mineExistingDeliverablesCount = existingDeliverableCandidates.filter((candidate) => candidate.source === 'mine').length;
-  const sharedExistingDeliverablesCount = existingDeliverableCandidates.filter((candidate) => candidate.source === 'shared').length;
-  const visibleExistingDeliverableCandidates = existingDeliverableCandidates
-    .filter((candidate) => candidate.source === existingDeliverableSource)
-    .filter((candidate) => {
-      const query = existingDeliverableQuery.trim().toLowerCase();
-      if (!query) return true;
-      return [
-        candidate.title,
-        candidate.fileName,
-        candidate.uploadedByExpertName,
-        candidate.saCode,
-      ].some((value) => value?.toLowerCase().includes(query));
-    })
-    .slice(0, 8);
-
   const attachExistingDeliverable = (candidate: ExistingDeliverableCandidate) => {
     const aiCheck = candidate.aiStatus
       ? {
@@ -1641,7 +1212,6 @@ export function ActivityForm({
 
     setDeliverables((prev) => [...prev, slot]);
     setExistingDeliverablePickerOpen(false);
-    setExistingDeliverableQuery('');
   };
 
   const renderGdprField = (field: GdprFieldDefinition) => {
@@ -1962,7 +1532,7 @@ export function ActivityForm({
                   type="button"
                   size="sm"
                   onClick={handleSuggestActivityFromDeliverables}
-                  disabled={Boolean(activityAutofillUnavailableMessage) || isAutofillingActivity}
+                  disabled={isAutofillingActivity}
                 >
                   {isAutofillingActivity ? (
                     <Loader2 className="h-4 w-4 mr-1 animate-spin" />
@@ -1973,8 +1543,8 @@ export function ActivityForm({
                 </Button>
               </div>
             </div>
-            {!isWorkspaceLayout && activityAutofillUnavailableMessage && (
-              <p className="mt-3 text-xs text-amber-700">{activityAutofillUnavailableMessage}</p>
+            {!isWorkspaceLayout && activityAutofillError && (
+              <p className="mt-3 text-xs text-amber-700">{activityAutofillError}</p>
             )}
           </div>
         )}
@@ -2210,7 +1780,7 @@ export function ActivityForm({
                       </Button>
                       <Button
                         type="button"
-                        onClick={generateGdprDeliverable}
+                        onClick={() => generateGdprDeliverable()}
                         disabled={isGeneratingGdprDocx}
                       >
                         {isGeneratingGdprDocx ? (
@@ -2263,18 +1833,18 @@ export function ActivityForm({
                     </div>
                   </div>
 
-                  {existingDeliverablePickerOpen && (
-                    <ExistingDeliverablePicker
-                      candidates={visibleExistingDeliverableCandidates}
-                      mineCount={mineExistingDeliverablesCount}
-                      onAttach={attachExistingDeliverable}
-                      onQueryChange={setExistingDeliverableQuery}
-                      onSourceChange={setExistingDeliverableSource}
-                      query={existingDeliverableQuery}
-                      sharedCount={sharedExistingDeliverablesCount}
-                      source={existingDeliverableSource}
-                    />
-                  )}
+                  <ExistingDeliverablePicker
+                    activities={allActivities}
+                    attachedDeliverables={deliverables}
+                    currentExpertId={expertId}
+                    documents={documents}
+                    excludedActivityId={initialActivity?.id}
+                    month={month}
+                    onAttach={attachExistingDeliverable}
+                    onOpenChange={setExistingDeliverablePickerOpen}
+                    open={existingDeliverablePickerOpen}
+                    year={year}
+                  />
 
                   {mainDeliverables.length === 0 && (
                     <div className="text-center py-4 text-xs text-muted-foreground border border-dashed rounded-md">
@@ -2314,6 +1884,7 @@ export function ActivityForm({
                             canCheckEligibility={canCheckDeliverableEligibility}
                             eligibilityBlockedReason={eligibilityBlockedReason}
                             notesMode={isWorkspaceLayout ? 'external' : 'inline'}
+                            showEligibilityControl={false}
                           />
                         </div>
                       );
@@ -2333,7 +1904,7 @@ export function ActivityForm({
                         variant="outline"
                         size="sm"
                         onClick={handleSuggestActivityFromDeliverables}
-                        disabled={Boolean(activityAutofillUnavailableMessage) || isAutofillingActivity}
+                        disabled={isAutofillingActivity}
                       >
                         {isAutofillingActivity ? (
                           <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -2343,12 +1914,6 @@ export function ActivityForm({
                         Autocompletare
                       </Button>
                     </div>
-
-                    {!isWorkspaceLayout && activityAutofillUnavailableMessage && (
-                      <div className="mt-2 text-xs text-amber-700">
-                        {activityAutofillUnavailableMessage}
-                      </div>
-                    )}
 
                     {!isWorkspaceLayout && activityAutofillError && (
                       <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
@@ -2430,7 +1995,10 @@ export function ActivityForm({
                             )}
                           </div>
                         )}
-                        <div className="flex justify-end">
+                        <div className="flex justify-end gap-2">
+                          <Button type="button" variant="outline" size="sm" onClick={dismissActivityAutofillSuggestion}>
+                            Renunta
+                          </Button>
                           <Button type="button" size="sm" onClick={applyActivityAutofillSuggestion}>
                             <CheckCircle className="h-4 w-4 mr-2" />
                             Aplica sugestia
@@ -2580,6 +2148,45 @@ export function ActivityForm({
                 </div>
               )}
             </Field>
+
+            {mainDeliverableForEligibility && !isLeave && !isException && (
+              <div className="rounded-lg border border-indigo-100 bg-white p-3 shadow-sm">
+                <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 text-sm font-medium text-slate-950">
+                      <Sparkles className="h-4 w-4 text-indigo-600" />
+                      Eligibilitate livrabil principal
+                    </div>
+                    <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                      {mainDeliverableForEligibility.declaredTitle
+                        || mainDeliverableForEligibility.docTitle
+                        || mainDeliverableForEligibility.filename
+                        || mainDeliverableForEligibility.name}
+                    </div>
+                  </div>
+                </div>
+                <DeliverableEligibilityControl
+                  deliverable={mainDeliverableForEligibility}
+                  subActivity={saCode}
+                  activityTitle={activityTitle}
+                  selectedActivityId={selectedCatalogItem?.id}
+                  catalogDescription={selectedCatalogItem?.description}
+                  catalogObjectives={selectedCatalogItem?.objectives}
+                  catalogComponent={selectedCatalogItem?.serviceComponent}
+                  catalogBeneficiaries={selectedCatalogItem?.beneficiaries}
+                  catalogExpectedResults={selectedCatalogItem?.expectedResults}
+                  catalogDeliverables={selectedCatalogItem?.deliverables}
+                  catalogIndicators={selectedCatalogItem?.indicators}
+                  projectCode={expert?.projectCode}
+                  month={month}
+                  year={year}
+                  expertName={expertName}
+                  onUpdate={(patch) => updateDeliverable(mainDeliverableForEligibility.id, patch)}
+                  canCheckEligibility={canCheckDeliverableEligibility}
+                  eligibilityBlockedReason={eligibilityBlockedReason}
+                />
+              </div>
+            )}
 
             {/* Event duration (for event activities) */}
             {isEvent && !isWorkspaceLayout && (
@@ -3086,70 +2693,4 @@ function ActivityObservationRail({ items }: { items: ObservationRailItem[] }) {
       )}
     </aside>
   );
-}
-
-function parseBusinessHubPvRows(rows: unknown[][]): { monthLabel: string; events: GdprBusinessHubEvent[] } {
-  const textRows = rows.map((row) => row.map((cell) => formatSpreadsheetCell(cell)));
-  const allText = textRows.flat().join(' ');
-  const monthMatch = allText.match(/luna\s+([A-Za-zĂÂÎȘȚăâîșț]+)\s+(\d{4})/i);
-  const monthLabel = monthMatch ? `${monthMatch[1]} ${monthMatch[2]}` : '';
-  const headerIndex = textRows.findIndex((row) =>
-    row.some((cell) => /federa/i.test(cell))
-    && row.some((cell) => /eveniment/i.test(cell))
-    && row.some((cell) => /^data$/i.test(cell)),
-  );
-  if (headerIndex < 0) {
-    throw new Error('Nu am gasit tabelul de evenimente in procesul-verbal Business HUB.');
-  }
-
-  const header = textRows[headerIndex];
-  const federationIndex = findHeaderIndex(header, /federa|asocia/i);
-  const eventIndex = findHeaderIndex(header, /eveniment/i);
-  const dateIndex = findHeaderIndex(header, /^data$/i);
-  const roomIndex = findHeaderIndex(header, /sala/i);
-  const intervalIndex = findHeaderIndex(header, /interval/i);
-  const signatureIndex = findHeaderIndex(header, /semn/i);
-  const events: GdprBusinessHubEvent[] = [];
-  let currentFederation = '';
-
-  for (const row of textRows.slice(headerIndex + 1)) {
-    const federation = row[federationIndex] || '';
-    const event = row[eventIndex] || '';
-    const date = row[dateIndex] || '';
-    const room = row[roomIndex] || '';
-    const interval = row[intervalIndex] || '';
-    const signature = row[signatureIndex] || '';
-    if (federation) currentFederation = federation;
-    if (!event && !date && !room && !interval) continue;
-    if (!event || !date) continue;
-    events.push({
-      federation: currentFederation,
-      event,
-      date,
-      room,
-      interval,
-      signature,
-    });
-  }
-
-  if (events.length === 0) {
-    throw new Error('Procesul-verbal a fost citit, dar nu am gasit evenimente cu data completata.');
-  }
-
-  return { monthLabel, events };
-}
-
-function findHeaderIndex(row: string[], pattern: RegExp) {
-  const index = row.findIndex((cell) => pattern.test(cell));
-  if (index < 0) {
-    throw new Error('Tabelul din PV nu are coloanele asteptate pentru Business HUB.');
-  }
-  return index;
-}
-
-function formatSpreadsheetCell(value: unknown) {
-  if (value instanceof Date) {
-    return value.toLocaleDateString('ro-RO');
-  }
-  return String(value ?? '').replace(/\s+/g, ' ').trim();
 }
