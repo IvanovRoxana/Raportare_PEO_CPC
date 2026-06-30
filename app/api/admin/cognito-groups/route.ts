@@ -15,6 +15,10 @@ type CognitoListGroupsResponse = {
   Groups?: Array<{ GroupName?: string }>;
 };
 
+type CognitoListUsersResponse = {
+  Users?: Array<{ Username?: string }>;
+};
+
 class CognitoRouteError extends Error {
   status: number;
 
@@ -185,6 +189,32 @@ async function callSignedCognito<T>(action: string, payload: Record<string, unkn
   return response.json() as Promise<T>;
 }
 
+function escapeCognitoFilterValue(value: string) {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+async function findCognitoUsernameByEmail(email: string) {
+  const users = await callSignedCognito<CognitoListUsersResponse>('ListUsers', {
+    UserPoolId: userPoolId,
+    Filter: `email = "${escapeCognitoFilterValue(email)}"`,
+    Limit: 2,
+  });
+
+  const usernames = (users.Users || [])
+    .map((user) => user.Username)
+    .filter((username): username is string => Boolean(username));
+
+  if (usernames.length === 0) {
+    throw new CognitoRouteError(`Utilizatorul Cognito nu exista pentru emailul ${email}.`, 404);
+  }
+
+  if (usernames.length > 1) {
+    throw new CognitoRouteError(`Exista mai multi utilizatori Cognito pentru emailul ${email}.`, 409);
+  }
+
+  return usernames[0];
+}
+
 function normalizeRequestedGroups(value: unknown): ManagedCognitoGroup[] {
   const requestedGroups = Array.isArray(value) ? value.map(String) : [];
   const invalidGroups = requestedGroups.filter((group) => !managedCognitoGroups.includes(group as ManagedCognitoGroup));
@@ -211,9 +241,10 @@ export async function PUT(request: Request) {
       throw new CognitoRouteError('Email invalid pentru sincronizarea Cognito.', 400);
     }
 
+    const username = await findCognitoUsernameByEmail(email);
     const current = await callSignedCognito<CognitoListGroupsResponse>('AdminListGroupsForUser', {
       UserPoolId: userPoolId,
-      Username: email,
+      Username: username,
     });
     const currentManagedGroups = new Set(
       (current.Groups || [])
@@ -229,7 +260,7 @@ export async function PUT(request: Request) {
       await callSignedCognito('AdminAddUserToGroup', {
         GroupName: group,
         UserPoolId: userPoolId,
-        Username: email,
+        Username: username,
       });
     }
 
@@ -237,12 +268,13 @@ export async function PUT(request: Request) {
       await callSignedCognito('AdminRemoveUserFromGroup', {
         GroupName: group,
         UserPoolId: userPoolId,
-        Username: email,
+        Username: username,
       });
     }
 
     return NextResponse.json({
       email,
+      username,
       groups: requestedGroups,
       added: groupsToAdd,
       removed: groupsToRemove,
