@@ -235,7 +235,7 @@ export async function buildBusinessHubAddressDocxBlob(args: {
         paragraph('Subiect: Confirmare utilizare infrastructura BusinessHUB in vederea unei functionari adecvate a structurilor reprezentative ale dialogului social', { bold: true }),
         spacer(),
         paragraph(
-          `${entity.legalName}, cu sediul in ${entity.registeredAddress || '........................'}, CUI/CIF ${entity.cuiOrCif || '........................'}, telefon ${entity.phone || '........................'}, email ${entity.email || '........................'}, reprezentata prin ${representativeName || '........................'}${representativeRole ? `, ${representativeRole}` : ''}, confirma utilizarea infrastructurii BusinessHUB Concordia pentru organizarea activitatilor de interes pentru membrii Confederației Patronale Concordia.`,
+          `${entity.legalName}, cu sediul in ${entity.registeredAddress || '........................'}, CUI/CIF ${entity.cuiOrCif || '........................'}, telefon ${entity.phone || '........................'}, email ${entity.email || '........................'}, reprezentata prin ${representativeName || '........................'}${representativeRole ? `, ${representativeRole}` : ''}, confirma utilizarea infrastructurii BusinessHUB Concordia pentru organizarea activitatilor de interes pentru membrii Confederatiei Patronale Concordia.`,
         ),
         ...(entity.designatedPersonName ? [
           paragraph(`Persoana desemnata pentru relationarea operationala privind utilizarea BusinessHUB: ${entity.designatedPersonName}.`),

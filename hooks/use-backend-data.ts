@@ -15,6 +15,7 @@ import {
   concurrentProjectTimesheetService,
   reportStatusService,
   grupTintaService,
+  businessHubEntityDirectoryService,
   auditLogsService,
   documentsService,
   historicalImportService,
@@ -33,7 +34,7 @@ import {
   procurementSuppliersService,
   sharedDeliverablesService,
 } from '@/lib/backend-store';
-import type { Activity, Expert, VerificationData, Neconformitate, VerificationNote, AppSettings, ActivityCatalog, WorkingGroup, ConcurrentProject, ConcurrentProjectTimesheetEntry, ReportStatus, GrupTintaEntry, AuditLog, ActivityAutofillAudit, AdminInterventionRequest, HistoricalImportBatch, HistoricalTimesheetDayEntry, MonthlyActivityItem, MonthlyExpertReport, UploadedReportingFile } from '@/lib/types';
+import type { Activity, Expert, VerificationData, Neconformitate, VerificationNote, AppSettings, ActivityCatalog, WorkingGroup, ConcurrentProject, ConcurrentProjectTimesheetEntry, ReportStatus, GrupTintaEntry, BusinessHubEntityDirectoryEntry, AuditLog, ActivityAutofillAudit, AdminInterventionRequest, HistoricalImportBatch, HistoricalTimesheetDayEntry, MonthlyActivityItem, MonthlyExpertReport, UploadedReportingFile } from '@/lib/types';
 import { getContractedProcurementProjects, type ProcurementChecklist, type ProcurementContract, type ProcurementDeliverable, type ProcurementDocument, type ProcurementEvaluation, type ProcurementInvoice, type ProcurementLaunch, type ProcurementOffer, type ProcurementProject, type ProcurementReception, type ProcurementStatusHistory, type ProcurementSupplier } from '@/lib/procurement';
 
 const EMPTY_LIST: readonly never[] = Object.freeze([]);
@@ -197,6 +198,42 @@ export function useActivityMutations() {
   };
 
   return { create, createBatch, update, remove, removeByDates };
+}
+
+export function useBusinessHubEntityDirectory() {
+  const key = 'business-hub-entity-directory';
+  const { data, error, isLoading } = useSWR(
+    isBackendAvailable() ? key : null,
+    safeFetcher(businessHubEntityDirectoryService.getAll)
+  );
+
+  return {
+    entries: stableList(data),
+    isLoading,
+    error,
+    mutate: () => mutate(key),
+  };
+}
+
+export function useBusinessHubEntityDirectoryMutations() {
+  const create = async (entry: Omit<BusinessHubEntityDirectoryEntry, 'id' | 'createdAt' | 'updatedAt'>) => {
+    const created = await businessHubEntityDirectoryService.create(entry);
+    mutate('business-hub-entity-directory');
+    return created;
+  };
+
+  const update = async (id: string, updates: Partial<BusinessHubEntityDirectoryEntry>) => {
+    const updated = await businessHubEntityDirectoryService.update(id, updates);
+    mutate('business-hub-entity-directory');
+    return updated;
+  };
+
+  const remove = async (id: string) => {
+    await businessHubEntityDirectoryService.delete(id);
+    mutate('business-hub-entity-directory');
+  };
+
+  return { create, update, remove };
 }
 
 export function useDocuments() {

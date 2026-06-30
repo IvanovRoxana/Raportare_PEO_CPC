@@ -15,16 +15,20 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import type { Activity, ConcurrentProject, ConcurrentProjectTimesheetEntry, Expert } from '@/lib/types';
 import type { Deliverable } from '@/lib/types';
-import { activitiesService } from '@/lib/backend-store';
+import { activitiesService, businessHubEntityDirectoryService } from '@/lib/backend-store';
 import { getMonthName } from '@/lib/app-utils';
 import { getNonWorkingDayInfo } from '@/lib/non-working-days';
 import { buildPontajExportPayload } from '@/lib/pontaj-export-payload';
 import { getWorkingHoursInfo } from '@/lib/working-hours';
 import { normalizePeoCategory } from '@/lib/peo-category';
 import {
+  buildBusinessHubAddressDocxBlob,
+  buildBusinessHubAddressFilename,
   buildBusinessHubPvFilename,
   buildBusinessHubPvRows,
   buildBusinessHubPvXlsx,
+  groupBusinessHubRowsByEntity,
+  resolveBusinessHubEntitiesForRows,
 } from '@/lib/business-hub-reporting';
 import { buildDocumentS3Key, sha256Hex } from '@/lib/document-sharing';
 
@@ -45,6 +49,7 @@ export function MonthlyReportExport({ expert, activities, concurrentProjects = [
   const [includeConsolidatedTimesheet, setIncludeConsolidatedTimesheet] = useState(true);
   const [includeRA, setIncludeRA] = useState(true);
   const [includeBusinessHubPv, setIncludeBusinessHubPv] = useState(true);
+  const [includeBusinessHubAddresses, setIncludeBusinessHubAddresses] = useState(false);
   const [attachBusinessHubDeliverables, setAttachBusinessHubDeliverables] = useState(true);
   const [exportError, setExportError] = useState<string | null>(null);
 
@@ -94,7 +99,7 @@ export function MonthlyReportExport({ expert, activities, concurrentProjects = [
         }
       }
 
-      if (isBusinessHubExpert && includeBusinessHubPv) {
+      if (isBusinessHubExpert && (includeBusinessHubPv || includeBusinessHubAddresses)) {
         const businessHubFiles = await generateBusinessHubMonthlyFiles();
         businessHubFiles.forEach((file) => triggerDownload(file.blob, file.name));
         if (attachBusinessHubDeliverables) {
@@ -139,6 +144,25 @@ export function MonthlyReportExport({ expert, activities, concurrentProjects = [
         blob: new Blob([pvBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
         deliverableType: 'business_hub_monthly_pv',
       });
+    }
+
+    if (includeBusinessHubAddresses) {
+      const directory = await businessHubEntityDirectoryService.getAll();
+      const { resolved, missing } = resolveBusinessHubEntitiesForRows(rows, directory);
+      if (missing.length > 0) {
+        throw new Error(`Completeaza directorul Business Hub pentru: ${missing.join(', ')}.`);
+      }
+
+      const rowsByEntity = groupBusinessHubRowsByEntity(rows);
+      for (const [entityName, entityRows] of rowsByEntity.entries()) {
+        const entity = resolved.get(entityName);
+        if (!entity) continue;
+        files.push({
+          name: buildBusinessHubAddressFilename(entity, month, year),
+          blob: await buildBusinessHubAddressDocxBlob({ entity, rows: entityRows, month, year }),
+          deliverableType: 'business_hub_monthly_address',
+        });
+      }
     }
 
     return files;
@@ -331,6 +355,17 @@ export function MonthlyReportExport({ expert, activities, concurrentProjects = [
                     Ataseaza ca livrabile lunare
                   </label>
                 </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="business-hub-addresses"
+                    checked={includeBusinessHubAddresses}
+                    onCheckedChange={(checked) => setIncludeBusinessHubAddresses(checked as boolean)}
+                  />
+                  <label htmlFor="business-hub-addresses" className="text-sm flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-sky-700" />
+                    Adrese Business Hub (.docx)
+                  </label>
+                </div>
               </div>
             )}
           </div>
@@ -346,7 +381,7 @@ export function MonthlyReportExport({ expert, activities, concurrentProjects = [
             <Button variant="outline" onClick={() => setIsOpen(false)}>
               Anulează
             </Button>
-            <Button onClick={handleExport} disabled={isGenerating || (!includeOPIS && !includeTimesheet && !includeConsolidatedTimesheet && !includeRA && !(isBusinessHubExpert && includeBusinessHubPv))}>
+            <Button onClick={handleExport} disabled={isGenerating || (!includeOPIS && !includeTimesheet && !includeConsolidatedTimesheet && !includeRA && !(isBusinessHubExpert && (includeBusinessHubPv || includeBusinessHubAddresses)))}>
               {isGenerating ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />

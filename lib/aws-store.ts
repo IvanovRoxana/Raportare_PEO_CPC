@@ -40,6 +40,7 @@ import type {
   Deliverable,
   DocumentMetadata,
   Expert,
+  BusinessHubEntityDirectoryEntry,
   GrupTintaEntry,
   HistoricalImportBatch,
   HistoricalTimesheetDayEntry,
@@ -784,6 +785,27 @@ async function createDocumentMetadataForDeliverable(
       source: 'automatic',
     });
   }
+}
+
+function mapBusinessHubEntityDirectoryEntry(item: any): BusinessHubEntityDirectoryEntry {
+  return {
+    id: item.id,
+    directoryType: item.directoryType,
+    acronym: item.acronym,
+    legalName: item.legalName,
+    displayName: item.displayName ?? undefined,
+    registeredAddress: item.registeredAddress ?? undefined,
+    cuiOrCif: item.cuiOrCif ?? undefined,
+    phone: item.phone ?? undefined,
+    email: item.email ?? undefined,
+    legalRepresentativeName: item.legalRepresentativeName ?? undefined,
+    legalRepresentativeRole: item.legalRepresentativeRole ?? undefined,
+    designatedPersonName: item.designatedPersonName ?? undefined,
+    status: item.status ?? 'active',
+    source: item.source ?? undefined,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+  };
 }
 
 async function createRecoveredSharedDeliverableAudit(
@@ -2896,5 +2918,81 @@ export const grupTintaService = {
       stats.set(entry.expertId, existing);
     });
     return Array.from(stats.entries()).map(([expertId, stat]) => ({ expertId, ...stat }));
+  },
+};
+
+export const businessHubEntityDirectoryService = {
+  async getAll(): Promise<BusinessHubEntityDirectoryEntry[]> {
+    const client = getAwsDataClient() as any;
+    const scope = await getCurrentDataAccessScope(client);
+    if (scope.accessLevel === 'none') return [];
+    if (!client.models.BusinessHubEntityDirectory) return [];
+    const data = await listModel<any>(client.models.BusinessHubEntityDirectory);
+    return data
+      .map(mapBusinessHubEntityDirectoryEntry)
+      .sort((a, b) =>
+        String(a.directoryType).localeCompare(String(b.directoryType))
+        || a.acronym.localeCompare(b.acronym),
+      );
+  },
+
+  async create(entry: Omit<BusinessHubEntityDirectoryEntry, 'id' | 'createdAt' | 'updatedAt'>): Promise<BusinessHubEntityDirectoryEntry> {
+    const client = getAwsDataClient() as any;
+    const scope = await getCurrentDataAccessScope(client);
+    if (!scope.canAccessAllExperts) throw new Error(ACCESS_DENIED_MESSAGE);
+    if (!client.models.BusinessHubEntityDirectory) throw new Error('Directorul Business Hub nu este disponibil in schema curenta.');
+
+    const result = await client.models.BusinessHubEntityDirectory.create({
+      directoryType: entry.directoryType,
+      acronym: entry.acronym,
+      legalName: entry.legalName,
+      displayName: entry.displayName,
+      registeredAddress: entry.registeredAddress,
+      cuiOrCif: entry.cuiOrCif,
+      phone: entry.phone,
+      email: entry.email,
+      legalRepresentativeName: entry.legalRepresentativeName,
+      legalRepresentativeRole: entry.legalRepresentativeRole,
+      designatedPersonName: entry.designatedPersonName,
+      status: entry.status ?? 'active',
+      source: entry.source,
+    });
+    assertNoErrors(result, 'AWS create business hub entity directory entry');
+    return mapBusinessHubEntityDirectoryEntry(result.data);
+  },
+
+  async update(id: string, updates: Partial<BusinessHubEntityDirectoryEntry>): Promise<BusinessHubEntityDirectoryEntry> {
+    const client = getAwsDataClient() as any;
+    const scope = await getCurrentDataAccessScope(client);
+    if (!scope.canAccessAllExperts) throw new Error(ACCESS_DENIED_MESSAGE);
+    if (!client.models.BusinessHubEntityDirectory) throw new Error('Directorul Business Hub nu este disponibil in schema curenta.');
+
+    const result = await client.models.BusinessHubEntityDirectory.update({
+      id,
+      directoryType: updates.directoryType,
+      acronym: updates.acronym,
+      legalName: updates.legalName,
+      displayName: updates.displayName,
+      registeredAddress: updates.registeredAddress,
+      cuiOrCif: updates.cuiOrCif,
+      phone: updates.phone,
+      email: updates.email,
+      legalRepresentativeName: updates.legalRepresentativeName,
+      legalRepresentativeRole: updates.legalRepresentativeRole,
+      designatedPersonName: updates.designatedPersonName,
+      status: updates.status,
+      source: updates.source,
+    });
+    assertNoErrors(result, 'AWS update business hub entity directory entry');
+    return mapBusinessHubEntityDirectoryEntry(result.data);
+  },
+
+  async delete(id: string): Promise<void> {
+    const client = getAwsDataClient() as any;
+    const scope = await getCurrentDataAccessScope(client);
+    if (!scope.canAccessAllExperts) throw new Error(ACCESS_DENIED_MESSAGE);
+    if (!client.models.BusinessHubEntityDirectory) return;
+    const result = await client.models.BusinessHubEntityDirectory.delete({ id });
+    assertNoErrors(result, 'AWS delete business hub entity directory entry');
   },
 };

@@ -251,6 +251,31 @@ const schema = a.schema({
       allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
     ]),
 
+  BusinessHubEntityDirectory: a
+    .model({
+      directoryType: a.string().required(),
+      acronym: a.string().required(),
+      legalName: a.string().required(),
+      displayName: a.string(),
+      registeredAddress: a.string(),
+      cuiOrCif: a.string(),
+      phone: a.string(),
+      email: a.string(),
+      legalRepresentativeName: a.string(),
+      legalRepresentativeRole: a.string(),
+      designatedPersonName: a.string(),
+      status: a.string().default("active"),
+      source: a.string(),
+    })
+    .secondaryIndexes((index) => [
+      index("directoryType").sortKeys(["acronym"]),
+      index("status").sortKeys(["directoryType"]),
+    ])
+    .authorization((allow) => [
+      allow.authenticated().to(["read"]),
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
   ActivityCatalog: a
     .model({
       category: a.string().required(),

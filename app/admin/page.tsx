@@ -20,6 +20,7 @@ import { ActivityDescriptionEditor } from '@/components/admin/activity-descripti
 import { AiApiStatusPanel } from '@/components/admin/ai-api-status-panel';
 import { AdminStatCards } from '@/components/admin/admin-stat-cards';
 import { AdminUsersTable } from '@/components/admin/admin-users-table';
+import { BusinessHubEntityDirectoryPanel } from '@/components/admin/business-hub-entity-directory-panel';
 import { ViewAsExpertPanel } from '@/components/admin/view-as-expert-panel';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -52,7 +53,7 @@ const users = fallbackUsers.map(([name, email, role, organization, status, lastA
     .toUpperCase(),
 }));
 
-const adminTabValues = ['utilizatori', 'roluri', 'subactivitati', 'ai', 'proiecte'] as const;
+const adminTabValues = ['utilizatori', 'roluri', 'subactivitati', 'business-hub', 'ai', 'proiecte'] as const;
 
 type AdminTabValue = (typeof adminTabValues)[number];
 
@@ -182,6 +183,7 @@ export default async function AdminPage({
                 ['utilizatori', 'Utilizatori', UsersRound],
                 ['roluri', 'Roluri', ShieldCheck],
                 ['subactivitati', 'Subactivități', Settings],
+                ['business-hub', 'Business Hub', Building2],
                 ['ai', 'AI API', Sparkles],
                 ['proiecte', 'Proiecte', Building2],
               ].map(([value, label, Icon]) => (
@@ -221,6 +223,10 @@ export default async function AdminPage({
 
             <TabsContent value="subactivitati" className="m-0 p-6">
               <ActivityDescriptionEditor fallbackCatalog={activityCatalog as ActivityCatalog[]} />
+            </TabsContent>
+
+            <TabsContent value="business-hub" className="m-0 p-6">
+              <BusinessHubEntityDirectoryPanel />
             </TabsContent>
 
             <TabsContent value="ai" className="m-0 p-6">
