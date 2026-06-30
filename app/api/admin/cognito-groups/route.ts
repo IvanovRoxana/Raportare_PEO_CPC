@@ -114,8 +114,8 @@ function getSignatureKey(secretAccessKey: string, dateStamp: string) {
 }
 
 function getCredentials() {
-  const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
-  const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
+  const accessKeyId = process.env.COGNITO_SYNC_AWS_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID;
+  const secretAccessKey = process.env.COGNITO_SYNC_AWS_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY;
 
   if (!accessKeyId || !secretAccessKey) {
     throw new CognitoRouteError('Credentialele AWS nu sunt disponibile pentru sincronizarea Cognito.', 503);
@@ -124,7 +124,7 @@ function getCredentials() {
   return {
     accessKeyId,
     secretAccessKey,
-    sessionToken: process.env.AWS_SESSION_TOKEN,
+    sessionToken: process.env.COGNITO_SYNC_AWS_SESSION_TOKEN || process.env.AWS_SESSION_TOKEN,
   };
 }
 
