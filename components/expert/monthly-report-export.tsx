@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { uploadData } from 'aws-amplify/storage';
 import { FileText, Download, Loader2, FileSpreadsheet, FileType } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -13,6 +14,8 @@ import {
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import type { Activity, ConcurrentProject, ConcurrentProjectTimesheetEntry, Expert } from '@/lib/types';
+import type { Deliverable } from '@/lib/types';
+import { activitiesService } from '@/lib/backend-store';
 import { getMonthName } from '@/lib/app-utils';
 import { getNonWorkingDayInfo } from '@/lib/non-working-days';
 import { buildPontajExportPayload } from '@/lib/pontaj-export-payload';
@@ -21,8 +24,9 @@ import { normalizePeoCategory } from '@/lib/peo-category';
 import {
   buildBusinessHubPvFilename,
   buildBusinessHubPvRows,
-  buildBusinessHubPvText,
+  buildBusinessHubPvXlsx,
 } from '@/lib/business-hub-reporting';
+import { buildDocumentS3Key, sha256Hex } from '@/lib/document-sharing';
 
 interface MonthlyReportExportProps {
   expert: Expert;
@@ -41,6 +45,7 @@ export function MonthlyReportExport({ expert, activities, concurrentProjects = [
   const [includeConsolidatedTimesheet, setIncludeConsolidatedTimesheet] = useState(true);
   const [includeRA, setIncludeRA] = useState(true);
   const [includeBusinessHubPv, setIncludeBusinessHubPv] = useState(true);
+  const [attachBusinessHubDeliverables, setAttachBusinessHubDeliverables] = useState(true);
   const [exportError, setExportError] = useState<string | null>(null);
 
   const workingInfo = getWorkingHoursInfo(month, year, expert.norma || 8, activities);
@@ -90,10 +95,11 @@ export function MonthlyReportExport({ expert, activities, concurrentProjects = [
       }
 
       if (isBusinessHubExpert && includeBusinessHubPv) {
-        docs.push({
-          name: buildBusinessHubPvFilename(month, year),
-          content: buildBusinessHubPvText(activities, expert.category, month, year),
-        });
+        const businessHubFiles = await generateBusinessHubMonthlyFiles();
+        businessHubFiles.forEach((file) => triggerDownload(file.blob, file.name));
+        if (attachBusinessHubDeliverables) {
+          await attachBusinessHubMonthlyDeliverables(businessHubFiles);
+        }
       }
 
       // For now, download as text files
@@ -117,6 +123,81 @@ export function MonthlyReportExport({ expert, activities, concurrentProjects = [
     } finally {
       setIsGenerating(false);
     }
+  };
+
+  const generateBusinessHubMonthlyFiles = async () => {
+    const rows = buildBusinessHubPvRows(activities, expert.category, month, year);
+    if (rows.length === 0) {
+      throw new Error('Nu exista activitati Business Hub inregistrate pentru luna selectata.');
+    }
+
+    const files: { name: string; blob: Blob; deliverableType: string }[] = [];
+    if (includeBusinessHubPv) {
+      const pvBuffer = buildBusinessHubPvXlsx(activities, expert.category, month, year);
+      files.push({
+        name: buildBusinessHubPvFilename(month, year),
+        blob: new Blob([pvBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+        deliverableType: 'business_hub_monthly_pv',
+      });
+    }
+
+    return files;
+  };
+
+  const attachBusinessHubMonthlyDeliverables = async (files: { name: string; blob: Blob; deliverableType: string }[]) => {
+    const businessHubActivities = activities.filter((activity) =>
+      buildBusinessHubPvRows([activity], expert.category, month, year).length > 0,
+    );
+    if (businessHubActivities.length === 0 || files.length === 0) return;
+
+    const uploadedDeliverables = await Promise.all(files.map(async (file) => {
+      const documentId = `bh_${expert.id}_${year}_${String(month + 1).padStart(2, '0')}_${file.deliverableType}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+      const s3Key = buildDocumentS3Key({
+        projectId: expert.projectCode || '302141',
+        documentId,
+        originalFileName: file.name,
+      });
+      const arrayBuffer = await file.blob.arrayBuffer();
+      const uploaded = await uploadData({
+        path: s3Key,
+        data: file.blob,
+        options: { contentType: file.blob.type || 'application/octet-stream' },
+      }).result;
+
+      return {
+        id: documentId,
+        documentId,
+        fileName: file.name,
+        originalFileName: file.name,
+        fileType: file.blob.type || 'application/octet-stream',
+        fileSize: file.blob.size,
+        filePath: uploaded.path,
+        s3Key: uploaded.path,
+        fileHash: await sha256Hex(arrayBuffer),
+        uploadedByExpertId: expert.id,
+        uploadedByExpertName: expert.name,
+        projectId: expert.projectCode || '302141',
+        projectName: expert.projectTitle,
+        activityDate: `${year}-${String(month + 1).padStart(2, '0')}-01`,
+        saCode: 'SA3.2',
+        deliverableType: file.deliverableType,
+        isCommonDeliverable: true,
+        uploadedAt: new Date().toISOString(),
+        titleCheckStatus: 'matched',
+        aiStatus: 'generated',
+      } satisfies Deliverable;
+    }));
+
+    await Promise.all(businessHubActivities.map((activity) => {
+      const existing = activity.deliverables ?? [];
+      const filteredExisting = existing.filter((deliverable) =>
+        !uploadedDeliverables.some((generated) => generated.documentId === deliverable.documentId),
+      );
+      return activitiesService.update(activity.id, {
+        ...activity,
+        deliverables: [...filteredExisting, ...uploadedDeliverables],
+      });
+    }));
   };
 
   const downloadPontajExcel = async (kind: 'peo' | 'consolidated') => {
@@ -227,16 +308,29 @@ export function MonthlyReportExport({ expert, activities, concurrentProjects = [
             </div>
 
             {isBusinessHubExpert && (
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="business-hub-pv"
-                  checked={includeBusinessHubPv}
-                  onCheckedChange={(checked) => setIncludeBusinessHubPv(checked as boolean)}
-                />
-                <label htmlFor="business-hub-pv" className="text-sm flex items-center gap-2">
-                  <FileText className="h-4 w-4 text-sky-700" />
-                  PV Business Hub ({businessHubPvRows.length} evenimente)
-                </label>
+              <div className="space-y-3 rounded-md border border-sky-100 bg-sky-50/60 p-3">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="business-hub-pv"
+                    checked={includeBusinessHubPv}
+                    onCheckedChange={(checked) => setIncludeBusinessHubPv(checked as boolean)}
+                  />
+                  <label htmlFor="business-hub-pv" className="text-sm flex items-center gap-2">
+                    <FileSpreadsheet className="h-4 w-4 text-sky-700" />
+                    PV Business Hub (.xlsx, {businessHubPvRows.length} evenimente)
+                  </label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="business-hub-attach"
+                    checked={attachBusinessHubDeliverables}
+                    onCheckedChange={(checked) => setAttachBusinessHubDeliverables(checked as boolean)}
+                  />
+                  <label htmlFor="business-hub-attach" className="text-sm flex items-center gap-2">
+                    <FileType className="h-4 w-4 text-sky-700" />
+                    Ataseaza ca livrabile lunare
+                  </label>
+                </div>
               </div>
             )}
           </div>

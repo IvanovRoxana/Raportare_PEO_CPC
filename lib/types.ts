@@ -381,6 +381,27 @@ export interface GrupTintaMonitoringRecord {
   confidenceScore?: number;
 }
 
+export type BusinessHubEntityDirectoryType = 'affiliate' | 'target_group' | string;
+
+export interface BusinessHubEntityDirectoryEntry {
+  id: string;
+  directoryType: BusinessHubEntityDirectoryType;
+  acronym: string;
+  legalName: string;
+  displayName?: string;
+  registeredAddress?: string;
+  cuiOrCif?: string;
+  phone?: string;
+  email?: string;
+  legalRepresentativeName?: string;
+  legalRepresentativeRole?: string;
+  designatedPersonName?: string;
+  status?: 'active' | 'inactive' | 'archived' | string;
+  source?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface ActivityCatalog {
   id: string;
   category: string;
