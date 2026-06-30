@@ -1,9 +1,9 @@
 {
   "auth": {
-    "user_pool_id": "eu-north-1_RVfck2jAV",
+    "user_pool_id": "eu-north-1_7Z19syRue",
     "aws_region": "eu-north-1",
-    "user_pool_client_id": "6ao8edp2cs4i2ubgl9eri22n50",
-    "identity_pool_id": "eu-north-1:e3197fb5-7a74-4721-9448-efc8b55fac9c",
+    "user_pool_client_id": "7k2pmfmamsk5ar1pgmlvd797g1",
+    "identity_pool_id": "eu-north-1:834b9ccd-2d2f-4ce4-b2b1-1891fa62fa55",
     "mfa_methods": [],
     "standard_required_attributes": [
       "email"
@@ -42,7 +42,7 @@
     "unauthenticated_identities_enabled": true
   },
   "data": {
-    "url": "https://jxr3manuhnaw3n3h6nj3qbywmi.appsync-api.eu-north-1.amazonaws.com/graphql",
+    "url": "https://vfyiapouw5e35k7zhb3gdsgiji.appsync-api.eu-north-1.amazonaws.com/graphql",
     "aws_region": "eu-north-1",
     "default_authorization_type": "AMAZON_COGNITO_USER_POOLS",
     "authorization_types": [
@@ -498,6 +498,13 @@
             },
             "gdprConclusionCode": {
               "name": "gdprConclusionCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "businessHubMetaJson": {
+              "name": "businessHubMetaJson",
               "isArray": false,
               "type": "String",
               "isRequired": false,
@@ -7649,11 +7656,11 @@
   },
   "storage": {
     "aws_region": "eu-north-1",
-    "bucket_name": "amplify-d19mquq8thd1uj-ma-peoraportarefilesbucket4-q60728h2jbwq",
+    "bucket_name": "amplify-raportarepeo-roxa-peoraportarefilesbucket4-olz8q7bqgfwe",
     "buckets": [
       {
         "name": "peoRaportareFiles",
-        "bucket_name": "amplify-d19mquq8thd1uj-ma-peoraportarefilesbucket4-q60728h2jbwq",
+        "bucket_name": "amplify-raportarepeo-roxa-peoraportarefilesbucket4-olz8q7bqgfwe",
         "aws_region": "eu-north-1",
         "paths": {
           "deliverables/${cognito-identity.amazonaws.com:sub}/*": {
