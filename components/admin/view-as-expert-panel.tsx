@@ -17,10 +17,12 @@ export function ViewAsExpertPanel({ experts }: Props) {
   const [selectedExpertId, setSelectedExpertId] = useState('');
   const [isCheckingAccess, setIsCheckingAccess] = useState(true);
   const [canUseViewAs, setCanUseViewAs] = useState(false);
+  const [currentAdmin, setCurrentAdmin] = useState<{ id?: string; email?: string } | null>(null);
 
   useEffect(() => {
     getSignedInUser({ ignoreViewAs: true }).then((user) => {
       setCanUseViewAs(Boolean(user?.roles.includes('admin')));
+      setCurrentAdmin(user ? { id: user.id, email: user.email } : null);
       setIsCheckingAccess(false);
     }).catch(() => {
       setCanUseViewAs(false);
@@ -37,7 +39,7 @@ export function ViewAsExpertPanel({ experts }: Props) {
   const handleViewAs = () => {
     if (!selectedExpert || !canUseViewAs) return;
 
-    setAdminViewAsSession(createAdminViewAsSession(selectedExpert));
+    setAdminViewAsSession(createAdminViewAsSession(selectedExpert, currentAdmin ?? undefined));
     window.location.assign('/expert');
   };
 

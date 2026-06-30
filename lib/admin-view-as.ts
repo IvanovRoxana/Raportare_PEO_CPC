@@ -8,6 +8,8 @@ export type AdminViewAsSession = {
   expertId: string;
   expertName: string;
   expertEmail?: string;
+  actorId?: string;
+  actorEmail?: string;
   roles: ViewAsRole[];
   startedAt: string;
   returnPath: string;
@@ -30,11 +32,16 @@ function normalizeViewAsRoles(roles?: readonly string[] | null): ViewAsRole[] {
   return normalized.includes('expert') ? normalized : ['expert', ...normalized];
 }
 
-export function createAdminViewAsSession(expert: Pick<Expert, 'id' | 'name' | 'email' | 'cognitoGroups'>): AdminViewAsSession {
+export function createAdminViewAsSession(
+  expert: Pick<Expert, 'id' | 'name' | 'email' | 'cognitoGroups'>,
+  actor?: { id?: string; email?: string },
+): AdminViewAsSession {
   return {
     expertId: expert.id,
     expertName: expert.name,
     expertEmail: expert.email,
+    actorId: actor?.id,
+    actorEmail: actor?.email,
     roles: normalizeViewAsRoles(expert.cognitoGroups),
     startedAt: new Date().toISOString(),
     returnPath: '/admin',
@@ -43,10 +50,17 @@ export function createAdminViewAsSession(expert: Pick<Expert, 'id' | 'name' | 'e
 
 export function buildViewAsUser(args: {
   realUserRoles: readonly string[];
+  realUserId?: string;
+  realUserEmail?: string;
   session: AdminViewAsSession | null;
 }): ViewAsUser | null {
   const isRealAdmin = args.realUserRoles.map((role) => role.toLowerCase()).includes('admin');
   if (!isRealAdmin || !args.session?.expertId) return null;
+  const sessionHasActor = Boolean(args.session.actorId || args.session.actorEmail);
+  const sameActorId = args.session.actorId && args.realUserId && args.session.actorId === args.realUserId;
+  const sameActorEmail = args.session.actorEmail && args.realUserEmail
+    && args.session.actorEmail.toLowerCase() === args.realUserEmail.toLowerCase();
+  if (!sessionHasActor || (!sameActorId && !sameActorEmail)) return null;
 
   return {
     id: args.session.expertId,
@@ -70,6 +84,8 @@ export function getAdminViewAsSession(): AdminViewAsSession | null {
       expertId: parsed.expertId,
       expertName: parsed.expertName,
       expertEmail: parsed.expertEmail,
+      actorId: parsed.actorId,
+      actorEmail: parsed.actorEmail,
       roles: normalizeViewAsRoles(parsed.roles),
       startedAt: parsed.startedAt ?? new Date().toISOString(),
       returnPath: parsed.returnPath ?? '/admin',

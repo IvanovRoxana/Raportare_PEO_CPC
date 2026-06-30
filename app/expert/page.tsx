@@ -299,6 +299,7 @@ export default function ExpertHomeDashboard() {
   const router = useRouter();
   const [currentMonth] = useState(new Date().getMonth());
   const [currentYear] = useState(new Date().getFullYear());
+  const [signedInUserId, setSignedInUserId] = useState<string | null>(null);
   const [signedInEmail, setSignedInEmail] = useState<string | null>(null);
   const [signedInName, setSignedInName] = useState('expert');
   const [signedInRoles, setSignedInRoles] = useState<AppRole[]>([]);
@@ -326,6 +327,7 @@ export default function ExpertHomeDashboard() {
         }
 
         setIsAuthenticated(true);
+        setSignedInUserId(user.id ?? null);
         if (user.email) setSignedInEmail(user.email);
         if (user.displayName) setSignedInName(user.displayName);
         if (user.roles) setSignedInRoles(user.roles);
@@ -344,9 +346,13 @@ export default function ExpertHomeDashboard() {
   }, [router]);
 
   const currentExpert = useMemo(() => {
-    if (!signedInEmail) return null;
-    return experts.find((expert) => expert.email?.toLowerCase() === signedInEmail.toLowerCase()) ?? null;
-  }, [experts, signedInEmail]);
+    const normalizedEmail = signedInEmail?.toLowerCase();
+    return experts.find((expert) => {
+      if (signedInUserId && expert.id === signedInUserId) return true;
+      if (!normalizedEmail) return false;
+      return expert.email?.toLowerCase() === normalizedEmail;
+    }) ?? null;
+  }, [experts, signedInEmail, signedInUserId]);
 
 
   const { projects: currentExpertConcurrentProjects } = useConcurrentProjects(currentExpert?.id ?? null);

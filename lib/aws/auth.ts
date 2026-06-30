@@ -79,6 +79,8 @@ export async function getSignedInUser(options: { ignoreViewAs?: boolean } = {}):
     if (!options.ignoreViewAs) {
       const viewAsUser = buildViewAsUser({
         realUserRoles: realUser.roles,
+        realUserId: realUser.id,
+        realUserEmail: realUser.email,
         session: getAdminViewAsSession(),
       });
 

@@ -142,6 +142,7 @@ export default function ExpertDashboard() {
   const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
   const [selectedExpertId, setSelectedExpertId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [signedInUserId, setSignedInUserId] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -189,6 +190,7 @@ export default function ExpertDashboard() {
         }
 
         setIsAuthenticated(true);
+        setSignedInUserId(user.id ?? null);
         setUserEmail(user.email ?? user.displayName ?? null);
         setIsAuthLoading(false);
       })
@@ -204,15 +206,19 @@ export default function ExpertDashboard() {
     };
   }, [router]);
 
-  // Set expert based on logged in user's email
+  // Set expert based on logged in user. In admin "view as" mode, user.id is the Expert id.
   useEffect(() => {
     if (isAuthLoading || experts.length === 0 || selectedExpertId) return;
 
-    const matchingExpert = userEmail
-      ? experts.find(e => e.email?.toLowerCase() === userEmail.toLowerCase() || e.name?.toLowerCase() === userEmail.toLowerCase())
-      : null;
+    const normalizedIdentity = userEmail?.toLowerCase();
+    const matchingExpert = experts.find((expert) => {
+      if (signedInUserId && expert.id === signedInUserId) return true;
+      if (!normalizedIdentity) return false;
+      return expert.email?.toLowerCase() === normalizedIdentity
+        || expert.name?.toLowerCase() === normalizedIdentity;
+    }) ?? null;
     if (matchingExpert) setSelectedExpertId(matchingExpert.id);
-  }, [experts, isAuthLoading, userEmail, selectedExpertId]);
+  }, [experts, isAuthLoading, signedInUserId, userEmail, selectedExpertId]);
 
 
   // Get selected expert
