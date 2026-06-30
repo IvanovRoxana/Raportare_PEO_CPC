@@ -98,6 +98,45 @@ test('formularul foloseste doar catalogul Admin cand exista activitati pentru ca
   );
 });
 
+[
+  { expertCategory: 'ap', backendCategory: 'AP' },
+  { expertCategory: 'bh', backendCategory: 'Business Hub' },
+  { expertCategory: 'com', backendCategory: 'Comunicare' },
+  { expertCategory: 'cr', backendCategory: 'Centre regionale' },
+  { expertCategory: 'cercetare', backendCategory: 'Cercetare' },
+  { expertCategory: 'gt', backendCategory: 'Grup tinta' },
+  { expertCategory: 'gdpr', backendCategory: 'Protectia datelor' },
+].forEach(({ expertCategory, backendCategory }) => {
+  test(`formularul nu amesteca fallback-ul cand Admin are catalog pentru ${backendCategory}`, () => {
+    const staleFallback = [
+      {
+        id: `fallback-${expertCategory}-old`,
+        category: expertCategory,
+        saCode: 'SA3.2',
+        activityNumber: 1,
+        activityName: 'Activitate veche fallback',
+      },
+    ] as ActivityCatalog[];
+    const backendCatalog = [
+      {
+        id: `admin-${expertCategory}-1`,
+        category: backendCategory,
+        saCode: 'SA3.2',
+        activityNumber: 1,
+        activityName: `Activitate Admin ${backendCategory}`,
+      },
+    ] as ActivityCatalog[];
+
+    const resolved = resolveExpertActivityCatalog({
+      fallbackCatalog: staleFallback,
+      backendCatalog,
+      expertCategory,
+    });
+
+    assert.deepEqual(resolved.map((item) => item.id), [`admin-${expertCategory}-1`]);
+  });
+});
+
 test('formularul pastreaza fallback-ul cand Admin nu are catalog pentru categoria expertului', () => {
   const backendCatalog = [
     {
