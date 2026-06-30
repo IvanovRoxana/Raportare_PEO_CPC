@@ -252,14 +252,14 @@ export function ActivityForm({
     });
   }, [selectedDates, defaultHours, selectedHours, isEditingActivity, initialActivity?.hours]);
 
-  const updateHoursForDate = (date: string, value: string) => {
+  const updateHoursForDate = useCallback((date: string, value: string) => {
     if (!isValidPontajHours(value)) return;
     setHoursPerDay(prev => {
       const next = { ...prev, [date]: normalizePontajHoursValue(value, prev[date] || defaultHours) };
       onSelectedHoursChange?.(next);
       return next;
     });
-  };
+  }, [defaultHours, onSelectedHoursChange]);
   const [activityTitle, setActivityTitle] = useState(activitySeed?.activityType || '');
   const [dayType, setDayType] = useState<'lucratoare' | 'CO' | 'CM'>(
     (activitySeed?.dayType as 'lucratoare' | 'CO' | 'CM') || 'lucratoare'
@@ -648,7 +648,7 @@ export function ActivityForm({
     }
   }, [saCode, availableActivities, activityTitle, isGdprExpert, gdprTemplateCode]);
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
 
@@ -692,9 +692,9 @@ export function ActivityForm({
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
-  };
+  }, []);
 
-  const handleBusinessHubPvUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleBusinessHubPvUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
     try {
@@ -704,27 +704,27 @@ export function ActivityForm({
         businessHubPvInputRef.current.value = '';
       }
     }
-  };
+  }, [generateGdprDeliverable]);
 
-  const addDeliverableSlot = (type: 'livrabil' | 'raport_preliminar' | 'justificativ') => {
+  const addDeliverableSlot = useCallback((type: 'livrabil' | 'raport_preliminar' | 'justificativ') => {
     const newSlot = createDeliverableSlot(type, '');
     setDeliverables(prev => [...prev, newSlot]);
-  };
+  }, []);
 
-  const addEventProofSlot = () => {
+  const addEventProofSlot = useCallback(() => {
     const newSlot = createDeliverableSlot('event_proof', 'Fotografii eveniment');
     setDeliverables(prev => [...prev, newSlot]);
-  };
+  }, []);
 
-  const updateDeliverable = (id: string, patch: Partial<DeliverableSlot>) => {
+  const updateDeliverable = useCallback((id: string, patch: Partial<DeliverableSlot>) => {
     setDeliverables(prev => prev.map(d => d.id === id ? { ...d, ...patch } : d));
-  };
+  }, []);
 
-  const removeDeliverable = (id: string) => {
+  const removeDeliverable = useCallback((id: string) => {
     setDeliverables(prev => prev.filter((d) => d.id !== id));
-  };
+  }, []);
   
-  const upsertEventSlot = (slotType: 'event_mom' | 'event_proof', name: string, patch: Partial<DeliverableSlot>) => {
+  const upsertEventSlot = useCallback((slotType: 'event_mom' | 'event_proof', name: string, patch: Partial<DeliverableSlot>) => {
     const existing = slotType === 'event_proof' && patch.isCommonDeliverable !== undefined
       ? deliverables.find(d => d.slotType === slotType && d.isCommonDeliverable)
         || deliverables.find(d => d.slotType === slotType && !d.uploaded)
@@ -738,11 +738,11 @@ export function ActivityForm({
       };
       setDeliverables(prev => [...prev, newSlot]);
     }
-  };
+  }, [deliverables, updateDeliverable]);
 
-  const addGrupTintaEntry = () => {
-    setGrupTinta([
-      ...grupTinta,
+  const addGrupTintaEntry = useCallback(() => {
+    setGrupTinta((prev) => [
+      ...prev,
       {
         id: generateId(),
         expertId,
@@ -754,17 +754,17 @@ export function ActivityForm({
         participantsCount: 0,
       },
     ]);
-  };
+  }, [activityTitle, expertId, selectedDates]);
 
-  const updateGrupTintaEntry = (id: string, field: keyof GrupTintaEntry, value: string | number | string[]) => {
-    setGrupTinta(grupTinta.map((g) => (g.id === id ? { ...g, [field]: value } : g)));
-  };
+  const updateGrupTintaEntry = useCallback((id: string, field: keyof GrupTintaEntry, value: string | number | string[]) => {
+    setGrupTinta((prev) => prev.map((g) => (g.id === id ? { ...g, [field]: value } : g)));
+  }, []);
 
-  const removeGrupTintaEntry = (id: string) => {
-    setGrupTinta(grupTinta.filter((g) => g.id !== id));
-  };
+  const removeGrupTintaEntry = useCallback((id: string) => {
+    setGrupTinta((prev) => prev.filter((g) => g.id !== id));
+  }, []);
 
-  const verifyTitleWithAI = async () => {
+  const verifyTitleWithAI = useCallback(async () => {
     if (!activityTitle.trim()) return;
 
     setIsVerifyingTitle(true);
@@ -788,9 +788,9 @@ export function ActivityForm({
     } finally {
       setIsVerifyingTitle(false);
     }
-  };
+  }, [activityTitle, description, saCode]);
 
-  const dataUrlToBlob = (dataUrl: string, fallbackType: string) => {
+  const dataUrlToBlob = useCallback((dataUrl: string, fallbackType: string) => {
     const [header, data] = dataUrl.split(',');
     const contentType = header.match(/data:(.*?);base64/)?.[1] || fallbackType || 'application/octet-stream';
     const binary = atob(data);
@@ -801,9 +801,9 @@ export function ActivityForm({
     }
 
     return new Blob([bytes], { type: contentType });
-  };
+  }, []);
 
-  const uploadDeliverableFile = async (deliverable: DeliverableSlot): Promise<DeliverableSlot> => {
+  const uploadDeliverableFile = useCallback(async (deliverable: DeliverableSlot): Promise<DeliverableSlot> => {
     if (!deliverable.fileData || deliverable.filePath) {
       return deliverable;
     }
@@ -849,9 +849,19 @@ export function ActivityForm({
       sharedWithExpertIds: deliverable.common ? collaborators : [],
       duplicateStatus: firstPageTextHash ? 'fingerprinted' : undefined,
     };
-  };
+  }, [
+    collaborators,
+    dataUrlToBlob,
+    expert?.projectCode,
+    expert?.projectTitle,
+    expertId,
+    expertName,
+    initialActivity?.date,
+    saCode,
+    selectedDates,
+  ]);
 
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     setValidationError(null);
     const reportingWarnings: string[] = [];
 
@@ -1046,7 +1056,38 @@ export function ActivityForm({
     });
 
     await onSave(activities);
-  };
+  }, [
+    activityCommon,
+    allActivities,
+    collaborators,
+    dayType,
+    defaultHours,
+    deliverables,
+    description,
+    effectiveActivityTitle,
+    effectiveSaCode,
+    expert,
+    expertId,
+    expertName,
+    expertNorma,
+    gdprConclusionCode,
+    gdprGeneratedText,
+    gdprMeta,
+    gdprTemplateCode,
+    grupTinta,
+    hoursPerDay,
+    initialActivity,
+    isGdprExpert,
+    isLeave,
+    location,
+    month,
+    onSave,
+    saCode,
+    selectedCatalogItem?.id,
+    selectedDates,
+    uploadDeliverableFile,
+    year,
+  ]);
 
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return bytes + ' B';
@@ -1054,21 +1095,21 @@ export function ActivityForm({
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   };
 
-  const setCollaboratorChecked = (id: string, checked: boolean) => {
+  const setCollaboratorChecked = useCallback((id: string, checked: boolean) => {
     setCollaborators((prev) => {
       if (checked) {
         return Array.from(new Set([...prev, id]));
       }
       return prev.filter((collaboratorId) => collaboratorId !== id);
     });
-  };
+  }, []);
 
-  const addAllSuggestedCollaborators = () => {
+  const addAllSuggestedCollaborators = useCallback(() => {
     setCollaborators((prev) => Array.from(new Set([
       ...prev,
       ...collaboratorSuggestions.map((suggestion) => suggestion.expert.id),
     ])));
-  };
+  }, [collaboratorSuggestions]);
 
   // Filter deliverables by type
   const mainDeliverables = deliverables.filter(d => !d.slotType || d.slotType === 'livrabil');
@@ -1089,24 +1130,24 @@ export function ActivityForm({
           : 'Completeaza descrierea activitatii, minimum 15 caractere.'
         : undefined;
   const canCheckDeliverableEligibility = !eligibilityBlockedReason;
-  const scrollToDeliverables = () => {
+  const scrollToDeliverables = useCallback(() => {
     window.setTimeout(() => {
       document.getElementById('activity-form-deliverables-section')?.scrollIntoView({
         behavior: 'smooth',
         block: 'start',
       });
     }, 0);
-  };
-  const startDeliverableFlow = () => {
+  }, []);
+  const startDeliverableFlow = useCallback(() => {
     if (mainDeliverables.length === 0) {
       addDeliverableSlot('livrabil');
     }
     scrollToDeliverables();
-  };
-  const openExistingDeliverableFlow = () => {
+  }, [addDeliverableSlot, mainDeliverables.length, scrollToDeliverables]);
+  const openExistingDeliverableFlow = useCallback(() => {
     setExistingDeliverablePickerOpen(true);
     scrollToDeliverables();
-  };
+  }, [scrollToDeliverables]);
   const hasEventMomAsMainDeliverable = isEvent && deliverables.some((deliverable) => (
     deliverable.slotType === 'event_mom'
     && deliverable.uploaded
@@ -1137,7 +1178,7 @@ export function ActivityForm({
       validationError,
     },
   });
-  const attachExistingDeliverable = (candidate: ExistingDeliverableCandidate) => {
+  const attachExistingDeliverable = useCallback((candidate: ExistingDeliverableCandidate) => {
     const aiCheck = candidate.aiStatus
       ? {
           eligible: candidate.aiStatus === 'eligible'
@@ -1196,9 +1237,9 @@ export function ActivityForm({
 
     setDeliverables((prev) => [...prev, slot]);
     setExistingDeliverablePickerOpen(false);
-  };
+  }, []);
 
-  const renderGdprField = (field: GdprFieldDefinition) => {
+  const renderGdprField = useCallback((field: GdprFieldDefinition) => {
     const value = gdprMeta[field.key];
     const label = (
       <FieldLabel htmlFor={`gdpr-${field.key}`}>
@@ -1370,7 +1411,7 @@ export function ActivityForm({
         />
       </Field>
     );
-  };
+  }, [gdprMeta, updateGdprMeta]);
 
   const formPanel = (
     <Card id={isWorkspaceLayout ? undefined : 'activity-form-panel'} className={isWorkspaceLayout ? 'scroll-mt-24 overflow-hidden border-slate-200 shadow-sm' : 'scroll-mt-24'}>
