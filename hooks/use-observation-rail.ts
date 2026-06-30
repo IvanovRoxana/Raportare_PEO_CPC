@@ -2,9 +2,8 @@
 
 import { useMemo } from 'react';
 import { DELIVERABLE_ELIGIBILITY_UI_MESSAGE } from '@/lib/feature-flags';
-import { getDocumentAuditTitle } from '@/lib/document-sharing';
+import { getDocumentAuditTitle, type DuplicateIssueType } from '@/lib/document-sharing';
 import type { DeliverableSlot } from '@/lib/deliverable-types';
-import type { DeliverableDuplicateInfo } from './deliverable-item';
 
 export type ActivityResolutionSection = 'details' | 'deliverables' | 'gdpr';
 
@@ -15,6 +14,28 @@ export interface ActivityResolutionHint {
   meta?: string;
   section?: ActivityResolutionSection;
   deliverableId?: string;
+}
+
+export interface ObservationRailActivityContext {
+  hasEventMomAsMainDeliverable: boolean;
+  isException: boolean;
+  isLeave: boolean;
+  isWorkspaceLayout: boolean;
+  mainDeliverablesCount: number;
+}
+
+export interface ObservationRailEligibilityContext {
+  blockedReason?: string;
+  checkEnabled: boolean;
+}
+
+export interface ObservationRailWarningContext {
+  activityAutofillError: string | null;
+  activityAutofillUnavailableMessage?: string | null;
+  isSaveDisabled: boolean;
+  isSaving?: boolean;
+  saveBlockers: string[];
+  validationError: string | null;
 }
 
 export type ObservationGroup = 'form' | 'deliverables' | 'ai';
@@ -29,23 +50,24 @@ export interface ObservationRailItem {
   meta?: string[];
 }
 
-interface UseActivityObservationRailItemsParams {
-  activityAutofillError: string | null;
-  activityAutofillUnavailableMessage?: string | null;
+export interface ObservationRailDuplicateInfo {
+  documentId: string;
+  title: string;
+  uploadedByExpertName?: string;
+  activityDate?: string;
+  status?: string;
+  issues: DuplicateIssueType[];
+  isPreviousPeriod: boolean;
+  isOtherExpert: boolean;
+}
+
+interface UseObservationRailParams {
+  activity: ObservationRailActivityContext;
   deliverables: DeliverableSlot[];
-  duplicateInfoByDeliverableId: ReadonlyMap<string, DeliverableDuplicateInfo>;
-  eligibilityBlockedReason?: string;
-  eligibilityCheckEnabled: boolean;
-  hasEventMomAsMainDeliverable: boolean;
-  isException: boolean;
-  isLeave: boolean;
-  isSaveDisabled: boolean;
-  isSaving?: boolean;
-  isWorkspaceLayout: boolean;
-  mainDeliverablesCount: number;
+  duplicateInfoByDeliverableId: ReadonlyMap<string, ObservationRailDuplicateInfo>;
+  eligibility: ObservationRailEligibilityContext;
   resolutionHint?: ActivityResolutionHint;
-  saveBlockers: string[];
-  validationError: string | null;
+  warnings: ObservationRailWarningContext;
 }
 
 function getRailDuplicateIssueLabel(issue: string) {
@@ -73,26 +95,16 @@ function getEligibilityRailLabel(status?: string) {
   return 'Verificare eligibilitate';
 }
 
-export function useActivityObservationRailItems({
-  activityAutofillError,
-  activityAutofillUnavailableMessage,
+export function useObservationRail({
+  activity,
   deliverables,
   duplicateInfoByDeliverableId,
-  eligibilityBlockedReason,
-  eligibilityCheckEnabled,
-  hasEventMomAsMainDeliverable,
-  isException,
-  isLeave,
-  isSaveDisabled,
-  isSaving,
-  isWorkspaceLayout,
-  mainDeliverablesCount,
+  eligibility,
   resolutionHint,
-  saveBlockers,
-  validationError,
-}: UseActivityObservationRailItemsParams) {
+  warnings,
+}: UseObservationRailParams) {
   return useMemo<ObservationRailItem[]>(() => {
-    if (!isWorkspaceLayout) return [];
+    if (!activity.isWorkspaceLayout) return [];
 
     const items: ObservationRailItem[] = [];
 
@@ -107,7 +119,12 @@ export function useActivityObservationRailItems({
       });
     }
 
-    if (!isLeave && !isException && mainDeliverablesCount === 0 && !hasEventMomAsMainDeliverable) {
+    if (
+      !activity.isLeave
+      && !activity.isException
+      && activity.mainDeliverablesCount === 0
+      && !activity.hasEventMomAsMainDeliverable
+    ) {
       items.push({
         id: 'form-missing-main-deliverable',
         group: 'form',
@@ -117,18 +134,18 @@ export function useActivityObservationRailItems({
       });
     }
 
-    if (validationError) {
+    if (warnings.validationError) {
       items.push({
         id: 'form-validation-error',
         group: 'form',
         tone: 'danger',
         title: 'Atentionare salvare',
-        detail: validationError,
+        detail: warnings.validationError,
       });
     }
 
-    if (isSaveDisabled && !isSaving) {
-      saveBlockers.forEach((blocker, index) => {
+    if (warnings.isSaveDisabled && !warnings.isSaving) {
+      warnings.saveBlockers.forEach((blocker, index) => {
         items.push({
           id: `form-save-blocker-${index}`,
           group: 'form',
@@ -239,9 +256,9 @@ export function useActivityObservationRailItems({
         ? 'Confirma titlul livrabilului inainte de verificarea eligibilitatii.'
         : !deliverable.stadiu
           ? 'Selecteaza stadiul documentului inainte de verificarea eligibilitatii.'
-          : eligibilityBlockedReason;
+          : eligibility.blockedReason;
 
-      if (eligibilityCheckEnabled && deliverableEligibilityGateReason) {
+      if (eligibility.checkEnabled && deliverableEligibilityGateReason) {
         items.push({
           id: `deliverable-eligibility-gate-${deliverable.id}`,
           group: 'deliverables',
@@ -250,7 +267,7 @@ export function useActivityObservationRailItems({
           detail: deliverableEligibilityGateReason,
           meta: [notePrefix],
         });
-      } else if (!eligibilityCheckEnabled) {
+      } else if (!eligibility.checkEnabled) {
         items.push({
           id: `deliverable-eligibility-disabled-${deliverable.id}`,
           group: 'deliverables',
@@ -280,43 +297,33 @@ export function useActivityObservationRailItems({
       }
     });
 
-    if (activityAutofillUnavailableMessage) {
+    if (warnings.activityAutofillUnavailableMessage) {
       items.push({
         id: 'ai-autofill-unavailable',
         group: 'ai',
         tone: 'warning',
         title: 'Autocompletare indisponibila',
-        detail: activityAutofillUnavailableMessage,
+        detail: warnings.activityAutofillUnavailableMessage,
       });
     }
 
-    if (activityAutofillError) {
+    if (warnings.activityAutofillError) {
       items.push({
         id: 'ai-autofill-error',
         group: 'ai',
         tone: 'danger',
         title: 'Eroare autocompletare',
-        detail: activityAutofillError,
+        detail: warnings.activityAutofillError,
       });
     }
 
     return items;
   }, [
-    activityAutofillError,
-    activityAutofillUnavailableMessage,
+    activity,
     deliverables,
     duplicateInfoByDeliverableId,
-    eligibilityBlockedReason,
-    eligibilityCheckEnabled,
-    hasEventMomAsMainDeliverable,
-    isException,
-    isLeave,
-    isSaveDisabled,
-    isSaving,
-    isWorkspaceLayout,
-    mainDeliverablesCount,
+    eligibility,
     resolutionHint,
-    saveBlockers,
-    validationError,
+    warnings,
   ]);
 }
