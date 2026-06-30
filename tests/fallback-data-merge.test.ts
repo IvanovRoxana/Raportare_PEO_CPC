@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { mergeActivityCatalogs } from '../lib/activity-catalog-merge.ts';
+import { mergeActivityCatalogs, resolveExpertActivityCatalog } from '../lib/activity-catalog-merge.ts';
 import { mergeExpertLists } from '../lib/expert-merge.ts';
 import type { ActivityCatalog, Expert } from '../lib/types.ts';
 
@@ -56,6 +56,70 @@ test('catalogul backend partial completeaza fallback-ul si suprascrie aceeasi ac
     'backend-gt-sa11-3',
   ]);
   assert.equal(merged.find((item) => item.activityNumber === 1)?.description, 'Descriere editata in Admin');
+});
+
+test('formularul foloseste doar catalogul Admin cand exista activitati pentru categoria expertului', () => {
+  const bhFallbackCatalog = [
+    {
+      id: 'fallback-bh-sa32-old',
+      category: 'bh',
+      saCode: 'SA3.2',
+      activityNumber: 1,
+      activityName: 'S4 — Activitate Business HUB Bucuresti',
+    },
+  ] as ActivityCatalog[];
+  const backendCatalog = [
+    {
+      id: 'admin-bh-sa32-1',
+      category: 'BH',
+      saCode: 'SA3.2',
+      activityNumber: 1,
+      activityName: 'Administrarea si optimizarea utilizarii echipamentelor IT',
+    },
+    {
+      id: 'admin-bh-sa32-2',
+      category: 'BH',
+      saCode: 'SA3.2',
+      activityNumber: 2,
+      activityName: 'Suport tehnic si mentenanta echipamente IT',
+    },
+  ] as ActivityCatalog[];
+
+  const resolved = resolveExpertActivityCatalog({
+    fallbackCatalog: bhFallbackCatalog,
+    backendCatalog,
+    expertCategory: 'bh',
+  });
+
+  assert.deepEqual(resolved.map((item) => item.id), ['admin-bh-sa32-1', 'admin-bh-sa32-2']);
+  assert.equal(
+    resolved.some((item) => item.activityName === 'S4 — Activitate Business HUB Bucuresti'),
+    false,
+  );
+});
+
+test('formularul pastreaza fallback-ul cand Admin nu are catalog pentru categoria expertului', () => {
+  const backendCatalog = [
+    {
+      id: 'backend-ap-sa31-1',
+      category: 'AP',
+      saCode: 'SA3.1',
+      activityNumber: 1,
+      activityName: 'Activitate AP Admin',
+    },
+  ] as ActivityCatalog[];
+
+  const resolved = resolveExpertActivityCatalog({
+    fallbackCatalog,
+    backendCatalog,
+    expertCategory: 'gt',
+  });
+
+  assert.deepEqual(resolved.map((item) => item.id), [
+    'backend-ap-sa31-1',
+    'fallback-gt-sa11-1',
+    'fallback-gt-sa11-2',
+  ]);
 });
 
 test('profilul backend incomplet nu sterge categoria si SA-urile fallback', () => {

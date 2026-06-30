@@ -37,7 +37,7 @@ import {
 import { useActivityCatalog } from '@/hooks/use-backend-data';
 import type { Activity, Deliverable, DocumentMetadata, GrupTintaEntry, Expert, ActivityCatalog } from '@/lib/types';
 import { isGtExpertCategory, normalizePeoCategory } from '@/lib/peo-category';
-import { mergeActivityCatalogs } from '@/lib/activity-catalog-merge';
+import { resolveExpertActivityCatalog } from '@/lib/activity-catalog-merge';
 import { buildDocumentS3Key, findDuplicateCandidates, getDocumentAuditTitle, hashFirstPageText, normalizeDocumentTextForFingerprint, sha256Hex } from '@/lib/document-sharing';
 import { shouldAttachUploadedDeliverablesToDate } from '@/lib/activity-deliverables';
 import { createActivityPeriodGroupId } from '@/lib/submit-readiness';
@@ -182,11 +182,6 @@ export function ActivityForm({
     );
   }, [expert?.category]);
 
-  const effectiveCatalog = useMemo(
-    () => mergeActivityCatalogs(fallbackCatalog, catalog),
-    [fallbackCatalog, catalog],
-  );
-  
   // Get expert's assigned SA codes (based on their role)
   const expertSaCodes = expert?.saCodes || [];
   const roleConfig = useMemo(() => getActivityFormRoleConfig(expert), [expert]);
@@ -196,6 +191,11 @@ export function ActivityForm({
   const isGdprExpert = show.gdprAssistant;
   const isBusinessHubExpert = show.businessHubTab;
   const reportMonthName = ['ianuarie', 'februarie', 'martie', 'aprilie', 'mai', 'iunie', 'iulie', 'august', 'septembrie', 'octombrie', 'noiembrie', 'decembrie'][month] || 'luna de raportare';
+
+  const effectiveCatalog = useMemo(
+    () => resolveExpertActivityCatalog({ fallbackCatalog, backendCatalog: catalog, expertCategory }),
+    [catalog, expertCategory, fallbackCatalog],
+  );
   
   // Filter catalog by expert category from PEO_Experti and then by assigned SA codes.
   const filteredCatalog = useMemo(() => {

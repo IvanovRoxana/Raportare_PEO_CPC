@@ -1,4 +1,5 @@
 import type { ActivityCatalog } from './types.ts';
+import { normalizePeoCategory } from './peo-category.ts';
 
 type ActivityCatalogMergeKeyInput = Pick<ActivityCatalog, 'id' | 'category' | 'saCode' | 'activityNumber' | 'activityName'>;
 
@@ -31,4 +32,30 @@ export function mergeActivityCatalogs(...catalogs: ActivityCatalog[][]) {
   });
 
   return sortActivityCatalog(Array.from(byKey.values()));
+}
+
+export function resolveExpertActivityCatalog({
+  fallbackCatalog,
+  backendCatalog,
+  expertCategory,
+}: {
+  fallbackCatalog: ActivityCatalog[];
+  backendCatalog: ActivityCatalog[];
+  expertCategory?: string;
+}) {
+  const normalizedCategory = normalizePeoCategory(expertCategory);
+
+  if (!normalizedCategory) {
+    return mergeActivityCatalogs(fallbackCatalog, backendCatalog);
+  }
+
+  const backendHasExpertCatalog = backendCatalog.some(
+    (item) => normalizePeoCategory(item.category) === normalizedCategory,
+  );
+
+  if (backendHasExpertCatalog) {
+    return sortActivityCatalog(backendCatalog);
+  }
+
+  return mergeActivityCatalogs(fallbackCatalog, backendCatalog);
 }
