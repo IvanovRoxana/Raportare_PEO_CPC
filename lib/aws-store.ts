@@ -786,6 +786,37 @@ async function createDocumentMetadataForDeliverable(
   }
 }
 
+async function createRecoveredSharedDeliverableAudit(
+  client: any,
+  activity: Partial<Activity>,
+  activityId: string,
+  deliverable: Deliverable,
+) {
+  if (!client.models.AuditLog || !deliverable.documentId) return;
+  if (!activity.expertId) return;
+  if (!deliverable.uploadedByExpertId || deliverable.uploadedByExpertId === activity.expertId) return;
+
+  const createdAt = new Date().toISOString();
+  await auditLogsService.create({
+    id: `audit_shared_recovered_${activityId}_${deliverable.documentId}`.replace(/[^a-zA-Z0-9_]+/g, '_').slice(0, 80),
+    actionType: 'shared_deliverable_recovered',
+    actorId: activity.expertId,
+    actorName: activity.expertName,
+    actorRole: 'expert',
+    affectedExpertId: activity.expertId,
+    affectedExpertName: activity.expertName,
+    projectCode: activity.projectCode || deliverable.projectId,
+    month: activity.date ? monthFromDate(activity.date) : undefined,
+    year: activity.date ? yearFromDate(activity.date) : undefined,
+    fieldName: 'document',
+    oldValue: deliverable.uploadedByExpertId,
+    newValue: deliverable.documentId,
+    justification: `Audit automat: livrabil existent al colegului atasat direct la activitatea ${activityId}.`,
+    source: 'automatic',
+    createdAt,
+  });
+}
+
 async function syncSharedActivitySuggestions(
   client: any,
   activity: Partial<Activity> & Pick<Activity, 'expertId' | 'shareStatus' | 'takenByExperts' | 'projectCode'>,
@@ -1184,6 +1215,7 @@ async function createActivityUnchecked(
   await Promise.all([
     ...(activity.deliverables ?? []).map(async (deliverable) => {
       await createDocumentMetadataForDeliverable(client, activity, activityId, deliverable);
+      await createRecoveredSharedDeliverableAudit(client, activity, activityId, deliverable);
       await createSharedDeliverablesForDocument(client, activity, activityId, deliverable);
       return client.models.Deliverable.create(withSupportedDeliverableFields({
         activityId,
@@ -1199,7 +1231,7 @@ async function createActivityUnchecked(
         aiReason: deliverable.aiReason,
       }, {
         ...deliverable,
-        sourceActivityId: activityId,
+        sourceActivityId: deliverable.sourceActivityId || activityId,
       }));
     }),
     ...(activity.grupTinta ?? []).map((entry) =>
@@ -1440,6 +1472,27 @@ export const documentsService = {
     const filter = scope.canAccessAllExperts ? undefined : { uploadedByExpertId: { eq: scope.currentExpertId } };
     const data = await listModel<any>(client.models.Document, filter);
     return filterDocumentsForScope(data.map(mapDocument), scope).sort((a, b) => b.uploadDate.localeCompare(a.uploadDate));
+  },
+
+  async getColleagueDocumentsByMonth(month: number, year: number): Promise<DocumentMetadata[]> {
+    const client = getAwsDataClient() as any;
+    if (!client.models.Document) return [];
+    const scope = await getCurrentDataAccessScope(client);
+    if (scope.accessLevel === 'none' || !scope.currentExpertId) return [];
+
+    const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`;
+    const data = await listModel<any>(client.models.Document);
+    return data
+      .map(mapDocument)
+      .filter((document) => {
+        if (document.uploadedByExpertId === scope.currentExpertId) return false;
+        const documentMonthKey = (document.activityDate || document.uploadDate || '').slice(0, 7);
+        if (documentMonthKey !== monthKey) return false;
+        if (scope.canAccessAllExperts) return true;
+        const currentProjectCode = scope.currentExpert?.projectCode;
+        return !currentProjectCode || !document.projectId || document.projectId === currentProjectCode;
+      })
+      .sort((a, b) => b.uploadDate.localeCompare(a.uploadDate));
   },
 
   async getById(id: string): Promise<DocumentMetadata | null> {
@@ -1768,6 +1821,7 @@ export const activitiesService = {
       await Promise.all(
         updates.deliverables.map(async (deliverable) => {
           await createDocumentMetadataForDeliverable(client, updates, id, deliverable);
+          await createRecoveredSharedDeliverableAudit(client, updates, id, deliverable);
           await createSharedDeliverablesForDocument(client, updates, id, deliverable);
           return client.models.Deliverable.create(withSupportedDeliverableFields({
             activityId: id,
@@ -1783,7 +1837,7 @@ export const activitiesService = {
             aiReason: deliverable.aiReason,
           }, {
             ...deliverable,
-            sourceActivityId: id,
+            sourceActivityId: deliverable.sourceActivityId || id,
           }));
         }),
       );

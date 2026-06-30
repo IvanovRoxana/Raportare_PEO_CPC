@@ -80,6 +80,48 @@ export function isActivitySuggestionRelation(relation: Pick<SharedDeliverable, '
   return relation.documentId.startsWith('activity:');
 }
 
+function getSharedRelationSourceActivityId(relation: Pick<SharedDeliverable, 'documentId' | 'sourceActivityId'>) {
+  return relation.sourceActivityId || (isActivitySuggestionRelation(relation)
+    ? relation.documentId.replace(/^activity:/, '')
+    : undefined);
+}
+
+export function getPendingSharedActivitySourceIdsForExpert(args: {
+  expertId: string;
+  sharedDeliverables: SharedDeliverable[];
+}) {
+  return new Set(args.sharedDeliverables
+    .filter((relation) => (
+      relation.targetExpertId === args.expertId
+      && relation.status === 'pending_registration'
+      && isActivitySuggestionRelation(relation)
+    ))
+    .map(getSharedRelationSourceActivityId)
+    .filter((sourceActivityId): sourceActivityId is string => Boolean(sourceActivityId)));
+}
+
+export function isSharedDeliverableCoveredByPendingActivity(args: {
+  relation: SharedDeliverable;
+  coveredSourceActivityIds: Set<string>;
+}) {
+  if (isActivitySuggestionRelation(args.relation)) return false;
+  const sourceActivityId = getSharedRelationSourceActivityId(args.relation);
+  return Boolean(sourceActivityId && args.coveredSourceActivityIds.has(sourceActivityId));
+}
+
+export function filterPendingSharedDeliverablesNotCoveredByActivity(args: {
+  expertId: string;
+  sharedDeliverables: SharedDeliverable[];
+}) {
+  const coveredSourceActivityIds = getPendingSharedActivitySourceIdsForExpert(args);
+  return args.sharedDeliverables.filter((relation) => (
+    relation.targetExpertId === args.expertId
+    && relation.status === 'pending_registration'
+    && !isActivitySuggestionRelation(relation)
+    && !isSharedDeliverableCoveredByPendingActivity({ relation, coveredSourceActivityIds })
+  ));
+}
+
 export function buildSharedActivitySnapshot(activity?: Partial<Activity>) {
   if (!activity) return {};
 
@@ -223,8 +265,10 @@ export function buildPendingSharedDeliverableAlerts(args: {
   documents: DocumentMetadata[];
   sharedDeliverables: SharedDeliverable[];
 }) {
-  return args.sharedDeliverables
-    .filter((relation) => relation.targetExpertId === args.expert.id && relation.status === 'pending_registration' && !isActivitySuggestionRelation(relation))
+  return filterPendingSharedDeliverablesNotCoveredByActivity({
+    expertId: args.expert.id,
+    sharedDeliverables: args.sharedDeliverables,
+  })
     .map((relation) => {
       const document = args.documents.find((item) => item.id === relation.documentId);
       return {
@@ -283,6 +327,29 @@ export function buildReturnedSharedActivityAlerts(args: {
         projectId: relation.projectId,
         status: relation.status,
         message: `${targetExpert?.name || 'Expertul selectat'} a ignorat sugestia de activitate comuna. Avertizarea ramane vizibila si pentru PM.`,
+      };
+    });
+}
+
+export function buildIgnoredSharedActivityAlerts(args: {
+  expert: Expert;
+  experts: Expert[];
+  sharedDeliverables: SharedDeliverable[];
+}) {
+  return args.sharedDeliverables
+    .filter((relation) => relation.targetExpertId === args.expert.id && relation.status === 'ignored_by_target' && isActivitySuggestionRelation(relation))
+    .map((relation) => {
+      const sourceExpert = args.experts.find((expert) => expert.id === relation.sourceExpertId);
+      return {
+        relationId: relation.id,
+        sourceExpertName: relation.sourceExpertName || sourceExpert?.name || relation.sourceExpertId,
+        sourceActivityDate: relation.sourceActivityDate,
+        sourceActivityHours: relation.sourceActivityHours,
+        sourceActivityTitle: relation.sourceActivityTitle || relation.sourceActivityType,
+        sourceActivitySaCode: relation.sourceActivitySaCode,
+        projectId: relation.projectId,
+        status: relation.status,
+        message: `Ai ignorat sugestia de activitate comuna de la ${relation.sourceExpertName || sourceExpert?.name || 'alt expert'}.`,
       };
     });
 }

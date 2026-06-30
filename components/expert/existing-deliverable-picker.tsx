@@ -8,7 +8,7 @@ import { getDocumentAuditTitle } from '@/lib/document-sharing';
 import type { DeliverableSlot } from '@/lib/deliverable-types';
 import type { Activity, DocumentMetadata } from '@/lib/types';
 
-export type ExistingDeliverableSource = 'mine' | 'shared';
+export type ExistingDeliverableSource = 'mine' | 'shared' | 'colleagues';
 
 export interface ExistingDeliverableCandidate {
   key: string;
@@ -52,6 +52,7 @@ export interface ExistingDeliverableCandidate {
 interface ExistingDeliverablePickerProps {
   activities: Activity[];
   attachedDeliverables: DeliverableSlot[];
+  colleagueDocuments?: DocumentMetadata[];
   currentExpertId: string;
   documents: DocumentMetadata[];
   excludedActivityId?: string;
@@ -65,6 +66,7 @@ interface ExistingDeliverablePickerProps {
 export function ExistingDeliverablePicker({
   activities,
   attachedDeliverables,
+  colleagueDocuments = [],
   currentExpertId,
   documents,
   excludedActivityId,
@@ -95,7 +97,9 @@ export function ExistingDeliverablePicker({
       if (candidate.s3Key && attachedDeliverableKeys.has(candidate.s3Key)) return;
       if (!candidate.documentId && !candidate.s3Key && !candidate.fileName) return;
 
-      nextCandidates.set(candidate.key, candidate);
+      if (!nextCandidates.has(candidate.key)) {
+        nextCandidates.set(candidate.key, candidate);
+      }
     };
 
     activities.forEach((activity) => {
@@ -195,13 +199,52 @@ export function ExistingDeliverablePicker({
       });
     });
 
+    colleagueDocuments.forEach((document) => {
+      if (document.uploadedByExpertId === currentExpertId) return;
+
+      const key = document.id || document.s3Key;
+      addCandidate({
+        key,
+        source: 'colleagues',
+        title: document.declaredTitle || document.extractedTitle || document.suggestedTitle || document.originalFileName,
+        fileName: document.originalFileName,
+        fileType: document.mimeType || '',
+        fileSize: document.fileSize || 0,
+        documentId: document.id,
+        s3Bucket: document.s3Bucket,
+        s3Key: document.s3Key,
+        fileHash: document.fileHash,
+        firstPageTextHash: document.firstPageTextHash,
+        contentFingerprint: document.contentFingerprint,
+        uploadedByExpertId: document.uploadedByExpertId,
+        uploadedByExpertName: document.uploadedByExpertName,
+        uploadDate: document.uploadDate,
+        sourceActivityId: document.sourceActivityId,
+        activityDate: document.activityDate,
+        saCode: document.saCode,
+        deliverableType: document.deliverableType,
+        declaredTitle: document.declaredTitle,
+        docTitle: document.extractedTitle,
+        suggestedTitle: document.suggestedTitle,
+        titleSuggestionConfidence: document.titleSuggestionConfidence,
+        titleSuggestionAlternatives: document.titleSuggestionAlternatives,
+        titleSuggestionReason: document.titleSuggestionReason,
+        titleMatch: document.titleMatch,
+        titleConfirmed: document.titleCheckStatus === 'matched',
+        titleCheckStatus: document.titleCheckStatus,
+        eligibilityCheck: document.eligibilityCheck,
+        isCommonDeliverable: true,
+      });
+    });
+
     return Array.from(nextCandidates.values()).sort((first, second) =>
       (second.activityDate || second.uploadDate || '').localeCompare(first.activityDate || first.uploadDate || ''),
     );
-  }, [activities, attachedDeliverableKeys, currentExpertId, currentMonthKey, documents, excludedActivityId]);
+  }, [activities, attachedDeliverableKeys, colleagueDocuments, currentExpertId, currentMonthKey, documents, excludedActivityId]);
 
   const mineCount = candidates.filter((candidate) => candidate.source === 'mine').length;
   const sharedCount = candidates.filter((candidate) => candidate.source === 'shared').length;
+  const colleaguesCount = candidates.filter((candidate) => candidate.source === 'colleagues').length;
   const visibleCandidates = candidates
     .filter((candidate) => candidate.source === source)
     .filter((candidate) => {
@@ -241,6 +284,13 @@ export function ExistingDeliverablePicker({
             className={`rounded px-2.5 py-1 text-xs font-medium ${source === 'shared' ? 'bg-white text-foreground shadow-sm' : 'text-muted-foreground'}`}
           >
             Comune ({sharedCount})
+          </button>
+          <button
+            type="button"
+            onClick={() => setSource('colleagues')}
+            className={`rounded px-2.5 py-1 text-xs font-medium ${source === 'colleagues' ? 'bg-white text-foreground shadow-sm' : 'text-muted-foreground'}`}
+          >
+            Colegi ({colleaguesCount})
           </button>
         </div>
         <Input

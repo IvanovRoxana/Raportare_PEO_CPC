@@ -213,6 +213,21 @@ export function useDocuments() {
   };
 }
 
+export function useColleagueDocumentsByMonth(month: number, year: number) {
+  const key = `colleague-documents-month-${month}-${year}`;
+  const { data, error, isLoading } = useSWR(
+    isBackendAvailable() ? key : null,
+    safeFetcher(() => documentsService.getColleagueDocumentsByMonth(month, year))
+  );
+
+  return {
+    documents: stableList(data),
+    isLoading,
+    error,
+    mutate: () => mutate(key),
+  };
+}
+
 export function useSharedDeliverables(expertId?: string) {
   const key = expertId ? `shared-deliverables-${expertId}` : 'shared-deliverables';
   const fetcher = expertId

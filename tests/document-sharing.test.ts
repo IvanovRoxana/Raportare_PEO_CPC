@@ -3,11 +3,13 @@ import test from 'node:test';
 import {
   buildDocumentS3Key,
   getDocumentAuditTitle,
+  buildIgnoredSharedActivityAlerts,
   buildPendingSharedActivityAlerts,
   buildPendingSharedDeliverableAlerts,
   buildReturnedSharedActivityAlerts,
   buildSharedActivitySuggestions,
   buildSharedDeliverables,
+  filterPendingSharedDeliverablesNotCoveredByActivity,
   findDuplicateCandidates,
   hashFirstPageText,
   isDeliverableIncludedInExpertExport,
@@ -198,6 +200,69 @@ test('creeaza alerta pentru expertul colaborator cand livrabilul este pending', 
   assert.match(alerts[0].message, /Expert Unu/);
 });
 
+test('livrabilul comun acoperit de sugestie de activitate nu apare ca alerta separata', () => {
+  const sharedDeliverables = [
+    {
+      id: 'shared-activity-1',
+      documentId: 'activity:activity-1',
+      sourceActivityId: 'activity-1',
+      sourceExpertId: 'expert-1',
+      targetExpertId: 'expert-2',
+      status: 'pending_registration',
+    },
+    {
+      id: 'shared-doc-1',
+      documentId: 'doc_1',
+      sourceActivityId: 'activity-1',
+      sourceExpertId: 'expert-1',
+      targetExpertId: 'expert-2',
+      status: 'pending_registration',
+    },
+    {
+      id: 'shared-doc-2',
+      documentId: 'doc_2',
+      sourceActivityId: 'activity-2',
+      sourceExpertId: 'expert-1',
+      targetExpertId: 'expert-2',
+      status: 'pending_registration',
+    },
+  ];
+
+  const uncovered = filterPendingSharedDeliverablesNotCoveredByActivity({
+    expertId: 'expert-2',
+    sharedDeliverables,
+  });
+
+  assert.deepEqual(uncovered.map((relation) => relation.id), ['shared-doc-2']);
+
+  const alerts = buildPendingSharedDeliverableAlerts({
+    expert: { id: 'expert-2', name: 'Expert Doi', role: 'Expert', norma: 8 },
+    documents: [
+      {
+        id: 'doc_1',
+        s3Key: 'projects/302151/documents/doc_1/a.pdf',
+        originalFileName: 'a.pdf',
+        mimeType: 'application/pdf',
+        fileSize: 100,
+        uploadedByExpertId: 'expert-1',
+        uploadDate: '2026-05-01T00:00:00.000Z',
+      },
+      {
+        id: 'doc_2',
+        s3Key: 'projects/302151/documents/doc_2/b.pdf',
+        originalFileName: 'b.pdf',
+        mimeType: 'application/pdf',
+        fileSize: 100,
+        uploadedByExpertId: 'expert-1',
+        uploadDate: '2026-05-01T00:00:00.000Z',
+      },
+    ],
+    sharedDeliverables,
+  });
+
+  assert.deepEqual(alerts.map((alert) => alert.documentId), ['doc_2']);
+});
+
 
 test('creeaza si afiseaza sugestii de activitate comuna separate de livrabile', () => {
   const relations = buildSharedActivitySuggestions({
@@ -232,6 +297,32 @@ test('creeaza si afiseaza sugestii de activitate comuna separate de livrabile', 
 
   assert.equal(pendingAlerts.length, 1);
   assert.match(pendingAlerts[0].message, /Expert Unu/);
+});
+
+test('activitatea comuna ignorata apare in istoricul targetului, nu in alertele active', () => {
+  const sharedDeliverables = [{
+    id: 'shared-activity-1',
+    documentId: 'activity:activity-1',
+    sourceExpertId: 'expert-1',
+    targetExpertId: 'expert-2',
+    sourceActivityTitle: 'Atelier comun',
+    status: 'ignored_by_target',
+  }];
+
+  const pendingAlerts = buildPendingSharedActivityAlerts({
+    expert: { id: 'expert-2', name: 'Expert Doi', role: 'Expert', norma: 8 },
+    experts: [{ id: 'expert-1', name: 'Expert Unu', role: 'Expert', norma: 8 }],
+    sharedDeliverables,
+  });
+  const ignoredAlerts = buildIgnoredSharedActivityAlerts({
+    expert: { id: 'expert-2', name: 'Expert Doi', role: 'Expert', norma: 8 },
+    experts: [{ id: 'expert-1', name: 'Expert Unu', role: 'Expert', norma: 8 }],
+    sharedDeliverables,
+  });
+
+  assert.equal(pendingAlerts.length, 0);
+  assert.equal(ignoredAlerts.length, 1);
+  assert.equal(ignoredAlerts[0].sourceActivityTitle, 'Atelier comun');
 });
 
 test('returneaza avertizarea la expertul initial cand activitatea comuna este ignorata', () => {

@@ -106,6 +106,7 @@ interface ActivityFormProps {
   allExperts?: Expert[];
   allActivities?: Activity[];
   documents?: DocumentMetadata[];
+  colleagueDocuments?: DocumentMetadata[];
   month: number;
   year: number;
   onSave: (activities: Activity[]) => void | Promise<void>;
@@ -160,6 +161,7 @@ export function ActivityForm({
   allExperts = [],
   allActivities = [],
   documents = [],
+  colleagueDocuments = [],
   month,
   year,
   onSave,
@@ -1318,7 +1320,7 @@ export function ActivityForm({
       activityDate: candidate.activityDate,
       saCode: candidate.saCode,
       deliverableType: candidate.deliverableType || 'livrabil',
-      isCommonDeliverable: candidate.source === 'shared' || candidate.isCommonDeliverable === true,
+      isCommonDeliverable: candidate.source !== 'mine' || candidate.isCommonDeliverable === true,
       sharedWithExpertIds: [],
       uploadedAt: candidate.uploadDate,
       uploaded: true,
@@ -1335,7 +1337,9 @@ export function ActivityForm({
       titleMatch: candidate.titleMatch ?? null,
       titleConfirmed: candidate.titleConfirmed ?? candidate.titleCheckStatus === 'matched',
       titleCheckStatus: candidate.titleCheckStatus as DeliverableSlot['titleCheckStatus'],
-      titleCheckMessage: candidate.titleCheckMessage || 'Livrabil selectat din documentele existente.',
+      titleCheckMessage: candidate.titleCheckMessage || (candidate.source === 'colleagues'
+        ? 'Livrabil atasat direct din documentele colegilor.'
+        : 'Livrabil selectat din documentele existente.'),
       aiCheck,
       eligibilityCheck: candidate.eligibilityCheck,
       common: false,
@@ -2038,6 +2042,7 @@ export function ActivityForm({
                   <ExistingDeliverablePicker
                     activities={allActivities}
                     attachedDeliverables={deliverables}
+                    colleagueDocuments={colleagueDocuments}
                     currentExpertId={expertId}
                     documents={documents}
                     excludedActivityId={initialActivity?.id}

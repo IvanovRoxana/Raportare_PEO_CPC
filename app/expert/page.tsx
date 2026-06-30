@@ -31,7 +31,7 @@ import type { AppRole } from '@/lib/aws/auth';
 import { getSignedInUser } from '@/lib/aws/auth';
 import { getMonthName } from '@/lib/backend-store';
 import { buildConsolidatedTimesheet, filterActiveConcurrentProjectsForMonth, getConcurrentProjectMonthlyTotal, getConsolidatedWarnings } from '@/lib/concurrent-projects';
-import { buildPendingSharedActivityAlerts, buildPendingSharedDeliverableAlerts, buildReturnedSharedActivityAlerts } from '@/lib/document-sharing';
+import { buildIgnoredSharedActivityAlerts, buildPendingSharedActivityAlerts, buildPendingSharedDeliverableAlerts, buildReturnedSharedActivityAlerts } from '@/lib/document-sharing';
 import { canAccessPmDashboard } from '@/lib/pm-dashboard';
 import { buildPontajExportPayload } from '@/lib/pontaj-export-payload';
 import type { Activity, ConcurrentProject, ConcurrentProjectTimesheetEntry, Expert } from '@/lib/types';
@@ -380,6 +380,14 @@ export default function ExpertHomeDashboard() {
       sharedDeliverables,
     });
   }, [currentExpert, experts, sharedDeliverables]);
+  const ignoredActivityAlerts = useMemo(() => {
+    if (!currentExpert) return [];
+    return buildIgnoredSharedActivityAlerts({
+      expert: currentExpert,
+      experts,
+      sharedDeliverables,
+    });
+  }, [currentExpert, experts, sharedDeliverables]);
 
   const handleIgnoreActivitySuggestion = async (relationId: string) => {
     await ignoreSharedSuggestion(relationId);
@@ -625,66 +633,92 @@ export default function ExpertHomeDashboard() {
         }
       >
 
-        {pendingActivityAlerts.length > 0 && (
-          <section className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-950">
-            <div className="flex items-center gap-2 font-semibold">
-              <AlertTriangle className="h-4 w-4" />
-              Activitati comune sugerate
-            </div>
-            <div className="mt-3 space-y-2">
-              {pendingActivityAlerts.map((alert) => (
-                <div key={alert.relationId} className="rounded-md border border-amber-200 bg-white/70 p-3 text-sm">
-                  <div className="font-medium">Sugestie de la {alert.sourceExpertName}</div>
-                  {alert.sourceActivityTitle && (
-                    <div className="mt-1 text-sm font-medium text-amber-950">{alert.sourceActivityTitle}</div>
-                  )}
-                  <div className="mt-1 text-xs text-amber-800">{alert.message}</div>
-                  <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                    {alert.projectId && <Badge variant="outline">{alert.projectId}</Badge>}
-                    {alert.sourceActivitySaCode && <Badge variant="outline">{alert.sourceActivitySaCode}</Badge>}
-                    {alert.sourceActivityDate && <Badge variant="outline">{alert.sourceActivityDate}</Badge>}
-                    {alert.sourceActivityHours && <Badge variant="outline">{alert.sourceActivityHours}h</Badge>}
-                    <Badge variant="secondary">{alert.status}</Badge>
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <Button asChild size="sm" className="h-8 rounded-md">
-                      <Link href={`/expert/peo?sharedActivityRelationId=${encodeURIComponent(alert.relationId)}`}>Adauga activitate</Link>
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-8 rounded-md border-amber-300 text-amber-900"
-                      onClick={() => handleIgnoreActivitySuggestion(alert.relationId)}
-                    >
-                      Ignora activitatea
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
+        {(pendingActivityAlerts.length > 0 || ignoredActivityAlerts.length > 0 || returnedActivityAlerts.length > 0) && (
+          <Tabs defaultValue="active" className="space-y-3">
+            <TabsList>
+              <TabsTrigger value="active">Colaborari active</TabsTrigger>
+              <TabsTrigger value="rejected">
+                Colaborari respinse ({ignoredActivityAlerts.length + returnedActivityAlerts.length})
+              </TabsTrigger>
+            </TabsList>
 
-        {returnedActivityAlerts.length > 0 && (
-          <section className="rounded-lg border border-orange-300 bg-orange-50 p-4 text-orange-950">
-            <div className="flex items-center gap-2 font-semibold">
-              <AlertTriangle className="h-4 w-4" />
-              Activitati comune ignorate
-            </div>
-            <div className="mt-3 space-y-2">
-              {returnedActivityAlerts.map((alert) => (
-                <div key={alert.relationId} className="rounded-md border border-orange-200 bg-white/70 p-3 text-sm">
-                  <div className="font-medium">{alert.targetExpertName} a ignorat sugestia</div>
-                  <div className="mt-1 text-xs text-orange-800">{alert.message}</div>
-                  <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                    {alert.projectId && <Badge variant="outline">{alert.projectId}</Badge>}
-                    <Badge variant="secondary">{alert.status}</Badge>
+            <TabsContent value="active" className="space-y-4">
+              {pendingActivityAlerts.length > 0 && (
+                <section className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-950">
+                  <div className="flex items-center gap-2 font-semibold">
+                    <AlertTriangle className="h-4 w-4" />
+                    Activitati comune sugerate
                   </div>
-                </div>
-              ))}
-            </div>
-          </section>
+                  <div className="mt-3 space-y-2">
+                    {pendingActivityAlerts.map((alert) => (
+                      <div key={alert.relationId} className="rounded-md border border-amber-200 bg-white/70 p-3 text-sm">
+                        <div className="font-medium">Sugestie de la {alert.sourceExpertName}</div>
+                        {alert.sourceActivityTitle && (
+                          <div className="mt-1 text-sm font-medium text-amber-950">{alert.sourceActivityTitle}</div>
+                        )}
+                        <div className="mt-1 text-xs text-amber-800">{alert.message}</div>
+                        <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                          {alert.projectId && <Badge variant="outline">{alert.projectId}</Badge>}
+                          {alert.sourceActivitySaCode && <Badge variant="outline">{alert.sourceActivitySaCode}</Badge>}
+                          {alert.sourceActivityDate && <Badge variant="outline">{alert.sourceActivityDate}</Badge>}
+                          {alert.sourceActivityHours && <Badge variant="outline">{alert.sourceActivityHours}h</Badge>}
+                          <Badge variant="secondary">{alert.status}</Badge>
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <Button asChild size="sm" className="h-8 rounded-md">
+                            <Link href={`/expert/peo?sharedActivityRelationId=${encodeURIComponent(alert.relationId)}`}>Adauga activitate</Link>
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-8 rounded-md border-amber-300 text-amber-900"
+                            onClick={() => handleIgnoreActivitySuggestion(alert.relationId)}
+                          >
+                            Ignora activitatea
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+            </TabsContent>
+
+            <TabsContent value="rejected" className="space-y-3">
+              {ignoredActivityAlerts.length === 0 && returnedActivityAlerts.length === 0 ? (
+                <section className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">
+                  Nu exista colaborari respinse.
+                </section>
+              ) : (
+                <>
+                  {ignoredActivityAlerts.map((alert) => (
+                    <div key={alert.relationId} className="rounded-md border bg-card p-3 text-sm">
+                      <div className="font-medium">Ai ignorat sugestia de la {alert.sourceExpertName}</div>
+                      {alert.sourceActivityTitle && <div className="mt-1 text-sm">{alert.sourceActivityTitle}</div>}
+                      <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                        {alert.projectId && <Badge variant="outline">{alert.projectId}</Badge>}
+                        {alert.sourceActivitySaCode && <Badge variant="outline">{alert.sourceActivitySaCode}</Badge>}
+                        {alert.sourceActivityDate && <Badge variant="outline">{alert.sourceActivityDate}</Badge>}
+                        {alert.sourceActivityHours && <Badge variant="outline">{alert.sourceActivityHours}h</Badge>}
+                        <Badge variant="outline">{alert.status}</Badge>
+                      </div>
+                    </div>
+                  ))}
+                  {returnedActivityAlerts.map((alert) => (
+                    <div key={alert.relationId} className="rounded-md border bg-card p-3 text-sm">
+                      <div className="font-medium">{alert.targetExpertName} a ignorat sugestia ta</div>
+                      <div className="mt-1 text-xs text-muted-foreground">{alert.message}</div>
+                      <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                        {alert.projectId && <Badge variant="outline">{alert.projectId}</Badge>}
+                        <Badge variant="outline">{alert.status}</Badge>
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )}
+            </TabsContent>
+          </Tabs>
         )}
 
         {pendingSharedAlerts.length > 0 && (

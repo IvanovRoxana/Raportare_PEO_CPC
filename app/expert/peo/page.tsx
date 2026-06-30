@@ -28,6 +28,7 @@ import {
   useActivitiesByMonth,
   useActivityMutations,
   useCollaborationExperts,
+  useColleagueDocumentsByMonth,
   useConcurrentProjects,
   useConcurrentProjectTimesheetByMonth,
   useDocuments,
@@ -58,6 +59,7 @@ import {
   validateActivitiesBeforeCreate,
   type ActivityDraftForValidation,
 } from '@/lib/pontaj-rules';
+import { filterPendingSharedDeliverablesNotCoveredByActivity } from '@/lib/document-sharing';
 
 type SubmitReadinessSeverity = 'ok' | 'warning' | 'blocking';
 type SubmitReadinessKey =
@@ -155,6 +157,7 @@ export default function ExpertDashboard() {
   const { experts: collaborationExperts } = useCollaborationExperts();
   const { activities: allMonthActivities, isLoading: activitiesLoading, mutate: refreshActivities } = useActivitiesByMonth(currentMonth, currentYear);
   const { documents } = useDocuments();
+  const { documents: colleagueDocuments } = useColleagueDocumentsByMonth(currentMonth, currentYear);
   const { createBatch, update: updateActivity, remove: removeActivity } = useActivityMutations();
   const { status: reportStatus, updateStatus: updateReportStatus, isLoading: reportStatusLoading } = useReportStatus(selectedExpertId, currentMonth, currentYear);
   const previousMonthDate = useMemo(() => new Date(baseYear, baseMonth - 1, 1), [baseMonth, baseYear]);
@@ -532,9 +535,18 @@ export default function ExpertDashboard() {
       : 0;
     const submitThresholdHours = Math.ceil((monthlyBlocking.monthlyNorm * SUBMIT_MIN_NORM_PERCENT) / 100);
     const remainingThresholdHours = Math.max(0, submitThresholdHours - monthlyBlocking.totalHours);
-    const pendingSharedDeliverables = sharedDeliverables.filter((relation) =>
-      relation.status === 'pending_registration',
+    const pendingSharedActivities = sharedDeliverables.filter((relation) =>
+      relation.targetExpertId === selectedExpert.id
+      && relation.status === 'pending_registration'
+      && relation.documentId.startsWith('activity:'),
     );
+    const pendingSharedDeliverables = [
+      ...pendingSharedActivities,
+      ...filterPendingSharedDeliverablesNotCoveredByActivity({
+        expertId: selectedExpert.id,
+        sharedDeliverables,
+      }),
+    ];
     const missingWorkingDayIssues: SubmitReadinessIssue[] = missingWorkingDays.map((date) => ({
       id: `working-day-${date}`,
       title: formatDisplayDate(date),
@@ -1549,6 +1561,7 @@ export default function ExpertDashboard() {
                     allExperts={collaborationExperts.length > 0 ? collaborationExperts : experts}
                     allActivities={allMonthActivities}
                     documents={documents}
+                    colleagueDocuments={colleagueDocuments}
                     month={currentMonth}
                     year={currentYear}
                     onSave={handleSaveActivities}
