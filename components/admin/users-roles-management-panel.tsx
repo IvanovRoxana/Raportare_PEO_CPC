@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { requestPasswordReset, getSignedInUser, signUpWithEmail } from '@/lib/aws/auth';
 import { expertIdentityKey } from '@/lib/expert-merge';
-import { syncCognitoGroupsForUser } from '@/lib/admin-cognito';
+import { syncOrInviteCognitoGroupsForUser } from '@/lib/admin-cognito';
 import { cognitoGroupsForRole } from '@/lib/cognito-roles';
 
 type RoleOption = 'Expert' | 'PM' | 'Expert/PM' | 'Admin';
@@ -115,7 +115,7 @@ export function UsersRolesManagementPanel() {
       }
 
       const cognitoGroups = cognitoGroupsForRole(role, role.includes('PM') || role === 'Admin');
-      await syncCognitoGroupsForUser(normalizedEmail, cognitoGroups);
+      await syncOrInviteCognitoGroupsForUser(normalizedEmail, cognitoGroups, name.trim());
 
       await expertsService.create({
         name: name.trim(),
@@ -159,7 +159,7 @@ export function UsersRolesManagementPanel() {
     try {
       const hasPmAccess = nextRole.includes('PM') || nextRole === 'Admin';
       const cognitoGroups = cognitoGroupsForRole(nextRole, hasPmAccess);
-      await syncCognitoGroupsForUser(expert.email, cognitoGroups);
+      await syncOrInviteCognitoGroupsForUser(expert.email, cognitoGroups, expert.name);
       const updates = {
         role: nextRole,
         hasPmAccess,

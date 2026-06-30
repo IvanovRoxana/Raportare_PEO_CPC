@@ -38,7 +38,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { expertIdentityKey } from '@/lib/expert-merge';
-import { syncCognitoGroupsForUser } from '@/lib/admin-cognito';
+import { syncOrInviteCognitoGroupsForUser } from '@/lib/admin-cognito';
 import { cognitoGroupsForRole } from '@/lib/cognito-roles';
 
 type RoleOption = 'Expert' | 'PM' | 'Expert/PM' | 'Admin';
@@ -335,7 +335,7 @@ export function AdminUsersTable({ fallbackUsers = [] }: { fallbackUsers?: AdminU
     updates.cognitoGroups = cognitoGroups;
 
     try {
-      await syncCognitoGroupsForUser(updates.email, cognitoGroups);
+      await syncOrInviteCognitoGroupsForUser(updates.email, cognitoGroups, updates.name);
 
       const savedExpert = isPersistedExpert(editingExpert)
         ? { ...editingExpert, id: getPersistedExpertId(editingExpert) }
