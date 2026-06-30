@@ -919,6 +919,7 @@ export default function ExpertDashboard() {
       gdprMetaJson: sourceActivity.gdprMetaJson,
       gdprGeneratedText: sourceActivity.gdprGeneratedText,
       gdprConclusionCode: sourceActivity.gdprConclusionCode,
+      businessHubMetaJson: sourceActivity.businessHubMetaJson,
     });
     syncSelectedDates([sourceActivity.date], { [sourceActivity.date]: prefillHours });
     setEditingActivity(null);

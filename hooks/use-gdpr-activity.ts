@@ -13,12 +13,12 @@ import {
   getGdprTemplate,
   parseGdprMetaJson,
   validateGdprActivityDraft,
-  type GdprBusinessHubEvent,
   type GdprMeta,
   type GdprMetaValue,
 } from '@/lib/gdpr-reporting';
 import { normalizePontajHoursValue } from '@/lib/pontaj-rules';
 import type { Activity, Expert } from '@/lib/types';
+import { parseBusinessHubPvRows as parseBusinessHubPvRowsShared, type GdprBusinessHubEvent } from '@/lib/business-hub-reporting';
 
 interface UseGdprActivityOptions {
   activitySeed?: Partial<Activity>;
@@ -384,7 +384,7 @@ async function generateBusinessHubDeliverable({
     const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
     const worksheet = workbook.Sheets[workbook.SheetNames[0]];
     const rows = XLSX.utils.sheet_to_json<unknown[]>(worksheet, { header: 1, defval: '' });
-    const parsed = parseBusinessHubPvRows(rows);
+    const parsed = parseBusinessHubPvRowsShared(rows);
     const pvDataUrl = await fileToDataUrl(file);
     const fallbackMonthLabel = `${reportMonthLabel} ${year}`;
     const nextMeta: GdprMeta = buildDefaultGdprMeta('GDPR_BUSINESS_HUB', {

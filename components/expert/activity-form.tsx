@@ -71,6 +71,12 @@ import {
 import { useActivityAutofill } from '@/hooks/use-activity-autofill';
 import { useGdprActivity } from '@/hooks/use-gdpr-activity';
 import { ObservationRail } from './observation-rail';
+import { getActivityFormRoleConfig } from '@/lib/roles/business-hub';
+import {
+  getBusinessHubMetaMissingFields,
+  parseBusinessHubMetaJson,
+  serializeBusinessHubMeta,
+} from '@/lib/business-hub-reporting';
 
 export type { ActivityResolutionHint, ActivityResolutionSection } from '@/hooks/use-observation-rail';
 
@@ -183,9 +189,12 @@ export function ActivityForm({
   
   // Get expert's assigned SA codes (based on their role)
   const expertSaCodes = expert?.saCodes || [];
-  const expertCategory = normalizePeoCategory(expert?.category);
-  const isGtExpert = isGtExpertCategory(expert?.category);
-  const isGdprExpert = expertCategory === 'gdpr';
+  const roleConfig = useMemo(() => getActivityFormRoleConfig(expert), [expert]);
+  const expertCategory = roleConfig.category || normalizePeoCategory(expert?.category);
+  const show = roleConfig.enabledSections;
+  const isGtExpert = show.grupTinta || isGtExpertCategory(expert?.category);
+  const isGdprExpert = show.gdprAssistant;
+  const isBusinessHubExpert = show.businessHubTab;
   const reportMonthName = ['ianuarie', 'februarie', 'martie', 'aprilie', 'mai', 'iunie', 'iulie', 'august', 'septembrie', 'octombrie', 'noiembrie', 'decembrie'][month] || 'luna de raportare';
   
   // Filter catalog by expert category from PEO_Experti and then by assigned SA codes.
@@ -387,6 +396,16 @@ export function ActivityForm({
   
   // Grup tinta
   const [grupTinta, setGrupTinta] = useState<GrupTintaEntry[]>(initialActivity?.grupTinta || []);
+
+  const initialBusinessHubMeta = useMemo(
+    () => parseBusinessHubMetaJson(activitySeed?.businessHubMetaJson),
+    [activitySeed?.businessHubMetaJson],
+  );
+  const [businessHubEntityName, setBusinessHubEntityName] = useState(initialBusinessHubMeta?.entityName || '');
+  const [businessHubEventTitle, setBusinessHubEventTitle] = useState(initialBusinessHubMeta?.eventTitle || '');
+  const [businessHubStartTime, setBusinessHubStartTime] = useState(initialBusinessHubMeta?.startTime || '');
+  const [businessHubEndTime, setBusinessHubEndTime] = useState(initialBusinessHubMeta?.endTime || '');
+  const [businessHubContactPersonName, setBusinessHubContactPersonName] = useState(initialBusinessHubMeta?.contactPersonName || '');
   
   // Verification
   const [isVerifyingTitle, setIsVerifyingTitle] = useState(false);
@@ -600,8 +619,38 @@ export function ActivityForm({
     return getDeliverableOptions(expertCategory || 'ap');
   }, [expertCategory]);
 
-  const effectiveActivityTitle = isGdprExpert && selectedGdprTemplate ? selectedGdprTemplate.activityTitle : activityTitle;
-  const effectiveSaCode = isGdprExpert && selectedGdprTemplate ? selectedGdprTemplate.saCode : saCode;
+  const businessHubMetaDate = selectedDates[0] || initialActivity?.date || '';
+  const businessHubMetaDraft = useMemo(() => ({
+    entityName: businessHubEntityName,
+    eventTitle: businessHubEventTitle,
+    date: businessHubMetaDate,
+    startTime: businessHubStartTime,
+    endTime: businessHubEndTime,
+    contactPersonName: businessHubContactPersonName,
+    contactSource: businessHubContactPersonName.trim() ? 'manual' as const : 'empty' as const,
+  }), [
+    businessHubContactPersonName,
+    businessHubEndTime,
+    businessHubEntityName,
+    businessHubEventTitle,
+    businessHubMetaDate,
+    businessHubStartTime,
+  ]);
+
+  const [activityFormTab, setActivityFormTab] = useState<'business_hub' | 'standard' | 'event'>(
+    () => isBusinessHubExpert && !initialActivity?.businessHubMetaJson ? 'business_hub' : 'standard',
+  );
+  const isBusinessHubTabActive = isBusinessHubExpert && activityFormTab === 'business_hub';
+  const effectiveActivityTitle = isGdprExpert && selectedGdprTemplate
+    ? selectedGdprTemplate.activityTitle
+    : isBusinessHubTabActive
+      ? roleConfig.defaultActivityTitle || activityTitle
+      : activityTitle;
+  const effectiveSaCode = isGdprExpert && selectedGdprTemplate
+    ? selectedGdprTemplate.saCode
+    : isBusinessHubTabActive
+      ? roleConfig.defaultSaCode || saCode
+      : saCode;
   
   // Check if current activity is exception (no deliverable required)
   const isException = isExceptionActivity(effectiveActivityTitle);
@@ -609,15 +658,31 @@ export function ActivityForm({
   // Check if current activity is event
   const isEvent = isEventActivity(effectiveActivityTitle);
 
-  const [activityFormTab, setActivityFormTab] = useState<'standard' | 'event'>('standard');
-
   useEffect(() => {
+    if (activityFormTab === 'business_hub') return;
     if (isEvent) {
       setActivityFormTab('event');
     } else if (effectiveActivityTitle.trim()) {
       setActivityFormTab('standard');
     }
-  }, [effectiveActivityTitle, isEvent]);
+  }, [activityFormTab, effectiveActivityTitle, isEvent]);
+
+  useEffect(() => {
+    if (!isBusinessHubExpert || activityFormTab !== 'business_hub') return;
+    if (saCode !== (roleConfig.defaultSaCode || 'SA3.2')) {
+      setSaCode(roleConfig.defaultSaCode || 'SA3.2');
+    }
+    if (activityTitle !== (roleConfig.defaultActivityTitle || 'S4 — Activitate Business HUB Bucuresti')) {
+      setActivityTitle(roleConfig.defaultActivityTitle || 'S4 — Activitate Business HUB Bucuresti');
+    }
+  }, [
+    activityFormTab,
+    activityTitle,
+    isBusinessHubExpert,
+    roleConfig.defaultActivityTitle,
+    roleConfig.defaultSaCode,
+    saCode,
+  ]);
   
   // Check if leave day
   const isLeave = dayType === 'CO' || dayType === 'CM';
@@ -634,6 +699,10 @@ export function ActivityForm({
   const saveBlockers = [
     (!effectiveActivityTitle.trim() && !isLeave) ? 'Selecteaza tipul activitatii.' : null,
     isSaving ? 'Salvarea este deja in curs.' : null,
+    (isBusinessHubTabActive && selectedDates.length !== 1) ? 'Registrul Business Hub se completeaza pentru o singura zi selectata.' : null,
+    (isBusinessHubTabActive && getBusinessHubMetaMissingFields(businessHubMetaDraft).length > 0)
+      ? `Completeaza campurile Business Hub: ${getBusinessHubMetaMissingFields(businessHubMetaDraft).join(', ')}.`
+      : null,
     (isException && (description || '').length < 15) ? 'Completeaza descrierea pentru activitatea exceptata.' : null,
     needsCommonDesc ? 'Pentru activitate comuna, descrierea trebuie sa aiba minimum 30 de caractere.' : null,
     needsExtendedDesc ? 'Pentru evenimente cu ore peste durata evenimentului, completeaza descrierea extinsa.' : null,
@@ -715,6 +784,17 @@ export function ActivityForm({
     const newSlot = createDeliverableSlot('event_proof', 'Fotografii eveniment');
     setDeliverables(prev => [...prev, newSlot]);
   }, []);
+
+  const addBusinessHubRequestSlot = useCallback(() => {
+    const entityLabel = businessHubEntityName.trim() || 'entitate';
+    setDeliverables((prev) => [
+      ...prev,
+      {
+        ...createDeliverableSlot('justificativ', `Cerere utilizare facilitati BH - ${entityLabel}`),
+        declaredTitle: `Cerere utilizare facilitati BH - ${entityLabel}`,
+      },
+    ]);
+  }, [businessHubEntityName]);
 
   const updateDeliverable = useCallback((id: string, patch: Partial<DeliverableSlot>) => {
     setDeliverables(prev => prev.map(d => d.id === id ? { ...d, ...patch } : d));
@@ -899,6 +979,14 @@ export function ActivityForm({
       }
     }
 
+    if (isBusinessHubTabActive && !isLeave) {
+      const missingFields = getBusinessHubMetaMissingFields(businessHubMetaDraft);
+      if (missingFields.length > 0) {
+        setValidationError(`Completeaza campurile Business Hub: ${missingFields.join(', ')}.`);
+        return;
+      }
+    }
+
     const activityDatesForSave = initialActivity ? [initialActivity.date] : selectedDates;
     const newActivityDrafts: ActivityDraftForValidation[] = activityDatesForSave.map((date) => ({
       id: initialActivity?.id,
@@ -1049,6 +1137,7 @@ export function ActivityForm({
         gdprMetaJson: isGdprExpert ? serializeGdprMeta({ ...gdprMeta, concluzie: gdprConclusionCode }) : undefined,
         gdprGeneratedText: isGdprExpert ? (gdprGeneratedText || description) : undefined,
         gdprConclusionCode: isGdprExpert ? gdprConclusionCode : undefined,
+        businessHubMetaJson: isBusinessHubTabActive ? serializeBusinessHubMeta({ ...businessHubMetaDraft, date }) : undefined,
         grupTinta,
         createdAt: initialActivity?.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -1077,6 +1166,8 @@ export function ActivityForm({
     grupTinta,
     hoursPerDay,
     initialActivity,
+    businessHubMetaDraft,
+    isBusinessHubTabActive,
     isGdprExpert,
     isLeave,
     location,
@@ -1468,13 +1559,84 @@ export function ActivityForm({
         {isWorkspaceLayout && (
           <Tabs
             value={activityFormTab}
-            onValueChange={(value) => setActivityFormTab(value as 'standard' | 'event')}
+            onValueChange={(value) => setActivityFormTab(value as 'business_hub' | 'standard' | 'event')}
             className="rounded-lg border bg-white p-3 shadow-sm"
           >
-            <TabsList className="grid w-full grid-cols-2 rounded-lg">
+            <TabsList className={`grid w-full rounded-lg ${isBusinessHubExpert ? 'grid-cols-3' : 'grid-cols-2'}`}>
+              {isBusinessHubExpert && (
+                <TabsTrigger value="business_hub">Business Hub</TabsTrigger>
+              )}
               <TabsTrigger value="standard">Activitate standard</TabsTrigger>
               <TabsTrigger value="event">Eveniment</TabsTrigger>
             </TabsList>
+            {isBusinessHubExpert && (
+              <TabsContent value="business_hub" className="space-y-4 pt-3">
+                <div className="rounded-md border border-sky-200 bg-sky-50 p-3 text-xs text-sky-900">
+                  Inregistreaza evenimentul organizat in Business Hub. Data vine din calendar, iar activitatea se salveaza pe SA3.2.
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <Field>
+                    <FieldLabel htmlFor="bh-entity">Entitate organizatoare *</FieldLabel>
+                    <Input
+                      id="bh-entity"
+                      value={businessHubEntityName}
+                      onChange={(event) => setBusinessHubEntityName(event.target.value)}
+                      placeholder="ex: CPBR"
+                    />
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="bh-event-title">Titlu eveniment *</FieldLabel>
+                    <Input
+                      id="bh-event-title"
+                      value={businessHubEventTitle}
+                      onChange={(event) => setBusinessHubEventTitle(event.target.value)}
+                      placeholder="ex: Sedinta de lucru"
+                    />
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="bh-date">Data</FieldLabel>
+                    <Input id="bh-date" value={businessHubMetaDate ? formatDateRo(businessHubMetaDate) : 'Selecteaza o zi din calendar'} disabled />
+                  </Field>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field>
+                      <FieldLabel htmlFor="bh-start-time">Ora inceput *</FieldLabel>
+                      <Input
+                        id="bh-start-time"
+                        type="time"
+                        value={businessHubStartTime}
+                        onChange={(event) => setBusinessHubStartTime(event.target.value)}
+                      />
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor="bh-end-time">Ora final *</FieldLabel>
+                      <Input
+                        id="bh-end-time"
+                        type="time"
+                        value={businessHubEndTime}
+                        onChange={(event) => setBusinessHubEndTime(event.target.value)}
+                      />
+                    </Field>
+                  </div>
+                  <Field>
+                    <FieldLabel htmlFor="bh-contact">Persoana contact</FieldLabel>
+                    <Input
+                      id="bh-contact"
+                      value={businessHubContactPersonName}
+                      onChange={(event) => setBusinessHubContactPersonName(event.target.value)}
+                      placeholder="optional"
+                    />
+                  </Field>
+                  {show.entityRequestUpload && (
+                    <div className="flex items-end">
+                      <Button type="button" variant="outline" onClick={addBusinessHubRequestSlot}>
+                        <Plus className="h-4 w-4 mr-2" />
+                        Adauga cerere utilizare
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </TabsContent>
+            )}
             <TabsContent value="standard" className="pt-3">
               <p className="text-xs text-muted-foreground">
                 Alege acest flux pentru activitati obisnuite, apoi foloseste livrabilul si AI pentru completare.

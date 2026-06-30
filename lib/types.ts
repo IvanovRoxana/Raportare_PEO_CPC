@@ -54,9 +54,20 @@ export interface Activity {
   gdprMetaJson?: string;
   gdprGeneratedText?: string;
   gdprConclusionCode?: string;
+  businessHubMetaJson?: string;
   grupTinta?: GrupTintaEntry[];
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface BusinessHubEventMeta {
+  entityName: string;
+  eventTitle: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  contactPersonName?: string;
+  contactSource?: 'entity_directory' | 'manual' | 'empty';
 }
 
 export type AuditActionType =

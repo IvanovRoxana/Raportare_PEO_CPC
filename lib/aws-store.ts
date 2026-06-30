@@ -313,6 +313,7 @@ function withSupportedActivityShareFields(payload: Record<string, unknown>, acti
     gdprMetaJson: activity.gdprMetaJson,
     gdprGeneratedText: activity.gdprGeneratedText,
     gdprConclusionCode: activity.gdprConclusionCode,
+    businessHubMetaJson: activity.businessHubMetaJson,
   };
 
   Object.entries(shareFields).forEach(([field, value]) => {
@@ -1053,6 +1054,7 @@ async function attachActivityChildren(activity: any): Promise<Activity> {
     gdprMetaJson: activity.gdprMetaJson ?? undefined,
     gdprGeneratedText: activity.gdprGeneratedText ?? undefined,
     gdprConclusionCode: activity.gdprConclusionCode ?? undefined,
+    businessHubMetaJson: activity.businessHubMetaJson ?? undefined,
     deliverables: deliverables.map(mapDeliverable),
     grupTinta: grupTinta.map(mapGrupTinta),
     createdAt: activity.createdAt,
@@ -1169,6 +1171,7 @@ async function createActivityUnchecked(
     gdprMetaJson: activity.gdprMetaJson,
     gdprGeneratedText: activity.gdprGeneratedText,
     gdprConclusionCode: activity.gdprConclusionCode,
+    businessHubMetaJson: activity.businessHubMetaJson,
   }, {
     shareStatus: activity.shareStatus ?? 'private',
     originActivityId: activity.originActivityId,
@@ -1746,6 +1749,7 @@ export const activitiesService = {
       gdprMetaJson: updates.gdprMetaJson,
       gdprGeneratedText: updates.gdprGeneratedText,
       gdprConclusionCode: updates.gdprConclusionCode,
+      businessHubMetaJson: updates.businessHubMetaJson,
     }, updates));
     assertNoErrors(result, 'AWS update activity');
 

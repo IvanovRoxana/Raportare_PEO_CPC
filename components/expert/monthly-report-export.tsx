@@ -17,6 +17,12 @@ import { getMonthName } from '@/lib/app-utils';
 import { getNonWorkingDayInfo } from '@/lib/non-working-days';
 import { buildPontajExportPayload } from '@/lib/pontaj-export-payload';
 import { getWorkingHoursInfo } from '@/lib/working-hours';
+import { normalizePeoCategory } from '@/lib/peo-category';
+import {
+  buildBusinessHubPvFilename,
+  buildBusinessHubPvRows,
+  buildBusinessHubPvText,
+} from '@/lib/business-hub-reporting';
 
 interface MonthlyReportExportProps {
   expert: Expert;
@@ -34,10 +40,13 @@ export function MonthlyReportExport({ expert, activities, concurrentProjects = [
   const [includeTimesheet, setIncludeTimesheet] = useState(true);
   const [includeConsolidatedTimesheet, setIncludeConsolidatedTimesheet] = useState(true);
   const [includeRA, setIncludeRA] = useState(true);
+  const [includeBusinessHubPv, setIncludeBusinessHubPv] = useState(true);
   const [exportError, setExportError] = useState<string | null>(null);
 
   const workingInfo = getWorkingHoursInfo(month, year, expert.norma || 8, activities);
   const totalHours = workingInfo.totalHours;
+  const isBusinessHubExpert = normalizePeoCategory(expert.category) === 'bh';
+  const businessHubPvRows = isBusinessHubExpert ? buildBusinessHubPvRows(activities, expert.category, month, year) : [];
 
   const handleExport = async () => {
     setIsGenerating(true);
@@ -78,6 +87,13 @@ export function MonthlyReportExport({ expert, activities, concurrentProjects = [
             content: data.report,
           });
         }
+      }
+
+      if (isBusinessHubExpert && includeBusinessHubPv) {
+        docs.push({
+          name: buildBusinessHubPvFilename(month, year),
+          content: buildBusinessHubPvText(activities, expert.category, month, year),
+        });
       }
 
       // For now, download as text files
@@ -209,6 +225,20 @@ export function MonthlyReportExport({ expert, activities, concurrentProjects = [
                 Raport de Activitate (generat AI)
               </label>
             </div>
+
+            {isBusinessHubExpert && (
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="business-hub-pv"
+                  checked={includeBusinessHubPv}
+                  onCheckedChange={(checked) => setIncludeBusinessHubPv(checked as boolean)}
+                />
+                <label htmlFor="business-hub-pv" className="text-sm flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-sky-700" />
+                  PV Business Hub ({businessHubPvRows.length} evenimente)
+                </label>
+              </div>
+            )}
           </div>
 
           {exportError && (
@@ -222,7 +252,7 @@ export function MonthlyReportExport({ expert, activities, concurrentProjects = [
             <Button variant="outline" onClick={() => setIsOpen(false)}>
               Anulează
             </Button>
-            <Button onClick={handleExport} disabled={isGenerating || (!includeOPIS && !includeTimesheet && !includeConsolidatedTimesheet && !includeRA)}>
+            <Button onClick={handleExport} disabled={isGenerating || (!includeOPIS && !includeTimesheet && !includeConsolidatedTimesheet && !includeRA && !(isBusinessHubExpert && includeBusinessHubPv))}>
               {isGenerating ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
