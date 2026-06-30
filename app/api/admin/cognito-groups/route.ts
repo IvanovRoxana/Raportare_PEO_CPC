@@ -186,7 +186,10 @@ async function callSignedCognito<T>(action: string, payload: Record<string, unkn
     throw new CognitoRouteError(message, response.status);
   }
 
-  return response.json() as Promise<T>;
+  const responseText = await response.text();
+  if (!responseText.trim()) return {} as T;
+
+  return JSON.parse(responseText) as T;
 }
 
 function escapeCognitoFilterValue(value: string) {
