@@ -32,6 +32,7 @@ import { getSignedInUser } from '@/lib/aws/auth';
 import { getMonthName } from '@/lib/backend-store';
 import { buildConsolidatedTimesheet, filterActiveConcurrentProjectsForMonth, getConcurrentProjectMonthlyTotal, getConsolidatedWarnings } from '@/lib/concurrent-projects';
 import { buildIgnoredSharedActivityAlerts, buildPendingSharedActivityAlerts, buildPendingSharedDeliverableAlerts, buildReturnedSharedActivityAlerts, filterSharedRelationsForMonths } from '@/lib/document-sharing';
+import { addMonthAccessRequestNote, hasMonthAccessRequest } from '@/lib/month-access-requests';
 import { canAccessPmDashboard } from '@/lib/pm-dashboard';
 import { buildPontajExportPayload } from '@/lib/pontaj-export-payload';
 import { calculateMonthlyNormInfo } from '@/lib/pontaj-rules';
@@ -56,6 +57,7 @@ const WORK_TABS = [
 ];
 
 const DAY_NAMES = ['Lu', 'Ma', 'Mi', 'Jo', 'Vi', 'Sa', 'Du'];
+const MONTH_OPTIONS = Array.from({ length: 12 }, (_, value) => ({ value, label: getMonthName(value) }));
 
 function toIsoDate(year: number, month: number, day: number) {
   return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
@@ -312,8 +314,11 @@ function ConcurrentTimesheetEditor({
 
 export default function ExpertHomeDashboard() {
   const router = useRouter();
-  const [currentMonth] = useState(new Date().getMonth());
-  const [currentYear] = useState(new Date().getFullYear());
+  const today = useMemo(() => new Date(), []);
+  const baseMonth = today.getMonth();
+  const baseYear = today.getFullYear();
+  const [currentMonth, setCurrentMonth] = useState(baseMonth);
+  const [currentYear, setCurrentYear] = useState(baseYear);
   const [signedInUserId, setSignedInUserId] = useState<string | null>(null);
   const [signedInEmail, setSignedInEmail] = useState<string | null>(null);
   const [signedInName, setSignedInName] = useState('expert');
@@ -373,6 +378,11 @@ export default function ExpertHomeDashboard() {
   const { projects: currentExpertConcurrentProjects } = useConcurrentProjects(currentExpert?.id ?? null);
   const { entries: concurrentTimesheetEntries } = useConcurrentProjectTimesheetByMonth(currentMonth, currentYear);
   const { upsertEntry } = useConcurrentProjectTimesheetMutations(currentMonth, currentYear);
+  const { status: currentMonthStatus, updateStatus: updateCurrentMonthStatus } = useReportStatus(
+    currentExpert?.id ?? null,
+    currentMonth,
+    currentYear,
+  );
   const previousMonthDate = useMemo(() => new Date(currentYear, currentMonth - 1, 1), [currentMonth, currentYear]);
   const { status: previousMonthStatus } = useReportStatus(
     currentExpert?.id ?? null,
@@ -381,9 +391,17 @@ export default function ExpertHomeDashboard() {
   );
 
   const expertName = currentExpert?.name ?? signedInName;
+  const isBaseMonth = currentMonth === baseMonth && currentYear === baseYear;
+  const selectedMonthHasAccess = isBaseMonth || currentMonthStatus?.expertAccessApproved === true;
+  const selectedMonthRequestPending = hasMonthAccessRequest(currentMonthStatus);
+  const selectableYears = useMemo(
+    () => Array.from(new Set([baseYear - 1, baseYear, baseYear + 1, currentYear])).sort((a, b) => b - a),
+    [baseYear, currentYear],
+  );
   const { sharedDeliverables, mutate: refreshSharedDeliverables } = useSharedDeliverables();
   const { ignore: ignoreSharedSuggestion } = useSharedDeliverableMutations();
   const visibleSharedDeliverables = useMemo(() => {
+    if (!selectedMonthHasAccess) return [];
     const allowedMonths = [
       { month: currentMonth, year: currentYear },
       ...(previousMonthStatus?.expertAccessApproved
@@ -395,7 +413,7 @@ export default function ExpertHomeDashboard() {
       documents,
       allowedMonths,
     });
-  }, [currentMonth, currentYear, documents, previousMonthDate, previousMonthStatus, sharedDeliverables]);
+  }, [currentMonth, currentYear, documents, previousMonthDate, previousMonthStatus, selectedMonthHasAccess, sharedDeliverables]);
   const pendingSharedAlerts = useMemo(() => {
     if (!currentExpert) return [];
     return buildPendingSharedDeliverableAlerts({
@@ -435,17 +453,17 @@ export default function ExpertHomeDashboard() {
   };
 
   const peoActivities = useMemo(() => {
-    if (!currentExpert) return [];
+    if (!currentExpert || !selectedMonthHasAccess) return [];
     return monthActivities.filter((activity) => activity.expertId === currentExpert.id);
-  }, [currentExpert, monthActivities]);
+  }, [currentExpert, monthActivities, selectedMonthHasAccess]);
 
   const activeConcurrentProjects = useMemo(
-    () => filterActiveConcurrentProjectsForMonth(currentExpertConcurrentProjects, currentMonth, currentYear),
-    [currentExpertConcurrentProjects, currentMonth, currentYear]
+    () => selectedMonthHasAccess ? filterActiveConcurrentProjectsForMonth(currentExpertConcurrentProjects, currentMonth, currentYear) : [],
+    [currentExpertConcurrentProjects, currentMonth, currentYear, selectedMonthHasAccess]
   );
   const expertConcurrentEntries = useMemo(
-    () => concurrentTimesheetEntries.filter((entry) => entry.expertId === currentExpert?.id),
-    [concurrentTimesheetEntries, currentExpert]
+    () => selectedMonthHasAccess ? concurrentTimesheetEntries.filter((entry) => entry.expertId === currentExpert?.id) : [],
+    [concurrentTimesheetEntries, currentExpert, selectedMonthHasAccess]
   );
 
   const projects = useMemo<ProjectItem[]>(
@@ -485,12 +503,12 @@ export default function ExpertHomeDashboard() {
   const openPeoActivitiesCount = peoActivities.filter((activity) => activity.status !== 'approved').length;
   const peoActivitiesWithDeliverablesCount = peoActivities.filter((activity) => (activity.deliverables?.length ?? 0) > 0).length;
   const monthlyDocumentCount = useMemo(() => {
-    if (!currentExpert) return 0;
+    if (!currentExpert || !selectedMonthHasAccess) return 0;
     return documents.filter((document) => (
       document.uploadedByExpertId === currentExpert.id
       && isDateInMonth(document.activityDate || document.uploadDate, currentMonth, currentYear)
     )).length;
-  }, [currentExpert, currentMonth, currentYear, documents]);
+  }, [currentExpert, currentMonth, currentYear, documents, selectedMonthHasAccess]);
   const embeddedDeliverablesCount = peoActivities.reduce((sum, activity) => sum + (activity.deliverables?.length ?? 0), 0);
   const deliverablesCount = Math.max(monthlyDocumentCount, embeddedDeliverablesCount);
   const totalHoursProgress = percent(totalMonthHours, monthlyNormInfo.monthlyNorm);
@@ -507,7 +525,7 @@ export default function ExpertHomeDashboard() {
   };
 
   const saveConcurrentEntry = async (date: string) => {
-    if (!selectedConcurrentProject || !currentExpert) return;
+    if (!selectedConcurrentProject || !currentExpert || !selectedMonthHasAccess) return;
     const existing = expertConcurrentEntries.find((entry) => entry.concurrentProjectId === selectedConcurrentProject.id && entry.date === date);
     const draft = draftConcurrentEntries[date] || existing || {};
     await upsertEntry({
@@ -532,7 +550,7 @@ export default function ExpertHomeDashboard() {
   };
 
   const exportPontaj = async () => {
-    if (!currentExpert) return;
+    if (!currentExpert || !selectedMonthHasAccess) return;
 
     const response = await fetch('/api/export/pontaj', {
       method: 'POST',
@@ -574,6 +592,27 @@ export default function ExpertHomeDashboard() {
     hasPmAccess: currentExpert?.hasPmAccess,
   });
 
+  const handleMonthAccessRequest = async () => {
+    if (!currentExpert || isBaseMonth || currentMonthStatus?.expertAccessApproved === true) return;
+
+    await updateCurrentMonthStatus({
+      expertId: currentExpert.id,
+      year: currentYear,
+      month: currentMonth,
+      status: currentMonthStatus?.status ?? 'draft',
+      sentDate: currentMonthStatus?.sentDate,
+      approvalDate: currentMonthStatus?.approvalDate,
+      expertAccessApproved: currentMonthStatus?.expertAccessApproved ?? false,
+      expertAccessApprovedAt: currentMonthStatus?.expertAccessApprovedAt,
+      pmNotes: addMonthAccessRequestNote(currentMonthStatus?.pmNotes, {
+        month: currentMonth,
+        year: currentYear,
+        expertName,
+        requestedAt: new Date().toISOString(),
+      }),
+    });
+  };
+
   if (isAuthLoading || !isAuthenticated) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
@@ -593,9 +632,43 @@ export default function ExpertHomeDashboard() {
         navItems={expertNavItems}
         eyebrow="Modul Expert"
         title="Pontaj lunar"
-        description="Centralizează activitățile și orele raportate pentru luna curentă."
+        description={`Centralizeaza activitatile si orele raportate pentru ${getMonthName(currentMonth)} ${currentYear}.`}
         actions={
           <>
+            <div className="flex flex-wrap items-center gap-2">
+              <Select
+                value={`${currentMonth}-${currentYear}`}
+                onValueChange={(value) => {
+                  const [month, year] = value.split('-').map(Number);
+                  setCurrentMonth(month);
+                  setCurrentYear(year);
+                }}
+              >
+                <SelectTrigger className="h-9 w-[160px]">
+                  <SelectValue placeholder="Luna" />
+                </SelectTrigger>
+                <SelectContent>
+                  {selectableYears.flatMap((year) =>
+                    MONTH_OPTIONS.map((month) => (
+                      <SelectItem key={`${month.value}-${year}`} value={`${month.value}-${year}`}>
+                        {month.label} {year}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+              {!selectedMonthHasAccess && (
+                selectedMonthRequestPending ? (
+                  <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-800">
+                    Cerere trimisa PM
+                  </Badge>
+                ) : (
+                  <Button type="button" variant="outline" onClick={handleMonthAccessRequest} disabled={!currentExpert}>
+                    Solicita acces PM
+                  </Button>
+                )
+              )}
+            </div>
             <Button
               type="button"
               variant="outline"
@@ -605,16 +678,23 @@ export default function ExpertHomeDashboard() {
                   alert(error instanceof Error ? error.message : 'Exportul pontajului a esuat.');
                 });
               }}
-              disabled={!currentExpert}
+              disabled={!currentExpert || !selectedMonthHasAccess}
             >
               Export pontaj
             </Button>
-            <Button asChild>
-              <Link href="/expert/peo">
+            {selectedMonthHasAccess ? (
+              <Button asChild>
+                <Link href="/expert/peo">
+                  Adaugă activitate
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              </Button>
+            ) : (
+              <Button type="button" disabled>
                 Adaugă activitate
                 <ArrowRight className="h-4 w-4" />
-              </Link>
-            </Button>
+              </Button>
+            )}
             {canOpenPmDashboard && (
               <Button asChild variant="outline">
                 <Link href="/pm">Dashboard PM</Link>
@@ -676,7 +756,7 @@ export default function ExpertHomeDashboard() {
             <RightInfoCard title="Status raportare" icon={ClipboardList}>
               <div className="space-y-4 text-sm">
                 <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                  <span className="text-muted-foreground">Luna curentă</span>
+                  <span className="text-muted-foreground">Luna selectata</span>
                   <span className="rounded-full bg-[#e9faf5] px-3 py-1 text-xs font-semibold text-[#087a63]">Deschisă</span>
                 </div>
                 <div className="flex items-center justify-between">
@@ -692,6 +772,29 @@ export default function ExpertHomeDashboard() {
           </>
         }
       >
+
+        {!selectedMonthHasAccess && (
+          <section className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-950">
+            <div className="flex items-center gap-2 font-semibold">
+              <AlertTriangle className="h-4 w-4" />
+              Acces luna blocat
+            </div>
+            <p className="mt-2 text-sm text-amber-800">
+              Datele pentru {getMonthName(currentMonth)} {currentYear} raman ascunse pana cand PM aproba accesul pentru aceasta luna.
+            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              {selectedMonthRequestPending ? (
+                <Badge variant="outline" className="border-amber-300 bg-white text-amber-900">
+                  Cerere trimisa catre PM
+                </Badge>
+              ) : (
+                <Button type="button" size="sm" onClick={handleMonthAccessRequest} disabled={!currentExpert}>
+                  Solicita acces PM
+                </Button>
+              )}
+            </div>
+          </section>
+        )}
 
         {(pendingActivityAlerts.length > 0 || ignoredActivityAlerts.length > 0 || returnedActivityAlerts.length > 0) && (
           <Tabs defaultValue="active" className="space-y-3">
@@ -824,7 +927,7 @@ export default function ExpertHomeDashboard() {
             icon={CalendarDays}
             label="Zile lucrate"
             value={workedDaysCount}
-            description="zile cu pontaj în luna curentă"
+            description="zile cu pontaj in luna selectata"
             progress={workedDaysProgress}
             tone="success"
           />
@@ -886,7 +989,7 @@ export default function ExpertHomeDashboard() {
               <Tabs defaultValue="proiecte" className="w-full">
                 <TabsList className="grid h-auto w-full grid-cols-1 gap-2 bg-muted/50 p-1">
                   <TabsTrigger value="proiecte">Selectează Proiect</TabsTrigger>
-                  <TabsTrigger value="ore">Ore luna curentă</TabsTrigger>
+                  <TabsTrigger value="ore">Ore luna selectata</TabsTrigger>
                   <TabsTrigger value="consolidat">Pontaj consolidat</TabsTrigger>
                   <TabsTrigger value="paralele">Proiect paralel</TabsTrigger>
                 </TabsList>
@@ -959,7 +1062,7 @@ export default function ExpertHomeDashboard() {
 
                 <TabsContent value="paralele" className="mt-4 space-y-3" id="proiecte-paralele">
                   {activeConcurrentProjects.length === 0 ? (
-                    <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">Nu ai proiecte paralele active în luna curentă.</div>
+                    <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">Nu ai proiecte paralele active in luna selectata.</div>
                   ) : (
                     <>
                       <Select value={selectedConcurrentProject?.id || ''} onValueChange={setSelectedConcurrentProjectId}>
