@@ -21,6 +21,7 @@ import { MultiSelectCalendar } from '@/components/expert/multi-select-calendar';
 import { CalendarView } from '@/components/expert/calendar-view';
 import { ActivityForm, type ActivityResolutionHint, type ActivityResolutionSection } from '@/components/expert/activity-form';
 import { ActivitiesTable } from '@/components/expert/activities-table';
+import { MonthlyEvidencePanel } from '@/components/expert/monthly-evidence-panel';
 import { ReportGenerator } from '@/components/expert/report-generator';
 import { MonthlyReportExport } from '@/components/expert/monthly-report-export';
 import { getMonthName } from '@/lib/backend-store';
@@ -42,7 +43,7 @@ import type { Activity, Deliverable, Expert, ReportStatus } from '@/lib/types';
 import { AdminViewAsBanner } from '@/components/admin/admin-view-as-banner';
 import { UserMenu } from '@/components/user-menu';
 import { getSignedInUser } from '@/lib/aws/auth';
-import { isGtExpertCategory } from '@/lib/peo-category';
+import { isGtExpertCategory, normalizePeoCategory } from '@/lib/peo-category';
 import { parseGdprMetaJson, validateGdprActivityDraft } from '@/lib/gdpr-reporting';
 import { assertCanLogHoursOnDate, getNonWorkingDayInfo } from '@/lib/non-working-days';
 import { formatDate, formatDateRo } from '@/lib/app-utils';
@@ -227,12 +228,13 @@ export default function ExpertDashboard() {
     return expert || { id: '', name: 'Expert', role: '', norma: 8, saCodes: [] };
   }, [experts, selectedExpertId]);
   const isGtExpert = isGtExpertCategory(selectedExpert.category);
+  const isComExpert = normalizePeoCategory(selectedExpert.category) === 'com';
 
   useEffect(() => {
-    if (activeTab === 'gt' && !isGtExpert) {
+    if ((activeTab === 'gt' && !isGtExpert) || (activeTab === 'dovezi-com' && !isComExpert)) {
       setActiveTab('activitati');
     }
-  }, [activeTab, isGtExpert]);
+  }, [activeTab, isComExpert, isGtExpert]);
 
   // Filter activities by expert
   const activities = useMemo(() => {
@@ -1384,10 +1386,11 @@ export default function ExpertDashboard() {
 
         <div id="livrabile" className="scroll-mt-24" />
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className={`grid w-full ${isGtExpert ? 'grid-cols-4' : 'grid-cols-3'}`}>
+          <TabsList className={`grid w-full ${isGtExpert && isComExpert ? 'grid-cols-5' : isGtExpert || isComExpert ? 'grid-cols-4' : 'grid-cols-3'}`}>
             <TabsTrigger value="activitati">Activitati</TabsTrigger>
             <TabsTrigger value="calendar">Calendar</TabsTrigger>
             {isGtExpert && <TabsTrigger value="gt">Grup Tinta</TabsTrigger>}
+            {isComExpert && <TabsTrigger value="dovezi-com">Dovezi COM</TabsTrigger>}
             <TabsTrigger value="export">Export RA</TabsTrigger>
           </TabsList>
 
@@ -1677,6 +1680,20 @@ export default function ExpertDashboard() {
                   </div>
                 </CardContent>
               </Card>
+            </TabsContent>
+          )}
+
+          {isComExpert && (
+            <TabsContent value="dovezi-com" className="space-y-6 scroll-mt-24">
+              <MonthlyEvidencePanel
+                expert={selectedExpert as Expert}
+                activities={activities}
+                month={currentMonth}
+                year={currentYear}
+                isApproved={isApproved}
+                onUpdateActivity={updateActivity}
+                onRefreshActivities={refreshActivities}
+              />
             </TabsContent>
           )}
 
