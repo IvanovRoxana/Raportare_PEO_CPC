@@ -55,8 +55,11 @@ export function MonthlyReportExport({ expert, activities, concurrentProjects = [
 
   const workingInfo = getWorkingHoursInfo(month, year, expert.norma || 8, activities);
   const totalHours = workingInfo.totalHours;
-  const isBusinessHubExpert = normalizePeoCategory(expert.category) === 'bh';
-  const businessHubPvRows = isBusinessHubExpert ? buildBusinessHubPvRows(activities, expert.category, month, year) : [];
+  const normalizedExpertCategory = normalizePeoCategory(expert.category);
+  const hasBusinessHubActivities = activities.some((activity) => Boolean(activity.businessHubMetaJson));
+  const isBusinessHubExpert = normalizedExpertCategory === 'bh';
+  const isBusinessHubExportAvailable = isBusinessHubExpert || hasBusinessHubActivities;
+  const businessHubPvRows = isBusinessHubExportAvailable ? buildBusinessHubPvRows(activities, expert.category, month, year) : [];
 
   const handleExport = async () => {
     setIsGenerating(true);
@@ -99,7 +102,7 @@ export function MonthlyReportExport({ expert, activities, concurrentProjects = [
         }
       }
 
-      if (isBusinessHubExpert && (includeBusinessHubPv || includeBusinessHubAddresses)) {
+      if (isBusinessHubExportAvailable && (includeBusinessHubPv || includeBusinessHubAddresses)) {
         const businessHubFiles = await generateBusinessHubMonthlyFiles();
         businessHubFiles.forEach((file) => triggerDownload(file.blob, file.name));
         if (attachBusinessHubDeliverables) {
@@ -263,7 +266,7 @@ export function MonthlyReportExport({ expert, activities, concurrentProjects = [
       <DialogTrigger asChild>
         <Button variant="outline" size="sm" className="gap-2">
           <Download className="h-4 w-4" />
-          Export Raport Lunar
+          {isBusinessHubExportAvailable ? 'Export lunar / Business Hub' : 'Export Raport Lunar'}
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-md">
@@ -282,6 +285,50 @@ export function MonthlyReportExport({ expert, activities, concurrentProjects = [
           {/* Document selection */}
           <div className="space-y-3">
             <Label className="text-sm font-medium">Documente de generat:</Label>
+
+            {isBusinessHubExportAvailable && (
+              <div className="space-y-3 rounded-md border border-sky-100 bg-sky-50/60 p-3">
+                <div>
+                  <p className="text-sm font-semibold text-sky-950">Business Hub</p>
+                  <p className="text-xs text-sky-800">
+                    Export lunar pentru proces-verbal, adrese si atasare ca livrabile comune.
+                  </p>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="business-hub-pv"
+                    checked={includeBusinessHubPv}
+                    onCheckedChange={(checked) => setIncludeBusinessHubPv(checked as boolean)}
+                  />
+                  <label htmlFor="business-hub-pv" className="text-sm flex items-center gap-2">
+                    <FileSpreadsheet className="h-4 w-4 text-sky-700" />
+                    PV Business Hub (.xlsx, {businessHubPvRows.length} evenimente)
+                  </label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="business-hub-attach"
+                    checked={attachBusinessHubDeliverables}
+                    onCheckedChange={(checked) => setAttachBusinessHubDeliverables(checked as boolean)}
+                  />
+                  <label htmlFor="business-hub-attach" className="text-sm flex items-center gap-2">
+                    <FileType className="h-4 w-4 text-sky-700" />
+                    Ataseaza ca livrabile lunare
+                  </label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="business-hub-addresses"
+                    checked={includeBusinessHubAddresses}
+                    onCheckedChange={(checked) => setIncludeBusinessHubAddresses(checked as boolean)}
+                  />
+                  <label htmlFor="business-hub-addresses" className="text-sm flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-sky-700" />
+                    Adrese Business Hub (.docx)
+                  </label>
+                </div>
+              </div>
+            )}
             
             <div className="flex items-center space-x-2">
               <Checkbox
@@ -330,44 +377,6 @@ export function MonthlyReportExport({ expert, activities, concurrentProjects = [
                 Raport de Activitate (generat AI)
               </label>
             </div>
-
-            {isBusinessHubExpert && (
-              <div className="space-y-3 rounded-md border border-sky-100 bg-sky-50/60 p-3">
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="business-hub-pv"
-                    checked={includeBusinessHubPv}
-                    onCheckedChange={(checked) => setIncludeBusinessHubPv(checked as boolean)}
-                  />
-                  <label htmlFor="business-hub-pv" className="text-sm flex items-center gap-2">
-                    <FileSpreadsheet className="h-4 w-4 text-sky-700" />
-                    PV Business Hub (.xlsx, {businessHubPvRows.length} evenimente)
-                  </label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="business-hub-attach"
-                    checked={attachBusinessHubDeliverables}
-                    onCheckedChange={(checked) => setAttachBusinessHubDeliverables(checked as boolean)}
-                  />
-                  <label htmlFor="business-hub-attach" className="text-sm flex items-center gap-2">
-                    <FileType className="h-4 w-4 text-sky-700" />
-                    Ataseaza ca livrabile lunare
-                  </label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="business-hub-addresses"
-                    checked={includeBusinessHubAddresses}
-                    onCheckedChange={(checked) => setIncludeBusinessHubAddresses(checked as boolean)}
-                  />
-                  <label htmlFor="business-hub-addresses" className="text-sm flex items-center gap-2">
-                    <FileText className="h-4 w-4 text-sky-700" />
-                    Adrese Business Hub (.docx)
-                  </label>
-                </div>
-              </div>
-            )}
           </div>
 
           {exportError && (
@@ -381,7 +390,7 @@ export function MonthlyReportExport({ expert, activities, concurrentProjects = [
             <Button variant="outline" onClick={() => setIsOpen(false)}>
               Anulează
             </Button>
-            <Button onClick={handleExport} disabled={isGenerating || (!includeOPIS && !includeTimesheet && !includeConsolidatedTimesheet && !includeRA && !(isBusinessHubExpert && (includeBusinessHubPv || includeBusinessHubAddresses)))}>
+            <Button onClick={handleExport} disabled={isGenerating || (!includeOPIS && !includeTimesheet && !includeConsolidatedTimesheet && !includeRA && !(isBusinessHubExportAvailable && (includeBusinessHubPv || includeBusinessHubAddresses)))}>
               {isGenerating ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
