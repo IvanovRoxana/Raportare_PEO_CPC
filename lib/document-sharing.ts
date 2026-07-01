@@ -122,6 +122,42 @@ export function filterPendingSharedDeliverablesNotCoveredByActivity(args: {
   ));
 }
 
+export type SharedRelationMonth = {
+  month: number;
+  year: number;
+};
+
+function getRelationDate(relation: Pick<SharedDeliverable, 'sourceActivityDate'>, document?: Pick<DocumentMetadata, 'activityDate'>) {
+  return relation.sourceActivityDate || document?.activityDate;
+}
+
+export function isSharedRelationInMonth(
+  relation: Pick<SharedDeliverable, 'sourceActivityDate'>,
+  month: SharedRelationMonth,
+  document?: Pick<DocumentMetadata, 'activityDate'>,
+) {
+  const date = getRelationDate(relation, document);
+  if (!date) return true;
+
+  const parsed = new Date(date);
+  if (Number.isNaN(parsed.getTime())) return true;
+
+  return parsed.getMonth() === month.month && parsed.getFullYear() === month.year;
+}
+
+export function filterSharedRelationsForMonths(args: {
+  sharedDeliverables: SharedDeliverable[];
+  allowedMonths: SharedRelationMonth[];
+  documents?: DocumentMetadata[];
+}) {
+  if (args.allowedMonths.length === 0) return [];
+
+  return args.sharedDeliverables.filter((relation) => {
+    const document = args.documents?.find((item) => item.id === relation.documentId);
+    return args.allowedMonths.some((month) => isSharedRelationInMonth(relation, month, document));
+  });
+}
+
 export function buildSharedActivitySnapshot(activity?: Partial<Activity>) {
   if (!activity) return {};
 

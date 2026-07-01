@@ -10,6 +10,7 @@ import {
   buildSharedActivitySuggestions,
   buildSharedDeliverables,
   filterPendingSharedDeliverablesNotCoveredByActivity,
+  filterSharedRelationsForMonths,
   findDuplicateCandidates,
   hashFirstPageText,
   isDeliverableIncludedInExpertExport,
@@ -297,6 +298,54 @@ test('creeaza si afiseaza sugestii de activitate comuna separate de livrabile', 
 
   assert.equal(pendingAlerts.length, 1);
   assert.match(pendingAlerts[0].message, /Expert Unu/);
+});
+
+test('filtreaza sugestiile comune dupa lunile explicit permise', () => {
+  const sharedDeliverables = [
+    {
+      id: 'current',
+      documentId: 'activity:current',
+      sourceExpertId: 'expert-1',
+      targetExpertId: 'expert-2',
+      sourceActivityDate: '2026-07-12',
+      status: 'pending_registration',
+    },
+    {
+      id: 'previous',
+      documentId: 'activity:previous',
+      sourceExpertId: 'expert-1',
+      targetExpertId: 'expert-2',
+      sourceActivityDate: '2026-06-20',
+      status: 'pending_registration',
+    },
+    {
+      id: 'next',
+      documentId: 'activity:next',
+      sourceExpertId: 'expert-1',
+      targetExpertId: 'expert-2',
+      sourceActivityDate: '2026-08-19',
+      status: 'pending_registration',
+    },
+  ];
+
+  assert.deepEqual(
+    filterSharedRelationsForMonths({
+      sharedDeliverables,
+      allowedMonths: [{ month: 6, year: 2026 }],
+    }).map((relation) => relation.id),
+    ['current'],
+  );
+
+  assert.deepEqual(
+    filterSharedRelationsForMonths({
+      sharedDeliverables,
+      allowedMonths: [
+        { month: 6, year: 2026 },
+        { month: 5, year: 2026 },
+      ],
+    }).map((relation) => relation.id),
+    ['current', 'previous'],
+  );
 });
 
 test('activitatea comuna ignorata apare in istoricul targetului, nu in alertele active', () => {

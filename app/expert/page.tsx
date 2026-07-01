@@ -26,12 +26,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { UserMenu } from '@/components/user-menu';
-import { useActivitiesByMonth, useConcurrentProjects, useConcurrentProjectTimesheetByMonth, useConcurrentProjectTimesheetMutations, useDocuments, useExperts, useSharedDeliverableMutations, useSharedDeliverables } from '@/hooks/use-backend-data';
+import { useActivitiesByMonth, useConcurrentProjects, useConcurrentProjectTimesheetByMonth, useConcurrentProjectTimesheetMutations, useDocuments, useExperts, useReportStatus, useSharedDeliverableMutations, useSharedDeliverables } from '@/hooks/use-backend-data';
 import type { AppRole } from '@/lib/aws/auth';
 import { getSignedInUser } from '@/lib/aws/auth';
 import { getMonthName } from '@/lib/backend-store';
 import { buildConsolidatedTimesheet, filterActiveConcurrentProjectsForMonth, getConcurrentProjectMonthlyTotal, getConsolidatedWarnings } from '@/lib/concurrent-projects';
-import { buildIgnoredSharedActivityAlerts, buildPendingSharedActivityAlerts, buildPendingSharedDeliverableAlerts, buildReturnedSharedActivityAlerts } from '@/lib/document-sharing';
+import { buildIgnoredSharedActivityAlerts, buildPendingSharedActivityAlerts, buildPendingSharedDeliverableAlerts, buildReturnedSharedActivityAlerts, filterSharedRelationsForMonths } from '@/lib/document-sharing';
 import { canAccessPmDashboard } from '@/lib/pm-dashboard';
 import { buildPontajExportPayload } from '@/lib/pontaj-export-payload';
 import type { Activity, ConcurrentProject, ConcurrentProjectTimesheetEntry, Expert } from '@/lib/types';
@@ -358,42 +358,61 @@ export default function ExpertHomeDashboard() {
   const { projects: currentExpertConcurrentProjects } = useConcurrentProjects(currentExpert?.id ?? null);
   const { entries: concurrentTimesheetEntries } = useConcurrentProjectTimesheetByMonth(currentMonth, currentYear);
   const { upsertEntry } = useConcurrentProjectTimesheetMutations(currentMonth, currentYear);
+  const previousMonthDate = useMemo(() => new Date(currentYear, currentMonth - 1, 1), [currentMonth, currentYear]);
+  const { status: previousMonthStatus } = useReportStatus(
+    currentExpert?.id ?? null,
+    previousMonthDate.getMonth(),
+    previousMonthDate.getFullYear(),
+  );
 
   const expertName = currentExpert?.name ?? signedInName;
   const { sharedDeliverables, mutate: refreshSharedDeliverables } = useSharedDeliverables();
   const { ignore: ignoreSharedSuggestion } = useSharedDeliverableMutations();
+  const visibleSharedDeliverables = useMemo(() => {
+    const allowedMonths = [
+      { month: currentMonth, year: currentYear },
+      ...(previousMonthStatus?.expertAccessApproved
+        ? [{ month: previousMonthDate.getMonth(), year: previousMonthDate.getFullYear() }]
+        : []),
+    ];
+    return filterSharedRelationsForMonths({
+      sharedDeliverables,
+      documents,
+      allowedMonths,
+    });
+  }, [currentMonth, currentYear, documents, previousMonthDate, previousMonthStatus, sharedDeliverables]);
   const pendingSharedAlerts = useMemo(() => {
     if (!currentExpert) return [];
     return buildPendingSharedDeliverableAlerts({
       expert: currentExpert,
       documents,
-      sharedDeliverables,
+      sharedDeliverables: visibleSharedDeliverables,
     });
-  }, [currentExpert, documents, sharedDeliverables]);
+  }, [currentExpert, documents, visibleSharedDeliverables]);
   const pendingActivityAlerts = useMemo(() => {
     if (!currentExpert) return [];
     return buildPendingSharedActivityAlerts({
       expert: currentExpert,
       experts,
-      sharedDeliverables,
+      sharedDeliverables: visibleSharedDeliverables,
     });
-  }, [currentExpert, experts, sharedDeliverables]);
+  }, [currentExpert, experts, visibleSharedDeliverables]);
   const returnedActivityAlerts = useMemo(() => {
     if (!currentExpert) return [];
     return buildReturnedSharedActivityAlerts({
       expert: currentExpert,
       experts,
-      sharedDeliverables,
+      sharedDeliverables: visibleSharedDeliverables,
     });
-  }, [currentExpert, experts, sharedDeliverables]);
+  }, [currentExpert, experts, visibleSharedDeliverables]);
   const ignoredActivityAlerts = useMemo(() => {
     if (!currentExpert) return [];
     return buildIgnoredSharedActivityAlerts({
       expert: currentExpert,
       experts,
-      sharedDeliverables,
+      sharedDeliverables: visibleSharedDeliverables,
     });
-  }, [currentExpert, experts, sharedDeliverables]);
+  }, [currentExpert, experts, visibleSharedDeliverables]);
 
   const handleIgnoreActivitySuggestion = async (relationId: string) => {
     await ignoreSharedSuggestion(relationId);

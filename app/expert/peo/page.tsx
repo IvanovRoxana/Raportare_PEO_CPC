@@ -60,7 +60,7 @@ import {
   validateActivitiesBeforeCreate,
   type ActivityDraftForValidation,
 } from '@/lib/pontaj-rules';
-import { filterPendingSharedDeliverablesNotCoveredByActivity } from '@/lib/document-sharing';
+import { filterPendingSharedDeliverablesNotCoveredByActivity, filterSharedRelationsForMonths } from '@/lib/document-sharing';
 
 type SubmitReadinessSeverity = 'ok' | 'warning' | 'blocking';
 type SubmitReadinessKey =
@@ -169,6 +169,11 @@ export default function ExpertDashboard() {
   const { projects: concurrentProjects } = useConcurrentProjects(selectedExpertId);
   const { entries: concurrentTimesheetEntries } = useConcurrentProjectTimesheetByMonth(currentMonth, currentYear);
   const { sharedDeliverables, isLoading: sharedDeliverablesLoading, mutate: refreshSharedDeliverables } = useSharedDeliverables(selectedExpertId || undefined);
+  const visibleSharedDeliverables = useMemo(() => filterSharedRelationsForMonths({
+    sharedDeliverables,
+    documents,
+    allowedMonths: [{ month: currentMonth, year: currentYear }],
+  }), [currentMonth, currentYear, documents, sharedDeliverables]);
   const {
     context: sharedActivityRegistrationContext,
     isLoading: sharedActivityRegistrationLoading,
@@ -244,7 +249,7 @@ export default function ExpertDashboard() {
   const pendingSharedDeliverableContext = useMemo(() => {
     if (!pendingSharedDeliverableRelationId) return null;
 
-    const relation = sharedDeliverables.find((item) => item.id === pendingSharedDeliverableRelationId);
+    const relation = visibleSharedDeliverables.find((item) => item.id === pendingSharedDeliverableRelationId);
     if (!relation) return null;
 
     const document = documents.find((item) => item.id === relation.documentId);
@@ -281,7 +286,7 @@ export default function ExpertDashboard() {
       fileName: document?.originalFileName,
       deliverableType: document?.deliverableType,
     };
-  }, [allMonthActivities, documents, experts, pendingSharedDeliverableRelationId, sharedDeliverables]);
+  }, [allMonthActivities, documents, experts, pendingSharedDeliverableRelationId, visibleSharedDeliverables]);
 
   const monthlyBlocking = useMemo(
     () =>
@@ -543,7 +548,7 @@ export default function ExpertDashboard() {
       : 0;
     const submitThresholdHours = Math.ceil((monthlyBlocking.monthlyNorm * SUBMIT_MIN_NORM_PERCENT) / 100);
     const remainingThresholdHours = Math.max(0, submitThresholdHours - monthlyBlocking.totalHours);
-    const pendingSharedActivities = sharedDeliverables.filter((relation) =>
+    const pendingSharedActivities = visibleSharedDeliverables.filter((relation) =>
       relation.targetExpertId === selectedExpert.id
       && relation.status === 'pending_registration'
       && relation.documentId.startsWith('activity:'),
@@ -552,7 +557,7 @@ export default function ExpertDashboard() {
       ...pendingSharedActivities,
       ...filterPendingSharedDeliverablesNotCoveredByActivity({
         expertId: selectedExpert.id,
-        sharedDeliverables,
+        sharedDeliverables: visibleSharedDeliverables,
       }),
     ];
     const missingWorkingDayIssues: SubmitReadinessIssue[] = missingWorkingDays.map((date) => ({
@@ -718,7 +723,7 @@ export default function ExpertDashboard() {
         ? 'Adauga cel putin o activitate inainte de trimitere.'
         : blockingItems[0]?.detail || '',
     };
-  }, [activities, currentMonth, currentYear, documents, monthlyBlocking, selectedExpert.category, sharedDeliverables]);
+  }, [activities, currentMonth, currentYear, documents, monthlyBlocking, selectedExpert.category, visibleSharedDeliverables]);
 
   const selectedReadinessItem = selectedReadinessKey
     ? submitReadiness.items.find((item) => item.key === selectedReadinessKey && item.severity !== 'ok') ?? null
@@ -911,6 +916,10 @@ export default function ExpertDashboard() {
         && Number.isInteger(normalizedTargetMonth)
         && (targetYear !== currentYear || normalizedTargetMonth !== currentMonth)
       ) {
+        if (!canOpenMonth(normalizedTargetMonth, targetYear)) {
+          setSaveError(getMonthAccessMessage(normalizedTargetMonth, targetYear));
+          return;
+        }
         setCurrentYear(targetYear);
         setCurrentMonth(normalizedTargetMonth);
         return;
@@ -973,6 +982,10 @@ export default function ExpertDashboard() {
         && Number.isInteger(normalizedTargetMonth)
         && (targetYear !== currentYear || normalizedTargetMonth !== currentMonth)
       ) {
+        if (!canOpenMonth(normalizedTargetMonth, targetYear)) {
+          setSaveError(getMonthAccessMessage(normalizedTargetMonth, targetYear));
+          return;
+        }
         setCurrentYear(targetYear);
         setCurrentMonth(normalizedTargetMonth);
         return;
