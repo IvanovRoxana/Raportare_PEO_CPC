@@ -1,9 +1,9 @@
 {
   "auth": {
-    "user_pool_id": "eu-north-1_7Z19syRue",
+    "user_pool_id": "eu-north-1_RVfck2jAV",
     "aws_region": "eu-north-1",
-    "user_pool_client_id": "7k2pmfmamsk5ar1pgmlvd797g1",
-    "identity_pool_id": "eu-north-1:834b9ccd-2d2f-4ce4-b2b1-1891fa62fa55",
+    "user_pool_client_id": "6ao8edp2cs4i2ubgl9eri22n50",
+    "identity_pool_id": "eu-north-1:e3197fb5-7a74-4721-9448-efc8b55fac9c",
     "mfa_methods": [],
     "standard_required_attributes": [
       "email"
@@ -42,7 +42,7 @@
     "unauthenticated_identities_enabled": true
   },
   "data": {
-    "url": "https://vfyiapouw5e35k7zhb3gdsgiji.appsync-api.eu-north-1.amazonaws.com/graphql",
+    "url": "https://jxr3manuhnaw3n3h6nj3qbywmi.appsync-api.eu-north-1.amazonaws.com/graphql",
     "aws_region": "eu-north-1",
     "default_authorization_type": "AMAZON_COGNITO_USER_POOLS",
     "authorization_types": [
@@ -1961,6 +1961,1339 @@
                       "read"
                     ]
                   },
+                  {
+                    "groupClaim": "cognito:groups",
+                    "provider": "userPools",
+                    "allow": "groups",
+                    "operations": [
+                      "create",
+                      "read",
+                      "update",
+                      "delete"
+                    ],
+                    "groups": [
+                      "pm",
+                      "admin"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "Organization": {
+          "name": "Organization",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "name": {
+              "name": "name",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "normalizedName": {
+              "name": "normalizedName",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "kind": {
+              "name": "kind",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "legalForm": {
+              "name": "legalForm",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "cui": {
+              "name": "cui",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "parentOrganizationId": {
+              "name": "parentOrganizationId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "federationName": {
+              "name": "federationName",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "patronalOrganizationName": {
+              "name": "patronalOrganizationName",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "employeeCount": {
+              "name": "employeeCount",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "sourceSheet": {
+              "name": "sourceSheet",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "sourceRowNumber": {
+              "name": "sourceRowNumber",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "importBatchId": {
+              "name": "importBatchId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "importBatch": {
+              "name": "importBatch",
+              "isArray": false,
+              "type": {
+                "model": "GTImportBatch"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "importBatchId"
+                ]
+              }
+            },
+            "gtNotes": {
+              "name": "gtNotes",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "gtEntities": {
+              "name": "gtEntities",
+              "isArray": true,
+              "type": {
+                "model": "GTEntity"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "organizationId"
+                ]
+              }
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "Organizations",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "organizationsByNormalizedName",
+                "queryField": "listOrganizationByNormalizedName",
+                "fields": [
+                  "normalizedName"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "organizationsByKindAndNormalizedName",
+                "queryField": "listOrganizationByKindAndNormalizedName",
+                "fields": [
+                  "kind",
+                  "normalizedName"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "organizationsByCui",
+                "queryField": "listOrganizationByCui",
+                "fields": [
+                  "cui"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "organizationsByParentOrganizationId",
+                "queryField": "listOrganizationByParentOrganizationId",
+                "fields": [
+                  "parentOrganizationId"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "organizationsByImportBatchId",
+                "queryField": "listOrganizationByImportBatchId",
+                "fields": [
+                  "importBatchId"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "read"
+                    ]
+                  },
+                  {
+                    "groupClaim": "cognito:groups",
+                    "provider": "userPools",
+                    "allow": "groups",
+                    "operations": [
+                      "create",
+                      "read",
+                      "update",
+                      "delete"
+                    ],
+                    "groups": [
+                      "pm",
+                      "admin"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "GTEntity": {
+          "name": "GTEntity",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "organizationId": {
+              "name": "organizationId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "organization": {
+              "name": "organization",
+              "isArray": false,
+              "type": {
+                "model": "Organization"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "organizationId"
+                ]
+              }
+            },
+            "organizationName": {
+              "name": "organizationName",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "dataIntrareOperatiune": {
+              "name": "dataIntrareOperatiune",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": false,
+              "attributes": []
+            },
+            "dataIesireOperatiune": {
+              "name": "dataIesireOperatiune",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": false,
+              "attributes": []
+            },
+            "indicator5SO04": {
+              "name": "indicator5SO04",
+              "isArray": false,
+              "type": "Boolean",
+              "isRequired": false,
+              "attributes": []
+            },
+            "indicator5SR04": {
+              "name": "indicator5SR04",
+              "isArray": false,
+              "type": "Boolean",
+              "isRequired": false,
+              "attributes": []
+            },
+            "region": {
+              "name": "region",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "expertResponsabilId": {
+              "name": "expertResponsabilId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "notes": {
+              "name": "notes",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "sourceStatusText": {
+              "name": "sourceStatusText",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "persons": {
+              "name": "persons",
+              "isArray": true,
+              "type": {
+                "model": "GTPerson"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "gtEntityId"
+                ]
+              }
+            },
+            "documents": {
+              "name": "documents",
+              "isArray": true,
+              "type": {
+                "model": "GTDocument"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "gtEntityId"
+                ]
+              }
+            },
+            "monitoringRecords": {
+              "name": "monitoringRecords",
+              "isArray": true,
+              "type": {
+                "model": "GTMonitoringRecord"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "gtEntityId"
+                ]
+              }
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "GTEntities",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "gTEntitiesByOrganizationId",
+                "queryField": "listGTEntityByOrganizationId",
+                "fields": [
+                  "organizationId"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "gTEntitiesByStatusAndOrganizationName",
+                "queryField": "listGTEntityByStatusAndOrganizationName",
+                "fields": [
+                  "status",
+                  "organizationName"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "gTEntitiesByExpertResponsabilId",
+                "queryField": "listGTEntityByExpertResponsabilId",
+                "fields": [
+                  "expertResponsabilId"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "read"
+                    ]
+                  },
+                  {
+                    "groupClaim": "cognito:groups",
+                    "provider": "userPools",
+                    "allow": "groups",
+                    "operations": [
+                      "create",
+                      "read",
+                      "update",
+                      "delete"
+                    ],
+                    "groups": [
+                      "pm",
+                      "admin"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "GTPerson": {
+          "name": "GTPerson",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "gtEntityId": {
+              "name": "gtEntityId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "gtEntity": {
+              "name": "gtEntity",
+              "isArray": false,
+              "type": {
+                "model": "GTEntity"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "gtEntityId"
+                ]
+              }
+            },
+            "nume": {
+              "name": "nume",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "prenume": {
+              "name": "prenume",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "cnpHash": {
+              "name": "cnpHash",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "email": {
+              "name": "email",
+              "isArray": false,
+              "type": "AWSEmail",
+              "isRequired": false,
+              "attributes": []
+            },
+            "telefon": {
+              "name": "telefon",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "functie": {
+              "name": "functie",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "dataIntrareOperatiune": {
+              "name": "dataIntrareOperatiune",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": false,
+              "attributes": []
+            },
+            "dataIesireOperatiune": {
+              "name": "dataIesireOperatiune",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": false,
+              "attributes": []
+            },
+            "indicator5SO01": {
+              "name": "indicator5SO01",
+              "isArray": false,
+              "type": "Boolean",
+              "isRequired": false,
+              "attributes": []
+            },
+            "indicator5SR01": {
+              "name": "indicator5SR01",
+              "isArray": false,
+              "type": "Boolean",
+              "isRequired": false,
+              "attributes": []
+            },
+            "consimtamantGDPRAt": {
+              "name": "consimtamantGDPRAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": []
+            },
+            "notes": {
+              "name": "notes",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "documents": {
+              "name": "documents",
+              "isArray": true,
+              "type": {
+                "model": "GTDocument"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "gtPersonId"
+                ]
+              }
+            },
+            "monitoringRecords": {
+              "name": "monitoringRecords",
+              "isArray": true,
+              "type": {
+                "model": "GTMonitoringRecord"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "gtPersonId"
+                ]
+              }
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "GTPeople",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "gTPeopleByGtEntityIdAndNume",
+                "queryField": "listGTPersonByGtEntityIdAndNume",
+                "fields": [
+                  "gtEntityId",
+                  "nume"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "gTPeopleByCnpHash",
+                "queryField": "listGTPersonByCnpHash",
+                "fields": [
+                  "cnpHash"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "gTPeopleByStatusAndNume",
+                "queryField": "listGTPersonByStatusAndNume",
+                "fields": [
+                  "status",
+                  "nume"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "read"
+                    ]
+                  },
+                  {
+                    "groupClaim": "cognito:groups",
+                    "provider": "userPools",
+                    "allow": "groups",
+                    "operations": [
+                      "create",
+                      "read",
+                      "update",
+                      "delete"
+                    ],
+                    "groups": [
+                      "pm",
+                      "admin"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "GTDocument": {
+          "name": "GTDocument",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "subjectType": {
+              "name": "subjectType",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "gtEntityId": {
+              "name": "gtEntityId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "gtEntity": {
+              "name": "gtEntity",
+              "isArray": false,
+              "type": {
+                "model": "GTEntity"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "gtEntityId"
+                ]
+              }
+            },
+            "gtPersonId": {
+              "name": "gtPersonId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "gtPerson": {
+              "name": "gtPerson",
+              "isArray": false,
+              "type": {
+                "model": "GTPerson"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "gtPersonId"
+                ]
+              }
+            },
+            "documentType": {
+              "name": "documentType",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "s3Key": {
+              "name": "s3Key",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "fileName": {
+              "name": "fileName",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "validatedByExpertId": {
+              "name": "validatedByExpertId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "validatedAt": {
+              "name": "validatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": []
+            },
+            "expiryDate": {
+              "name": "expiryDate",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": false,
+              "attributes": []
+            },
+            "notes": {
+              "name": "notes",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "GTDocuments",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "gTDocumentsByGtEntityIdAndDocumentType",
+                "queryField": "listGTDocumentByGtEntityIdAndDocumentType",
+                "fields": [
+                  "gtEntityId",
+                  "documentType"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "gTDocumentsByGtPersonIdAndDocumentType",
+                "queryField": "listGTDocumentByGtPersonIdAndDocumentType",
+                "fields": [
+                  "gtPersonId",
+                  "documentType"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "gTDocumentsByStatusAndDocumentType",
+                "queryField": "listGTDocumentByStatusAndDocumentType",
+                "fields": [
+                  "status",
+                  "documentType"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "read"
+                    ]
+                  },
+                  {
+                    "groupClaim": "cognito:groups",
+                    "provider": "userPools",
+                    "allow": "groups",
+                    "operations": [
+                      "create",
+                      "read",
+                      "update",
+                      "delete"
+                    ],
+                    "groups": [
+                      "pm",
+                      "admin"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "GTMonitoringRecord": {
+          "name": "GTMonitoringRecord",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "subjectType": {
+              "name": "subjectType",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "gtEntityId": {
+              "name": "gtEntityId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "gtEntity": {
+              "name": "gtEntity",
+              "isArray": false,
+              "type": {
+                "model": "GTEntity"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "gtEntityId"
+                ]
+              }
+            },
+            "gtPersonId": {
+              "name": "gtPersonId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "gtPerson": {
+              "name": "gtPerson",
+              "isArray": false,
+              "type": {
+                "model": "GTPerson"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "gtPersonId"
+                ]
+              }
+            },
+            "date": {
+              "name": "date",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": true,
+              "attributes": []
+            },
+            "year": {
+              "name": "year",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "month": {
+              "name": "month",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "expertId": {
+              "name": "expertId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "linkedActivityId": {
+              "name": "linkedActivityId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "saCode": {
+              "name": "saCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "indicatorCode": {
+              "name": "indicatorCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "obiectivSpecific": {
+              "name": "obiectivSpecific",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "descriere": {
+              "name": "descriere",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "rezultat": {
+              "name": "rezultat",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "GTMonitoringRecords",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "gTMonitoringRecordsByGtEntityIdAndDate",
+                "queryField": "listGTMonitoringRecordByGtEntityIdAndDate",
+                "fields": [
+                  "gtEntityId",
+                  "date"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "gTMonitoringRecordsByGtPersonIdAndDate",
+                "queryField": "listGTMonitoringRecordByGtPersonIdAndDate",
+                "fields": [
+                  "gtPersonId",
+                  "date"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "gTMonitoringRecordsByYearAndMonth",
+                "queryField": "listGTMonitoringRecordByYearAndMonth",
+                "fields": [
+                  "year",
+                  "month"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "gTMonitoringRecordsByLinkedActivityId",
+                "queryField": "listGTMonitoringRecordByLinkedActivityId",
+                "fields": [
+                  "linkedActivityId"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "read"
+                    ]
+                  },
+                  {
+                    "groupClaim": "cognito:groups",
+                    "provider": "userPools",
+                    "allow": "groups",
+                    "operations": [
+                      "create",
+                      "read",
+                      "update",
+                      "delete"
+                    ],
+                    "groups": [
+                      "pm",
+                      "admin"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "GTImportBatch": {
+          "name": "GTImportBatch",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "sourceFileName": {
+              "name": "sourceFileName",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "importedBy": {
+              "name": "importedBy",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "importedAt": {
+              "name": "importedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": true,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "totalRows": {
+              "name": "totalRows",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "createdOrganizations": {
+              "name": "createdOrganizations",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "duplicateRows": {
+              "name": "duplicateRows",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "warningsJson": {
+              "name": "warningsJson",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "organizations": {
+              "name": "organizations",
+              "isArray": true,
+              "type": {
+                "model": "Organization"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "importBatchId"
+                ]
+              }
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "GTImportBatches",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "gTImportBatchesBySourceFileName",
+                "queryField": "listGTImportBatchBySourceFileName",
+                "fields": [
+                  "sourceFileName"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "gTImportBatchesByStatusAndImportedAt",
+                "queryField": "listGTImportBatchByStatusAndImportedAt",
+                "fields": [
+                  "status",
+                  "importedAt"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
                   {
                     "groupClaim": "cognito:groups",
                     "provider": "userPools",
@@ -7838,11 +9171,11 @@
   },
   "storage": {
     "aws_region": "eu-north-1",
-    "bucket_name": "amplify-raportarepeo-roxa-peoraportarefilesbucket4-olz8q7bqgfwe",
+    "bucket_name": "amplify-d19mquq8thd1uj-ma-peoraportarefilesbucket4-q60728h2jbwq",
     "buckets": [
       {
         "name": "peoRaportareFiles",
-        "bucket_name": "amplify-raportarepeo-roxa-peoraportarefilesbucket4-olz8q7bqgfwe",
+        "bucket_name": "amplify-d19mquq8thd1uj-ma-peoraportarefilesbucket4-q60728h2jbwq",
         "aws_region": "eu-north-1",
         "paths": {
           "deliverables/${cognito-identity.amazonaws.com:sub}/*": {
