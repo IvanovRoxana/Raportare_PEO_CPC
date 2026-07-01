@@ -516,6 +516,23 @@ export default function ExpertHomeDashboard() {
   const openActivitiesProgress = percent(openPeoActivitiesCount, peoActivities.length);
   const deliverablesProgress = percent(peoActivitiesWithDeliverablesCount, peoActivities.length);
   const selectedConcurrentProject = activeConcurrentProjects.find((project) => project.id === selectedConcurrentProjectId) ?? activeConcurrentProjects[0];
+  const selectedProjectShortcutValue =
+    selectedConcurrentProjectId && activeConcurrentProjects.some((project) => project.id === selectedConcurrentProjectId)
+      ? selectedConcurrentProjectId
+      : 'peo';
+
+  const handleProjectShortcutChange = (projectId: string) => {
+    if (projectId === 'peo') {
+      router.push('/expert/peo');
+      return;
+    }
+
+    setSelectedConcurrentProjectId(projectId);
+    window.requestAnimationFrame(() => {
+      document.getElementById('proiecte-paralele')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  };
+
   const updateConcurrentDraft = (date: string, updates: Partial<ConcurrentProjectTimesheetEntry>) => {
     const existing = expertConcurrentEntries.find((entry) => entry.concurrentProjectId === selectedConcurrentProject?.id && entry.date === date);
     setDraftConcurrentEntries({
@@ -635,6 +652,21 @@ export default function ExpertHomeDashboard() {
         description={`Centralizeaza activitatile si orele raportate pentru ${getMonthName(currentMonth)} ${currentYear}.`}
         actions={
           <>
+            <div className="min-w-[240px] rounded-xl border border-[#dce5ef] bg-slate-50/80 p-2 shadow-sm">
+              <p className="mb-1 px-1 text-xs font-semibold text-slate-600">Panou proiecte</p>
+              <Select value={selectedProjectShortcutValue} onValueChange={handleProjectShortcutChange}>
+                <SelectTrigger className="h-9 w-full bg-white">
+                  <SelectValue placeholder="Selecteaza proiect" />
+                </SelectTrigger>
+                <SelectContent>
+                  {projects.map((project) => (
+                    <SelectItem key={project.id} value={project.id}>
+                      {project.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="flex flex-wrap items-center gap-2">
               <Select
                 value={`${currentMonth}-${currentYear}`}
@@ -978,32 +1010,20 @@ export default function ExpertHomeDashboard() {
           })}
         </section>
 
-        <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
+        <section className="space-y-6">
           <DashboardCalendar projects={projects} month={currentMonth} year={currentYear} />
 
           <Card id="pontaj-consolidat" className="h-fit rounded-lg scroll-mt-24">
             <CardHeader className="border-b">
-              <CardTitle className="text-lg">Panou proiecte</CardTitle>
+              <CardTitle className="text-lg">Detalii pontaj consolidat</CardTitle>
             </CardHeader>
             <CardContent className="p-4">
-              <Tabs defaultValue="proiecte" className="w-full">
-                <TabsList className="grid h-auto w-full grid-cols-1 gap-2 bg-muted/50 p-1">
-                  <TabsTrigger value="proiecte">Selectează Proiect</TabsTrigger>
+              <Tabs defaultValue="ore" className="w-full">
+                <TabsList className="grid h-auto w-full gap-2 bg-muted/50 p-1 sm:grid-cols-3">
                   <TabsTrigger value="ore">Ore luna selectata</TabsTrigger>
                   <TabsTrigger value="consolidat">Pontaj consolidat</TabsTrigger>
                   <TabsTrigger value="paralele">Proiect paralel</TabsTrigger>
                 </TabsList>
-
-                <TabsContent value="proiecte" className="mt-4 space-y-3">
-                  {projects.map((project) => (
-                    <Button key={project.id} asChild className="h-12 w-full justify-between rounded-md">
-                      <Link href={project.href}>
-                        {project.name}
-                        <ArrowRight className="h-4 w-4" />
-                      </Link>
-                    </Button>
-                  ))}
-                </TabsContent>
 
                 <TabsContent value="ore" className="mt-4 space-y-4">
                   <div className="rounded-md border bg-muted/30 p-4">
