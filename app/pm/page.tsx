@@ -60,6 +60,8 @@ import {
   useActivitiesByMonth,
   useAuditLogs,
   useDocuments,
+  useGTEntities,
+  useGTPersons,
   useSharedDeliverables,
   useGrupTintaByMonth,
   useAllConcurrentProjects,
@@ -189,6 +191,8 @@ export default function PMDashboard() {
   const scopedSharedDeliverablesExpertId = hasExtendedExpertAccess ? undefined : dataAccessScope.currentExpertId ?? selectedExpertId ?? undefined;
   const { sharedDeliverables: allSharedDeliverables } = useSharedDeliverables(scopedSharedDeliverablesExpertId);
   const { entries: allGrupTintaEntries } = useGrupTintaByMonth(selectedMonth, selectedYear);
+  const { records: gtEntities } = useGTEntities();
+  const { records: gtPersons } = useGTPersons();
   const { projects: allConcurrentProjects } = useAllConcurrentProjects();
   const { addProject: createConcurrentProject, updateProject: updateConcurrentProject, removeProject: archiveConcurrentProject } = useConcurrentProjects(selectedExpertId);
   const { entries: allConcurrentTimesheetEntries } = useConcurrentProjectTimesheetByMonth(selectedMonth, selectedYear);
@@ -1029,6 +1033,8 @@ export default function PMDashboard() {
               experts={visibleExperts}
               activities={monthActivities}
               grupTintaEntries={grupTintaEntries}
+              gtEntities={gtEntities}
+              gtPersons={gtPersons}
               month={selectedMonth}
               year={selectedYear}
             />

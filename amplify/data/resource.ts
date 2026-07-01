@@ -251,6 +251,170 @@ const schema = a.schema({
       allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
     ]),
 
+  Organization: a
+    .model({
+      name: a.string().required(),
+      normalizedName: a.string().required(),
+      kind: a.string().required(),
+      legalForm: a.string(),
+      cui: a.string(),
+      parentOrganizationId: a.id(),
+      federationName: a.string(),
+      patronalOrganizationName: a.string(),
+      employeeCount: a.integer(),
+      status: a.string().default("active"),
+      sourceSheet: a.string(),
+      sourceRowNumber: a.integer(),
+      importBatchId: a.id(),
+      importBatch: a.belongsTo("GTImportBatch", "importBatchId"),
+      gtNotes: a.string(),
+      gtEntities: a.hasMany("GTEntity", "organizationId"),
+    })
+    .secondaryIndexes((index) => [
+      index("cui"),
+      index("normalizedName"),
+      index("kind").sortKeys(["normalizedName"]),
+      index("parentOrganizationId"),
+      index("importBatchId"),
+    ])
+    .authorization((allow) => [
+      allow.authenticated().to(["read"]),
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
+  GTEntity: a
+    .model({
+      organizationId: a.id().required(),
+      organization: a.belongsTo("Organization", "organizationId"),
+      organizationName: a.string(),
+      status: a.string().required(),
+      dataIntrareOperatiune: a.date(),
+      dataIesireOperatiune: a.date(),
+      indicator5SO04: a.boolean().default(false),
+      indicator5SR04: a.boolean().default(false),
+      region: a.string(),
+      expertResponsabilId: a.id(),
+      notes: a.string(),
+      sourceStatusText: a.string(),
+      persons: a.hasMany("GTPerson", "gtEntityId"),
+      documents: a.hasMany("GTDocument", "gtEntityId"),
+      monitoringRecords: a.hasMany("GTMonitoringRecord", "gtEntityId"),
+    })
+    .secondaryIndexes((index) => [
+      index("organizationId"),
+      index("status").sortKeys(["organizationName"]),
+      index("expertResponsabilId"),
+    ])
+    .authorization((allow) => [
+      allow.authenticated().to(["read"]),
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
+  GTPerson: a
+    .model({
+      gtEntityId: a.id().required(),
+      gtEntity: a.belongsTo("GTEntity", "gtEntityId"),
+      nume: a.string().required(),
+      prenume: a.string().required(),
+      cnpHash: a.string(),
+      email: a.email(),
+      telefon: a.string(),
+      functie: a.string(),
+      status: a.string().required(),
+      dataIntrareOperatiune: a.date(),
+      dataIesireOperatiune: a.date(),
+      indicator5SO01: a.boolean().default(false),
+      indicator5SR01: a.boolean().default(false),
+      consimtamantGDPRAt: a.datetime(),
+      notes: a.string(),
+      documents: a.hasMany("GTDocument", "gtPersonId"),
+      monitoringRecords: a.hasMany("GTMonitoringRecord", "gtPersonId"),
+    })
+    .secondaryIndexes((index) => [
+      index("gtEntityId").sortKeys(["nume"]),
+      index("status").sortKeys(["nume"]),
+      index("cnpHash"),
+    ])
+    .authorization((allow) => [
+      allow.authenticated().to(["read"]),
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
+  GTDocument: a
+    .model({
+      subjectType: a.string().required(),
+      gtEntityId: a.id(),
+      gtEntity: a.belongsTo("GTEntity", "gtEntityId"),
+      gtPersonId: a.id(),
+      gtPerson: a.belongsTo("GTPerson", "gtPersonId"),
+      documentType: a.string().required(),
+      s3Key: a.string(),
+      fileName: a.string(),
+      status: a.string().default("lipsa"),
+      validatedByExpertId: a.id(),
+      validatedAt: a.datetime(),
+      expiryDate: a.date(),
+      notes: a.string(),
+    })
+    .secondaryIndexes((index) => [
+      index("gtEntityId").sortKeys(["documentType"]),
+      index("gtPersonId").sortKeys(["documentType"]),
+      index("status").sortKeys(["documentType"]),
+    ])
+    .authorization((allow) => [
+      allow.authenticated().to(["read"]),
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
+  GTMonitoringRecord: a
+    .model({
+      subjectType: a.string().required(),
+      gtEntityId: a.id(),
+      gtEntity: a.belongsTo("GTEntity", "gtEntityId"),
+      gtPersonId: a.id(),
+      gtPerson: a.belongsTo("GTPerson", "gtPersonId"),
+      date: a.date().required(),
+      year: a.integer().required(),
+      month: a.integer().required(),
+      expertId: a.id(),
+      linkedActivityId: a.id(),
+      saCode: a.string(),
+      indicatorCode: a.string(),
+      obiectivSpecific: a.string(),
+      descriere: a.string(),
+      rezultat: a.string(),
+    })
+    .secondaryIndexes((index) => [
+      index("gtEntityId").sortKeys(["date"]),
+      index("gtPersonId").sortKeys(["date"]),
+      index("year").sortKeys(["month"]),
+      index("linkedActivityId"),
+    ])
+    .authorization((allow) => [
+      allow.authenticated().to(["read"]),
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
+  GTImportBatch: a
+    .model({
+      sourceFileName: a.string().required(),
+      importedBy: a.string(),
+      importedAt: a.datetime().required(),
+      status: a.string().required(),
+      totalRows: a.integer(),
+      createdOrganizations: a.integer(),
+      duplicateRows: a.integer(),
+      warningsJson: a.string(),
+      organizations: a.hasMany("Organization", "importBatchId"),
+    })
+    .secondaryIndexes((index) => [
+      index("status").sortKeys(["importedAt"]),
+      index("sourceFileName"),
+    ])
+    .authorization((allow) => [
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
   BusinessHubEntityDirectory: a
     .model({
       directoryType: a.string().required(),

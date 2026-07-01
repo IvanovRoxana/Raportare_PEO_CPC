@@ -15,6 +15,7 @@ import {
   Upload,
   User,
   Users,
+  UsersRound,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -40,6 +41,7 @@ export const dashboardNavItems: DashboardNavItem[] = [
   { label: 'Livrabile', href: '/expert/peo#livrabile', icon: Upload },
   { label: 'Rapoarte', href: '/expert/peo#rapoarte', icon: FileText },
   { label: 'Verificări PM', href: '/pm', icon: SearchIcon },
+  { label: 'Grup Țintă', href: '/gt', icon: UsersRound },
   { label: 'Achiziții', href: '/achizitii', icon: ClipboardList },
   { label: 'Experți', href: '/pm#situatie-lunara', icon: Users },
   { label: 'Administrare', href: '/admin', icon: Settings },
@@ -52,6 +54,7 @@ export const expertNavItems: DashboardNavItem[] = [
   { label: 'Activitățile mele', href: '/expert/peo', icon: FileText },
   { label: 'Livrabile', href: '/expert/peo#livrabile', icon: Upload },
   { label: 'Rapoarte', href: '/expert/peo#rapoarte', icon: FileText },
+  { label: 'Grup ÈšintÄƒ', href: '/gt', icon: UsersRound },
   { label: 'Profil', href: '/expert/profil', icon: User },
 ];
 
@@ -61,6 +64,7 @@ export const pmNavItems: DashboardNavItem[] = [
   { label: 'Rapoarte', href: '/pm#pm-tabs', icon: FileText },
   { label: 'Livrabile', href: '/pm#pm-tabs', icon: Upload },
   { label: 'Verificări PM', href: '/pm', icon: SearchIcon },
+  { label: 'Grup Țintă', href: '/gt', icon: UsersRound },
   { label: 'Achiziții', href: '/achizitii', icon: ClipboardList },
   { label: 'Experți', href: '/pm#situatie-lunara', icon: Users },
   { label: 'Administrare', href: '/admin', icon: Settings },
@@ -71,6 +75,7 @@ export const adminNavItems: DashboardNavItem[] = [
   { label: 'Pontaj lunar', href: '/expert', icon: CalendarDays },
   { label: 'Rapoarte', href: '/expert/peo#rapoarte', icon: FileText },
   { label: 'Livrabile', href: '/expert/peo#livrabile', icon: Upload },
+  { label: 'Grup Țintă', href: '/gt', icon: UsersRound },
   { label: 'Achiziții', href: '/achizitii', icon: ClipboardList },
   { label: 'Experți', href: '/pm#situatie-lunara', icon: Users },
   { label: 'Administrare', href: '/admin', icon: Settings },

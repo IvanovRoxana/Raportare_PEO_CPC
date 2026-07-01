@@ -15,6 +15,12 @@ import {
   concurrentProjectTimesheetService,
   reportStatusService,
   grupTintaService,
+  gtDocumentsService,
+  gtEntitiesService,
+  gtImportBatchesService,
+  gtMonitoringRecordsService,
+  gtOrganizationsService,
+  gtPersonsService,
   businessHubEntityDirectoryService,
   auditLogsService,
   documentsService,
@@ -36,6 +42,7 @@ import {
 } from '@/lib/backend-store';
 import type { Activity, Expert, VerificationData, Neconformitate, VerificationNote, AppSettings, ActivityCatalog, WorkingGroup, ConcurrentProject, ConcurrentProjectTimesheetEntry, ReportStatus, GrupTintaEntry, BusinessHubEntityDirectoryEntry, AuditLog, ActivityAutofillAudit, AdminInterventionRequest, HistoricalImportBatch, HistoricalTimesheetDayEntry, MonthlyActivityItem, MonthlyExpertReport, UploadedReportingFile } from '@/lib/types';
 import { getContractedProcurementProjects, type ProcurementChecklist, type ProcurementContract, type ProcurementDeliverable, type ProcurementDocument, type ProcurementEvaluation, type ProcurementInvoice, type ProcurementLaunch, type ProcurementOffer, type ProcurementProject, type ProcurementReception, type ProcurementStatusHistory, type ProcurementSupplier } from '@/lib/procurement';
+import type { GTDocument, GTEntity, GTImportBatch, GTMonitoringRecord, GTPerson, Organization } from '@/lib/grup-tinta/types';
 
 const EMPTY_LIST: readonly never[] = Object.freeze([]);
 
@@ -892,6 +899,56 @@ export function useGrupTintaByMonth(month: number, year: number) {
     error,
   };
 }
+
+function useGTRegistryRecords<T>(key: string, service: { getAll: () => Promise<T[]> }) {
+  const { data, error, isLoading } = useSWR(
+    isBackendAvailable() ? key : null,
+    safeFetcher(service.getAll)
+  );
+
+  return {
+    records: stableList(data),
+    isLoading,
+    error,
+    mutate: () => mutate(key),
+  };
+}
+
+function useGTRegistryMutations<T>(key: string, service: {
+  create: (input: Omit<T, 'id' | 'createdAt' | 'updatedAt'>) => Promise<T>;
+  update: (id: string, updates: Partial<T>) => Promise<T>;
+  delete: (id: string) => Promise<void>;
+}) {
+  const create = async (input: Omit<T, 'id' | 'createdAt' | 'updatedAt'>) => {
+    const created = await service.create(input);
+    mutate(key);
+    return created;
+  };
+  const update = async (id: string, updates: Partial<T>) => {
+    const updated = await service.update(id, updates);
+    mutate(key);
+    return updated;
+  };
+  const remove = async (id: string) => {
+    await service.delete(id);
+    mutate(key);
+  };
+  return { create, update, remove };
+}
+
+export const useGTOrganizations = () => useGTRegistryRecords<Organization>('gt-organizations', gtOrganizationsService);
+export const useGTEntities = () => useGTRegistryRecords<GTEntity>('gt-entities', gtEntitiesService);
+export const useGTPersons = () => useGTRegistryRecords<GTPerson>('gt-persons', gtPersonsService);
+export const useGTDocuments = () => useGTRegistryRecords<GTDocument>('gt-documents', gtDocumentsService);
+export const useGTMonitoringRecords = () => useGTRegistryRecords<GTMonitoringRecord>('gt-monitoring-records', gtMonitoringRecordsService);
+export const useGTImportBatches = () => useGTRegistryRecords<GTImportBatch>('gt-import-batches', gtImportBatchesService);
+
+export const useGTOrganizationMutations = () => useGTRegistryMutations<Organization>('gt-organizations', gtOrganizationsService);
+export const useGTEntityMutations = () => useGTRegistryMutations<GTEntity>('gt-entities', gtEntitiesService);
+export const useGTPersonMutations = () => useGTRegistryMutations<GTPerson>('gt-persons', gtPersonsService);
+export const useGTDocumentMutations = () => useGTRegistryMutations<GTDocument>('gt-documents', gtDocumentsService);
+export const useGTMonitoringRecordMutations = () => useGTRegistryMutations<GTMonitoringRecord>('gt-monitoring-records', gtMonitoringRecordsService);
+export const useGTImportBatchMutations = () => useGTRegistryMutations<GTImportBatch>('gt-import-batches', gtImportBatchesService);
 
 // ============================================
 // AUDIT TRAIL HOOKS

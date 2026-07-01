@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { BriefcaseBusiness, CircleDollarSign, ClipboardList, FileText, LayoutDashboard, Loader2, ShieldCheck } from 'lucide-react';
+import { BriefcaseBusiness, CircleDollarSign, ClipboardList, FileText, LayoutDashboard, Loader2, ShieldCheck, UsersRound } from 'lucide-react';
 import { getDashboardPathForRoles, getSignedInUser } from '@/lib/aws/auth';
 import { resolveDashboardAccess } from '@/lib/pm-dashboard';
 import { Button } from '@/components/ui/button';
@@ -12,6 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 export default function SelectDashboardPage() {
   const [canUseExpert, setCanUseExpert] = useState(false);
   const [canUsePm, setCanUsePm] = useState(false);
+  const [canUseGt, setCanUseGt] = useState(false);
   const [canUseAchizitii, setCanUseAchizitii] = useState(false);
   const [canUseAdmin, setCanUseAdmin] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -26,7 +27,8 @@ export default function SelectDashboardPage() {
 
       const { canUseExpert: expertAccess, canUsePm: pmAccess, canUseAchizitii: procurementAccess } = resolveDashboardAccess({ roles: user.roles });
       const adminAccess = user.roles.includes('admin');
-      const availableDashboards = [expertAccess, pmAccess, procurementAccess, adminAccess].filter(Boolean).length;
+      const gtAccess = user.category === 'gt' || pmAccess || adminAccess;
+      const availableDashboards = [expertAccess, pmAccess, gtAccess, procurementAccess, adminAccess].filter(Boolean).length;
 
       if (availableDashboards <= 1) {
         router.replace(getDashboardPathForRoles(user.roles));
@@ -35,6 +37,7 @@ export default function SelectDashboardPage() {
 
       setCanUseExpert(expertAccess);
       setCanUsePm(pmAccess);
+      setCanUseGt(gtAccess);
       setCanUseAchizitii(procurementAccess);
       setCanUseAdmin(adminAccess);
       setIsLoading(false);
@@ -82,6 +85,15 @@ export default function SelectDashboardPage() {
                     <Link href="/pm">
                       <BriefcaseBusiness className="h-6 w-6" />
                       Dashboard PM
+                    </Link>
+                  </Button>
+                )}
+
+                {canUseGt && (
+                  <Button asChild size="lg" variant="outline" className="h-24 flex-col gap-2">
+                    <Link href="/gt">
+                      <UsersRound className="h-6 w-6" />
+                      Modul Grup Tinta
                     </Link>
                   </Button>
                 )}

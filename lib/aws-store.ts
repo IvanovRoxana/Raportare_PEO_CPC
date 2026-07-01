@@ -80,6 +80,14 @@ import {
   type ProcurementStatusHistory,
   type ProcurementSupplier,
 } from './procurement';
+import type {
+  GTDocument,
+  GTEntity,
+  GTImportBatch,
+  GTMonitoringRecord,
+  GTPerson,
+  Organization,
+} from './grup-tinta/types';
 
 export { isAwsAvailable };
 export {
@@ -803,6 +811,125 @@ function mapBusinessHubEntityDirectoryEntry(item: any): BusinessHubEntityDirecto
     designatedPersonName: item.designatedPersonName ?? undefined,
     status: item.status ?? 'active',
     source: item.source ?? undefined,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+  };
+}
+
+function mapOrganization(item: any): Organization {
+  return {
+    id: item.id,
+    name: item.name,
+    normalizedName: item.normalizedName,
+    kind: item.kind,
+    legalForm: item.legalForm ?? undefined,
+    cui: item.cui ?? undefined,
+    parentOrganizationId: item.parentOrganizationId ?? undefined,
+    federationName: item.federationName ?? undefined,
+    patronalOrganizationName: item.patronalOrganizationName ?? undefined,
+    employeeCount: item.employeeCount ?? undefined,
+    status: item.status ?? 'active',
+    sourceSheet: item.sourceSheet ?? undefined,
+    sourceRowNumber: item.sourceRowNumber ?? undefined,
+    importBatchId: item.importBatchId ?? undefined,
+    gtNotes: item.gtNotes ?? undefined,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+  };
+}
+
+function mapGTEntity(item: any): GTEntity {
+  return {
+    id: item.id,
+    organizationId: item.organizationId,
+    organizationName: item.organizationName ?? undefined,
+    status: item.status ?? 'draft',
+    dataIntrareOperatiune: item.dataIntrareOperatiune ?? undefined,
+    dataIesireOperatiune: item.dataIesireOperatiune ?? undefined,
+    indicator5SO04: item.indicator5SO04 ?? false,
+    indicator5SR04: item.indicator5SR04 ?? false,
+    region: item.region ?? undefined,
+    expertResponsabilId: item.expertResponsabilId ?? undefined,
+    notes: item.notes ?? undefined,
+    sourceStatusText: item.sourceStatusText ?? undefined,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+  };
+}
+
+function mapGTPerson(item: any): GTPerson {
+  return {
+    id: item.id,
+    gtEntityId: item.gtEntityId,
+    nume: item.nume,
+    prenume: item.prenume,
+    cnpHash: item.cnpHash ?? undefined,
+    email: item.email ?? undefined,
+    telefon: item.telefon ?? undefined,
+    functie: item.functie ?? undefined,
+    status: item.status ?? 'draft',
+    dataIntrareOperatiune: item.dataIntrareOperatiune ?? undefined,
+    dataIesireOperatiune: item.dataIesireOperatiune ?? undefined,
+    indicator5SO01: item.indicator5SO01 ?? false,
+    indicator5SR01: item.indicator5SR01 ?? false,
+    consimtamantGDPRAt: item.consimtamantGDPRAt ?? undefined,
+    notes: item.notes ?? undefined,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+  };
+}
+
+function mapGTDocument(item: any): GTDocument {
+  return {
+    id: item.id,
+    subjectType: item.subjectType,
+    gtEntityId: item.gtEntityId ?? undefined,
+    gtPersonId: item.gtPersonId ?? undefined,
+    documentType: item.documentType,
+    s3Key: item.s3Key ?? undefined,
+    fileName: item.fileName ?? undefined,
+    status: item.status ?? 'lipsa',
+    validatedByExpertId: item.validatedByExpertId ?? undefined,
+    validatedAt: item.validatedAt ?? undefined,
+    expiryDate: item.expiryDate ?? undefined,
+    notes: item.notes ?? undefined,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+  };
+}
+
+function mapGTMonitoringRecord(item: any): GTMonitoringRecord {
+  return {
+    id: item.id,
+    subjectType: item.subjectType,
+    gtEntityId: item.gtEntityId ?? undefined,
+    gtPersonId: item.gtPersonId ?? undefined,
+    date: item.date,
+    year: item.year,
+    month: item.month,
+    expertId: item.expertId ?? undefined,
+    linkedActivityId: item.linkedActivityId ?? undefined,
+    saCode: item.saCode ?? undefined,
+    indicatorCode: item.indicatorCode ?? undefined,
+    obiectivSpecific: item.obiectivSpecific ?? undefined,
+    descriere: item.descriere ?? undefined,
+    rezultat: item.rezultat ?? undefined,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+  };
+}
+
+function mapGTImportBatch(item: any): GTImportBatch {
+  return {
+    id: item.id,
+    sourceFileName: item.sourceFileName,
+    importedBy: item.importedBy ?? undefined,
+    importedAt: item.importedAt,
+    status: item.status,
+    totalRows: item.totalRows ?? undefined,
+    createdOrganizations: item.createdOrganizations ?? undefined,
+    duplicateRows: item.duplicateRows ?? undefined,
+    warningsJson: item.warningsJson ?? undefined,
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
   };
@@ -2920,6 +3047,84 @@ export const grupTintaService = {
     return Array.from(stats.entries()).map(([expertId, stat]) => ({ expertId, ...stat }));
   },
 };
+
+function buildGTRegistryService<T>(modelName: string, mapper: (item: any) => T, sortFn?: (a: T, b: T) => number) {
+  return {
+    async getAll(): Promise<T[]> {
+      const client = getAwsDataClient() as any;
+      const scope = await getCurrentDataAccessScope(client);
+      if (scope.accessLevel === 'none') return [];
+      const model = client.models[modelName];
+      if (!model) return [];
+      const data = await listModel<any>(model);
+      const records = data.map(mapper);
+      return sortFn ? records.sort(sortFn) : records;
+    },
+
+    async create(input: Omit<T, 'id' | 'createdAt' | 'updatedAt'>): Promise<T> {
+      const client = getAwsDataClient() as any;
+      const scope = await getCurrentDataAccessScope(client);
+      if (!scope.canAccessAllExperts) throw new Error(ACCESS_DENIED_MESSAGE);
+      const model = client.models[modelName];
+      if (!model) throw new Error(`Modelul ${modelName} nu este disponibil in schema curenta.`);
+      const result = await model.create(input);
+      assertNoErrors(result, `AWS create ${modelName}`);
+      return mapper(result.data);
+    },
+
+    async update(id: string, updates: Partial<T>): Promise<T> {
+      const client = getAwsDataClient() as any;
+      const scope = await getCurrentDataAccessScope(client);
+      if (!scope.canAccessAllExperts) throw new Error(ACCESS_DENIED_MESSAGE);
+      const model = client.models[modelName];
+      if (!model) throw new Error(`Modelul ${modelName} nu este disponibil in schema curenta.`);
+      const result = await model.update({ id, ...updates });
+      assertNoErrors(result, `AWS update ${modelName}`);
+      return mapper(result.data);
+    },
+
+    async delete(id: string): Promise<void> {
+      const client = getAwsDataClient() as any;
+      const scope = await getCurrentDataAccessScope(client);
+      if (!scope.canAccessAllExperts) throw new Error(ACCESS_DENIED_MESSAGE);
+      const model = client.models[modelName];
+      if (!model) return;
+      const result = await model.delete({ id });
+      assertNoErrors(result, `AWS delete ${modelName}`);
+    },
+  };
+}
+
+export const gtOrganizationsService = buildGTRegistryService<Organization>(
+  'Organization',
+  mapOrganization,
+  (a, b) => String(a.kind).localeCompare(String(b.kind)) || a.name.localeCompare(b.name),
+);
+export const gtEntitiesService = buildGTRegistryService<GTEntity>(
+  'GTEntity',
+  mapGTEntity,
+  (a, b) => a.status.localeCompare(b.status) || String(a.organizationName ?? '').localeCompare(String(b.organizationName ?? '')),
+);
+export const gtPersonsService = buildGTRegistryService<GTPerson>(
+  'GTPerson',
+  mapGTPerson,
+  (a, b) => a.nume.localeCompare(b.nume) || a.prenume.localeCompare(b.prenume),
+);
+export const gtDocumentsService = buildGTRegistryService<GTDocument>(
+  'GTDocument',
+  mapGTDocument,
+  (a, b) => a.status.localeCompare(b.status) || a.documentType.localeCompare(b.documentType),
+);
+export const gtMonitoringRecordsService = buildGTRegistryService<GTMonitoringRecord>(
+  'GTMonitoringRecord',
+  mapGTMonitoringRecord,
+  (a, b) => b.date.localeCompare(a.date),
+);
+export const gtImportBatchesService = buildGTRegistryService<GTImportBatch>(
+  'GTImportBatch',
+  mapGTImportBatch,
+  (a, b) => b.importedAt.localeCompare(a.importedAt),
+);
 
 export const businessHubEntityDirectoryService = {
   async getAll(): Promise<BusinessHubEntityDirectoryEntry[]> {

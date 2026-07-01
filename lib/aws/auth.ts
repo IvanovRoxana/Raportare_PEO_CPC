@@ -23,6 +23,7 @@ export type AppUser = {
   email?: string;
   displayName?: string;
   roles: AppRole[];
+  category?: string;
 };
 
 export async function signInWithEmail(email: string, password: string) {
@@ -74,6 +75,7 @@ export async function getSignedInUser(options: { ignoreViewAs?: boolean } = {}):
       email,
       displayName: attrs.name ?? attrs.email ?? user.username,
       roles,
+      category: expertProfile?.category,
     };
 
     if (!options.ignoreViewAs) {

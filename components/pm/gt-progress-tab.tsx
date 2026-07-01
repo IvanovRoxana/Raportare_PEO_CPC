@@ -6,20 +6,26 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Users, Building2, Calendar, TrendingUp } from 'lucide-react';
 import { GT_ORGANIZATIONS } from '@/lib/deliverable-types';
+import { buildGTIndicatorSummary } from '@/lib/grup-tinta/indicators';
+import type { GTEntity, GTPerson } from '@/lib/grup-tinta/types';
 import type { Activity, Expert, GrupTintaEntry } from '@/lib/types';
 
 interface GTProgressTabProps {
   experts: Expert[];
   activities: Activity[];
   grupTintaEntries: GrupTintaEntry[];
+  gtEntities?: GTEntity[];
+  gtPersons?: GTPerson[];
   month: number;
   year: number;
 }
 
-export function GTProgressTab({ experts, activities, grupTintaEntries, month, year }: GTProgressTabProps) {
+export function GTProgressTab({ experts, activities, grupTintaEntries, gtEntities = [], gtPersons = [], month, year }: GTProgressTabProps) {
   const MONTHS = ['Ianuarie', 'Februarie', 'Martie', 'Aprilie', 'Mai', 'Iunie', 
                   'Iulie', 'August', 'Septembrie', 'Octombrie', 'Noiembrie', 'Decembrie'];
   const monthName = MONTHS[month];
+  const registrySummary = useMemo(() => buildGTIndicatorSummary(gtEntities, gtPersons), [gtEntities, gtPersons]);
+  const hasRegistryData = gtEntities.length > 0 || gtPersons.length > 0;
 
   // Aggregate GT data
   const gtStats = useMemo(() => {
@@ -96,6 +102,80 @@ export function GTProgressTab({ experts, activities, grupTintaEntries, month, ye
 
     return entries.sort((a, b) => a.date.localeCompare(b.date));
   }, [grupTintaEntries, experts]);
+
+  if (hasRegistryData) {
+    return (
+      <div className="space-y-4">
+        <div>
+          <h3 className="text-sm font-medium text-slate-900">Progres Grup Țintă — {monthName} {year}</h3>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Indicatori calculați din registrul intern GT
+          </p>
+        </div>
+
+        <div className="grid grid-cols-4 gap-3">
+          {Object.values(registrySummary.indicators).map((indicator) => (
+            <Card key={indicator.code}>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className={`p-2 rounded-lg ${indicator.valid ? 'bg-green-100' : 'bg-red-100'}`}>
+                    <TrendingUp className={`h-4 w-4 ${indicator.valid ? 'text-green-700' : 'text-red-700'}`} />
+                  </div>
+                  <div>
+                    <div className="text-xl font-bold text-slate-900">{indicator.value}</div>
+                    <div className="text-[10px] text-slate-500">{indicator.code} / țintă {indicator.target}</div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Entități GT</CardTitle>
+              <CardDescription className="text-xs">Registru eligibilitate și operațiune</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                {gtEntities.slice(0, 12).map((entity) => (
+                  <div key={entity.id} className="flex items-center justify-between rounded-lg bg-slate-50 p-2">
+                    <div className="min-w-0">
+                      <div className="truncate text-xs font-medium text-slate-900">{entity.organizationName || entity.organizationId}</div>
+                      <div className="text-[10px] text-slate-500">{entity.status}</div>
+                    </div>
+                    <Badge variant="outline" className="text-[10px]">
+                      {entity.dataIntrareOperatiune ? '5SO04' : 'dosar'}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Persoane GT</CardTitle>
+              <CardDescription className="text-xs">Participanți validați și rezultate</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div className="rounded-lg bg-slate-50 p-3">
+                  <div className="text-2xl font-bold text-slate-900">{registrySummary.totalPersons}</div>
+                  <div className="text-xs text-slate-500">persoane în registru</div>
+                </div>
+                <div className="rounded-lg bg-slate-50 p-3">
+                  <div className="text-2xl font-bold text-slate-900">{registrySummary.activePersons}</div>
+                  <div className="text-xs text-slate-500">persoane active</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
