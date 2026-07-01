@@ -1161,6 +1161,16 @@ export default function ExpertDashboard() {
               </SelectContent>
               </Select>
             )}
+            {!showForm && normalizePeoCategory(selectedExpert.category) === 'bh' && (
+              <MonthlyReportExport
+                expert={selectedExpert as Expert}
+                activities={activities}
+                concurrentProjects={concurrentProjects}
+                concurrentTimesheetEntries={concurrentTimesheetEntries.filter((entry) => entry.expertId === selectedExpertId)}
+                month={currentMonth}
+                year={currentYear}
+              />
+            )}
             {!showForm && (
               <Button onClick={handleAddActivity} disabled={!selectedExpert.id || isApproved || monthlyBlocking.isBlocked}>
                 <Plus className="h-4 w-4" />

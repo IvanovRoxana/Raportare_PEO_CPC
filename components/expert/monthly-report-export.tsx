@@ -61,6 +61,18 @@ export function MonthlyReportExport({ expert, activities, concurrentProjects = [
   const isBusinessHubExportAvailable = isBusinessHubExpert || hasBusinessHubActivities;
   const businessHubPvRows = isBusinessHubExportAvailable ? buildBusinessHubPvRows(activities, expert.category, month, year) : [];
 
+  const openBusinessHubExportDialog = (mode?: 'pv' | 'addresses') => {
+    setIncludeTimesheet(false);
+    setIncludeConsolidatedTimesheet(false);
+    setIncludeOPIS(false);
+    setIncludeRA(false);
+    setIncludeBusinessHubPv(mode !== 'addresses');
+    setIncludeBusinessHubAddresses(mode === 'addresses');
+    setAttachBusinessHubDeliverables(true);
+    setExportError(null);
+    setIsOpen(true);
+  };
+
   const handleExport = async () => {
     setIsGenerating(true);
     setExportError(null);
@@ -103,7 +115,10 @@ export function MonthlyReportExport({ expert, activities, concurrentProjects = [
       }
 
       if (isBusinessHubExportAvailable && (includeBusinessHubPv || includeBusinessHubAddresses)) {
-        const businessHubFiles = await generateBusinessHubMonthlyFiles();
+        const businessHubFiles = await generateBusinessHubMonthlyFiles({
+          includePv: includeBusinessHubPv,
+          includeAddresses: includeBusinessHubAddresses,
+        });
         businessHubFiles.forEach((file) => triggerDownload(file.blob, file.name));
         if (attachBusinessHubDeliverables) {
           await attachBusinessHubMonthlyDeliverables(businessHubFiles);
@@ -133,14 +148,16 @@ export function MonthlyReportExport({ expert, activities, concurrentProjects = [
     }
   };
 
-  const generateBusinessHubMonthlyFiles = async () => {
+  const generateBusinessHubMonthlyFiles = async (options?: { includePv?: boolean; includeAddresses?: boolean }) => {
     const rows = buildBusinessHubPvRows(activities, expert.category, month, year);
     if (rows.length === 0) {
       throw new Error('Nu exista activitati Business Hub inregistrate pentru luna selectata.');
     }
 
+    const shouldIncludePv = options?.includePv ?? includeBusinessHubPv;
+    const shouldIncludeAddresses = options?.includeAddresses ?? includeBusinessHubAddresses;
     const files: { name: string; blob: Blob; deliverableType: string }[] = [];
-    if (includeBusinessHubPv) {
+    if (shouldIncludePv) {
       const pvBuffer = buildBusinessHubPvXlsx(activities, expert.category, month, year);
       files.push({
         name: buildBusinessHubPvFilename(month, year),
@@ -149,7 +166,7 @@ export function MonthlyReportExport({ expert, activities, concurrentProjects = [
       });
     }
 
-    if (includeBusinessHubAddresses) {
+    if (shouldIncludeAddresses) {
       const directory = await businessHubEntityDirectoryService.getAll();
       const { resolved, missing } = resolveBusinessHubEntitiesForRows(rows, directory);
       if (missing.length > 0) {
@@ -263,12 +280,42 @@ export function MonthlyReportExport({ expert, activities, concurrentProjects = [
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger asChild>
-        <Button variant="outline" size="sm" className="gap-2">
-          <Download className="h-4 w-4" />
-          {isBusinessHubExportAvailable ? 'Export lunar / Business Hub' : 'Export Raport Lunar'}
-        </Button>
-      </DialogTrigger>
+      {isBusinessHubExportAvailable ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            className="gap-2"
+            onClick={() => openBusinessHubExportDialog('pv')}
+          >
+            <FileSpreadsheet className="h-4 w-4" />
+            Genereaza PV
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="gap-2"
+            onClick={() => openBusinessHubExportDialog('addresses')}
+          >
+            <FileText className="h-4 w-4" />
+            Genereaza adrese
+          </Button>
+          <DialogTrigger asChild>
+            <Button variant="ghost" size="sm" className="gap-2">
+              <Download className="h-4 w-4" />
+              Export lunar
+            </Button>
+          </DialogTrigger>
+        </div>
+      ) : (
+        <DialogTrigger asChild>
+          <Button variant="outline" size="sm" className="gap-2">
+            <Download className="h-4 w-4" />
+            Export Raport Lunar
+          </Button>
+        </DialogTrigger>
+      )}
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Export Raport Lunar - {getMonthName(month)} {year}</DialogTitle>
