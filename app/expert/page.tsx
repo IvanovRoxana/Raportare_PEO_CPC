@@ -34,6 +34,7 @@ import { buildConsolidatedTimesheet, filterActiveConcurrentProjectsForMonth, get
 import { buildIgnoredSharedActivityAlerts, buildPendingSharedActivityAlerts, buildPendingSharedDeliverableAlerts, buildReturnedSharedActivityAlerts, filterSharedRelationsForMonths } from '@/lib/document-sharing';
 import { canAccessPmDashboard } from '@/lib/pm-dashboard';
 import { buildPontajExportPayload } from '@/lib/pontaj-export-payload';
+import { calculateMonthlyNormInfo } from '@/lib/pontaj-rules';
 import type { Activity, ConcurrentProject, ConcurrentProjectTimesheetEntry, Expert } from '@/lib/types';
 import { getNonWorkingDayInfo } from '@/lib/non-working-days';
 import { cn } from '@/lib/utils';
@@ -104,6 +105,20 @@ function getProjectTotal(project: ProjectItem) {
   const peoHours = project.activities.reduce((sum, activity) => sum + (Number(activity.hours) || 0), 0);
   const concurrentHours = project.timesheetEntries?.reduce((sum, entry) => sum + (Number(entry.hours) || 0), 0) ?? 0;
   return peoHours + concurrentHours;
+}
+
+function percent(part: number, total: number) {
+  if (!Number.isFinite(part) || !Number.isFinite(total) || total <= 0) return 0;
+  return Math.max(0, Math.min(100, Math.round((part / total) * 100)));
+}
+
+function isDateInMonth(date: string | undefined, month: number, year: number) {
+  if (!date) return false;
+
+  const parsed = new Date(date);
+  if (Number.isNaN(parsed.getTime())) return false;
+
+  return parsed.getMonth() === month && parsed.getFullYear() === year;
 }
 
 function getFilenameFromDisposition(disposition: string) {
@@ -462,6 +477,26 @@ export default function ExpertHomeDashboard() {
   const exceededDays = consolidatedWarnings.exceededDays;
   const totalMonthHours = projects.reduce((sum, project) => sum + getProjectTotal(project), 0);
   const peoMonthHours = getProjectTotal(projects[0]);
+  const monthlyNormInfo = useMemo(
+    () => calculateMonthlyNormInfo(currentExpert ?? { norma: 8 }, currentMonth, currentYear),
+    [currentExpert, currentMonth, currentYear],
+  );
+  const workedDaysCount = Array.from(dayTotals.values()).filter((day) => day.total > 0).length;
+  const openPeoActivitiesCount = peoActivities.filter((activity) => activity.status !== 'approved').length;
+  const peoActivitiesWithDeliverablesCount = peoActivities.filter((activity) => (activity.deliverables?.length ?? 0) > 0).length;
+  const monthlyDocumentCount = useMemo(() => {
+    if (!currentExpert) return 0;
+    return documents.filter((document) => (
+      document.uploadedByExpertId === currentExpert.id
+      && isDateInMonth(document.activityDate || document.uploadDate, currentMonth, currentYear)
+    )).length;
+  }, [currentExpert, currentMonth, currentYear, documents]);
+  const embeddedDeliverablesCount = peoActivities.reduce((sum, activity) => sum + (activity.deliverables?.length ?? 0), 0);
+  const deliverablesCount = Math.max(monthlyDocumentCount, embeddedDeliverablesCount);
+  const totalHoursProgress = percent(totalMonthHours, monthlyNormInfo.monthlyNorm);
+  const workedDaysProgress = percent(workedDaysCount, monthlyNormInfo.workingDays);
+  const openActivitiesProgress = percent(openPeoActivitiesCount, peoActivities.length);
+  const deliverablesProgress = percent(peoActivitiesWithDeliverablesCount, peoActivities.length);
   const selectedConcurrentProject = activeConcurrentProjects.find((project) => project.id === selectedConcurrentProjectId) ?? activeConcurrentProjects[0];
   const updateConcurrentDraft = (date: string, updates: Partial<ConcurrentProjectTimesheetEntry>) => {
     const existing = expertConcurrentEntries.find((entry) => entry.concurrentProjectId === selectedConcurrentProject?.id && entry.date === date);
@@ -603,17 +638,17 @@ export default function ExpertHomeDashboard() {
                   <p className="text-sm text-muted-foreground">Total ore raportate</p>
                   <p className="mt-1 text-4xl font-bold text-slate-950">{totalMonthHours}h</p>
                 </div>
-                <span className="text-sm text-muted-foreground">din 160h planificate</span>
+                <span className="text-sm text-muted-foreground">din {monthlyNormInfo.monthlyNorm}h planificate</span>
               </div>
-              <ProgressBar value={Math.min(100, Math.round((totalMonthHours / 160) * 100))} className="mt-4" />
+              <ProgressBar value={totalHoursProgress} className="mt-4" />
               <div className="mt-5 space-y-3 text-sm">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Ore disponibile</span>
-                  <span className="font-semibold text-[#087a63]">{Math.max(0, 160 - totalMonthHours)}h</span>
+                  <span className="font-semibold text-[#087a63]">{Math.max(0, monthlyNormInfo.monthlyNorm - totalMonthHours)}h</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Limita lunară</span>
-                  <span className="font-semibold">160h</span>
+                  <span className="font-semibold">{monthlyNormInfo.monthlyNorm}h</span>
                 </div>
               </div>
               <Link href="#pontaj-consolidat" className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-primary">
@@ -781,32 +816,32 @@ export default function ExpertHomeDashboard() {
             icon={Clock3}
             label="Total ore raportate"
             value={`${totalMonthHours}h`}
-            description="din 160h planificate"
-            progress={Math.min(100, Math.round((totalMonthHours / 160) * 100))}
+            description={`din ${monthlyNormInfo.monthlyNorm}h planificate`}
+            progress={totalHoursProgress}
             tone="blue"
           />
           <StatCard
             icon={CalendarDays}
             label="Zile lucrate"
-            value={Array.from(dayTotals.values()).filter((day) => day.total > 0).length}
+            value={workedDaysCount}
             description="zile cu pontaj în luna curentă"
-            progress={55}
+            progress={workedDaysProgress}
             tone="success"
           />
           <StatCard
             icon={AlertTriangle}
             label="Activități în curs"
-            value={peoActivities.filter((activity) => activity.status !== 'approved').length}
+            value={openPeoActivitiesCount}
             description={`${peoActivities.length} activități PEO`}
-            progress={43}
+            progress={openActivitiesProgress}
             tone="warning"
           />
           <StatCard
             icon={ClipboardList}
             label="Livrabile atașate"
-            value={documents.length}
+            value={deliverablesCount}
             description="documente disponibile"
-            progress={44}
+            progress={deliverablesProgress}
             tone="violet"
           />
         </section>
