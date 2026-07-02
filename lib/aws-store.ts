@@ -4,6 +4,8 @@ import { getAwsDataClient, isAwsAvailable } from '@/lib/aws/client';
 import { fetchAuthSession } from 'aws-amplify/auth';
 import { getSignedInUser } from '@/lib/aws/auth';
 import outputs from '@/amplify_outputs.json';
+import { peoUsersAsExperts } from '@/lib/peo-users';
+import { mergeExpertLists, mergeExpertWithFallback } from '@/lib/expert-merge';
 import {
   buildCollaborationExpertOptions,
   canAccessExpertId,
@@ -56,6 +58,7 @@ import type {
 } from './types';
 import { createAuditLog, prepareAdminActivityOverride } from './audit-trail';
 import { buildSharedActivitySnapshot, buildSharedActivitySuggestions, buildSharedDeliverables, findDuplicateCandidates, getDocumentAuditTitle, isActivitySuggestionRelation, markSharedDeliverableRegistered } from './document-sharing';
+import { buildDefaultConcurrentProjects, mergeConcurrentProjectsWithDefaults } from './default-concurrent-projects';
 import { normalizeTitleForMatch } from './title-suggestion';
 import { parseAwsJsonField, serializeAwsJsonField } from './aws-json';
 import {
@@ -192,6 +195,7 @@ async function listAllExpertsFromBackend(client: any) {
 async function findCurrentExpertFromBackend(client: any, user: AccessUser | null) {
   if (!user) return undefined;
 
+  const fallbackExpert = findExpertForUser(peoUsersAsExperts(), user);
   const email = normalizeIdentity(user.email);
   const candidates: Expert[] = [];
 
@@ -212,7 +216,7 @@ async function findCurrentExpertFromBackend(client: any, user: AccessUser | null
   }
 
   const backendExpert = findExpertForUser(candidates, user);
-  return backendExpert;
+  return backendExpert ? mergeExpertWithFallback(backendExpert, fallbackExpert) : fallbackExpert;
 }
 
 async function getCurrentDataAccessScope(client: any): Promise<DataAccessScope> {
@@ -1467,19 +1471,22 @@ export const expertsService = {
     const client = getAwsDataClient() as any;
     await getCurrentDataAccessScope(client);
     const experts = await listAllExpertsFromBackend(client);
-    const activeExperts = experts.filter((expert) => expert.isActive !== false);
+    const activeExperts = mergeExpertLists(experts, peoUsersAsExperts()).filter((expert) => expert.isActive !== false);
     return buildCollaborationExpertOptions(activeExperts);
   },
 
   async getAll(options?: { includeInactive?: boolean; includeFallback?: boolean }): Promise<Expert[]> {
     const client = getAwsDataClient() as any;
+    const fallbackExperts = options?.includeFallback === false ? [] : peoUsersAsExperts();
     const scope = await getCurrentDataAccessScope(client);
     const includeInactive = options?.includeInactive === true;
 
     if (scope.canAccessAllExperts) {
-      const visibleExperts = includeInactive
+      const experts = (includeInactive || fallbackExperts.length > 0)
         ? await listAllExpertsFromBackend(client)
         : await listActiveExpertsFromBackend(client);
+      const mergedExperts = fallbackExperts.length > 0 ? mergeExpertLists(experts, fallbackExperts) : experts;
+      const visibleExperts = includeInactive ? mergedExperts : mergedExperts.filter((expert) => expert.isActive !== false);
       return visibleExperts.sort((a, b) => a.name.localeCompare(b.name));
     }
 
@@ -1493,7 +1500,7 @@ export const expertsService = {
 
     const result = await client.models.Expert.get({ id });
     assertNoErrors(result, 'AWS get expert');
-    return result.data ? mapExpert(result.data) : null;
+    return result.data ? mapExpert(result.data) : peoUsersAsExperts().find((expert) => expert.id === id) ?? null;
   },
 
   async create(expert: Omit<Expert, 'id'>): Promise<Expert> {
@@ -2470,7 +2477,10 @@ export const concurrentProjectsService = {
     const data = await listModel<any>(client.models.ConcurrentProject, {
       ...(scope.canAccessAllExperts ? {} : { expertId: { eq: scope.currentExpertId } }),
     });
-    const projects = data.map(mapConcurrentProject);
+    const projects = mergeConcurrentProjectsWithDefaults(
+      data.map(mapConcurrentProject),
+      buildDefaultConcurrentProjects(peoUsersAsExperts())
+    );
     return filterConcurrentProjectsForScope(projects, scope);
   },
 
@@ -2480,7 +2490,10 @@ export const concurrentProjectsService = {
     const data = await listModel<any>(client.models.ConcurrentProject, {
       expertId: { eq: expertId },
     });
-    return data.map(mapConcurrentProject);
+    return mergeConcurrentProjectsWithDefaults(
+      data.map(mapConcurrentProject),
+      buildDefaultConcurrentProjects(peoUsersAsExperts()).filter((project) => project.expertId === expertId)
+    );
   },
 
   async create(project: Omit<ConcurrentProject, 'id'>): Promise<ConcurrentProject> {
