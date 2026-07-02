@@ -235,6 +235,20 @@ async function assertCanAccessExpert(client: any, expertId?: string | null) {
   return scope;
 }
 
+async function getGTRegistryAccess(client: any) {
+  const user = await getSignedInUser();
+  if (!user) return { canRead: false, canManage: false };
+
+  const scope = await getCurrentDataAccessScope(client);
+  const roles = user.roles ?? [];
+  const isPmOrAdmin = roles.includes('pm') || roles.includes('admin') || scope.canAccessAllExperts;
+  const isGtProfile = user.category === 'gt' || scope.currentExpert?.category === 'gt';
+
+  return {
+    canRead: true,
+    canManage: isPmOrAdmin || isGtProfile,
+  };
+}
 async function getAllowedExpertId(client: any, requestedExpertId?: string | null) {
   const scope = await getCurrentDataAccessScope(client);
   if (scope.canAccessAllExperts) return requestedExpertId ?? null;
@@ -3052,8 +3066,8 @@ function buildGTRegistryService<T>(modelName: string, mapper: (item: any) => T, 
   return {
     async getAll(): Promise<T[]> {
       const client = getAwsDataClient() as any;
-      const scope = await getCurrentDataAccessScope(client);
-      if (scope.accessLevel === 'none') return [];
+      const access = await getGTRegistryAccess(client);
+      if (!access.canRead) return [];
       const model = client.models[modelName];
       if (!model) return [];
       const data = await listModel<any>(model);
@@ -3063,8 +3077,8 @@ function buildGTRegistryService<T>(modelName: string, mapper: (item: any) => T, 
 
     async create(input: Omit<T, 'id' | 'createdAt' | 'updatedAt'>): Promise<T> {
       const client = getAwsDataClient() as any;
-      const scope = await getCurrentDataAccessScope(client);
-      if (!scope.canAccessAllExperts) throw new Error(ACCESS_DENIED_MESSAGE);
+      const access = await getGTRegistryAccess(client);
+      if (!access.canManage) throw new Error(ACCESS_DENIED_MESSAGE);
       const model = client.models[modelName];
       if (!model) throw new Error(`Modelul ${modelName} nu este disponibil in schema curenta.`);
       const result = await model.create(input);
@@ -3074,8 +3088,8 @@ function buildGTRegistryService<T>(modelName: string, mapper: (item: any) => T, 
 
     async update(id: string, updates: Partial<T>): Promise<T> {
       const client = getAwsDataClient() as any;
-      const scope = await getCurrentDataAccessScope(client);
-      if (!scope.canAccessAllExperts) throw new Error(ACCESS_DENIED_MESSAGE);
+      const access = await getGTRegistryAccess(client);
+      if (!access.canManage) throw new Error(ACCESS_DENIED_MESSAGE);
       const model = client.models[modelName];
       if (!model) throw new Error(`Modelul ${modelName} nu este disponibil in schema curenta.`);
       const result = await model.update({ id, ...updates });
@@ -3085,8 +3099,8 @@ function buildGTRegistryService<T>(modelName: string, mapper: (item: any) => T, 
 
     async delete(id: string): Promise<void> {
       const client = getAwsDataClient() as any;
-      const scope = await getCurrentDataAccessScope(client);
-      if (!scope.canAccessAllExperts) throw new Error(ACCESS_DENIED_MESSAGE);
+      const access = await getGTRegistryAccess(client);
+      if (!access.canManage) throw new Error(ACCESS_DENIED_MESSAGE);
       const model = client.models[modelName];
       if (!model) return;
       const result = await model.delete({ id });

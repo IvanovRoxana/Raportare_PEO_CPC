@@ -29,4 +29,6 @@ export const GT_DOCUMENT_LABELS: Record<string, string> = {
   declaratie_evitare_dubla_finantare: 'Declaratie evitare dubla finantare',
   adeverinta_salariat_reprezentare: 'Adeverinta salariat/reprezentare',
   diploma_studii: 'Diploma studii',
+  fisa_monitorizare: 'Fisa monitorizare',
+  alt_document: 'Alt document',
 };

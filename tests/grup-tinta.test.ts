@@ -5,8 +5,9 @@ import path from 'node:path';
 
 import { dedupeOrganizations, normalizeOrganizationImportRows } from '../lib/grup-tinta/import.ts';
 import { computeGTIndicators } from '../lib/grup-tinta/indicators.ts';
+import { canCreateGTEntityFromOrganization, getChildOrganizations, getCpcAffiliatedOrganizations, getGTEntityForOrganization } from '../lib/grup-tinta/directory.ts';
 import { canValidatePerson } from '../lib/grup-tinta/workflow.ts';
-import type { GTDocument, GTEntity, GTPerson } from '../lib/grup-tinta/types.ts';
+import type { GTDocument, GTEntity, GTPerson, Organization } from '../lib/grup-tinta/types.ts';
 
 test('normalizarea importului pastreaza ierarhia federatie -> organizatie -> companie si deduplica pe CUI', () => {
   const rows = normalizeOrganizationImportRows([
@@ -62,6 +63,59 @@ test('CPC ALL produce entitati directe cu statusurile manuale pastrate pentru ma
   assert.equal(rows[0].kind, 'federatie');
   assert.equal(rows[0].gtSourceStatusText, 'DA');
   assert.equal(rows[0].informationSessionText, 'DA');
+});
+
+test('directorul GT afiseaza organizatiile CPC ca radacini si companiile ca detaliu copil', () => {
+  const affiliate: Organization = {
+    id: 'org_fpe',
+    name: 'Federatia Patronala a Energiei (FPE)',
+    normalizedName: 'federatia patronala a energiei fpe',
+    kind: 'federatie',
+    status: 'active',
+    sourceSheet: 'CPC ALL',
+  };
+  const child: Organization = {
+    id: 'org_company',
+    name: 'AMROMCO ENERGY SRL',
+    normalizedName: 'amromco energy srl',
+    kind: 'companie',
+    status: 'active',
+    cui: '16354101',
+    federationName: affiliate.name,
+    sourceSheet: 'Date brut',
+  };
+  const unrelated: Organization = {
+    id: 'org_other',
+    name: 'Alta companie',
+    normalizedName: 'alta companie',
+    kind: 'companie',
+    status: 'active',
+    sourceSheet: 'Date brut',
+  };
+
+  assert.deepEqual(getCpcAffiliatedOrganizations([child, unrelated, affiliate]).map((item) => item.id), ['org_fpe']);
+  assert.deepEqual(getChildOrganizations(affiliate, [child, unrelated, affiliate]).map((item) => item.id), ['org_company']);
+});
+
+test('inscrierea in GT este blocata daca organizatia are deja entitate GT', () => {
+  const organization: Organization = {
+    id: 'org_fpe',
+    name: 'Federatia Patronala a Energiei',
+    normalizedName: 'federatia patronala a energiei',
+    kind: 'federatie',
+    status: 'active',
+    sourceSheet: 'CPC ALL',
+  };
+  const entity: GTEntity = {
+    id: 'gt_org_fpe',
+    organizationId: organization.id,
+    organizationName: organization.name,
+    status: 'dosar_depus',
+  };
+
+  assert.equal(getGTEntityForOrganization(organization.id, [entity])?.id, entity.id);
+  assert.equal(canCreateGTEntityFromOrganization(organization, [entity]), false);
+  assert.equal(canCreateGTEntityFromOrganization(organization, []), true);
 });
 
 test('validarea persoanei este blocata cand entitatea parinte nu este validata', () => {

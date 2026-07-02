@@ -1,4 +1,5 @@
 export * from './document-requirements.ts';
+export * from './directory.ts';
 export * from './import.ts';
 export * from './indicators.ts';
 export * from './types.ts';
