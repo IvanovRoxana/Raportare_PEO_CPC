@@ -485,24 +485,27 @@ export default function ExpertHomeDashboard() {
       expert: currentExpert,
       experts,
       sharedDeliverables: visibleSharedDeliverables,
+      sourceActivities: monthActivities,
     });
-  }, [currentExpert, experts, visibleSharedDeliverables]);
+  }, [currentExpert, experts, monthActivities, visibleSharedDeliverables]);
   const returnedActivityAlerts = useMemo(() => {
     if (!currentExpert) return [];
     return buildReturnedSharedActivityAlerts({
       expert: currentExpert,
       experts,
       sharedDeliverables: visibleSharedDeliverables,
+      sourceActivities: monthActivities,
     });
-  }, [currentExpert, experts, visibleSharedDeliverables]);
+  }, [currentExpert, experts, monthActivities, visibleSharedDeliverables]);
   const ignoredActivityAlerts = useMemo(() => {
     if (!currentExpert) return [];
     return buildIgnoredSharedActivityAlerts({
       expert: currentExpert,
       experts,
       sharedDeliverables: visibleSharedDeliverables,
+      sourceActivities: monthActivities,
     });
-  }, [currentExpert, experts, visibleSharedDeliverables]);
+  }, [currentExpert, experts, monthActivities, visibleSharedDeliverables]);
 
   const handleIgnoreActivitySuggestion = async (relationId: string) => {
     await ignoreSharedSuggestion(relationId);

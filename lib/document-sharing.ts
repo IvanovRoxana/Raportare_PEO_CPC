@@ -325,19 +325,28 @@ export function buildPendingSharedDeliverableAlerts(args: {
     });
 }
 
-function buildSharedActivityAlertSnapshot(relation: SharedDeliverable) {
+function findSharedActivitySource(
+  relation: SharedDeliverable,
+  sourceActivities?: Activity[],
+) {
+  const sourceActivityId = getSharedRelationSourceActivityId(relation);
+  if (!sourceActivityId) return undefined;
+  return sourceActivities?.find((activity) => activity.id === sourceActivityId);
+}
+
+function buildSharedActivityAlertSnapshot(relation: SharedDeliverable, sourceActivity?: Activity) {
   return {
-    sourceActivityDate: relation.sourceActivityDate,
-    sourceActivityHours: relation.sourceActivityHours,
-    sourceActivityTitle: relation.sourceActivityTitle || relation.sourceActivityType,
-    sourceActivityDescription: relation.sourceActivityDescription,
-    sourceActivityLocation: relation.sourceActivityLocation,
-    sourceActivityDayType: relation.sourceActivityDayType,
-    sourceActivitySaCode: relation.sourceActivitySaCode,
-    sourceActivityProjectCode: relation.sourceActivityProjectCode,
-    sourceActivityEventDurationHours: relation.sourceActivityEventDurationHours,
-    sourceActivityEventExtendedDescription: relation.sourceActivityEventExtendedDescription,
-    projectId: relation.projectId,
+    sourceActivityDate: relation.sourceActivityDate || sourceActivity?.date,
+    sourceActivityHours: relation.sourceActivityHours ?? sourceActivity?.hours,
+    sourceActivityTitle: relation.sourceActivityTitle || relation.sourceActivityType || sourceActivity?.title || sourceActivity?.activityType,
+    sourceActivityDescription: relation.sourceActivityDescription || sourceActivity?.description,
+    sourceActivityLocation: relation.sourceActivityLocation || sourceActivity?.location,
+    sourceActivityDayType: relation.sourceActivityDayType || sourceActivity?.dayType,
+    sourceActivitySaCode: relation.sourceActivitySaCode || sourceActivity?.saCode,
+    sourceActivityProjectCode: relation.sourceActivityProjectCode || sourceActivity?.projectCode,
+    sourceActivityEventDurationHours: relation.sourceActivityEventDurationHours ?? sourceActivity?.eventDurationHours,
+    sourceActivityEventExtendedDescription: relation.sourceActivityEventExtendedDescription || sourceActivity?.eventExtendedDescription,
+    projectId: relation.projectId || sourceActivity?.projectCode,
     status: relation.status,
   };
 }
@@ -346,16 +355,18 @@ export function buildPendingSharedActivityAlerts(args: {
   expert: Expert;
   experts: Expert[];
   sharedDeliverables: SharedDeliverable[];
+  sourceActivities?: Activity[];
 }) {
   return args.sharedDeliverables
     .filter((relation) => relation.targetExpertId === args.expert.id && relation.status === 'pending_registration' && isActivitySuggestionRelation(relation))
     .map((relation) => {
       const sourceExpert = args.experts.find((expert) => expert.id === relation.sourceExpertId);
+      const sourceActivity = findSharedActivitySource(relation, args.sourceActivities);
       return {
         relationId: relation.id,
-        sourceActivityId: relation.sourceActivityId,
-        sourceExpertName: relation.sourceExpertName || sourceExpert?.name || relation.sourceExpertId,
-        ...buildSharedActivityAlertSnapshot(relation),
+        sourceActivityId: getSharedRelationSourceActivityId(relation),
+        sourceExpertName: relation.sourceExpertName || sourceActivity?.expertName || sourceExpert?.name || relation.sourceExpertId,
+        ...buildSharedActivityAlertSnapshot(relation, sourceActivity),
         message: `${relation.sourceExpertName || sourceExpert?.name || 'Un alt expert'} te-a sugerat ca participant la o activitate comuna. Poti adauga activitatea in pontajul tau sau o poti ignora.`,
       };
     });
@@ -365,15 +376,17 @@ export function buildReturnedSharedActivityAlerts(args: {
   expert: Expert;
   experts: Expert[];
   sharedDeliverables: SharedDeliverable[];
+  sourceActivities?: Activity[];
 }) {
   return args.sharedDeliverables
     .filter((relation) => relation.sourceExpertId === args.expert.id && relation.status === 'ignored_by_target' && isActivitySuggestionRelation(relation))
     .map((relation) => {
       const targetExpert = args.experts.find((expert) => expert.id === relation.targetExpertId);
+      const sourceActivity = findSharedActivitySource(relation, args.sourceActivities);
       return {
         relationId: relation.id,
         targetExpertName: targetExpert?.name || relation.targetExpertId,
-        ...buildSharedActivityAlertSnapshot(relation),
+        ...buildSharedActivityAlertSnapshot(relation, sourceActivity),
         message: `${targetExpert?.name || 'Expertul selectat'} a ignorat sugestia de activitate comuna. Avertizarea ramane vizibila si pentru PM.`,
       };
     });
@@ -383,15 +396,17 @@ export function buildIgnoredSharedActivityAlerts(args: {
   expert: Expert;
   experts: Expert[];
   sharedDeliverables: SharedDeliverable[];
+  sourceActivities?: Activity[];
 }) {
   return args.sharedDeliverables
     .filter((relation) => relation.targetExpertId === args.expert.id && relation.status === 'ignored_by_target' && isActivitySuggestionRelation(relation))
     .map((relation) => {
       const sourceExpert = args.experts.find((expert) => expert.id === relation.sourceExpertId);
+      const sourceActivity = findSharedActivitySource(relation, args.sourceActivities);
       return {
         relationId: relation.id,
-        sourceExpertName: relation.sourceExpertName || sourceExpert?.name || relation.sourceExpertId,
-        ...buildSharedActivityAlertSnapshot(relation),
+        sourceExpertName: relation.sourceExpertName || sourceActivity?.expertName || sourceExpert?.name || relation.sourceExpertId,
+        ...buildSharedActivityAlertSnapshot(relation, sourceActivity),
         message: `Ai ignorat sugestia de activitate comuna de la ${relation.sourceExpertName || sourceExpert?.name || 'alt expert'}.`,
       };
     });

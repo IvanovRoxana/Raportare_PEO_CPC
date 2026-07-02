@@ -1261,6 +1261,70 @@ async function tryGetSharedSourceActivity(client: any, sourceActivityId?: string
   }
 }
 
+function mergeMissingSharedActivitySnapshot(
+  relation: SharedDeliverable,
+  sourceActivity?: Activity | null,
+) {
+  if (!sourceActivity || !isActivitySuggestionRelation(relation)) return relation;
+
+  const snapshot = buildSharedActivitySnapshot(sourceActivity);
+  return {
+    ...relation,
+    sourceExpertName: relation.sourceExpertName || snapshot.sourceExpertName,
+    sourceActivityDate: relation.sourceActivityDate || snapshot.sourceActivityDate,
+    sourceActivityHours: relation.sourceActivityHours ?? snapshot.sourceActivityHours,
+    sourceActivityType: relation.sourceActivityType || snapshot.sourceActivityType,
+    sourceActivityTitle: relation.sourceActivityTitle || snapshot.sourceActivityTitle,
+    sourceActivityDescription: relation.sourceActivityDescription || snapshot.sourceActivityDescription,
+    sourceActivityLocation: relation.sourceActivityLocation || snapshot.sourceActivityLocation,
+    sourceActivityDayType: relation.sourceActivityDayType || snapshot.sourceActivityDayType,
+    sourceActivitySaCode: relation.sourceActivitySaCode || snapshot.sourceActivitySaCode,
+    sourceActivityCatalogActivityId: relation.sourceActivityCatalogActivityId || snapshot.sourceActivityCatalogActivityId,
+    sourceActivityProjectCode: relation.sourceActivityProjectCode || snapshot.sourceActivityProjectCode,
+    sourceActivityEventDurationHours: relation.sourceActivityEventDurationHours ?? snapshot.sourceActivityEventDurationHours,
+    sourceActivityEventExtendedDescription: relation.sourceActivityEventExtendedDescription || snapshot.sourceActivityEventExtendedDescription,
+    projectId: relation.projectId || snapshot.sourceActivityProjectCode,
+  };
+}
+
+function shouldHydrateSharedActivitySnapshot(relation: SharedDeliverable) {
+  return isActivitySuggestionRelation(relation)
+    && Boolean(getSourceActivityIdFromRelation(relation))
+    && (
+      !relation.sourceActivityTitle
+      || !relation.sourceActivityDate
+      || relation.sourceActivityHours === undefined
+      || !relation.sourceActivityDescription
+      || !relation.sourceActivitySaCode
+      || !relation.sourceActivityProjectCode
+    );
+}
+
+async function hydrateSharedActivitySnapshots(
+  client: any,
+  relations: SharedDeliverable[],
+) {
+  const sourceActivityIds = [...new Set(relations
+    .filter(shouldHydrateSharedActivitySnapshot)
+    .map(getSourceActivityIdFromRelation)
+    .filter((activityId): activityId is string => Boolean(activityId)))];
+
+  if (sourceActivityIds.length === 0) return relations;
+
+  const sourceActivities = new Map<string, Activity>();
+  await Promise.all(sourceActivityIds.map(async (activityId) => {
+    const sourceActivity = await tryGetSharedSourceActivity(client, activityId);
+    if (sourceActivity) sourceActivities.set(activityId, sourceActivity);
+  }));
+
+  return relations.map((relation) =>
+    mergeMissingSharedActivitySnapshot(
+      relation,
+      sourceActivities.get(getSourceActivityIdFromRelation(relation) || ''),
+    ),
+  );
+}
+
 async function attachActivityChildren(activity: any): Promise<Activity> {
   const client = getAwsDataClient() as any;
   const [deliverables, grupTinta] = await Promise.all([
@@ -1763,11 +1827,13 @@ export const sharedDeliverablesService = {
         listModel<any>(client.models.SharedDeliverable, { sourceExpertId: { eq: scope.currentExpertId } }),
       ]);
       const deduped = new Map([...targetData, ...sourceData].map((relation) => [relation.id, relation]));
-      return filterSharedDeliverablesForScope(Array.from(deduped.values()).map(mapSharedDeliverable), scope);
+      const relations = filterSharedDeliverablesForScope(Array.from(deduped.values()).map(mapSharedDeliverable), scope);
+      return hydrateSharedActivitySnapshots(client, relations);
     }
 
     const data = await listModel<any>(client.models.SharedDeliverable);
-    return filterSharedDeliverablesForScope(data.map(mapSharedDeliverable), scope);
+    const relations = filterSharedDeliverablesForScope(data.map(mapSharedDeliverable), scope);
+    return hydrateSharedActivitySnapshots(client, relations);
   },
 
   async getPendingForExpert(expertId: string): Promise<SharedDeliverable[]> {
@@ -1778,7 +1844,7 @@ export const sharedDeliverablesService = {
       targetExpertId: { eq: expertId },
       status: { eq: 'pending_registration' },
     });
-    return data.map(mapSharedDeliverable);
+    return hydrateSharedActivitySnapshots(client, data.map(mapSharedDeliverable));
   },
 
   async getActivityRegistrationContext(relationId: string): Promise<SharedActivityRegistrationContext | null> {
