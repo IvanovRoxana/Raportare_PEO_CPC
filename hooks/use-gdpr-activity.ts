@@ -5,6 +5,7 @@ import { createDeliverableSlot, type DeliverableSlot } from '@/lib/deliverable-t
 import { generateId } from '@/lib/app-utils';
 import {
   buildDefaultGdprMeta,
+  buildBusinessHubGdprMeta,
   buildGdprActivityDescription,
   buildGdprDeliverableDocx,
   buildGdprObjectVerification,
@@ -387,24 +388,15 @@ async function generateBusinessHubDeliverable({
     const parsed = parseBusinessHubPvRowsShared(rows);
     const pvDataUrl = await fileToDataUrl(file);
     const fallbackMonthLabel = `${reportMonthLabel} ${year}`;
-    const nextMeta: GdprMeta = buildDefaultGdprMeta('GDPR_BUSINESS_HUB', {
+    const completedMeta = buildBusinessHubGdprMeta({
       ...gdprMeta,
-      lunaAnalizata: parsed.monthLabel || fallbackMonthLabel,
-      numarEvenimente: parsed.events.length,
-      inregistrareBd: file.name,
-      responsabilHub: gdprMeta.responsabilHub || 'Alexandru Enache',
-      rolHub: gdprMeta.rolHub || 'suport logistic',
-      documenteAnalizate: { selected: ['proces_verbal', 'altele'], altele: 'Proces-verbal evenimente Business HUB' },
-      datePersonale: ['nume si prenume', 'functie', 'organizatie', 'semnatura'],
-      temeiGdpr: ['interes legitim', 'interes public / implementare proiect'],
       concluzie: gdprConclusionCode || 'fara_prelucrari_directe',
-      businessHubEvents: parsed.events,
-    }, parsed.monthLabel || fallbackMonthLabel);
-    const objectText = buildGdprObjectVerification('GDPR_BUSINESS_HUB', nextMeta);
-    const completedMeta: GdprMeta = {
-      ...nextMeta,
-      obiectVerificare: objectText,
-    };
+    }, {
+      monthLabel: parsed.monthLabel,
+      reportMonth: fallbackMonthLabel,
+      events: parsed.events,
+      sourceFileName: file.name,
+    });
     setGdprTemplateCode('GDPR_BUSINESS_HUB');
     setSaCode('SA1.1');
     setActivityTitle('Verificare GDPR Business HUB');

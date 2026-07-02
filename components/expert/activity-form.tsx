@@ -2041,37 +2041,39 @@ export function ActivityForm({
                       </div>
                     )}
 
-                    <div className="flex flex-wrap gap-2 border-t border-emerald-200 pt-3">
-                      <Button type="button" variant="outline" onClick={generateGdprDescription}>
-                        <FileText className="h-4 w-4 mr-2" />
-                        Genereaza descriere
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={improveGdprDescriptionWithAI}
-                        disabled={isImprovingGdprText}
-                      >
-                        {isImprovingGdprText ? (
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        ) : (
-                          <Sparkles className="h-4 w-4 mr-2" />
-                        )}
-                        Imbunatateste cu AI
-                      </Button>
-                      <Button
-                        type="button"
-                        onClick={() => generateGdprDeliverable()}
-                        disabled={isGeneratingGdprDocx}
-                      >
-                        {isGeneratingGdprDocx ? (
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        ) : (
-                          <Upload className="h-4 w-4 mr-2" />
-                        )}
-                        Genereaza livrabil DOCX si ataseaza
-                      </Button>
-                    </div>
+                    {!isBusinessHubGdpr && (
+                      <div className="flex flex-wrap gap-2 border-t border-emerald-200 pt-3">
+                        <Button type="button" variant="outline" onClick={generateGdprDescription}>
+                          <FileText className="h-4 w-4 mr-2" />
+                          Genereaza descriere
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={improveGdprDescriptionWithAI}
+                          disabled={isImprovingGdprText}
+                        >
+                          {isImprovingGdprText ? (
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          ) : (
+                            <Sparkles className="h-4 w-4 mr-2" />
+                          )}
+                          Imbunatateste cu AI
+                        </Button>
+                        <Button
+                          type="button"
+                          onClick={() => generateGdprDeliverable()}
+                          disabled={isGeneratingGdprDocx}
+                        >
+                          {isGeneratingGdprDocx ? (
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          ) : (
+                            <Upload className="h-4 w-4 mr-2" />
+                          )}
+                          Genereaza livrabil DOCX si ataseaza
+                        </Button>
+                      </div>
+                    )}
                   </>
                 )}
               </div>

@@ -668,6 +668,44 @@ export function buildDefaultGdprMeta(code?: string | null, existing: GdprMeta = 
   return applyConditionalLegalBasis(template.code, meta);
 }
 
+export function buildBusinessHubGdprMeta(
+  existing: GdprMeta = {},
+  options: {
+    monthLabel?: string;
+    reportMonth?: string;
+    events?: GdprBusinessHubEvent[];
+    sourceFileName?: string;
+  } = {},
+): GdprMeta {
+  const monthLabel = options.monthLabel || stringValue(existing.lunaAnalizata) || options.reportMonth || '';
+  const events = options.events ?? getBusinessHubEvents(existing);
+  const sourceFileName = options.sourceFileName || stringValue(existing.inregistrareBd);
+  const meta = buildDefaultGdprMeta('GDPR_BUSINESS_HUB', {
+    ...existing,
+    lunaAnalizata: monthLabel,
+    numarEvenimente: events.length || Number(existing.numarEvenimente) || undefined,
+    inregistrareBd: sourceFileName,
+    responsabilHub: stringValue(existing.responsabilHub) || 'Coordonator Business HUB',
+    rolHub: stringValue(existing.rolHub) || 'suport logistic',
+    documenteAnalizate: isEmptyMetaValue(existing.documenteAnalizate)
+      ? { selected: ['proces_verbal', 'altele'], altele: 'Proces-verbal evenimente Business HUB' }
+      : existing.documenteAnalizate,
+    datePersonale: isEmptyMetaValue(existing.datePersonale)
+      ? ['nume si prenume', 'functie', 'organizatie', 'semnatura']
+      : existing.datePersonale,
+    temeiGdpr: isEmptyMetaValue(existing.temeiGdpr)
+      ? ['interes legitim', 'interes public / implementare proiect']
+      : existing.temeiGdpr,
+    concluzie: existing.concluzie || 'fara_prelucrari_directe',
+    businessHubEvents: events,
+  }, monthLabel || options.reportMonth);
+
+  return {
+    ...meta,
+    obiectVerificare: buildGdprObjectVerification('GDPR_BUSINESS_HUB', meta),
+  };
+}
+
 export function buildGdprObjectVerification(code: GdprTemplateCode, meta: GdprMeta = {}) {
   const template = getGdprTemplate(code);
   if (!template) return '';
@@ -1210,6 +1248,10 @@ function text(value: GdprMetaValue, fallback: string) {
   if (typeof value === 'boolean') return value ? 'Da' : 'Nu';
   if (value === undefined || value === null || value === '') return fallback;
   return String(value);
+}
+
+function stringValue(value: GdprMetaValue) {
+  return typeof value === 'string' ? value.trim() : '';
 }
 
 function listText(value: GdprMetaValue, fallback: string) {

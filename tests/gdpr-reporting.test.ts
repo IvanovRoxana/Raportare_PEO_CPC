@@ -3,6 +3,7 @@ import test from 'node:test';
 import { normalizeAndGroupActivities } from '../lib/activity-report/normalize.ts';
 import { buildActivityReportPrompt, buildActivityReportPromptInput } from '../lib/activity-report/prompt.ts';
 import {
+  buildBusinessHubGdprMeta,
   buildDefaultGdprMeta,
   buildBusinessHubPreliminaryReportText,
   buildGdprActivityDescription,
@@ -215,4 +216,37 @@ test('raportul Business HUB foloseste luna si tabelul de evenimente din PV', () 
   assert.match(report, /Trecerea in revista a 16 evenimente desfasurate in luna aprilie 2026/);
   assert.match(report, /Meeting BR/);
   assert.match(report, /Mihai Sauciuc/);
+});
+
+test('PV-ul Business HUB completeaza automat metadatele GDPR cerute', () => {
+  const meta = buildBusinessHubGdprMeta({}, {
+    monthLabel: 'iulie 2026',
+    sourceFileName: 'Proces-verbal evenimente Business HUB - iulie 2026.xlsx',
+    events: [
+      {
+        federation: 'Federatia Test',
+        event: 'Eveniment Business HUB',
+        date: '01 Iulie',
+        room: 'Class Room',
+        interval: '10:00-12:00',
+        signature: 'Responsabil Test',
+      },
+    ],
+  });
+
+  assert.equal(meta.lunaAnalizata, 'iulie 2026');
+  assert.equal(meta.numarEvenimente, 1);
+  assert.equal(meta.inregistrareBd, 'Proces-verbal evenimente Business HUB - iulie 2026.xlsx');
+  assert.equal(meta.responsabilHub, 'Coordonator Business HUB');
+  assert.equal(meta.rolHub, 'suport logistic');
+
+  const validation = validateGdprActivityDraft({
+    templateCode: 'GDPR_BUSINESS_HUB',
+    meta,
+    description: 'Descriere generata automat din PV.',
+    hasDeliverable: true,
+  });
+
+  assert.equal(validation.ok, true);
+  assert.deepEqual(validation.missingFields, []);
 });

@@ -11,6 +11,14 @@ export const storage = defineStorage({
       allow.authenticated.to(["read", "write"]),
       allow.groups(["pm", "admin"]).to(["read", "write", "delete"]),
     ],
+    "projects/{entity_id}/documents/*": [
+      allow.authenticated.to(["read", "write"]),
+      allow.groups(["pm", "admin"]).to(["read", "write", "delete"]),
+    ],
+    "projects/{entity_id}/documents/{document_id}/*": [
+      allow.authenticated.to(["read", "write"]),
+      allow.groups(["pm", "admin"]).to(["read", "write", "delete"]),
+    ],
     "reports/{entity_id}/*": [
       allow.entity("identity").to(["read", "write", "delete"]),
       allow.groups(["pm", "admin"]).to(["read", "write", "delete"]),
