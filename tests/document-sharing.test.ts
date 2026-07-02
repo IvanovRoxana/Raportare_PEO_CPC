@@ -278,7 +278,12 @@ test('creeaza si afiseaza sugestii de activitate comuna separate de livrabile', 
       activityType: 'Atelier comun',
       title: 'Atelier comun',
       description: 'Discutie comuna pe livrabil.',
+      location: 'Sala 2',
+      dayType: 'lucratoare',
       saCode: 'SA1.1',
+      projectCode: '302151',
+      eventDurationHours: 2,
+      eventExtendedDescription: 'Detalii extinse pentru evenimentul comun.',
     },
   });
 
@@ -289,6 +294,10 @@ test('creeaza si afiseaza sugestii de activitate comuna separate de livrabile', 
   assert.equal(relations[0].sourceExpertName, 'Expert Unu');
   assert.equal(relations[0].sourceActivityDate, '2026-05-12');
   assert.equal(relations[0].sourceActivityTitle, 'Atelier comun');
+  assert.equal(relations[0].sourceActivityDescription, 'Discutie comuna pe livrabil.');
+  assert.equal(relations[0].sourceActivityLocation, 'Sala 2');
+  assert.equal(relations[0].sourceActivityDayType, 'lucratoare');
+  assert.equal(relations[0].sourceActivityProjectCode, '302151');
 
   const pendingAlerts = buildPendingSharedActivityAlerts({
     expert: { id: 'expert-2', name: 'Expert Doi', role: 'Expert', norma: 8 },
@@ -298,6 +307,12 @@ test('creeaza si afiseaza sugestii de activitate comuna separate de livrabile', 
 
   assert.equal(pendingAlerts.length, 1);
   assert.match(pendingAlerts[0].message, /Expert Unu/);
+  assert.equal(pendingAlerts[0].sourceActivityDescription, 'Discutie comuna pe livrabil.');
+  assert.equal(pendingAlerts[0].sourceActivityLocation, 'Sala 2');
+  assert.equal(pendingAlerts[0].sourceActivityDayType, 'lucratoare');
+  assert.equal(pendingAlerts[0].sourceActivityProjectCode, '302151');
+  assert.equal(pendingAlerts[0].sourceActivityEventDurationHours, 2);
+  assert.equal(pendingAlerts[0].sourceActivityEventExtendedDescription, 'Detalii extinse pentru evenimentul comun.');
 });
 
 test('filtreaza sugestiile comune dupa lunile explicit permise', () => {

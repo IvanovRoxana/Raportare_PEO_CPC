@@ -59,6 +59,63 @@ const WORK_TABS = [
 const DAY_NAMES = ['Lu', 'Ma', 'Mi', 'Jo', 'Vi', 'Sa', 'Du'];
 const MONTH_OPTIONS = Array.from({ length: 12 }, (_, value) => ({ value, label: getMonthName(value) }));
 
+type SharedActivityAlertSummary = {
+  projectId?: string;
+  sourceActivityDate?: string;
+  sourceActivityHours?: number;
+  sourceActivityTitle?: string;
+  sourceActivityDescription?: string;
+  sourceActivityLocation?: string;
+  sourceActivityDayType?: string;
+  sourceActivitySaCode?: string;
+  sourceActivityProjectCode?: string;
+  sourceActivityEventDurationHours?: number;
+  sourceActivityEventExtendedDescription?: string;
+  status: string;
+};
+
+function formatSharedActivityHours(hours?: number) {
+  return typeof hours === 'number' && Number.isFinite(hours) ? `${hours}h` : undefined;
+}
+
+function SharedActivityMetadata({ alert, subtle = false }: { alert: SharedActivityAlertSummary; subtle?: boolean }) {
+  const projectCode = alert.sourceActivityProjectCode || alert.projectId;
+  const meta = [
+    { label: 'Data', value: alert.sourceActivityDate },
+    { label: 'Ore', value: formatSharedActivityHours(alert.sourceActivityHours) },
+    { label: 'SA', value: alert.sourceActivitySaCode },
+    { label: 'Proiect', value: projectCode },
+    { label: 'Locatie', value: alert.sourceActivityLocation },
+    { label: 'Tip zi', value: alert.sourceActivityDayType },
+    { label: 'Durata', value: formatSharedActivityHours(alert.sourceActivityEventDurationHours) },
+  ].filter((item) => Boolean(item.value));
+
+  return (
+    <div className="mt-2 flex flex-wrap gap-2 text-xs">
+      {meta.map((item) => (
+        <Badge key={`${item.label}-${item.value}`} variant="outline" className={subtle ? undefined : 'border-amber-300 bg-white/80 text-amber-950'}>
+          {item.label}: {item.value}
+        </Badge>
+      ))}
+      <Badge variant={subtle ? 'outline' : 'secondary'}>{alert.status}</Badge>
+    </div>
+  );
+}
+
+function SharedActivityDescription({ alert, subtle = false }: { alert: SharedActivityAlertSummary; subtle?: boolean }) {
+  const description = alert.sourceActivityDescription || alert.sourceActivityEventExtendedDescription;
+  if (!description) return null;
+
+  return (
+    <p
+      className={cn('mt-2 max-w-5xl overflow-hidden text-xs leading-5', subtle ? 'text-muted-foreground' : 'text-amber-800')}
+      style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}
+    >
+      {description}
+    </p>
+  );
+}
+
 function toIsoDate(year: number, month: number, day: number) {
   return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
@@ -847,18 +904,16 @@ export default function ExpertHomeDashboard() {
                   <div className="mt-3 space-y-2">
                     {pendingActivityAlerts.map((alert) => (
                       <div key={alert.relationId} className="rounded-md border border-amber-200 bg-white/70 p-3 text-sm">
-                        <div className="font-medium">Sugestie de la {alert.sourceExpertName}</div>
-                        {alert.sourceActivityTitle && (
-                          <div className="mt-1 text-sm font-medium text-amber-950">{alert.sourceActivityTitle}</div>
-                        )}
-                        <div className="mt-1 text-xs text-amber-800">{alert.message}</div>
-                        <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                          {alert.projectId && <Badge variant="outline">{alert.projectId}</Badge>}
-                          {alert.sourceActivitySaCode && <Badge variant="outline">{alert.sourceActivitySaCode}</Badge>}
-                          {alert.sourceActivityDate && <Badge variant="outline">{alert.sourceActivityDate}</Badge>}
-                          {alert.sourceActivityHours && <Badge variant="outline">{alert.sourceActivityHours}h</Badge>}
-                          <Badge variant="secondary">{alert.status}</Badge>
+                        <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+                          <div>
+                            <div className="font-medium">Sugestie de la {alert.sourceExpertName}</div>
+                            {alert.sourceActivityTitle && (
+                              <div className="mt-1 text-sm font-semibold text-amber-950">{alert.sourceActivityTitle}</div>
+                            )}
+                          </div>
                         </div>
+                        <SharedActivityDescription alert={alert} />
+                        <SharedActivityMetadata alert={alert} />
                         <div className="mt-3 flex flex-wrap gap-2">
                           <Button asChild size="sm" className="h-8 rounded-md">
                             <Link href={`/expert/peo?sharedActivityRelationId=${encodeURIComponent(alert.relationId)}`}>Adauga activitate</Link>
@@ -890,24 +945,18 @@ export default function ExpertHomeDashboard() {
                   {ignoredActivityAlerts.map((alert) => (
                     <div key={alert.relationId} className="rounded-md border bg-card p-3 text-sm">
                       <div className="font-medium">Ai ignorat sugestia de la {alert.sourceExpertName}</div>
-                      {alert.sourceActivityTitle && <div className="mt-1 text-sm">{alert.sourceActivityTitle}</div>}
-                      <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                        {alert.projectId && <Badge variant="outline">{alert.projectId}</Badge>}
-                        {alert.sourceActivitySaCode && <Badge variant="outline">{alert.sourceActivitySaCode}</Badge>}
-                        {alert.sourceActivityDate && <Badge variant="outline">{alert.sourceActivityDate}</Badge>}
-                        {alert.sourceActivityHours && <Badge variant="outline">{alert.sourceActivityHours}h</Badge>}
-                        <Badge variant="outline">{alert.status}</Badge>
-                      </div>
+                      {alert.sourceActivityTitle && <div className="mt-1 text-sm font-medium">{alert.sourceActivityTitle}</div>}
+                      <SharedActivityDescription alert={alert} subtle />
+                      <SharedActivityMetadata alert={alert} subtle />
                     </div>
                   ))}
                   {returnedActivityAlerts.map((alert) => (
                     <div key={alert.relationId} className="rounded-md border bg-card p-3 text-sm">
                       <div className="font-medium">{alert.targetExpertName} a ignorat sugestia ta</div>
+                      {alert.sourceActivityTitle && <div className="mt-1 text-sm font-medium">{alert.sourceActivityTitle}</div>}
                       <div className="mt-1 text-xs text-muted-foreground">{alert.message}</div>
-                      <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                        {alert.projectId && <Badge variant="outline">{alert.projectId}</Badge>}
-                        <Badge variant="outline">{alert.status}</Badge>
-                      </div>
+                      <SharedActivityDescription alert={alert} subtle />
+                      <SharedActivityMetadata alert={alert} subtle />
                     </div>
                   ))}
                 </>
