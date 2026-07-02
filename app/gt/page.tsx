@@ -38,13 +38,12 @@ import {
   useExperts,
 } from '@/hooks/use-backend-data';
 import { getSignedInUser, type AppUser } from '@/lib/aws/auth';
+import { GT_DOCUMENT_LABELS, GT_ENTITY_REQUIRED_DOCS } from '@/lib/grup-tinta/document-requirements';
 import {
-  GT_DOCUMENT_LABELS,
-  GT_ENTITY_REQUIRED_DOCS,
   getChildOrganizations,
   getCpcAffiliatedOrganizations,
   getGTEntityForOrganization,
-} from '@/lib/grup-tinta';
+} from '@/lib/grup-tinta/directory';
 import { buildGTIndicatorSummary } from '@/lib/grup-tinta/indicators';
 import type { GTDocument, GTEntity, GTMonitoringRecord, GTPerson, GTStatus, Organization } from '@/lib/grup-tinta/types';
 
