@@ -1,6 +1,7 @@
 'use client';
 
 import { getAwsDataClient, isAwsAvailable } from '@/lib/aws/client';
+import { fetchAuthSession } from 'aws-amplify/auth';
 import { getSignedInUser } from '@/lib/aws/auth';
 import outputs from '@/amplify_outputs.json';
 import {
@@ -244,6 +245,43 @@ async function getGTRegistryAccess(client: any) {
     canRead: true,
     canManage: isPmOrAdmin || isGtProfile,
   };
+}
+
+function isGTRegistryAuthError(error: unknown) {
+  const message = error instanceof Error ? error.message : JSON.stringify(error);
+  return /unauthorized|not authorized|forbidden|401|403|acces interzis/i.test(message || '');
+}
+
+async function callGTRegistryWrite<T>(
+  modelName: string,
+  action: 'create' | 'update' | 'delete',
+  payload: { id?: string; input?: Record<string, unknown> },
+) {
+  const token = (await fetchAuthSession()).tokens?.accessToken?.toString();
+  if (!token) {
+    throw new Error('Nu am gasit sesiunea Cognito pentru modificarea registrului GT.');
+  }
+
+  const response = await fetch('/api/gt/registry', {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${token}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      modelName,
+      action,
+      id: payload.id,
+      input: payload.input,
+    }),
+  });
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(body?.error || 'Modificarea registrului GT a esuat.');
+  }
+
+  return body?.data as T;
 }
 
 async function getAllowedExpertId(client: any, requestedExpertId?: string | null) {
@@ -3109,9 +3147,15 @@ function buildGTRegistryService<T>(modelName: string, mapper: (item: any) => T, 
       if (!access.canManage) throw new Error(ACCESS_DENIED_MESSAGE);
       const model = client.models[modelName];
       if (!model) throw new Error(`Modelul ${modelName} nu este disponibil in schema curenta.`);
-      const result = await model.create(input);
-      assertNoErrors(result, `AWS create ${modelName}`);
-      return mapper(result.data);
+      try {
+        const result = await model.create(input);
+        assertNoErrors(result, `AWS create ${modelName}`);
+        return mapper(result.data);
+      } catch (error) {
+        if (!isGTRegistryAuthError(error)) throw error;
+        const data = await callGTRegistryWrite<any>(modelName, 'create', { input: input as Record<string, unknown> });
+        return mapper(data);
+      }
     },
 
     async update(id: string, updates: Partial<T>): Promise<T> {
@@ -3120,9 +3164,18 @@ function buildGTRegistryService<T>(modelName: string, mapper: (item: any) => T, 
       if (!access.canManage) throw new Error(ACCESS_DENIED_MESSAGE);
       const model = client.models[modelName];
       if (!model) throw new Error(`Modelul ${modelName} nu este disponibil in schema curenta.`);
-      const result = await model.update({ id, ...updates });
-      assertNoErrors(result, `AWS update ${modelName}`);
-      return mapper(result.data);
+      try {
+        const result = await model.update({ id, ...updates });
+        assertNoErrors(result, `AWS update ${modelName}`);
+        return mapper(result.data);
+      } catch (error) {
+        if (!isGTRegistryAuthError(error)) throw error;
+        const data = await callGTRegistryWrite<any>(modelName, 'update', {
+          id,
+          input: updates as Record<string, unknown>,
+        });
+        return mapper(data);
+      }
     },
 
     async delete(id: string): Promise<void> {
@@ -3131,8 +3184,13 @@ function buildGTRegistryService<T>(modelName: string, mapper: (item: any) => T, 
       if (!access.canManage) throw new Error(ACCESS_DENIED_MESSAGE);
       const model = client.models[modelName];
       if (!model) return;
-      const result = await model.delete({ id });
-      assertNoErrors(result, `AWS delete ${modelName}`);
+      try {
+        const result = await model.delete({ id });
+        assertNoErrors(result, `AWS delete ${modelName}`);
+      } catch (error) {
+        if (!isGTRegistryAuthError(error)) throw error;
+        await callGTRegistryWrite(modelName, 'delete', { id });
+      }
     },
   };
 }
