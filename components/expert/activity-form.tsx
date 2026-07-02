@@ -294,8 +294,8 @@ export function ActivityForm({
 
   // Deliverables state with slots
   const [deliverables, setDeliverables] = useState<DeliverableSlot[]>(
-    initialActivity?.deliverables?.map(d => ({
-      id: d.id,
+    activitySeed?.deliverables?.map(d => ({
+      id: initialActivity ? d.id : generateId(),
       slotType: resolveSavedSlotType(d.deliverableType, d.category),
       name: d.fileName,
       filename: d.fileName,
@@ -405,8 +405,10 @@ export function ActivityForm({
   }, [initialActivity?.id, initialActivity?.shareStatus, initialCollaborators]);
   
   // Event specific fields
-  const [eventDuration, setEventDuration] = useState<string>('');
-  const [eventExtendedDesc, setEventExtendedDesc] = useState('');
+  const [eventDuration, setEventDuration] = useState<string>(
+    activitySeed?.eventDurationHours ? String(activitySeed.eventDurationHours) : '',
+  );
+  const [eventExtendedDesc, setEventExtendedDesc] = useState(activitySeed?.eventExtendedDescription || '');
   
   // Grup tinta
   const [grupTinta, setGrupTinta] = useState<GrupTintaEntry[]>(initialActivity?.grupTinta || []);
@@ -1041,7 +1043,9 @@ export function ActivityForm({
       }
     }
 
-    const activityDatesForSave = initialActivity ? [initialActivity.date] : selectedDates;
+    const activityDatesForSave = initialActivity
+      ? [selectedDates[0] || initialActivity.date]
+      : selectedDates;
     const newActivityDrafts: ActivityDraftForValidation[] = activityDatesForSave.map((date) => ({
       id: initialActivity?.id,
       expertId,
@@ -1194,6 +1198,8 @@ export function ActivityForm({
         gdprGeneratedText: isGdprExpert ? (gdprGeneratedText || description) : undefined,
         gdprConclusionCode: isGdprExpert ? gdprConclusionCode : undefined,
         businessHubMetaJson: isBusinessHubTabActive ? serializeBusinessHubMeta({ ...businessHubMetaDraft, date }) : undefined,
+        eventDurationHours: isEvent ? eventDur || undefined : undefined,
+        eventExtendedDescription: isEvent ? eventExtendedDesc.trim() || undefined : undefined,
         grupTinta,
         createdAt: initialActivity?.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -1211,6 +1217,8 @@ export function ActivityForm({
     description,
     effectiveActivityTitle,
     effectiveSaCode,
+    eventDur,
+    eventExtendedDesc,
     expert,
     expertId,
     expertName,
@@ -1225,6 +1233,7 @@ export function ActivityForm({
     businessHubRegistryCatalogItem?.id,
     businessHubMetaDraft,
     isBusinessHubTabActive,
+    isEvent,
     isGdprExpert,
     isLeave,
     location,

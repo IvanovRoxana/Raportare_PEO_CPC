@@ -54,7 +54,6 @@ import {
 } from '@/lib/submit-readiness';
 import { getWorkingDaysListInMonth } from '@/lib/working-hours';
 import {
-  buildSelectedHoursForDates,
   getMonthlyBlockingState,
   normalizePontajHoursValue,
   validateActivitiesBeforeCreate,
@@ -786,10 +785,23 @@ export default function ExpertDashboard() {
   };
 
   const getDefaultHours = () => Math.min(selectedExpert.norma || 8, 8).toString();
+  const getDefaultHoursForDate = (date: string) => {
+    const existingHours = activities
+      .filter((activity) => activity.date === date && activity.id !== editingActivity?.id)
+      .reduce((sum, activity) => sum + (Number(activity.hours) || 0), 0);
+    const remainingDailyHours = Math.max(0, 8 - existingHours);
+    const preferredHours = Math.min(Number(getDefaultHours()) || 8, remainingDailyHours || 1);
+    return Math.max(1, preferredHours).toString();
+  };
 
   const syncSelectedDates = (dates: string[], baseHours = selectedHours) => {
     const uniqueDates = [...new Set(dates)].sort();
-    const nextHours = buildSelectedHoursForDates(uniqueDates, baseHours, getDefaultHours());
+    const nextHours = Object.fromEntries(
+      uniqueDates.map((date) => [
+        date,
+        normalizePontajHoursValue(baseHours[date], getDefaultHoursForDate(date)),
+      ]),
+    );
     setSelectedDates(uniqueDates);
     setSelectedHours(nextHours);
   };
@@ -941,6 +953,7 @@ export default function ExpertDashboard() {
       catalogActivityId: sourceActivity.catalogActivityId,
       title: sourceActivity.title,
       description: sourceActivity.description,
+      deliverables: sourceActivity.deliverables,
       location: sourceActivity.location,
       dayType: sourceActivity.dayType,
       projectCode: sourceActivity.projectCode,
@@ -949,6 +962,8 @@ export default function ExpertDashboard() {
       gdprGeneratedText: sourceActivity.gdprGeneratedText,
       gdprConclusionCode: sourceActivity.gdprConclusionCode,
       businessHubMetaJson: sourceActivity.businessHubMetaJson,
+      eventDurationHours: sourceActivity.eventDurationHours,
+      eventExtendedDescription: sourceActivity.eventExtendedDescription,
     });
     syncSelectedDates([sourceActivity.date], { [sourceActivity.date]: prefillHours });
     setEditingActivity(null);
@@ -1072,9 +1087,9 @@ export default function ExpertDashboard() {
     setSaveError(null);
     syncSelectedDates(dates);
     if (dates.length > 0) {
-      setEditingActivity(null);
-      setSharedActivityPrefill(null);
-      setActivityResolutionHint(null);
+      if (!editingActivity && !sharedActivityPrefill) {
+        setActivityResolutionHint(null);
+      }
       setShowForm(true);
       setActiveTab('activitati');
     } else {
@@ -1134,6 +1149,36 @@ export default function ExpertDashboard() {
   const sharedSourceDescription = sharedSourceActivity?.description || sharedSourceRelation?.sourceActivityDescription;
   const sharedSourceSaCode = sharedSourceActivity?.saCode || sharedSourceRelation?.sourceActivitySaCode;
   const sharedSourceProjectCode = sharedSourceActivity?.projectCode || sharedSourceRelation?.sourceActivityProjectCode;
+  const formKey = editingActivity
+    ? `edit-${editingActivity.id}-${activityResolutionHint?.id || 'manual'}`
+    : sharedActivityPrefill
+      ? `prefill-${pendingSharedActivityRelationId || pendingSharedDeliverableRelationId || selectedDates.join('-')}`
+      : `new-${selectedDates.join('-')}-${activityResolutionHint?.id || 'manual'}`;
+  const activityFormElement = (
+    <ActivityForm
+      key={formKey}
+      selectedDates={selectedDates}
+      selectedHours={selectedHours}
+      onSelectedHoursChange={setSelectedHours}
+      expertId={selectedExpertId || ''}
+      expertName={selectedExpert.name}
+      expert={selectedExpert as import('@/lib/types').Expert}
+      allExperts={collaborationExperts.length > 0 ? collaborationExperts : experts}
+      allActivities={allMonthActivities}
+      documents={documents}
+      colleagueDocuments={colleagueDocuments}
+      month={currentMonth}
+      year={currentYear}
+      onSave={handleSaveActivities}
+      onCancel={closeActivityForm}
+      initialActivity={editingActivity || undefined}
+      prefillActivity={sharedActivityPrefill || undefined}
+      resolutionHint={activityResolutionHint || undefined}
+      isSaving={isSaving}
+      layout="workspace"
+    />
+  );
+  const showPopoutForm = showForm && Boolean(sharedActivityPrefill);
 
   return (
     <>
@@ -1568,6 +1613,8 @@ export default function ExpertDashboard() {
                   canGoToNextMonth={canOpenMonth(nextCalendarDate.getMonth(), nextCalendarDate.getFullYear())}
                   monthAccessMessage={monthAccessMessage}
                   expertNorma={selectedExpert.norma || 8}
+                  displayMonth={currentMonth}
+                  displayYear={currentYear}
                 />
 
                 {/* Form opens automatically when dates are selected */}
@@ -1575,35 +1622,8 @@ export default function ExpertDashboard() {
 
               {/* Activities table is replaced by the workspace form when active. */}
               <div className="lg:col-span-2">
-                {showForm ? (
-                  <ActivityForm
-                    key={
-                      editingActivity
-                        ? `edit-${editingActivity.id}-${activityResolutionHint?.id || 'manual'}`
-                        : sharedActivityPrefill
-                          ? `prefill-${pendingSharedActivityRelationId || pendingSharedDeliverableRelationId || selectedDates.join('-')}`
-                          : `new-${selectedDates.join('-')}-${activityResolutionHint?.id || 'manual'}`
-                    }
-                    selectedDates={selectedDates}
-                    selectedHours={selectedHours}
-                    onSelectedHoursChange={setSelectedHours}
-                    expertId={selectedExpertId || ''}
-                    expertName={selectedExpert.name}
-                    expert={selectedExpert as import('@/lib/types').Expert}
-                    allExperts={collaborationExperts.length > 0 ? collaborationExperts : experts}
-                    allActivities={allMonthActivities}
-                    documents={documents}
-                    colleagueDocuments={colleagueDocuments}
-                    month={currentMonth}
-                    year={currentYear}
-                    onSave={handleSaveActivities}
-                    onCancel={closeActivityForm}
-                    initialActivity={editingActivity || undefined}
-                    prefillActivity={sharedActivityPrefill || undefined}
-                    resolutionHint={activityResolutionHint || undefined}
-                    isSaving={isSaving}
-                    layout="workspace"
-                  />
+                {showForm && !showPopoutForm ? (
+                  activityFormElement
                 ) : (
                   <Card>
                     <CardHeader>
@@ -1742,6 +1762,11 @@ export default function ExpertDashboard() {
             </div>
           </TabsContent>
         </Tabs>
+        {showPopoutForm && (
+          <div className="fixed bottom-4 right-4 z-40 max-h-[calc(100vh-2rem)] w-[min(760px,calc(100vw-2rem))] overflow-y-auto rounded-lg border bg-background shadow-2xl">
+            {activityFormElement}
+          </div>
+        )}
       </DashboardShell>
 
     </>

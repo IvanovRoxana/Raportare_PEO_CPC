@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Check, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -28,6 +28,8 @@ interface MultiSelectCalendarProps {
   canGoToNextMonth?: boolean;
   monthAccessMessage?: string;
   expertNorma?: number;
+  displayMonth?: number;
+  displayYear?: number;
 }
 
 export function MultiSelectCalendar({
@@ -42,6 +44,8 @@ export function MultiSelectCalendar({
   canGoToNextMonth = true,
   monthAccessMessage,
   expertNorma = 8,
+  displayMonth,
+  displayYear,
 }: MultiSelectCalendarProps) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [isSelecting, setIsSelecting] = useState(false);
@@ -51,6 +55,12 @@ export function MultiSelectCalendar({
   const month = currentDate.getMonth();
   const year = currentDate.getFullYear();
   const sortedSelectedDates = useMemo(() => [...selectedDates].sort(), [selectedDates]);
+
+  useEffect(() => {
+    if (displayMonth === undefined || displayYear === undefined) return;
+    if (displayMonth === month && displayYear === year) return;
+    setCurrentDate(new Date(displayYear, displayMonth, 1));
+  }, [displayMonth, displayYear, month, year]);
 
   const workingInfo = useMemo(
     () => getWorkingHoursInfo(month, year, expertNorma, activities),
@@ -290,7 +300,7 @@ export function MultiSelectCalendar({
                       )}
                     >
                       {exceedsDailyLimit && <AlertTriangle className="h-3 w-3" />}
-                      {selectedHour}h
+                      selectata
                     </span>
                     {exceedsDailyLimit && (
                       <span className="block text-[10px] leading-tight text-amber-700">

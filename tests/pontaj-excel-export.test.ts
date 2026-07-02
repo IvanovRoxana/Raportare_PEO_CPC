@@ -142,6 +142,55 @@ describe('export pontaj Excel', () => {
     assert.match(cellXml(sheet, 'AM79'), /OR\(AL79=&quot;CO&quot;,AL79=&quot;CM&quot;\)/);
   });
 
+  it('scrie CO in Pontaj_PEO simplu pentru ca formula lunara sa il totalizeze', async () => {
+    const workbook = await generatePontajExcel({
+      kind: 'peo',
+      month: 4,
+      year: 2026,
+      expert: { id: 'expert-co', name: 'Expert CO', role: 'Expert GT', category: 'Expert', oreZi: 8, saCodes: ['SA1.1'] },
+      activities: [
+        { date: '2026-05-22', hours: 0, activityType: 'CO - Concediu odihna', title: 'CO - Concediu odihna', dayType: 'CO', saCode: 'SA1.1', status: 'approved' },
+      ],
+      concurrentProjects: [],
+      concurrentTimesheetEntries: [],
+    });
+
+    const files = readXlsx(workbook.buffer);
+    const sheet = files.get('xl/worksheets/sheet1.xml')!.toString('utf8');
+
+    assert.match(cellXml(sheet, 'H35'), /CO/);
+    assert.match(cellXml(sheet, 'H45'), /COUNTIF\(H14:H44,&quot;CO&quot;\)\*8/);
+  });
+
+  it('exporta descrierea extinsa a evenimentului in detaliile PEO consolidate', async () => {
+    const workbook = await generatePontajExcel({
+      kind: 'consolidated',
+      month: 4,
+      year: 2026,
+      expert: { id: 'expert-event', name: 'Expert Event', role: 'Expert PEO', category: 'Expert', oreZi: 8, saCodes: ['SA3.4'] },
+      activities: [
+        {
+          date: '2026-05-21',
+          hours: 6,
+          activityType: 'Eveniment membri',
+          saCode: 'SA3.4',
+          description: 'Participare eveniment',
+          eventDurationHours: 2,
+          eventExtendedDescription: 'Pregatire, follow-up si centralizare materiale eveniment.',
+          status: 'approved',
+        },
+      ],
+      concurrentProjects: [],
+      concurrentTimesheetEntries: [],
+    });
+
+    const files = readXlsx(workbook.buffer);
+    const sheet = files.get('xl/worksheets/sheet5.xml')!.toString('utf8');
+
+    assert.match(cellXml(sheet, 'AN78'), /Participare eveniment/);
+    assert.match(cellXml(sheet, 'AN78'), /Pregatire, follow-up si centralizare materiale eveniment/);
+  });
+
   it('adauga rand separat cand exista mai multe activitati PEO in aceeasi zi', async () => {
     const workbook = await generatePontajExcel({
       kind: 'consolidated',

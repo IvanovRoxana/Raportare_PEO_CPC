@@ -60,6 +60,8 @@ const schema = a.schema({
       gdprGeneratedText: a.string(),
       gdprConclusionCode: a.string(),
       businessHubMetaJson: a.string(),
+      eventDurationHours: a.float(),
+      eventExtendedDescription: a.string(),
       deliverables: a.hasMany("Deliverable", "activityId"),
       grupTinta: a.hasMany("GrupTintaEntry", "activityId"),
     })
@@ -210,6 +212,8 @@ const schema = a.schema({
       sourceActivitySaCode: a.string(),
       sourceActivityCatalogActivityId: a.id(),
       sourceActivityProjectCode: a.string(),
+      sourceActivityEventDurationHours: a.float(),
+      sourceActivityEventExtendedDescription: a.string(),
       status: a.string().required(),
       notifiedAt: a.datetime(),
       registeredAt: a.datetime(),
@@ -656,6 +660,12 @@ const schema = a.schema({
       startDate: a.date().required(),
       endDate: a.date(),
       isActive: a.boolean().default(true),
+      status: a.string().default("validated"),
+      validatedAt: a.datetime(),
+      validatedBy: a.string(),
+      assignmentSource: a.string(),
+      expertFunction: a.string(),
+      deliverableOptions: a.string().array(),
       notes: a.string(),
     })
     .secondaryIndexes((index) => [index("expertId")])

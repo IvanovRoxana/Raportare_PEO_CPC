@@ -179,13 +179,15 @@ async function generatePeoWorkbook(payload: ExportPayload): Promise<GeneratedWor
   for (let index = 0; index < peoDayRows; index += 1) {
     const detail = detailRows[index];
     const row = 14 + index;
-    const hours = detail?.isWorking && detail.activity ? Number(detail.activity.hours) || 0 : 0;
+    const activity = detail?.activity;
+    const leaveCode = activity ? getLeaveCode([activity]) : null;
+    const hours = detail?.isWorking && activity ? Number(activity.hours) || 0 : 0;
 
     sheetXml = setCell(sheetXml, `A${row}`, detail ? detail.dateSerial : null);
-    sheetXml = setCell(sheetXml, `B${row}`, hours > 0 && detail?.activity ? activityCode(detail.activity, payload.expert) : null);
-    sheetXml = setCell(sheetXml, `D${row}`, hours > 0 && detail?.activity ? activitySubactivity(detail.activity) : null);
+    sheetXml = setCell(sheetXml, `B${row}`, (hours > 0 || leaveCode) && activity ? activityCode(activity, payload.expert) : null);
+    sheetXml = setCell(sheetXml, `D${row}`, (hours > 0 || leaveCode) && activity ? activitySubactivity(activity) : null);
     sheetXml = setCell(sheetXml, `G${row}`, null);
-    sheetXml = setCell(sheetXml, `H${row}`, hours > 0 ? hours : null);
+    sheetXml = setCell(sheetXml, `H${row}`, leaveCode ?? (hours > 0 ? hours : null));
     sheetXml = setCell(sheetXml, `I${row}`, detail?.isWorking ? 0 : null);
   }
 
@@ -951,7 +953,10 @@ function normalizeSaCode(value: unknown) {
 }
 
 function activityDescription(activity: Partial<Activity>) {
-  return activity.description || activity.title || '';
+  return [activity.description || activity.title || '', activity.eventExtendedDescription]
+    .map((value) => stringValue(value).trim())
+    .filter(Boolean)
+    .join('\n');
 }
 
 function activityDeliverables(activity: Partial<Activity>) {

@@ -173,6 +173,8 @@ export function buildSharedActivitySnapshot(activity?: Partial<Activity>) {
     sourceActivitySaCode: activity.saCode,
     sourceActivityCatalogActivityId: activity.catalogActivityId,
     sourceActivityProjectCode: activity.projectCode,
+    sourceActivityEventDurationHours: activity.eventDurationHours,
+    sourceActivityEventExtendedDescription: activity.eventExtendedDescription,
   };
 }
 

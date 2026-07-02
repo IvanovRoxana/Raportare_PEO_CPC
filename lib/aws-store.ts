@@ -3,8 +3,6 @@
 import { getAwsDataClient, isAwsAvailable } from '@/lib/aws/client';
 import { getSignedInUser } from '@/lib/aws/auth';
 import outputs from '@/amplify_outputs.json';
-import { peoUsersAsExperts } from '@/lib/peo-users';
-import { mergeExpertLists, mergeExpertWithFallback } from '@/lib/expert-merge';
 import {
   buildCollaborationExpertOptions,
   canAccessExpertId,
@@ -57,7 +55,6 @@ import type {
 } from './types';
 import { createAuditLog, prepareAdminActivityOverride } from './audit-trail';
 import { buildSharedActivitySnapshot, buildSharedActivitySuggestions, buildSharedDeliverables, findDuplicateCandidates, getDocumentAuditTitle, isActivitySuggestionRelation, markSharedDeliverableRegistered } from './document-sharing';
-import { buildDefaultConcurrentProjects, mergeConcurrentProjectsWithDefaults } from './default-concurrent-projects';
 import { normalizeTitleForMatch } from './title-suggestion';
 import { parseAwsJsonField, serializeAwsJsonField } from './aws-json';
 import {
@@ -194,7 +191,6 @@ async function listAllExpertsFromBackend(client: any) {
 async function findCurrentExpertFromBackend(client: any, user: AccessUser | null) {
   if (!user) return undefined;
 
-  const fallbackExpert = findExpertForUser(peoUsersAsExperts(), user);
   const email = normalizeIdentity(user.email);
   const candidates: Expert[] = [];
 
@@ -215,7 +211,7 @@ async function findCurrentExpertFromBackend(client: any, user: AccessUser | null
   }
 
   const backendExpert = findExpertForUser(candidates, user);
-  return backendExpert ? mergeExpertWithFallback(backendExpert, fallbackExpert) : fallbackExpert;
+  return backendExpert;
 }
 
 async function getCurrentDataAccessScope(client: any): Promise<DataAccessScope> {
@@ -249,6 +245,7 @@ async function getGTRegistryAccess(client: any) {
     canManage: isPmOrAdmin || isGtProfile,
   };
 }
+
 async function getAllowedExpertId(client: any, requestedExpertId?: string | null) {
   const scope = await getCurrentDataAccessScope(client);
   if (scope.canAccessAllExperts) return requestedExpertId ?? null;
@@ -337,6 +334,8 @@ function withSupportedActivityShareFields(payload: Record<string, unknown>, acti
     gdprGeneratedText: activity.gdprGeneratedText,
     gdprConclusionCode: activity.gdprConclusionCode,
     businessHubMetaJson: activity.businessHubMetaJson,
+    eventDurationHours: activity.eventDurationHours,
+    eventExtendedDescription: activity.eventExtendedDescription,
   };
 
   Object.entries(shareFields).forEach(([field, value]) => {
@@ -361,6 +360,8 @@ function withSupportedSharedDeliverableFields(payload: Record<string, unknown>, 
     sourceActivitySaCode: relation.sourceActivitySaCode,
     sourceActivityCatalogActivityId: relation.sourceActivityCatalogActivityId,
     sourceActivityProjectCode: relation.sourceActivityProjectCode,
+    sourceActivityEventDurationHours: relation.sourceActivityEventDurationHours,
+    sourceActivityEventExtendedDescription: relation.sourceActivityEventExtendedDescription,
   };
 
   Object.entries(extendedFields).forEach(([field, value]) => {
@@ -680,6 +681,8 @@ function mapSharedDeliverable(item: any): SharedDeliverable {
     sourceActivitySaCode: item.sourceActivitySaCode ?? undefined,
     sourceActivityCatalogActivityId: item.sourceActivityCatalogActivityId ?? undefined,
     sourceActivityProjectCode: item.sourceActivityProjectCode ?? undefined,
+    sourceActivityEventDurationHours: item.sourceActivityEventDurationHours ?? undefined,
+    sourceActivityEventExtendedDescription: item.sourceActivityEventExtendedDescription ?? undefined,
     status: item.status,
     notifiedAt: item.notifiedAt ?? undefined,
     registeredAt: item.registeredAt ?? undefined,
@@ -1199,6 +1202,8 @@ function buildSourceActivityFromSharedSnapshot(
     dayType: relation.sourceActivityDayType,
     shareStatus: 'shared',
     projectCode: relation.sourceActivityProjectCode || relation.projectId || document?.projectId,
+    eventDurationHours: relation.sourceActivityEventDurationHours,
+    eventExtendedDescription: relation.sourceActivityEventExtendedDescription,
   };
 }
 
@@ -1249,6 +1254,8 @@ async function attachActivityChildren(activity: any): Promise<Activity> {
     gdprGeneratedText: activity.gdprGeneratedText ?? undefined,
     gdprConclusionCode: activity.gdprConclusionCode ?? undefined,
     businessHubMetaJson: activity.businessHubMetaJson ?? undefined,
+    eventDurationHours: activity.eventDurationHours ?? undefined,
+    eventExtendedDescription: activity.eventExtendedDescription ?? undefined,
     deliverables: deliverables.map(mapDeliverable),
     grupTinta: grupTinta.map(mapGrupTinta),
     createdAt: activity.createdAt,
@@ -1366,6 +1373,8 @@ async function createActivityUnchecked(
     gdprGeneratedText: activity.gdprGeneratedText,
     gdprConclusionCode: activity.gdprConclusionCode,
     businessHubMetaJson: activity.businessHubMetaJson,
+    eventDurationHours: activity.eventDurationHours,
+    eventExtendedDescription: activity.eventExtendedDescription,
   }, {
     shareStatus: activity.shareStatus ?? 'private',
     originActivityId: activity.originActivityId,
@@ -1420,22 +1429,19 @@ export const expertsService = {
     const client = getAwsDataClient() as any;
     await getCurrentDataAccessScope(client);
     const experts = await listAllExpertsFromBackend(client);
-    const activeExperts = mergeExpertLists(experts, peoUsersAsExperts()).filter((expert) => expert.isActive !== false);
+    const activeExperts = experts.filter((expert) => expert.isActive !== false);
     return buildCollaborationExpertOptions(activeExperts);
   },
 
   async getAll(options?: { includeInactive?: boolean; includeFallback?: boolean }): Promise<Expert[]> {
     const client = getAwsDataClient() as any;
-    const fallbackExperts = options?.includeFallback === false ? [] : peoUsersAsExperts();
     const scope = await getCurrentDataAccessScope(client);
     const includeInactive = options?.includeInactive === true;
 
     if (scope.canAccessAllExperts) {
-      const experts = (includeInactive || fallbackExperts.length > 0)
+      const visibleExperts = includeInactive
         ? await listAllExpertsFromBackend(client)
         : await listActiveExpertsFromBackend(client);
-      const mergedExperts = fallbackExperts.length > 0 ? mergeExpertLists(experts, fallbackExperts) : experts;
-      const visibleExperts = includeInactive ? mergedExperts : mergedExperts.filter((expert) => expert.isActive !== false);
       return visibleExperts.sort((a, b) => a.name.localeCompare(b.name));
     }
 
@@ -1449,7 +1455,7 @@ export const expertsService = {
 
     const result = await client.models.Expert.get({ id });
     assertNoErrors(result, 'AWS get expert');
-    return result.data ? mapExpert(result.data) : peoUsersAsExperts().find((expert) => expert.id === id) ?? null;
+    return result.data ? mapExpert(result.data) : null;
   },
 
   async create(expert: Omit<Expert, 'id'>): Promise<Expert> {
@@ -1952,20 +1958,30 @@ export const activitiesService = {
 
     const result = await client.models.Activity.update(withSupportedActivityShareFields({
       id,
+      expertId: updates.expertId,
+      expertName: updates.expertName,
+      date: updates.date,
+      year: updates.date ? yearFromDate(updates.date) : undefined,
+      month: updates.date ? monthFromDate(updates.date) : undefined,
       hours: updates.hours,
       activityType: updates.activityType,
       saCode: updates.saCode,
+      catalogActivityId: updates.catalogActivityId,
       title: updates.title,
       description: updates.description,
       location: updates.location,
       dayType: updates.dayType,
+      workingGroupId: updates.workingGroupId,
       status: updates.status,
+      projectCode: updates.projectCode,
       pmNotes: updates.pmNotes,
       gdprTemplateCode: updates.gdprTemplateCode,
       gdprMetaJson: updates.gdprMetaJson,
       gdprGeneratedText: updates.gdprGeneratedText,
       gdprConclusionCode: updates.gdprConclusionCode,
       businessHubMetaJson: updates.businessHubMetaJson,
+      eventDurationHours: updates.eventDurationHours,
+      eventExtendedDescription: updates.eventExtendedDescription,
     }, updates));
     assertNoErrors(result, 'AWS update activity');
 
@@ -2416,10 +2432,7 @@ export const concurrentProjectsService = {
     const data = await listModel<any>(client.models.ConcurrentProject, {
       ...(scope.canAccessAllExperts ? {} : { expertId: { eq: scope.currentExpertId } }),
     });
-    const projects = mergeConcurrentProjectsWithDefaults(
-      data.map(mapConcurrentProject),
-      buildDefaultConcurrentProjects(peoUsersAsExperts())
-    );
+    const projects = data.map(mapConcurrentProject);
     return filterConcurrentProjectsForScope(projects, scope);
   },
 
@@ -2429,10 +2442,7 @@ export const concurrentProjectsService = {
     const data = await listModel<any>(client.models.ConcurrentProject, {
       expertId: { eq: expertId },
     });
-    return mergeConcurrentProjectsWithDefaults(
-      data.map(mapConcurrentProject),
-      buildDefaultConcurrentProjects(peoUsersAsExperts()).filter((project) => project.expertId === expertId)
-    );
+    return data.map(mapConcurrentProject);
   },
 
   async create(project: Omit<ConcurrentProject, 'id'>): Promise<ConcurrentProject> {
@@ -2449,6 +2459,12 @@ export const concurrentProjectsService = {
       startDate: project.startDate,
       endDate: project.endDate,
       isActive: project.isActive ?? true,
+      status: project.status,
+      validatedAt: project.validatedAt,
+      validatedBy: project.validatedBy,
+      assignmentSource: project.assignmentSource,
+      expertFunction: project.expertFunction,
+      deliverableOptions: project.deliverableOptions,
       notes: project.notes,
     });
     assertNoErrors(result, 'AWS create concurrent project');
@@ -2475,6 +2491,12 @@ export const concurrentProjectsService = {
       startDate: updates.startDate,
       endDate: updates.endDate,
       isActive: updates.isActive,
+      status: updates.status,
+      validatedAt: updates.validatedAt,
+      validatedBy: updates.validatedBy,
+      assignmentSource: updates.assignmentSource,
+      expertFunction: updates.expertFunction,
+      deliverableOptions: updates.deliverableOptions,
       notes: updates.notes,
     });
     assertNoErrors(result, 'AWS update concurrent project');
@@ -2508,6 +2530,12 @@ function mapConcurrentProject(item: any): ConcurrentProject {
     startDate: item.startDate,
     endDate: item.endDate ?? undefined,
     isActive: item.isActive ?? true,
+    status: item.status ?? undefined,
+    validatedAt: item.validatedAt ?? undefined,
+    validatedBy: item.validatedBy ?? undefined,
+    assignmentSource: item.assignmentSource ?? undefined,
+    expertFunction: item.expertFunction ?? undefined,
+    deliverableOptions: item.deliverableOptions ?? undefined,
     notes: item.notes ?? undefined,
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,

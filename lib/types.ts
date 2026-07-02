@@ -55,6 +55,8 @@ export interface Activity {
   gdprGeneratedText?: string;
   gdprConclusionCode?: string;
   businessHubMetaJson?: string;
+  eventDurationHours?: number;
+  eventExtendedDescription?: string;
   grupTinta?: GrupTintaEntry[];
   createdAt?: string;
   updatedAt?: string;
@@ -300,6 +302,8 @@ export interface SharedDeliverable {
   sourceActivitySaCode?: string;
   sourceActivityCatalogActivityId?: string;
   sourceActivityProjectCode?: string;
+  sourceActivityEventDurationHours?: number;
+  sourceActivityEventExtendedDescription?: string;
   status: 'pending_registration' | 'registered' | 'ignored_by_admin' | 'removed' | 'confirmed_not_relevant' | string;
   notifiedAt?: string;
   registeredAt?: string;
@@ -535,6 +539,12 @@ export interface ConcurrentProject {
   startDate: string;
   endDate?: string;
   isActive: boolean;
+  status?: 'draft' | 'validated' | 'archived' | string;
+  validatedAt?: string;
+  validatedBy?: string;
+  assignmentSource?: 'pm_admin' | 'expert_manual' | 'import' | string;
+  expertFunction?: string;
+  deliverableOptions?: string[];
   notes?: string;
   createdAt?: string;
   updatedAt?: string;
