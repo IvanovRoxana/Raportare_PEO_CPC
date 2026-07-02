@@ -12,7 +12,10 @@ import { Badge } from '@/components/ui/badge';
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
@@ -34,7 +37,7 @@ import {
   getActivityOptions,
   getDeliverableOptions 
 } from '@/lib/peo-constants';
-import { useActivityCatalog } from '@/hooks/use-backend-data';
+import { useActivityCatalog, useBusinessHubEntityDirectory } from '@/hooks/use-backend-data';
 import type { Activity, Deliverable, DocumentMetadata, GrupTintaEntry, Expert, ActivityCatalog } from '@/lib/types';
 import { isGtExpertCategory, normalizePeoCategory } from '@/lib/peo-category';
 import { resolveExpertActivityCatalog } from '@/lib/activity-catalog-merge';
@@ -417,6 +420,42 @@ export function ActivityForm({
   const [businessHubStartTime, setBusinessHubStartTime] = useState(initialBusinessHubMeta?.startTime || '');
   const [businessHubEndTime, setBusinessHubEndTime] = useState(initialBusinessHubMeta?.endTime || '');
   const [businessHubContactPersonName, setBusinessHubContactPersonName] = useState(initialBusinessHubMeta?.contactPersonName || '');
+  const { entries: businessHubDirectoryEntries } = useBusinessHubEntityDirectory();
+  const businessHubEntityOptions = useMemo(() => {
+    const seen = new Set<string>();
+    return businessHubDirectoryEntries
+      .filter((entry) => (entry.status ?? 'active') === 'active')
+      .map((entry) => {
+        const value = entry.acronym || entry.displayName || entry.legalName;
+        const label = entry.displayName || entry.acronym || entry.legalName;
+        return {
+          id: entry.id,
+          value,
+          label,
+          legalName: entry.legalName,
+          directoryType: entry.directoryType === 'affiliate' ? 'affiliate' : 'target_group',
+          designatedPersonName: entry.designatedPersonName,
+        };
+      })
+      .filter((entry) => {
+        const key = entry.value.toLowerCase();
+        if (!entry.value || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .sort((a, b) =>
+        Number(a.directoryType === 'target_group') - Number(b.directoryType === 'target_group')
+        || a.label.localeCompare(b.label),
+      );
+  }, [businessHubDirectoryEntries]);
+  const selectedBusinessHubEntityExists = businessHubEntityOptions.some((entry) => entry.value === businessHubEntityName);
+  const handleBusinessHubEntityChange = useCallback((value: string) => {
+    setBusinessHubEntityName(value);
+    const selectedEntry = businessHubEntityOptions.find((entry) => entry.value === value);
+    if (!businessHubContactPersonName.trim() && selectedEntry?.designatedPersonName) {
+      setBusinessHubContactPersonName(selectedEntry.designatedPersonName);
+    }
+  }, [businessHubContactPersonName, businessHubEntityOptions]);
   
   // Verification
   const [isVerifyingTitle, setIsVerifyingTitle] = useState(false);
@@ -1604,12 +1643,51 @@ export function ActivityForm({
                 <div className="grid gap-4 md:grid-cols-2">
                   <Field>
                     <FieldLabel htmlFor="bh-entity">Entitate organizatoare *</FieldLabel>
-                    <Input
-                      id="bh-entity"
-                      value={businessHubEntityName}
-                      onChange={(event) => setBusinessHubEntityName(event.target.value)}
-                      placeholder="ex: CPBR"
-                    />
+                    {businessHubEntityOptions.length > 0 ? (
+                      <Select value={businessHubEntityName || undefined} onValueChange={handleBusinessHubEntityChange}>
+                        <SelectTrigger id="bh-entity" className="w-full">
+                          <SelectValue placeholder="Selecteaza entitatea" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {businessHubEntityName && !selectedBusinessHubEntityExists && (
+                            <>
+                              <SelectItem value={businessHubEntityName}>
+                                {businessHubEntityName} (manual)
+                              </SelectItem>
+                              <SelectSeparator />
+                            </>
+                          )}
+                          <SelectGroup>
+                            <SelectLabel>Organizatii afiliate CPC</SelectLabel>
+                            {businessHubEntityOptions
+                              .filter((entry) => entry.directoryType === 'affiliate')
+                              .map((entry) => (
+                                <SelectItem key={entry.id} value={entry.value}>
+                                  {entry.label}{entry.legalName && entry.legalName !== entry.label ? ` - ${entry.legalName}` : ''}
+                                </SelectItem>
+                              ))}
+                          </SelectGroup>
+                          <SelectSeparator />
+                          <SelectGroup>
+                            <SelectLabel>Entitati inscrise in GT</SelectLabel>
+                            {businessHubEntityOptions
+                              .filter((entry) => entry.directoryType === 'target_group')
+                              .map((entry) => (
+                                <SelectItem key={entry.id} value={entry.value}>
+                                  {entry.label}{entry.legalName && entry.legalName !== entry.label ? ` - ${entry.legalName}` : ''}
+                                </SelectItem>
+                              ))}
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input
+                        id="bh-entity"
+                        value={businessHubEntityName}
+                        onChange={(event) => setBusinessHubEntityName(event.target.value)}
+                        placeholder="ex: CPBR"
+                      />
+                    )}
                   </Field>
                   <Field>
                     <FieldLabel htmlFor="bh-event-title">Titlu eveniment *</FieldLabel>
