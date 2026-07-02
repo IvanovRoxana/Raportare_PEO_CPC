@@ -3,9 +3,13 @@ import { normalizePeoCategory } from './peo-category.ts';
 
 type ActivityCatalogMergeKeyInput = Pick<ActivityCatalog, 'id' | 'category' | 'saCode' | 'activityNumber' | 'activityName'>;
 
+export function normalizeActivityCatalogSaCode(value?: string) {
+  return (value || '').replace(/\s+/g, '').trim().toUpperCase();
+}
+
 export function activityCatalogMergeKey(item: ActivityCatalogMergeKeyInput) {
-  const category = item.category?.trim().toLowerCase();
-  const saCode = item.saCode?.trim().toUpperCase();
+  const category = normalizePeoCategory(item.category) || item.category?.trim().toLowerCase();
+  const saCode = normalizeActivityCatalogSaCode(item.saCode);
   const activityNumber = Number(item.activityNumber || 0);
   const activityName = item.activityName?.trim().toLowerCase();
 
@@ -37,25 +41,10 @@ export function mergeActivityCatalogs(...catalogs: ActivityCatalog[][]) {
 export function resolveExpertActivityCatalog({
   fallbackCatalog,
   backendCatalog,
-  expertCategory,
 }: {
   fallbackCatalog: ActivityCatalog[];
   backendCatalog: ActivityCatalog[];
   expertCategory?: string;
 }) {
-  const normalizedCategory = normalizePeoCategory(expertCategory);
-
-  if (!normalizedCategory) {
-    return mergeActivityCatalogs(fallbackCatalog, backendCatalog);
-  }
-
-  const backendHasExpertCatalog = backendCatalog.some(
-    (item) => normalizePeoCategory(item.category) === normalizedCategory,
-  );
-
-  if (backendHasExpertCatalog) {
-    return sortActivityCatalog(backendCatalog);
-  }
-
   return mergeActivityCatalogs(fallbackCatalog, backendCatalog);
 }

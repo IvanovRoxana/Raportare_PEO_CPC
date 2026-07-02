@@ -852,7 +852,7 @@ export interface WorkingHoursInfo {
 // Sub-activities based on PEO structure
 export type SubActivityCode = 
   | 'SA1.1' | 'SA1.2' | 'SA1.3'
-  | 'SA2.1' | 'SA2.2'
+  | 'SA2.1'
   | 'SA3.1' | 'SA3.2' | 'SA3.3'
   | 'SA4.1';
 
@@ -861,7 +861,6 @@ export const SUB_ACTIVITIES: { code: SubActivityCode; name: string; category: st
   { code: 'SA1.2', name: 'Dezvoltare curriculum STEAM', category: 'Curriculum' },
   { code: 'SA1.3', name: 'Formare formatori STEAM', category: 'Formare' },
   { code: 'SA2.1', name: 'Cercetare educationala', category: 'Cercetare' },
-  { code: 'SA2.2', name: 'Inovare didactica', category: 'Inovare' },
   { code: 'SA3.1', name: 'Selectie grup tinta', category: 'GT' },
   { code: 'SA3.2', name: 'Formare grup tinta', category: 'GT' },
   { code: 'SA3.3', name: 'Mentorat grup tinta', category: 'GT' },

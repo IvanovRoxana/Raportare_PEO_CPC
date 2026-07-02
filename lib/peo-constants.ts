@@ -43,12 +43,6 @@ export const ACTS: Record<string, string[]> = {
     "Verificare planning",
     "Elaborare RA / OPIS"
   ],
-  "SA2.2": [
-    "Studiu / analiza / cercetare",
-    "Raport intermediar",
-    "Sedinta interna de status",
-    "Elaborare RA / OPIS"
-  ],
   "SA3.2": [
     "S1 — Monitorizare legislativa regionala si informare membri",
     "S1 — Elaborare nota de informare / sinteza legislativa regionala",

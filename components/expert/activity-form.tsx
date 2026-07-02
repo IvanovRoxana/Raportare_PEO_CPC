@@ -31,16 +31,15 @@ import {
 } from './existing-deliverable-picker';
 import { createDeliverableSlot, type DeliverableSlot } from '@/lib/deliverable-types';
 import { 
-  ACTS, 
   isEventActivity, 
   isExceptionActivity,
-  getActivityOptions,
   getDeliverableOptions 
 } from '@/lib/peo-constants';
 import { useActivityCatalog, useBusinessHubEntityDirectory } from '@/hooks/use-backend-data';
 import type { Activity, Deliverable, DocumentMetadata, GrupTintaEntry, Expert, ActivityCatalog } from '@/lib/types';
+import fallbackActivityCatalog from '@/data/import/activity-catalog.json';
 import { isGtExpertCategory, normalizePeoCategory } from '@/lib/peo-category';
-import { resolveExpertActivityCatalog } from '@/lib/activity-catalog-merge';
+import { normalizeActivityCatalogSaCode, resolveExpertActivityCatalog } from '@/lib/activity-catalog-merge';
 import { buildDocumentS3Key, findDuplicateCandidates, getDocumentAuditTitle, hashFirstPageText, normalizeDocumentTextForFingerprint, sha256Hex } from '@/lib/document-sharing';
 import { shouldAttachUploadedDeliverablesToDate } from '@/lib/activity-deliverables';
 import { createActivityPeriodGroupId } from '@/lib/submit-readiness';
@@ -181,20 +180,8 @@ export function ActivityForm({
   const { catalog, isLoading: catalogLoading } = useActivityCatalog();
 
   const fallbackCatalog = useMemo<ActivityCatalog[]>(() => {
-    return Object.entries(ACTS).flatMap(([saCode, activityNames]) =>
-      activityNames.map((activityName, index) => ({
-        id: `fallback-${saCode}-${index}`,
-        category: expert?.category || 'peo',
-        saCode,
-        serviceCategory: saCode,
-        activityNumber: index + 1,
-        activityName,
-        deliverables: getActivityOptions(saCode).includes(activityName)
-          ? getDeliverableOptions(expert?.category || 'ap').join('\n')
-          : undefined,
-      }))
-    );
-  }, [expert?.category]);
+    return fallbackActivityCatalog as ActivityCatalog[];
+  }, []);
 
   // Get expert's assigned SA codes (based on their role)
   const expertSaCodes = expert?.saCodes || [];
@@ -214,10 +201,11 @@ export function ActivityForm({
   // Filter catalog by expert category from PEO_Experti and then by assigned SA codes.
   const filteredCatalog = useMemo(() => {
     if (!effectiveCatalog || effectiveCatalog.length === 0) return [];
+    const allowedSaCodes = new Set(expertSaCodes.map(normalizeActivityCatalogSaCode).filter(Boolean));
     return effectiveCatalog.filter((item) => {
       const itemCategory = normalizePeoCategory(item.category);
       const matchesCategory = !expertCategory || itemCategory === expertCategory;
-      const matchesSaCode = expertSaCodes.length === 0 || expertSaCodes.includes(item.saCode);
+      const matchesSaCode = allowedSaCodes.size === 0 || allowedSaCodes.has(normalizeActivityCatalogSaCode(item.saCode));
       return matchesCategory && matchesSaCode;
     });
   }, [effectiveCatalog, expertCategory, expertSaCodes]);

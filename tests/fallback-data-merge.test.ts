@@ -1,7 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { mergeActivityCatalogs, resolveExpertActivityCatalog } from '../lib/activity-catalog-merge.ts';
+import {
+  mergeActivityCatalogs,
+  normalizeActivityCatalogSaCode,
+  resolveExpertActivityCatalog,
+} from '../lib/activity-catalog-merge.ts';
 import { mergeExpertLists } from '../lib/expert-merge.ts';
 import type { ActivityCatalog, Expert } from '../lib/types.ts';
 
@@ -58,7 +62,7 @@ test('catalogul backend partial completeaza fallback-ul si suprascrie aceeasi ac
   assert.equal(merged.find((item) => item.activityNumber === 1)?.description, 'Descriere editata in Admin');
 });
 
-test('formularul foloseste doar catalogul Admin cand exista activitati pentru categoria expertului', () => {
+test('formularul completeaza catalogul Admin partial cu fallback-ul local', () => {
   const bhFallbackCatalog = [
     {
       id: 'fallback-bh-sa32-old',
@@ -66,6 +70,13 @@ test('formularul foloseste doar catalogul Admin cand exista activitati pentru ca
       saCode: 'SA3.2',
       activityNumber: 1,
       activityName: 'S4 — Activitate Business HUB Bucuresti',
+    },
+    {
+      id: 'fallback-bh-sa34-1',
+      category: 'bh',
+      saCode: 'SA3.4',
+      activityNumber: 1,
+      activityName: 'Organizare eveniment',
     },
   ] as ActivityCatalog[];
   const backendCatalog = [
@@ -91,7 +102,7 @@ test('formularul foloseste doar catalogul Admin cand exista activitati pentru ca
     expertCategory: 'bh',
   });
 
-  assert.deepEqual(resolved.map((item) => item.id), ['admin-bh-sa32-1', 'admin-bh-sa32-2']);
+  assert.deepEqual(resolved.map((item) => item.id), ['admin-bh-sa32-1', 'admin-bh-sa32-2', 'fallback-bh-sa34-1']);
   assert.equal(
     resolved.some((item) => item.activityName === 'S4 — Activitate Business HUB Bucuresti'),
     false,
@@ -107,7 +118,7 @@ test('formularul foloseste doar catalogul Admin cand exista activitati pentru ca
   { expertCategory: 'gt', backendCategory: 'Grup tinta' },
   { expertCategory: 'gdpr', backendCategory: 'Protectia datelor' },
 ].forEach(({ expertCategory, backendCategory }) => {
-  test(`formularul nu amesteca fallback-ul cand Admin are catalog pentru ${backendCategory}`, () => {
+  test(`formularul foloseste Admin peste fallback, dar pastreaza completarile pentru ${backendCategory}`, () => {
     const staleFallback = [
       {
         id: `fallback-${expertCategory}-old`,
@@ -115,6 +126,13 @@ test('formularul foloseste doar catalogul Admin cand exista activitati pentru ca
         saCode: 'SA3.2',
         activityNumber: 1,
         activityName: 'Activitate veche fallback',
+      },
+      {
+        id: `fallback-${expertCategory}-extra`,
+        category: expertCategory,
+        saCode: 'SA3.4',
+        activityNumber: 1,
+        activityName: 'Activitate fallback suplimentara',
       },
     ] as ActivityCatalog[];
     const backendCatalog = [
@@ -133,8 +151,39 @@ test('formularul foloseste doar catalogul Admin cand exista activitati pentru ca
       expertCategory,
     });
 
-    assert.deepEqual(resolved.map((item) => item.id), [`admin-${expertCategory}-1`]);
+    assert.deepEqual(new Set(resolved.map((item) => item.id)), new Set([`admin-${expertCategory}-1`, `fallback-${expertCategory}-extra`]));
+    assert.equal(resolved.some((item) => item.id === `fallback-${expertCategory}-old`), false);
   });
+});
+
+test('codurile SA din catalog sunt comparate normalizat', () => {
+  assert.equal(normalizeActivityCatalogSaCode(' SA 3.2 '), 'SA3.2');
+});
+
+test('filtrarea formularului nu amesteca activitati cu acelasi SA din categorii diferite', () => {
+  const catalog = mergeActivityCatalogs([
+    {
+      id: 'ap-sa32-random',
+      category: 'ap',
+      saCode: 'SA3.2',
+      activityNumber: 1,
+      activityName: 'S1 - Monitorizare legislativa regionala',
+    },
+    {
+      id: 'bh-sa32-corect',
+      category: 'bh',
+      saCode: 'SA3.2',
+      activityNumber: 1,
+      activityName: 'Administrarea si optimizarea utilizarii echipamentelor IT',
+    },
+  ] as ActivityCatalog[]);
+  const allowedSaCodes = new Set(['SA3.2'].map(normalizeActivityCatalogSaCode));
+  const filtered = catalog.filter((item) =>
+    item.category === 'bh'
+    && allowedSaCodes.has(normalizeActivityCatalogSaCode(item.saCode)),
+  );
+
+  assert.deepEqual(filtered.map((item) => item.id), ['bh-sa32-corect']);
 });
 
 test('formularul pastreaza fallback-ul cand Admin nu are catalog pentru categoria expertului', () => {

@@ -82,7 +82,7 @@ export const peoUsers: PeoUser[] = [
     email: 'liviu.neagu@confederatia-concordia.ro',
     category: 'cercetare',
     norma: 8,
-    saCodes: ['SA2.1', 'SA2.2'],
+    saCodes: ['SA2.1'],
     roles: ['expert'],
   },
   {
