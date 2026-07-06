@@ -1,16 +1,16 @@
 'use client';
 
-import { useState } from 'react';
-import { Edit2, Trash2, FileText, Users, ChevronDown, ChevronUp } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Fragment, useMemo, useState } from 'react';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+  CalendarDays,
+  ChevronDown,
+  ChevronUp,
+  Edit2,
+  FileText,
+  Trash2,
+  Users,
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
   AlertDialog,
@@ -30,16 +30,100 @@ import {
   parseGdprMetaJson,
   validateGdprActivityDraft,
 } from '@/lib/gdpr-reporting';
-import type { Activity } from '@/lib/types';
+import { cn } from '@/lib/utils';
+import type { Activity, Deliverable } from '@/lib/types';
 
 interface ActivitiesTableProps {
   activities: Activity[];
   onEdit: (activity: Activity) => void;
   onDelete: (activityId: string) => void;
+  activeActivityId?: string;
 }
 
-export function ActivitiesTable({ activities, onEdit, onDelete }: ActivitiesTableProps) {
+interface ActivityDayGroup {
+  date: string;
+  activities: Activity[];
+  totalHours: number;
+}
+
+const WEEKDAY_FORMATTER = new Intl.DateTimeFormat('ro-RO', { weekday: 'long' });
+
+function getDateTime(date: string) {
+  const time = new Date(date).getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
+function getWeekdayLabel(date: string) {
+  const parsedDate = new Date(date);
+  if (Number.isNaN(parsedDate.getTime())) return 'zi nedefinita';
+  return WEEKDAY_FORMATTER.format(parsedDate);
+}
+
+function normalizeText(value?: string | null) {
+  return (value || '').replace(/\s+/g, ' ').trim();
+}
+
+function truncateText(value: string, maxLength = 180) {
+  if (value.length <= maxLength) return value;
+  const sliced = value.slice(0, maxLength).trimEnd();
+  const lastSpace = sliced.lastIndexOf(' ');
+  return `${(lastSpace > 120 ? sliced.slice(0, lastSpace) : sliced).trim()}...`;
+}
+
+function getActivitySummary(activity: Activity) {
+  const description = normalizeText(activity.description || activity.gdprGeneratedText);
+  if (description) return truncateText(description);
+  return 'Fara descriere completata.';
+}
+
+function getDeliverableTitle(deliverable: Deliverable) {
+  return normalizeText(
+    deliverable.declaredTitle
+      || deliverable.docTitle
+      || deliverable.suggestedTitle
+      || deliverable.originalFileName
+      || deliverable.fileName,
+  );
+}
+
+function getPrimaryDeliverable(activity: Activity) {
+  const deliverables = activity.deliverables ?? [];
+  return deliverables.find((deliverable) => normalizeText(deliverable.declaredTitle || deliverable.docTitle))
+    || deliverables[0]
+    || null;
+}
+
+function groupActivitiesByDay(activities: Activity[]): ActivityDayGroup[] {
+  const groups = new Map<string, Activity[]>();
+
+  [...activities]
+    .sort((a, b) => {
+      const dateDiff = getDateTime(a.date) - getDateTime(b.date);
+      if (dateDiff !== 0) return dateDiff;
+      return (a.title || a.activityType || '').localeCompare(b.title || b.activityType || '', 'ro');
+    })
+    .forEach((activity) => {
+      const dayActivities = groups.get(activity.date) ?? [];
+      dayActivities.push(activity);
+      groups.set(activity.date, dayActivities);
+    });
+
+  return Array.from(groups.entries()).map(([date, dayActivities]) => ({
+    date,
+    activities: dayActivities,
+    totalHours: dayActivities.reduce((sum, activity) => sum + (Number(activity.hours) || 0), 0),
+  }));
+}
+
+export function ActivitiesTable({
+  activities,
+  onEdit,
+  onDelete,
+  activeActivityId,
+}: ActivitiesTableProps) {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const dayGroups = useMemo(() => groupActivitiesByDay(activities), [activities]);
+  const totalHours = activities.reduce((sum, activity) => sum + (Number(activity.hours) || 0), 0);
 
   const toggleRow = (id: string) => {
     const newExpanded = new Set(expandedRows);
@@ -51,176 +135,240 @@ export function ActivitiesTable({ activities, onEdit, onDelete }: ActivitiesTabl
     setExpandedRows(newExpanded);
   };
 
-  const sortedActivities = [...activities].sort(
-    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-  );
-
-  const totalHours = activities.reduce((sum, a) => sum + a.hours, 0);
-
   if (activities.length === 0) {
     return (
-      <div className="text-center py-8 text-muted-foreground">
-        <p>Nu există activități înregistrate.</p>
-        <p className="text-sm mt-1">Selectați zile din calendar pentru a adăuga activități.</p>
+      <div className="rounded-lg border border-dashed py-10 text-center text-muted-foreground">
+        <CalendarDays className="mx-auto h-8 w-8 text-muted-foreground/70" />
+        <p className="mt-3 font-medium text-foreground">Nu exista activitati inregistrate.</p>
+        <p className="mt-1 text-sm">Selectati zile din calendar pentru a adauga activitati.</p>
       </div>
     );
   }
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold">Activități ({activities.length})</h3>
-        <Badge variant="secondary" className="text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="text-lg font-semibold text-foreground">Jurnal activitati</h3>
+          <p className="text-sm text-muted-foreground">
+            {activities.length} activitati grupate pe {dayGroups.length} zile pontate.
+          </p>
+        </div>
+        <Badge variant="secondary" className="rounded-lg px-3 py-1 text-sm">
           Total: {totalHours} ore
         </Badge>
       </div>
 
-      <div className="border rounded-lg overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-10"></TableHead>
-              <TableHead className="w-28">Data</TableHead>
-              <TableHead className="w-20">Ore</TableHead>
-              <TableHead className="w-24">Tip</TableHead>
-              <TableHead>Titlu</TableHead>
-              <TableHead className="w-24">Locație</TableHead>
-              <TableHead className="w-20 text-center">Fișiere</TableHead>
-              <TableHead className="w-20 text-center">GT</TableHead>
-              <TableHead className="w-24 text-right">Acțiuni</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {sortedActivities.map((activity) => {
-              const isExpanded = expandedRows.has(activity.id);
-              const deliverables = activity.deliverables ?? [];
-              const grupTinta = activity.grupTinta ?? [];
-              return (
-                <>
-                  <TableRow key={activity.id} className="hover:bg-muted/50">
-                    <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6"
-                        onClick={() => toggleRow(activity.id)}
-                      >
-                        {isExpanded ? (
-                          <ChevronUp className="h-4 w-4" />
-                        ) : (
-                          <ChevronDown className="h-4 w-4" />
-                        )}
-                      </Button>
-                    </TableCell>
-                    <TableCell className="font-medium">{formatDateRo(activity.date)}</TableCell>
-                    <TableCell>{activity.hours}h</TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="text-xs">
-                        {activity.activityType}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="max-w-[200px] truncate" title={activity.title}>
-                      {activity.title}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {activity.location}
-                    </TableCell>
-                    <TableCell className="text-center">
-                      {deliverables.length > 0 && (
-                        <div className="flex items-center justify-center gap-1">
-                          <FileText className="h-4 w-4 text-muted-foreground" />
-                          <span className="text-sm">{deliverables.length}</span>
-                        </div>
+      <div className="space-y-3">
+        {dayGroups.map((group) => (
+          <section key={group.date} className="overflow-hidden rounded-lg border bg-card">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-muted/40 px-4 py-3">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-semibold text-foreground">{formatDateRo(group.date)}</span>
+                  <span className="text-sm capitalize text-muted-foreground">{getWeekdayLabel(group.date)}</span>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {group.activities.length} {group.activities.length === 1 ? 'activitate' : 'activitati'} in aceasta zi
+                </p>
+              </div>
+              <Badge variant="outline" className="rounded-lg bg-background px-3 py-1 text-sm">
+                {group.totalHours}h
+              </Badge>
+            </div>
+
+            <div className="divide-y">
+              {group.activities.map((activity) => {
+                const isExpanded = expandedRows.has(activity.id);
+                const isActive = activeActivityId === activity.id;
+                const deliverables = activity.deliverables ?? [];
+                const grupTinta = activity.grupTinta ?? [];
+                const primaryDeliverable = getPrimaryDeliverable(activity);
+                const primaryDeliverableTitle = primaryDeliverable
+                  ? getDeliverableTitle(primaryDeliverable)
+                  : '';
+                const activityTitle = activity.title || activity.activityType || 'Activitate fara titlu';
+
+                return (
+                  <Fragment key={activity.id}>
+                    <article
+                      className={cn(
+                        'grid gap-3 px-4 py-4 transition-colors xl:grid-cols-[72px_minmax(0,1fr)_auto]',
+                        isActive ? 'bg-primary/5 ring-1 ring-inset ring-primary/30' : 'hover:bg-muted/30',
                       )}
-                    </TableCell>
-                    <TableCell className="text-center">
-                      {grupTinta.length > 0 && (
-                        <div className="flex items-center justify-center gap-1">
-                          <Users className="h-4 w-4 text-muted-foreground" />
-                          <span className="text-sm">{grupTinta.length}</span>
+                    >
+                      <div className="flex items-start gap-3 xl:block">
+                        <div className="flex h-12 w-14 shrink-0 items-center justify-center rounded-lg border bg-background text-sm font-semibold text-foreground">
+                          {Number(activity.hours) || 0}h
                         </div>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-1">
+                        <div className="min-w-0 xl:mt-2">
+                          <Badge variant="outline" className="max-w-full truncate text-xs">
+                            {activity.activityType || 'Tip neprecizat'}
+                          </Badge>
+                        </div>
+                      </div>
+
+                      <div className="min-w-0 space-y-3">
+                        <div className="space-y-1">
+                          <h4 className="text-sm font-semibold leading-5 text-foreground">
+                            {activityTitle}
+                          </h4>
+                          <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                              Livrabil
+                            </p>
+                            <p className="mt-1 text-sm font-medium leading-5 text-foreground">
+                              {primaryDeliverableTitle || 'Fara livrabil atasat'}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="space-y-1">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            Descriere scurta
+                          </p>
+                          <p className="text-sm leading-6 text-muted-foreground">
+                            {getActivitySummary(activity)}
+                          </p>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                          {activity.location && (
+                            <span className="inline-flex items-center gap-1">
+                              <CalendarDays className="h-3.5 w-3.5" />
+                              {activity.location}
+                            </span>
+                          )}
+                          <span className="inline-flex items-center gap-1 rounded-md border bg-background px-2 py-1">
+                            <FileText className="h-3.5 w-3.5" />
+                            {deliverables.length === 0
+                              ? 'Fara livrabile'
+                              : `${deliverables.length} ${deliverables.length === 1 ? 'livrabil' : 'livrabile'}`}
+                          </span>
+                          {activity.saCode && (
+                            <span className="rounded-md border bg-background px-2 py-1">
+                              {activity.saCode}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2 xl:justify-end">
                         <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
+                          type="button"
+                          variant="outline"
+                          size="sm"
                           onClick={() => onEdit(activity)}
                         >
                           <Edit2 className="h-4 w-4" />
+                          Editeaza
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => toggleRow(activity.id)}
+                        >
+                          {isExpanded ? (
+                            <>
+                              <ChevronUp className="h-4 w-4" />
+                              Ascunde
+                            </>
+                          ) : (
+                            <>
+                              <ChevronDown className="h-4 w-4" />
+                              Detalii
+                            </>
+                          )}
                         </Button>
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-9 w-9 text-destructive hover:text-destructive"
+                              aria-label="Sterge activitatea"
+                            >
                               <Trash2 className="h-4 w-4" />
                             </Button>
                           </AlertDialogTrigger>
                           <AlertDialogContent>
                             <AlertDialogHeader>
-                              <AlertDialogTitle>Șterge activitatea?</AlertDialogTitle>
+                              <AlertDialogTitle>Sterge activitatea?</AlertDialogTitle>
                               <AlertDialogDescription>
-                                Această acțiune nu poate fi anulată. Activitatea din{' '}
-                                {formatDateRo(activity.date)} va fi ștearsă permanent.
+                                Aceasta actiune nu poate fi anulata. Activitatea din{' '}
+                                {formatDateRo(activity.date)} va fi stearsa permanent.
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
-                              <AlertDialogCancel>Anulează</AlertDialogCancel>
+                              <AlertDialogCancel>Anuleaza</AlertDialogCancel>
                               <AlertDialogAction
                                 onClick={() => onDelete(activity.id)}
                                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                               >
-                                Șterge
+                                Sterge
                               </AlertDialogAction>
                             </AlertDialogFooter>
                           </AlertDialogContent>
                         </AlertDialog>
                       </div>
-                    </TableCell>
-                  </TableRow>
-                  {isExpanded && (
-                    <TableRow key={`${activity.id}-expanded`}>
-                      <TableCell colSpan={9} className="bg-muted/30 p-4">
-                        <div className="space-y-3">
-                          <div>
-                            <h4 className="text-sm font-medium mb-1">Descriere:</h4>
-                            <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-                              {activity.description || 'Fără descriere'}
-                            </p>
-                          </div>
-                          {activity.gdprTemplateCode && <GdprActivityDetails activity={activity} />}
-                          {deliverables.length > 0 && (
-                            <div>
-                              <h4 className="text-sm font-medium mb-1">Livrabile:</h4>
-                              <ul className="list-disc list-inside text-sm text-muted-foreground">
-                                {deliverables.map((d) => (
-                                  <li key={d.id}>{d.fileName}</li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-                          {grupTinta.length > 0 && (
-                            <div>
-                              <h4 className="text-sm font-medium mb-1">Grup Țintă:</h4>
-                              <ul className="list-disc list-inside text-sm text-muted-foreground">
-                                {grupTinta.map((g) => (
-                                  <li key={g.id}>
-                                    {g.name || g.type || g.activityType || 'Intrare GT'} {g.cnp && `(CNP: ${g.cnp})`}
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
+                    </article>
+
+                    {isExpanded && (
+                      <div className="space-y-4 bg-muted/20 px-4 pb-4 pt-1">
+                        <div className="rounded-lg border bg-background p-4">
+                          <h4 className="mb-2 text-sm font-medium">Descriere completa</h4>
+                          <p className="whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
+                            {activity.description || 'Fara descriere'}
+                          </p>
                         </div>
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </>
-              );
-            })}
-          </TableBody>
-        </Table>
+
+                        {activity.gdprTemplateCode && <GdprActivityDetails activity={activity} />}
+
+                        {deliverables.length > 0 && (
+                          <div className="rounded-lg border bg-background p-4">
+                            <h4 className="mb-2 text-sm font-medium">Livrabile</h4>
+                            <ul className="space-y-2 text-sm text-muted-foreground">
+                              {deliverables.map((deliverable) => (
+                                <li key={deliverable.id} className="flex items-start gap-2">
+                                  <FileText className="mt-0.5 h-4 w-4 shrink-0" />
+                                  <span>
+                                    {getDeliverableTitle(deliverable)}
+                                    {deliverable.fileName && getDeliverableTitle(deliverable) !== deliverable.fileName
+                                      ? ` (${deliverable.fileName})`
+                                      : ''}
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {grupTinta.length > 0 && (
+                          <div className="rounded-lg border bg-background p-4">
+                            <h4 className="mb-2 flex items-center gap-2 text-sm font-medium">
+                              <Users className="h-4 w-4" />
+                              Grup tinta
+                            </h4>
+                            <ul className="space-y-1 text-sm text-muted-foreground">
+                              {grupTinta.map((entry) => (
+                                <li key={entry.id}>
+                                  {entry.name || entry.type || entry.activityType || 'Intrare GT'}
+                                  {entry.cnp ? ` (CNP: ${entry.cnp})` : ''}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </Fragment>
+                );
+              })}
+            </div>
+          </section>
+        ))}
       </div>
     </div>
   );
@@ -244,7 +392,7 @@ function GdprActivityDetails({ activity }: { activity: Activity }) {
   );
 
   return (
-    <div className="rounded-md border bg-background p-3 text-sm">
+    <div className="rounded-lg border bg-background p-4 text-sm">
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <Badge variant="secondary">{activity.gdprTemplateCode}</Badge>
         {template && <span className="font-medium">{template.label}</span>}

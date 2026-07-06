@@ -1229,6 +1229,7 @@ export default function ExpertDashboard() {
       resolutionHint={activityResolutionHint || undefined}
       isSaving={isSaving}
       layout="workspace"
+      showObservationRail={false}
     />
   );
   const showPopoutForm = showForm && Boolean(sharedActivityPrefill);
@@ -1651,9 +1652,9 @@ export default function ExpertDashboard() {
               </div>
             </div>
 
-            <div className="grid lg:grid-cols-3 gap-6">
+            <div className={showForm && !showPopoutForm ? 'grid gap-6 xl:grid-cols-12' : 'grid gap-6 lg:grid-cols-3'}>
               {/* Calendar Section */}
-              <div className={showForm ? 'lg:col-span-1 lg:sticky lg:top-24 lg:self-start' : 'lg:col-span-1'}>
+              <div className={showForm && !showPopoutForm ? 'xl:col-span-3 xl:sticky xl:top-24 xl:self-start' : 'lg:col-span-1'}>
                 <MultiSelectCalendar
                   selectedDates={selectedDates}
                   onSelectDates={handleSelectDates}
@@ -1673,34 +1674,36 @@ export default function ExpertDashboard() {
                 {/* Form opens automatically when dates are selected */}
               </div>
 
-              {/* Activities table is replaced by the workspace form when active. */}
-              <div className="lg:col-span-2">
-                {showForm && !showPopoutForm ? (
-                  activityFormElement
-                ) : (
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>
-                        Activitati - {selectedExpert.name} - {getMonthName(currentMonth)}{' '}
-                        {currentYear}
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      {activitiesLoading ? (
-                        <div className="flex items-center justify-center py-8">
-                          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                        </div>
-                      ) : (
-                        <ActivitiesTable
-                          activities={activities}
-                          onEdit={handleEditActivity}
-                          onDelete={handleDeleteActivity}
-                        />
-                      )}
-                    </CardContent>
-                  </Card>
-                )}
+              <div className={showForm && !showPopoutForm ? 'min-w-0 xl:col-span-5' : 'min-w-0 lg:col-span-2'}>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>
+                      Activitati - {selectedExpert.name} - {getMonthName(currentMonth)}{' '}
+                      {currentYear}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {activitiesLoading ? (
+                      <div className="flex items-center justify-center py-8">
+                        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                      </div>
+                    ) : (
+                      <ActivitiesTable
+                        activities={activities}
+                        onEdit={handleEditActivity}
+                        onDelete={handleDeleteActivity}
+                        activeActivityId={editingActivity?.id}
+                      />
+                    )}
+                  </CardContent>
+                </Card>
               </div>
+
+              {showForm && !showPopoutForm && (
+                <div className="min-w-0 xl:col-span-4 xl:sticky xl:top-24 xl:self-start">
+                  {activityFormElement}
+                </div>
+              )}
             </div>
           </TabsContent>
 

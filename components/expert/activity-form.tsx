@@ -124,6 +124,7 @@ interface ActivityFormProps {
   resolutionHint?: ActivityResolutionHint;
   isSaving?: boolean;
   layout?: 'card' | 'workspace';
+  showObservationRail?: boolean;
 }
 
 function getAutofillConfidenceLabel(confidence: ActivityAutofillSuggestion['confidence']) {
@@ -179,6 +180,7 @@ export function ActivityForm({
   resolutionHint,
   isSaving = false,
   layout = 'card',
+  showObservationRail = true,
 }: ActivityFormProps) {
   const isWorkspaceLayout = layout === 'workspace';
   const eligibilityCheckEnabled = isDeliverableEligibilityCheckEnabledClient();
@@ -2984,6 +2986,14 @@ export function ActivityForm({
 
   if (!isWorkspaceLayout) {
     return formPanel;
+  }
+
+  if (!showObservationRail) {
+    return (
+      <div id="activity-form-panel" className="scroll-mt-24">
+        {formPanel}
+      </div>
+    );
   }
 
   return (
