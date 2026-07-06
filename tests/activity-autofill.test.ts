@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   buildActivityAutofillCatalogShortlist,
   buildActivityAutofillDeliverablesPayload,
+  buildFallbackActivityAutofillSuggestion,
   buildActivityAutofillPrompt,
   validateActivityAutofillSuggestionAgainstCatalog,
   type ActivityAutofillCatalogCandidate,
@@ -166,6 +167,29 @@ test('validarea accepta sugestiile care corespund unei activitati din catalog', 
   assert.equal(result.ok, true);
 });
 
+test('validarea accepta coduri SA echivalente dupa normalizare', () => {
+  const result = validateActivityAutofillSuggestionAgainstCatalog(
+    {
+      recommended: {
+        saCode: 'SA 1.1',
+        activityName: 'Analiza documente de politici publice',
+        description: 'Am analizat documentele de politici publice si am sintetizat recomandarile relevante.',
+      },
+      confidence: 'medium',
+      fieldInstructions: {
+        saCode: 'Documentul se incadreaza in SA1.1.',
+        activityName: 'Activitatea corespunde analizei documentare.',
+        description: 'Descrierea include actiunea si rezultatul documentat.',
+      },
+      evidence: ['Livrabilul este un raport de analiza.'],
+      warnings: [],
+    },
+    catalogCandidates,
+  );
+
+  assert.equal(result.ok, true);
+});
+
 test('shortlistul favorizeaza activitatea cea mai apropiata de livrabil', () => {
   const candidates: ActivityAutofillCatalogCandidate[] = [
     {
@@ -203,4 +227,45 @@ test('shortlistul favorizeaza activitatea cea mai apropiata de livrabil', () => 
   }, 1);
 
   assert.equal(shortlist[0].activityName, 'Redactare Newsletter lunar CPC');
+});
+
+test('fallbackul local propune o activitate AP pentru Andreea cand AI nu raspunde', () => {
+  const candidates: ActivityAutofillCatalogCandidate[] = [
+    {
+      id: 'cat-1',
+      category: 'ap',
+      saCode: 'SA3.2',
+      activityName: 'Monitorizare legislativa regionala si informare membri',
+      description: 'Monitorizare legislativa regionala.',
+    },
+    {
+      id: 'cat-2',
+      category: 'ap',
+      saCode: 'SA3.4',
+      activityName: 'Organizare eveniment / masa rotunda / dezbatere',
+      description: 'Organizarea de evenimente si mese rotunde cu stakeholderi pe teme economice si sociale.',
+    },
+  ];
+
+  const fallback = buildFallbackActivityAutofillSuggestion({
+    deliverables: [
+      {
+        fileName: '20260615_Minuta_Masa_Rotunda_Federatii.docx',
+        documentTitle: 'Minuta masa rotunda federatii',
+        extractedText: 'Minuta surprinde discutiile din cadrul mesei rotunde cu federatii si stakeholderi.',
+      },
+    ],
+    catalogCandidates: candidates,
+    expertName: 'Andreea Cojocaru',
+    expertRole: 'Expert Afaceri Publice',
+    category: 'ap',
+    projectCode: '302141',
+    month: 5,
+    year: 2026,
+    selectedDates: ['2026-06-15'],
+  });
+
+  assert.equal(fallback?.recommended.activityName, 'Organizare eveniment / masa rotunda / dezbatere');
+  assert.equal(fallback?.confidence, 'low');
+  assert.match(fallback?.warnings.join('\n') || '', /generata local/);
 });

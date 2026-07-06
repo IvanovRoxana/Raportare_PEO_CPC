@@ -95,7 +95,7 @@ test('Ivanov Roxana are acces simultan la Expert, PM si Admin din tabelul de exp
 
 test('Ivanov Roxana Expert/PM/Admin are acces extins ca admin', () => {
   const roxana = experts.find((expert) => expert.email === 'roxana.ivanov@confederatia-concordia.ro')!;
-  const andreea = experts.find((expert) => expert.email === 'andreea.cojocaru@confederatia-concordia.ro')!;
+  const andreea = experts.find((expert) => expert.email === 'andreea.zalomir@confederatia-concordia.ro')!;
   const scope = resolveDataAccessScope({
     user: {
       id: 'cognito-roxana',

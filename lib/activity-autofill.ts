@@ -108,6 +108,10 @@ export type ActivityAutofillDeliverableDraft = {
   eligibilitySummary?: string;
 };
 
+function normalizeSaCode(value?: string) {
+  return String(value ?? '').replace(/\s+/g, '').trim().toUpperCase();
+}
+
 function trimText(value: unknown, maxChars = MAX_DELIVERABLE_TEXT_CHARS) {
   return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, maxChars);
 }
@@ -139,7 +143,7 @@ const PA_SA_GUIDE: Record<string, { label: string; keywords: string[] }> = {
   },
   'SA3.4': {
     label: 'activitati si servicii suport / informare pentru membri',
-    keywords: ['newsletter', 'informare', 'monitorizare legislativa', 'document de pozitie', 'analiza legislativa', 'consultare publica', 'grup de lucru', 'task force', 'tf', 'speaking points', 'mesaje strategice', 'chestionar', 'feedback', 'membri cpc'],
+    keywords: ['newsletter', 'informare', 'monitorizare legislativa', 'document de pozitie', 'analiza legislativa', 'consultare publica', 'grup de lucru', 'task force', 'tf', 'speaking points', 'mesaje strategice', 'chestionar', 'feedback', 'membri cpc', 'masa rotunda', 'minuta', 'eveniment', 'dezbatere'],
   },
   'SA3.5': {
     label: 'schimb de bune practici la nivel european',
@@ -229,6 +233,20 @@ function scoreCatalogCandidate(candidate: ActivityAutofillCatalogCandidate, requ
   return score;
 }
 
+function scoreCatalogCandidates(input: ActivityAutofillRequest) {
+  const normalized = normalizeActivityAutofillRequest(input);
+  const requestText = normalizeForSearch(getRequestSearchText(normalized));
+  const requestTokens = new Set(tokenize(requestText));
+
+  return normalized.catalogCandidates
+    .map((candidate, originalIndex) => ({
+      candidate,
+      originalIndex,
+      score: scoreCatalogCandidate(candidate, requestText, requestTokens),
+    }))
+    .sort((a, b) => (b.score - a.score) || (a.originalIndex - b.originalIndex));
+}
+
 export function buildActivityAutofillCatalogShortlist(
   input: ActivityAutofillRequest,
   maxCandidates = DEFAULT_MAX_CATALOG_CANDIDATES_FOR_PROMPT,
@@ -236,16 +254,7 @@ export function buildActivityAutofillCatalogShortlist(
   const normalized = normalizeActivityAutofillRequest(input);
   if (normalized.catalogCandidates.length <= maxCandidates) return normalized.catalogCandidates;
 
-  const requestText = normalizeForSearch(getRequestSearchText(normalized));
-  const requestTokens = new Set(tokenize(requestText));
-  const scored = normalized.catalogCandidates
-    .map((candidate, originalIndex) => ({
-      candidate,
-      originalIndex,
-      score: scoreCatalogCandidate(candidate, requestText, requestTokens),
-    }))
-    .sort((a, b) => (b.score - a.score) || (a.originalIndex - b.originalIndex));
-
+  const scored = scoreCatalogCandidates(normalized);
   const selected = scored.slice(0, Math.max(1, maxCandidates));
   const selectedKeys = new Set(selected.map((item) => `${item.candidate.saCode}::${item.candidate.activityName}`));
 
@@ -263,6 +272,47 @@ export function buildActivityAutofillCatalogShortlist(
   return selected
     .sort((a, b) => a.originalIndex - b.originalIndex)
     .map((item) => item.candidate);
+}
+
+export function buildFallbackActivityAutofillSuggestion(input: ActivityAutofillRequest): ActivityAutofillSuggestion | null {
+  const normalized = normalizeActivityAutofillRequest(input);
+  const candidate = scoreCatalogCandidates(normalized)[0]?.candidate;
+  if (!candidate) return null;
+
+  const deliverableLabels = normalized.deliverables
+    .map((deliverable) => deliverable.documentTitle || deliverable.fileName)
+    .filter(Boolean)
+    .slice(0, 3);
+  const deliverableSummary = deliverableLabels.length > 0
+    ? deliverableLabels.join('; ')
+    : 'livrabilul atasat';
+  const saGuide = PA_SA_GUIDE[normalizeSaCode(candidate.saCode)]?.label || candidate.serviceCategory || 'activitatea selectata';
+  const activityPurpose = candidate.description || candidate.objectives || candidate.serviceComponent || saGuide;
+
+  return {
+    recommended: {
+      saCode: candidate.saCode,
+      activityName: candidate.activityName,
+      description: [
+        `Am analizat si am pregatit documentarea aferenta ${deliverableSummary}, incadrand activitatea in ${candidate.saCode} - ${candidate.activityName}.`,
+        `Activitatea a inclus verificarea continutului disponibil, corelarea acestuia cu obiectivul din catalog (${activityPurpose}) si pregatirea informatiilor necesare pentru raportarea lunara.`,
+        'Descrierea poate fi ajustata manual cu detalii suplimentare despre participanti, concluzii sau etape de lucru, daca acestea reies din documentul incarcat.',
+      ].join(' '),
+    },
+    confidence: 'low',
+    fieldInstructions: {
+      saCode: `Subactivitatea a fost aleasa automat din catalog pe baza potrivirii dintre livrabil si ${saGuide}.`,
+      activityName: `Activitatea "${candidate.activityName}" este cea mai apropiata optiune identificata local cand autocompletarea AI nu a raspuns.`,
+      description: 'Revizuieste descrierea si completeaza numai cu informatii sustinute de livrabil.',
+    },
+    evidence: [
+      `Livrabile analizate local: ${deliverableSummary}.`,
+      `Candidat catalog selectat: ${candidate.saCode} :: ${candidate.activityName}.`,
+    ],
+    warnings: [
+      'Autocompletarea AI nu a raspuns; sugestia a fost generata local pe baza catalogului si trebuie verificata manual.',
+    ],
+  };
 }
 
 export function buildActivityAutofillDeliverablesPayload(
@@ -428,7 +478,7 @@ export function validateActivityAutofillSuggestionAgainstCatalog(
   }
 
   const match = catalogCandidates.some((candidate) => (
-    candidate.saCode === parsed.data.recommended.saCode
+    normalizeSaCode(candidate.saCode) === normalizeSaCode(parsed.data.recommended.saCode)
     && candidate.activityName === parsed.data.recommended.activityName
   ));
 

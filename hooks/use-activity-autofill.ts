@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState, type Dispatch, type SetStateAction } fr
 import { fetchAuthSession } from 'aws-amplify/auth';
 import {
   buildActivityAutofillDeliverablesPayload,
+  buildFallbackActivityAutofillSuggestion,
   type ActivityAutofillCatalogCandidate,
   type ActivityAutofillSuggestion,
 } from '@/lib/activity-autofill';
@@ -53,6 +54,11 @@ async function readJsonResponse(response: Response) {
   } catch {
     throw new Error(`Raspuns invalid de la server pentru autocompletare (${response.status}).`);
   }
+}
+
+function isServerSideAutofillFailure(response: Response, data: unknown) {
+  const code = typeof data === 'object' && data !== null ? String((data as { code?: unknown }).code ?? '') : '';
+  return response.status >= 500 && code !== 'OPENAI_API_KEY_MISSING';
 }
 
 export function useActivityAutofill({
@@ -146,6 +152,24 @@ export function useActivityAutofill({
 
       const data = await readJsonResponse(response);
       if (!response.ok || data.error) {
+        if (isServerSideAutofillFailure(response, data)) {
+          const fallback = buildFallbackActivityAutofillSuggestion({
+            deliverables: autofillDeliverables,
+            catalogCandidates,
+            expertName,
+            expertId,
+            expertRole: expert?.positionInProject || expert?.role,
+            category: expert?.category,
+            projectCode: expert?.projectCode,
+            month,
+            year,
+            selectedDates,
+          });
+          if (fallback) {
+            setSuggestion(fallback);
+            return;
+          }
+        }
         throw new Error(data.error || 'Autocompletarea activitatii a esuat.');
       }
 

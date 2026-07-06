@@ -19,7 +19,7 @@ export const peoUsers: PeoUser[] = [
     id: 'andreea-cojocaru',
     name: 'Andreea Cojocaru',
     projectRole: 'Expert Afaceri Publice',
-    email: 'andreea.cojocaru@confederatia-concordia.ro',
+    email: 'andreea.zalomir@confederatia-concordia.ro',
     category: 'ap',
     norma: 6,
     saCodes: ['SA3.2', 'SA3.4', 'SA3.5'],
