@@ -46,8 +46,7 @@ Pentru fiecare activitate, extrage:
 - Descrierea
 - Livrabile menționate
 
-Dacă nu poți extrage datele din documentul real, generează 5 exemple de activități tipice pentru un proiect PEO, 
-cu date din luna curentă, pentru a demonstra funcționalitatea.
+Dacă nu poți extrage datele din documentul real, returnează "rows": []. Nu inventa activități, date, livrabile sau exemple.
 
 Returnează datele în format JSON cu structura:
 {

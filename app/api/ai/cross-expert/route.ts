@@ -73,7 +73,7 @@ FIȘIERE:
 ${files.map((f: { name: string }, i: number) => `Expert ${i + 1}: ${f.name}`).join('\n')}
 
 Generează o analiză care identifică potențiale suprapuneri.
-Pentru demonstrație, simulează o analiză tipică cu câteva exemple de suprapuneri găsite și câteva care sunt OK.
+Folosește exclusiv datele din fișierele furnizate. Dacă nu poți extrage comparații reale, returnează "comparisons": [].
 
 Returnează rezultatul în format JSON:
 {
