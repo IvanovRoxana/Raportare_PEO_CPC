@@ -21,6 +21,7 @@ import { MultiSelectCalendar } from '@/components/expert/multi-select-calendar';
 import { CalendarView } from '@/components/expert/calendar-view';
 import { ActivityForm, type ActivityResolutionHint, type ActivityResolutionSection } from '@/components/expert/activity-form';
 import { ActivitiesTable } from '@/components/expert/activities-table';
+import { ExpertDeliverablesDialog } from '@/components/expert/expert-deliverables-dialog';
 import { MonthlyEvidencePanel } from '@/components/expert/monthly-evidence-panel';
 import { ReportGenerator } from '@/components/expert/report-generator';
 import { MonthlyReportExport } from '@/components/expert/monthly-report-export';
@@ -61,6 +62,7 @@ import {
 } from '@/lib/pontaj-rules';
 import { prepareExistingActivityUpdate } from '@/lib/activity-edit';
 import { filterPendingSharedDeliverablesNotCoveredByActivity, filterSharedRelationsForMonths } from '@/lib/document-sharing';
+import { buildExpertDeliverableRows } from '@/lib/expert-deliverables';
 
 type SubmitReadinessSeverity = 'ok' | 'warning' | 'blocking';
 type SubmitReadinessKey =
@@ -113,6 +115,13 @@ function clearSharedRelationQueryParams() {
   window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
 }
 
+function clearHashIfCurrent(hash: string) {
+  if (typeof window === 'undefined' || window.location.hash !== hash) return;
+
+  const url = new URL(window.location.href);
+  window.history.replaceState(null, '', `${url.pathname}${url.search}`);
+}
+
 function formatDisplayDate(date?: string) {
   return date ? formatDateRo(date) : 'Neprecizata';
 }
@@ -153,6 +162,7 @@ export default function ExpertDashboard() {
   const [sharedActivityPrefill, setSharedActivityPrefill] = useState<Partial<Activity> | null>(null);
   const [selectedReadinessKey, setSelectedReadinessKey] = useState<SubmitReadinessKey | null>(null);
   const [activityResolutionHint, setActivityResolutionHint] = useState<ActivityResolutionHint | null>(null);
+  const [isDeliverablesDialogOpen, setIsDeliverablesDialogOpen] = useState(false);
 
   // Data hooks
   const { experts, isLoading: expertsLoading } = useExperts();
@@ -246,6 +256,25 @@ export default function ExpertDashboard() {
     if (!selectedExpertId) return [];
     return allMonthActivities.filter((a) => a.expertId === selectedExpertId);
   }, [allMonthActivities, selectedExpertId]);
+  const deliverableRows = useMemo(() => buildExpertDeliverableRows(activities), [activities]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const openFromHash = () => {
+      if (window.location.hash === '#livrabile') {
+        setIsDeliverablesDialogOpen(true);
+      }
+    };
+
+    openFromHash();
+    window.addEventListener('hashchange', openFromHash);
+
+    return () => {
+      window.removeEventListener('hashchange', openFromHash);
+    };
+  }, []);
+
   const pendingSharedDeliverableContext = useMemo(() => {
     if (!pendingSharedDeliverableRelationId) return null;
 
@@ -465,6 +494,7 @@ export default function ExpertDashboard() {
   const handleEditActivity = (activity: Activity, resolutionHint?: ActivityResolutionHint) => {
     if (reportStatus?.status === 'approved') return;
 
+    setIsDeliverablesDialogOpen(false);
     setEditingActivity(activity);
     setSharedActivityPrefill(null);
     setActivityResolutionHint(resolutionHint ?? null);
@@ -472,6 +502,24 @@ export default function ExpertDashboard() {
     setSelectedHours({ [activity.date]: activity.hours.toString() });
     setShowForm(true);
     setActiveTab('activitati');
+  };
+
+  const handleEditDeliverableActivity = (activityId: string) => {
+    const activity = activities.find((item) => item.id === activityId);
+    if (!activity) return;
+
+    handleEditActivity(activity, {
+      id: `deliverable-dialog-${activityId}-${Date.now()}`,
+      title: 'Revizuire livrabile',
+      detail: 'Verifica sau actualizeaza livrabilele atasate acestei activitati.',
+      section: 'deliverables',
+    });
+    clearHashIfCurrent('#livrabile');
+  };
+
+  const handleDeliverablesDialogOpenChange = (open: boolean) => {
+    setIsDeliverablesDialogOpen(open);
+    if (!open) clearHashIfCurrent('#livrabile');
   };
 
   const handleDeleteActivity = async (activityId: string) => {
@@ -1772,6 +1820,14 @@ export default function ExpertDashboard() {
             {activityFormElement}
           </div>
         )}
+        <ExpertDeliverablesDialog
+          open={isDeliverablesDialogOpen}
+          onOpenChange={handleDeliverablesDialogOpenChange}
+          rows={deliverableRows}
+          expertName={selectedExpert.name}
+          monthLabel={`${getMonthName(currentMonth)} ${currentYear}`}
+          onEditActivity={handleEditDeliverableActivity}
+        />
       </DashboardShell>
 
     </>
