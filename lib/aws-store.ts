@@ -61,6 +61,7 @@ import { buildSharedActivitySnapshot, buildSharedActivitySuggestions, buildShare
 import { buildDefaultConcurrentProjects, mergeConcurrentProjectsWithDefaults } from './default-concurrent-projects';
 import { normalizeTitleForMatch } from './title-suggestion';
 import { parseAwsJsonField, serializeAwsJsonField } from './aws-json';
+import { planDeliverableSync } from './activity-deliverable-sync';
 import {
   createProcurementStatusHistoryEntry,
   getContractedProcurementProjects,
@@ -364,6 +365,27 @@ function withSupportedDeliverableFields(payload: Record<string, unknown>, delive
   });
 
   return payload;
+}
+
+function buildDeliverableWritePayload(activityId: string, deliverable: Deliverable, includeId = false) {
+  return withSupportedDeliverableFields({
+    ...(includeId ? { id: deliverable.id } : {}),
+    activityId,
+    fileName: deliverable.fileName,
+    fileType: deliverable.fileType,
+    fileSize: deliverable.fileSize,
+    filePath: deliverable.filePath,
+    uploadedAt: deliverable.uploadedAt ?? new Date().toISOString(),
+    declaredTitle: deliverable.declaredTitle,
+    docTitle: deliverable.docTitle,
+    titleMatch: deliverable.titleMatch ?? undefined,
+    aiStatus: deliverable.aiStatus,
+    aiReason: deliverable.aiReason,
+  }, {
+    ...deliverable,
+    activityId,
+    sourceActivityId: deliverable.sourceActivityId || activityId,
+  });
 }
 
 function withSupportedActivityShareFields(payload: Record<string, unknown>, activity: Partial<Activity>) {
@@ -1495,22 +1517,7 @@ async function createActivityUnchecked(
       await createDocumentMetadataForDeliverable(client, activity, activityId, deliverable);
       await createRecoveredSharedDeliverableAudit(client, activity, activityId, deliverable);
       await createSharedDeliverablesForDocument(client, activity, activityId, deliverable);
-      return client.models.Deliverable.create(withSupportedDeliverableFields({
-        activityId,
-        fileName: deliverable.fileName,
-        fileType: deliverable.fileType,
-        fileSize: deliverable.fileSize,
-        filePath: deliverable.filePath,
-        uploadedAt: deliverable.uploadedAt ?? new Date().toISOString(),
-        declaredTitle: deliverable.declaredTitle,
-        docTitle: deliverable.docTitle,
-        titleMatch: deliverable.titleMatch ?? undefined,
-        aiStatus: deliverable.aiStatus,
-        aiReason: deliverable.aiReason,
-      }, {
-        ...deliverable,
-        sourceActivityId: deliverable.sourceActivityId || activityId,
-      }));
+      return client.models.Deliverable.create(buildDeliverableWritePayload(activityId, deliverable));
     }),
     ...(activity.grupTinta ?? []).map((entry) =>
       client.models.GrupTintaEntry.create({
@@ -2107,28 +2114,26 @@ export const activitiesService = {
 
     if (updates.deliverables) {
       const existingDeliverables = await listModel<any>(client.models.Deliverable, { activityId: { eq: id } });
-      await Promise.all(existingDeliverables.map((deliverable) => client.models.Deliverable.delete({ id: deliverable.id })));
+      const deliverablePlan = planDeliverableSync(existingDeliverables.map(mapDeliverable), updates.deliverables);
+
       await Promise.all(
-        updates.deliverables.map(async (deliverable) => {
+        deliverablePlan.toDelete.map((deliverable) => client.models.Deliverable.delete({ id: deliverable.id })),
+      );
+      await Promise.all(
+        deliverablePlan.toUpdate.map(async (deliverable) => {
+          const result = await client.models.Deliverable.update(buildDeliverableWritePayload(id, deliverable, true));
+          assertNoErrors(result, 'AWS update deliverable');
+          return result;
+        }),
+      );
+      await Promise.all(
+        deliverablePlan.toCreate.map(async (deliverable) => {
           await createDocumentMetadataForDeliverable(client, updates, id, deliverable);
           await createRecoveredSharedDeliverableAudit(client, updates, id, deliverable);
           await createSharedDeliverablesForDocument(client, updates, id, deliverable);
-          return client.models.Deliverable.create(withSupportedDeliverableFields({
-            activityId: id,
-            fileName: deliverable.fileName,
-            fileType: deliverable.fileType,
-            fileSize: deliverable.fileSize,
-            filePath: deliverable.filePath,
-            uploadedAt: deliverable.uploadedAt ?? new Date().toISOString(),
-            declaredTitle: deliverable.declaredTitle,
-            docTitle: deliverable.docTitle,
-            titleMatch: deliverable.titleMatch ?? undefined,
-            aiStatus: deliverable.aiStatus,
-            aiReason: deliverable.aiReason,
-          }, {
-            ...deliverable,
-            sourceActivityId: deliverable.sourceActivityId || id,
-          }));
+          const result = await client.models.Deliverable.create(buildDeliverableWritePayload(id, deliverable));
+          assertNoErrors(result, 'AWS create deliverable');
+          return result;
         }),
       );
     }

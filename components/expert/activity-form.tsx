@@ -1108,9 +1108,10 @@ export function ActivityForm({
       // Get hours for this specific date, fallback to default
       const dateHours = isLeave ? 0 : Number(normalizePontajHoursValue(hoursPerDay[date] || initialActivity?.hours, defaultHours));
       const shouldAttachDeliverables = shouldAttachUploadedDeliverablesToDate(activityDatesForSave, date);
+      const activityId = initialActivity?.id || generateId();
       
       return {
-        id: initialActivity?.id || generateId(),
+        id: activityId,
         date,
         expertId,
         expertName,
@@ -1125,7 +1126,7 @@ export function ActivityForm({
         deliverables: shouldAttachDeliverables ? uploadedDeliverables
           .map(d => ({
             id: d.id,
-            activityId: initialActivity?.id || '',
+            activityId,
             fileName: d.filename || d.name || '',
             fileType: d.fileType || '',
             fileSize: d.fileSize || 0,
