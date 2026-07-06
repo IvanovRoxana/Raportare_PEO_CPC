@@ -745,6 +745,32 @@ export function useAllConcurrentProjects() {
   };
 }
 
+export function useConcurrentProjectMutations() {
+  const refresh = (project?: Pick<ConcurrentProject, 'expertId'>) => {
+    mutate('concurrent-projects-all');
+    if (project?.expertId) mutate(`concurrent-projects-${project.expertId}`);
+  };
+
+  const createProject = async (project: Omit<ConcurrentProject, 'id'>) => {
+    const created = await concurrentProjectsService.create(project);
+    refresh(created);
+    return created;
+  };
+
+  const updateProject = async (id: string, updates: Partial<ConcurrentProject>) => {
+    const updated = await concurrentProjectsService.update(id, updates);
+    refresh(updated);
+    return updated;
+  };
+
+  const archiveProject = async (id: string) => {
+    await concurrentProjectsService.delete(id);
+    mutate('concurrent-projects-all');
+  };
+
+  return { createProject, updateProject, archiveProject };
+}
+
 export function useConcurrentProjectTimesheet(projectId: string | null, month: number, year: number) {
   const key = projectId ? `concurrent-project-timesheet-${projectId}-${month}-${year}` : null;
   const { data, error, isLoading } = useSWR(

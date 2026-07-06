@@ -6,8 +6,6 @@ import { UsersRolesManagementPanel } from '@/components/admin/users-roles-manage
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { adminRoles } from '@/lib/admin-module';
-import experts from '@/data/import/experts.json';
-import type { Expert } from '@/lib/types';
 
 const awsDataPoints = [
   'Cognito User Pool pentru conturi, autentificare si resetare acces.',
@@ -58,7 +56,7 @@ export default function AdminUsersPage() {
         </div>
 
         <aside className="space-y-6">
-          <ViewAsExpertPanel experts={experts as Expert[]} />
+          <ViewAsExpertPanel />
 
           <Card id="roluri-minime" className="scroll-mt-24">
             <CardHeader>

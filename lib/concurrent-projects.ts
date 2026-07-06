@@ -120,7 +120,11 @@ export function getConsolidatedWarnings(rows: ConsolidatedDayRow[]) {
 }
 
 export function filterActiveConcurrentProjectsForMonth(projects: ConcurrentProject[], month: number, year: number) {
-  return projects.filter((project) => project.isActive !== false && isActiveInMonth(project, month, year));
+  return projects.filter((project) => project.isActive !== false && isConcurrentProjectValidated(project) && isActiveInMonth(project, month, year));
+}
+
+export function isConcurrentProjectValidated(project: Pick<ConcurrentProject, 'status'>) {
+  return !project.status || project.status === 'validated';
 }
 
 export function isAbsenceDayType(dayType?: string) {

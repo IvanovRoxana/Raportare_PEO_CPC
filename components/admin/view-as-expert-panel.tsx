@@ -5,15 +5,17 @@ import { Eye, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useExperts } from '@/hooks/use-backend-data';
 import { createAdminViewAsSession, setAdminViewAsSession } from '@/lib/admin-view-as';
 import { getSignedInUser } from '@/lib/aws/auth';
 import type { Expert } from '@/lib/types';
 
 type Props = {
-  experts: Expert[];
+  experts?: Expert[];
 };
 
-export function ViewAsExpertPanel({ experts }: Props) {
+export function ViewAsExpertPanel({ experts = [] }: Props) {
+  const { experts: liveExperts, isLoading: isLoadingExperts } = useExperts();
   const [selectedExpertId, setSelectedExpertId] = useState('');
   const [isCheckingAccess, setIsCheckingAccess] = useState(true);
   const [canUseViewAs, setCanUseViewAs] = useState(false);
@@ -30,9 +32,10 @@ export function ViewAsExpertPanel({ experts }: Props) {
     });
   }, []);
 
+  const expertOptions = liveExperts.length > 0 ? liveExperts : experts;
   const activeExperts = useMemo(
-    () => experts.filter((expert) => expert.isActive !== false).sort((a, b) => a.name.localeCompare(b.name)),
-    [experts],
+    () => expertOptions.filter((expert) => expert.isActive !== false).sort((a, b) => a.name.localeCompare(b.name)),
+    [expertOptions],
   );
   const selectedExpert = activeExperts.find((expert) => expert.id === selectedExpertId);
 
@@ -55,7 +58,7 @@ export function ViewAsExpertPanel({ experts }: Props) {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
-        <Select value={selectedExpertId} onValueChange={setSelectedExpertId} disabled={!canUseViewAs || isCheckingAccess}>
+        <Select value={selectedExpertId} onValueChange={setSelectedExpertId} disabled={!canUseViewAs || isCheckingAccess || isLoadingExperts}>
           <SelectTrigger className="w-full bg-background">
             <SelectValue placeholder="Alege expert" />
           </SelectTrigger>
@@ -74,8 +77,8 @@ export function ViewAsExpertPanel({ experts }: Props) {
           </p>
         )}
 
-        <Button className="w-full" onClick={handleViewAs} disabled={!selectedExpert || !canUseViewAs || isCheckingAccess}>
-          {isCheckingAccess ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
+        <Button className="w-full" onClick={handleViewAs} disabled={!selectedExpert || !canUseViewAs || isCheckingAccess || isLoadingExperts}>
+          {isCheckingAccess || isLoadingExperts ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
           Rulează view as
         </Button>
       </CardContent>

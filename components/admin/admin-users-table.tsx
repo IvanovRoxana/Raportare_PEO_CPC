@@ -43,16 +43,6 @@ import { cognitoGroupsForRole } from '@/lib/cognito-roles';
 
 type RoleOption = 'Expert' | 'PM' | 'Expert/PM' | 'Admin';
 
-export type AdminUserFallback = {
-  name: string;
-  email: string;
-  role: string;
-  organization: string;
-  status: string;
-  lastAccess: string;
-  initials: string;
-};
-
 type EditFormState = {
   name: string;
   email: string;
@@ -203,7 +193,7 @@ async function createUserAudit(input: {
   });
 }
 
-export function AdminUsersTable({ fallbackUsers = [] }: { fallbackUsers?: AdminUserFallback[] }) {
+export function AdminUsersTable() {
   const [experts, setExperts] = useState<Expert[]>([]);
   const [persistedExpertsByKey, setPersistedExpertsByKey] = useState<Map<string, Expert>>(() => new Map());
   const [loading, setLoading] = useState(true);
@@ -255,16 +245,7 @@ export function AdminUsersTable({ fallbackUsers = [] }: { fallbackUsers?: AdminU
     [experts],
   );
 
-  const demoUsers = useMemo(
-    () =>
-      fallbackUsers.map((user) => ({
-        kind: 'fallback' as const,
-        ...user,
-      })),
-    [fallbackUsers],
-  );
-
-  const users = liveUsers.length > 0 ? liveUsers : demoUsers;
+  const users = liveUsers;
 
   const organizationOptions = useMemo(
     () => Array.from(new Set(users.map((user) => user.organization).filter(Boolean))).sort(),
@@ -577,7 +558,7 @@ export function AdminUsersTable({ fallbackUsers = [] }: { fallbackUsers?: AdminU
         {ok ? <p className="text-sm text-emerald-700">{ok}</p> : null}
         {!loading && liveUsers.length === 0 ? (
           <p className="text-sm text-amber-700">
-            Nu am gasit utilizatori reali in backend. Sunt afisate date demo, iar actiunile sunt dezactivate.
+            Nu am gasit utilizatori reali in backend.
           </p>
         ) : null}
       </div>

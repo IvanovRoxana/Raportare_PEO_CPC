@@ -336,6 +336,7 @@ function ConcurrentTimesheetEditor({
     const day = index + 1;
     return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
   });
+  const deliverableOptions = project.deliverableOptions ?? [];
 
   return (
     <div className="space-y-3">
@@ -357,7 +358,21 @@ function ConcurrentTimesheetEditor({
                 <td><Input className="h-8" value={draft.wp || ''} onChange={(event) => updateDraft(date, { wp: event.target.value })} /></td>
                 <td><Input className="h-8" type="number" min={0} step="0.5" value={draft.hours ?? ''} onChange={(event) => updateDraft(date, { hours: Number(event.target.value) || 0 })} /></td>
                 <td><Input className="h-8" value={draft.taskName || ''} onChange={(event) => updateDraft(date, { taskName: event.target.value })} /></td>
-                <td><Input className="h-8" value={draft.relevantDeliverable || ''} onChange={(event) => updateDraft(date, { relevantDeliverable: event.target.value })} /></td>
+                <td>
+                  {deliverableOptions.length > 0 ? (
+                    <Select value={draft.relevantDeliverable || ''} onValueChange={(value) => updateDraft(date, { relevantDeliverable: value })}>
+                      <SelectTrigger className="h-8"><SelectValue placeholder="Livrabil" /></SelectTrigger>
+                      <SelectContent>
+                        {draft.relevantDeliverable && !deliverableOptions.includes(draft.relevantDeliverable) && (
+                          <SelectItem value={draft.relevantDeliverable}>{draft.relevantDeliverable}</SelectItem>
+                        )}
+                        {deliverableOptions.map((deliverable) => <SelectItem key={deliverable} value={deliverable}>{deliverable}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Input className="h-8" value={draft.relevantDeliverable || ''} onChange={(event) => updateDraft(date, { relevantDeliverable: event.target.value })} />
+                  )}
+                </td>
                 <td><Input className="h-8" value={draft.notes || ''} onChange={(event) => updateDraft(date, { notes: event.target.value })} /></td>
                 <td className="px-2"><Button size="sm" variant="outline" onClick={() => saveEntry(date)}><Save className="h-3 w-3" /> Draft</Button></td>
               </tr>

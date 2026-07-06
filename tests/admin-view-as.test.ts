@@ -22,10 +22,16 @@ test('view-as creeaza sesiune pentru expertul selectat', () => {
 });
 
 test('doar adminul real poate construi utilizator view-as', () => {
-  const session = createAdminViewAsSession(targetExpert);
+  const session = createAdminViewAsSession(targetExpert, { id: 'admin-1', email: 'admin@test.ro' });
 
   assert.equal(buildViewAsUser({ realUserRoles: ['pm'], session }), null);
-  assert.deepEqual(buildViewAsUser({ realUserRoles: ['admin'], session }), {
+  assert.equal(buildViewAsUser({ realUserRoles: ['admin'], realUserId: 'other-admin', session }), null);
+  assert.deepEqual(buildViewAsUser({
+    realUserRoles: ['admin'],
+    realUserId: 'admin-1',
+    realUserEmail: 'admin@test.ro',
+    session,
+  }), {
     id: 'expert-1',
     email: 'expert@test.ro',
     displayName: 'Expert Test',

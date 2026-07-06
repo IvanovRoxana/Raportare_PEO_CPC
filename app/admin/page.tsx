@@ -20,38 +20,14 @@ import { ActivityDescriptionEditor } from '@/components/admin/activity-descripti
 import { AiApiStatusPanel } from '@/components/admin/ai-api-status-panel';
 import { AdminStatCards } from '@/components/admin/admin-stat-cards';
 import { AdminUsersTable } from '@/components/admin/admin-users-table';
+import { AdminProjectsPanel } from '@/components/admin/admin-projects-panel';
 import { BusinessHubEntityDirectoryPanel } from '@/components/admin/business-hub-entity-directory-panel';
 import { ViewAsExpertPanel } from '@/components/admin/view-as-expert-panel';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import activityCatalog from '@/data/import/activity-catalog.json';
-import experts from '@/data/import/experts.json';
-import type { ActivityCatalog, Expert } from '@/lib/types';
-
-const fallbackUsers = [
-  ['Andrei Dumitrescu', 'andrei.d@concordia.ro', 'Administrator', 'Concordia', 'Activ', '12 mai 2026, 09:42'],
-  ['Maria Curea', 'maria.c@concordia.ro', 'Manager', 'Concordia', 'Activ', '12 mai 2026, 08:15'],
-  ['Ionuț Radu', 'ionut.r@concordia.ro', 'Expert', 'CPC', 'Activ', '11 mai 2026, 16:33'],
-  ['Laura Stoica', 'laura.s@concordia.ro', 'PM', 'Concordia', 'Activ', '11 mai 2026, 11:06'],
-  ['Vlad Bălan', 'vlad.b@concordia.ro', 'Expert', 'CPC', 'Inactiv', '7 mai 2026, 14:20'],
-  ['Alexandra Antonescu', 'alexandra.a@concordia.ro', 'Utilizator', 'CPC', 'Activ', '12 mai 2026, 10:01'],
-] as const;
-
-const users = fallbackUsers.map(([name, email, role, organization, status, lastAccess]) => ({
-  name,
-  email,
-  role,
-  organization,
-  status,
-  lastAccess,
-  initials: name
-    .split(' ')
-    .map((part) => part[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase(),
-}));
+import type { ActivityCatalog } from '@/lib/types';
 
 const adminTabValues = ['utilizatori', 'roluri', 'subactivitati', 'business-hub', 'ai', 'proiecte'] as const;
 
@@ -63,10 +39,10 @@ function resolveAdminTab(tab?: string | string[]): AdminTabValue {
 }
 
 const initialAdminStats = {
-  activeUsers: (experts as Expert[]).filter((expert) => expert.isActive !== false).length,
-  rolesDefined: 4,
-  activeExperts: (experts as Expert[]).filter((expert) => expert.isActive !== false && /expert/i.test(expert.role)).length,
-  activeProjects: 4,
+  activeUsers: 0,
+  rolesDefined: 0,
+  activeExperts: 0,
+  activeProjects: 0,
 };
 
 export default async function AdminPage({
@@ -169,7 +145,7 @@ export default async function AdminPage({
             </Link>
           </RightInfoCard>
 
-          <ViewAsExpertPanel experts={experts as Expert[]} />
+          <ViewAsExpertPanel />
         </>
       }
     >
@@ -201,10 +177,10 @@ export default async function AdminPage({
 
           <CardContent className="p-0">
             <TabsContent value="utilizatori" className="m-0">
-              <AdminUsersTable fallbackUsers={users} />
+              <AdminUsersTable />
             </TabsContent>
 
-            {(['roluri', 'proiecte'] as const).map((tab) => (
+            {(['roluri'] as const).map((tab) => (
               <TabsContent key={tab} value={tab} className="m-0 p-6">
                 <div className="grid gap-4 md:grid-cols-3">
                   {[
@@ -220,6 +196,10 @@ export default async function AdminPage({
                 </div>
               </TabsContent>
             ))}
+
+            <TabsContent value="proiecte" className="m-0 p-6">
+              <AdminProjectsPanel />
+            </TabsContent>
 
             <TabsContent value="subactivitati" className="m-0 p-6">
               <ActivityDescriptionEditor fallbackCatalog={activityCatalog as ActivityCatalog[]} />

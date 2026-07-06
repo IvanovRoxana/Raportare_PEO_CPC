@@ -12,5 +12,5 @@ test('pagina admin nu contine markere de conflict Git', () => {
 
 test('pagina admin pastreaza componenta ViewAsExpertPanel dupa rezolvarea conflictelor', () => {
   assert.match(adminPageSource, /import \{ ViewAsExpertPanel \} from '@\/components\/admin\/view-as-expert-panel';/);
-  assert.match(adminPageSource, /<ViewAsExpertPanel experts=\{experts as Expert\[\]\} \/>/);
+  assert.match(adminPageSource, /<ViewAsExpertPanel \/>/);
 });
