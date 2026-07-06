@@ -13,13 +13,12 @@
     "experts": 19,
     "activityCatalog": 116,
     "workingGroups": 15,
-    "sampleActivities": 1,
     "targetGroups": 1,
     "reportStatuses": 1
   },
   "notes": [
     "activityCatalog si workingGroups pot fi importate direct in DynamoDB.",
     "experts.json este generat din PEO_Experti_v2.xlsx si nu include parola de logare din sursa.",
-    "sampleActivities, targetGroups si reportStatuses trebuie legate de Expert.id inainte de importul final."
+    "targetGroups si reportStatuses trebuie legate de Expert.id inainte de importul final."
   ]
 }

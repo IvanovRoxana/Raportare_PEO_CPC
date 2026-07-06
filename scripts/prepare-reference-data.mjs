@@ -423,7 +423,6 @@ const datasets = {
   experts: prepareExperts(),
   activityCatalog: prepareCatalog(),
   workingGroups: prepareWorkingGroups(),
-  sampleActivities: prepareActivities(),
   targetGroups: prepareTargetGroups(),
   reportStatuses: prepareReportStatuses(),
 };
@@ -431,7 +430,6 @@ const datasets = {
 writeJson("activity-catalog.json", datasets.activityCatalog);
 writeJson("experts.json", datasets.experts);
 writeJson("working-groups.json", datasets.workingGroups);
-writeJson("sample-activities.json", datasets.sampleActivities);
 writeJson("target-groups.json", datasets.targetGroups);
 writeJson("report-statuses.json", datasets.reportStatuses);
 
@@ -446,7 +444,7 @@ writeJson("import-summary.json", {
   notes: [
     "activityCatalog si workingGroups pot fi importate direct in DynamoDB.",
     "experts.json este generat din PEO_Experti_v2.xlsx si nu include parola de logare din sursa.",
-    "sampleActivities, targetGroups si reportStatuses trebuie legate de Expert.id inainte de importul final.",
+    "targetGroups si reportStatuses trebuie legate de Expert.id inainte de importul final.",
   ],
 });
 
