@@ -3,6 +3,10 @@
 import { useMemo } from 'react';
 import { DELIVERABLE_ELIGIBILITY_UI_MESSAGE } from '@/lib/feature-flags';
 import { getDocumentAuditTitle, type DuplicateIssueType } from '@/lib/document-sharing';
+import {
+  buildExistingDeliverableSourceSuggestions,
+  type ExistingDeliverableSourceContext,
+} from '@/lib/existing-deliverable-context';
 import type { DeliverableSlot } from '@/lib/deliverable-types';
 
 export type ActivityResolutionSection = 'details' | 'deliverables' | 'gdpr';
@@ -22,6 +26,8 @@ export interface ObservationRailActivityContext {
   isLeave: boolean;
   isWorkspaceLayout: boolean;
   mainDeliverablesCount: number;
+  saCode?: string;
+  activityName?: string;
 }
 
 export interface ObservationRailEligibilityContext {
@@ -48,6 +54,10 @@ export interface ObservationRailItem {
   title: string;
   detail?: string;
   meta?: string[];
+  actions?: Array<{
+    id: string;
+    label: string;
+  }>;
 }
 
 export interface ObservationRailDuplicateInfo {
@@ -66,6 +76,7 @@ interface UseObservationRailParams {
   deliverables: DeliverableSlot[];
   duplicateInfoByDeliverableId: ReadonlyMap<string, ObservationRailDuplicateInfo>;
   eligibility: ObservationRailEligibilityContext;
+  existingDeliverableContexts?: ExistingDeliverableSourceContext[];
   resolutionHint?: ActivityResolutionHint;
   warnings: ObservationRailWarningContext;
 }
@@ -100,6 +111,7 @@ export function useObservationRail({
   deliverables,
   duplicateInfoByDeliverableId,
   eligibility,
+  existingDeliverableContexts = [],
   resolutionHint,
   warnings,
 }: UseObservationRailParams) {
@@ -171,6 +183,48 @@ export function useObservationRail({
         && deliverable.duplicateStatus !== 'fingerprinted'
         && deliverable.duplicateStatus !== 'pending_upload'
       ));
+      const sourceContext = existingDeliverableContexts.find((context) => context.deliverableId === deliverable.id);
+
+      if (sourceContext) {
+        const sourceMeta = [
+          sourceContext.sourceExpertName ? `Expert sursa: ${sourceContext.sourceExpertName}` : null,
+          sourceContext.sourceActivityDate ? `Data sursa: ${sourceContext.sourceActivityDate}` : null,
+          sourceContext.sourceSaCode && sourceContext.sourceActivityName
+            ? `${sourceContext.sourceSaCode} - ${sourceContext.sourceActivityName}`
+            : sourceContext.sourceSaCode || sourceContext.sourceActivityName || null,
+          sourceContext.deliverableType ? `Tip livrabil: ${sourceContext.deliverableType}` : null,
+          sourceContext.stadiu ? `Stadiu: ${sourceContext.stadiu}` : null,
+          sourceContext.hasExtractedText ? 'Text extras disponibil' : null,
+        ].filter((item): item is string => Boolean(item));
+        items.push({
+          id: `deliverable-source-context-${deliverable.id}`,
+          group: 'deliverables',
+          tone: 'info',
+          title: 'Context din raportarea sursa',
+          detail: sourceContext.title,
+          meta: sourceMeta,
+        });
+
+        const suggestions = buildExistingDeliverableSourceSuggestions({
+          context: sourceContext,
+          currentSaCode: activity.saCode,
+          currentActivityName: activity.activityName,
+          currentDeliverable: deliverable,
+        });
+        if (suggestions.length > 0) {
+          items.push({
+            id: `deliverable-source-suggestions-${deliverable.id}`,
+            group: 'deliverables',
+            tone: 'success',
+            title: 'Setari sugerate',
+            detail: suggestions.map((suggestion) => suggestion.detail).join('\n'),
+            actions: suggestions.map((suggestion) => ({
+              id: `existing-source:${suggestion.deliverableId}:${suggestion.action}`,
+              label: suggestion.label,
+            })),
+          });
+        }
+      }
 
       if (!deliverable.titleConfirmed && (deliverable.docText || deliverable.firstPageText)) {
         items.push({
@@ -290,8 +344,12 @@ export function useObservationRail({
           id: `deliverable-eligibility-result-${deliverable.id}`,
           group: 'deliverables',
           tone: getEligibilityRailTone(check.status),
-          title: `${getEligibilityRailLabel(check.status)} - ${notePrefix}`,
-          detail: check.summary,
+          title: sourceContext
+            ? `Verificat anterior - ${getEligibilityRailLabel(check.status)}`
+            : `${getEligibilityRailLabel(check.status)} - ${notePrefix}`,
+          detail: sourceContext
+            ? `Verificare preluata din raportarea sursa: ${check.summary}`
+            : check.summary,
           meta,
         });
       }
@@ -323,6 +381,7 @@ export function useObservationRail({
     deliverables,
     duplicateInfoByDeliverableId,
     eligibility,
+    existingDeliverableContexts,
     resolutionHint,
     warnings,
   ]);

@@ -230,6 +230,7 @@ export interface Deliverable {
   activityDate?: string;
   saCode?: string;
   deliverableType?: string;
+  stadiu?: string;
   category?: string;
   uploaded?: boolean;
   isCommonDeliverable?: boolean;
@@ -275,6 +276,7 @@ export interface DocumentMetadata {
   activityDate?: string;
   saCode?: string;
   deliverableType?: string;
+  stadiu?: string;
   declaredTitle?: string;
   suggestedTitle?: string;
   extractedTitle?: string;

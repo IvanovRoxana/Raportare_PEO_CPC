@@ -67,7 +67,13 @@ import {
 } from '@/lib/activity-autofill';
 import { isDeliverableEligibilityCheckEnabledClient } from '@/lib/feature-flags';
 import {
+  buildExistingDeliverableSourceContext,
+  type ExistingDeliverableSourceAction,
+  type ExistingDeliverableSourceContext,
+} from '@/lib/existing-deliverable-context';
+import {
   type ActivityResolutionHint,
+  type ObservationRailItem,
   useObservationRail,
 } from '@/hooks/use-observation-rail';
 import { useActivityAutofill } from '@/hooks/use-activity-autofill';
@@ -315,7 +321,7 @@ export function ActivityForm({
       isPhoto: d.fileType?.startsWith('image/') || false,
       declaredTitle: d.declaredTitle || '',
       titleConfirmed: d.titleConfirmed ?? false,
-      stadiu: '',
+      stadiu: d.stadiu || '',
       aiCheck: d.aiStatus || d.aiReason
         ? {
             eligible: d.aiStatus === 'eligible' ? true : d.aiStatus === 'ineligible' ? false : null,
@@ -1152,6 +1158,7 @@ export function ActivityForm({
             saCode,
             category: d.slotType,
             deliverableType: d.deliverableType || d.type || d.slotType,
+            stadiu: d.stadiu,
             uploaded: true,
             isCommonDeliverable: Boolean(d.common || d.isCommonDeliverable),
             sharedWithExpertIds: d.common ? collaborators : (d.sharedWithExpertIds || []),
@@ -1305,13 +1312,78 @@ export function ActivityForm({
     && !deliverable.isPendingConfirm
     && Boolean(deliverable.filename || deliverable.name || deliverable.declaredTitle)
   ));
+  const existingDeliverableContexts = useMemo<ExistingDeliverableSourceContext[]>(() => (
+    deliverables
+      .map((deliverable) => buildExistingDeliverableSourceContext({
+        deliverable,
+        activities: allActivities,
+        catalog: filteredCatalog,
+      }))
+      .filter((context): context is ExistingDeliverableSourceContext => Boolean(context))
+  ), [allActivities, deliverables, filteredCatalog]);
+
+  const applyExistingDeliverableSourceAction = useCallback((actionId: string) => {
+    const [, deliverableId, action] = actionId.split(':') as [string, string, ExistingDeliverableSourceAction | undefined];
+    if (!deliverableId || !action) return;
+
+    const context = existingDeliverableContexts.find((item) => item.deliverableId === deliverableId);
+    if (!context) return;
+
+    if (action === 'activity' && context.sourceSaCode && context.sourceActivityName) {
+      const catalogMatch = filteredCatalog.find((item) => (
+        item.saCode === context.sourceSaCode
+        && item.activityName === context.sourceActivityName
+        && (!context.selectedActivityId || item.id === context.selectedActivityId)
+      )) || filteredCatalog.find((item) => (
+        item.saCode === context.sourceSaCode
+        && item.activityName === context.sourceActivityName
+      ));
+      if (!catalogMatch) return;
+
+      setSaCode(catalogMatch.saCode);
+      setActivityTitle(catalogMatch.activityName);
+      updateDeliverable(deliverableId, {
+        eligibilityCheck: null,
+        aiCheck: null,
+        saCode: catalogMatch.saCode,
+      });
+      return;
+    }
+
+    if (action === 'deliverableType' && context.deliverableType) {
+      updateDeliverable(deliverableId, {
+        eligibilityCheck: null,
+        aiCheck: null,
+        type: context.deliverableType,
+        deliverableType: context.deliverableType,
+      });
+      return;
+    }
+
+    if (action === 'stadiu' && context.stadiu) {
+      updateDeliverable(deliverableId, {
+        eligibilityCheck: null,
+        aiCheck: null,
+        stadiu: context.stadiu,
+      });
+    }
+  }, [existingDeliverableContexts, filteredCatalog, updateDeliverable]);
+
+  const handleObservationRailAction = useCallback((_item: ObservationRailItem, actionId: string) => {
+    if (actionId.startsWith('existing-source:')) {
+      applyExistingDeliverableSourceAction(actionId);
+    }
+  }, [applyExistingDeliverableSourceAction]);
+
   const observationRailItems = useObservationRail({
     activity: {
+      activityName: activityTitle,
       hasEventMomAsMainDeliverable,
       isException,
       isLeave,
       isWorkspaceLayout,
       mainDeliverablesCount: mainDeliverables.length,
+      saCode,
     },
     deliverables,
     duplicateInfoByDeliverableId,
@@ -1319,6 +1391,7 @@ export function ActivityForm({
       blockedReason: eligibilityBlockedReason,
       checkEnabled: eligibilityCheckEnabled,
     },
+    existingDeliverableContexts,
     resolutionHint,
     warnings: {
       activityAutofillError,
@@ -1341,6 +1414,21 @@ export function ActivityForm({
           issues: [],
         }
       : null;
+    const sourceActivity = candidate.sourceActivityId
+      ? allActivities.find((activity) => activity.id === candidate.sourceActivityId)
+      : undefined;
+    const sourceSaCode = candidate.saCode || sourceActivity?.saCode;
+    const sourceActivityName = sourceActivity?.activityType || sourceActivity?.title;
+    const sourceCatalogMatch = filteredCatalog.find((item) => (
+      item.saCode === sourceSaCode
+      && item.activityName === sourceActivityName
+      && (!sourceActivity?.catalogActivityId || item.id === sourceActivity.catalogActivityId)
+    )) || filteredCatalog.find((item) => (
+      item.saCode === sourceSaCode
+      && item.activityName === sourceActivityName
+    ));
+    const inferredStadiu = candidate.stadiu || (candidate.eligibilityCheck ? 'final' : '');
+    const existingDeliverableType = candidate.deliverableType || 'livrabil';
     const slot: DeliverableSlot = {
       ...createDeliverableSlot('livrabil', candidate.fileName),
       id: generateId(),
@@ -1361,7 +1449,8 @@ export function ActivityForm({
       sourceActivityId: candidate.sourceActivityId,
       activityDate: candidate.activityDate,
       saCode: candidate.saCode,
-      deliverableType: candidate.deliverableType || 'livrabil',
+      type: existingDeliverableType,
+      deliverableType: existingDeliverableType,
       isCommonDeliverable: candidate.source !== 'mine' || candidate.isCommonDeliverable === true,
       sharedWithExpertIds: [],
       uploadedAt: candidate.uploadDate,
@@ -1384,13 +1473,20 @@ export function ActivityForm({
         : 'Livrabil selectat din documentele existente.'),
       aiCheck,
       eligibilityCheck: candidate.eligibilityCheck,
+      stadiu: inferredStadiu,
       common: false,
       isPendingConfirm: false,
     };
 
+    if (!activityTitle && sourceCatalogMatch) {
+      setSaCode(sourceCatalogMatch.saCode);
+      setActivityTitle(sourceCatalogMatch.activityName);
+      slot.saCode = sourceCatalogMatch.saCode;
+    }
+
     setDeliverables((prev) => [...prev, slot]);
     setExistingDeliverablePickerOpen(false);
-  }, []);
+  }, [activityTitle, allActivities, filteredCatalog]);
 
   const renderGdprField = useCallback((field: GdprFieldDefinition) => {
     const value = gdprMeta[field.key];
@@ -2898,7 +2994,7 @@ export function ActivityForm({
       <div className="min-w-0">
         {formPanel}
       </div>
-      <ObservationRail items={observationRailItems} />
+      <ObservationRail items={observationRailItems} onAction={handleObservationRailAction} />
     </div>
   );
 }

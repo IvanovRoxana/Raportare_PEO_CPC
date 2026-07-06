@@ -24,11 +24,12 @@ function getObservationBadgeClass(tone: ObservationTone) {
 
 interface ObservationRailProps {
   items: ObservationRailItem[];
+  onAction?: (item: ObservationRailItem, actionId: string) => void;
   onFocusItem?: (item: ObservationRailItem) => void;
   onNavigateToItem?: (item: ObservationRailItem) => void;
 }
 
-export function ObservationRail({ items, onFocusItem, onNavigateToItem }: ObservationRailProps) {
+export function ObservationRail({ items, onAction, onFocusItem, onNavigateToItem }: ObservationRailProps) {
   const groups: ObservationGroup[] = ['form', 'deliverables', 'ai'];
   const isInteractive = Boolean(onFocusItem || onNavigateToItem);
 
@@ -78,6 +79,23 @@ export function ObservationRail({ items, onFocusItem, onNavigateToItem }: Observ
                               </li>
                             ))}
                           </ul>
+                        )}
+                        {item.actions && item.actions.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 pt-1">
+                            {item.actions.map((action) => (
+                              <button
+                                key={action.id}
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  onAction?.(item, action.id);
+                                }}
+                                className="rounded-full border border-current/30 bg-white/70 px-2 py-1 text-[11px] font-semibold transition hover:bg-white"
+                              >
+                                {action.label}
+                              </button>
+                            ))}
+                          </div>
                         )}
                       </div>
                     </div>

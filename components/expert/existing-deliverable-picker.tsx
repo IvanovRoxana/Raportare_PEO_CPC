@@ -30,6 +30,7 @@ export interface ExistingDeliverableCandidate {
   activityDate?: string;
   saCode?: string;
   deliverableType?: string;
+  stadiu?: string;
   declaredTitle?: string;
   docTitle?: string;
   docText?: string | null;
@@ -138,6 +139,7 @@ export function ExistingDeliverablePicker({
           activityDate: deliverable.activityDate || activity.date,
           saCode: deliverable.saCode || activity.saCode,
           deliverableType: deliverable.deliverableType,
+          stadiu: deliverable.stadiu,
           declaredTitle: deliverable.declaredTitle,
           docTitle: deliverable.docTitle,
           docText: deliverable.docText,
@@ -185,6 +187,7 @@ export function ExistingDeliverablePicker({
         activityDate: document.activityDate,
         saCode: document.saCode,
         deliverableType: document.deliverableType,
+        stadiu: document.stadiu,
         declaredTitle: document.declaredTitle,
         docTitle: document.extractedTitle,
         suggestedTitle: document.suggestedTitle,
@@ -223,6 +226,7 @@ export function ExistingDeliverablePicker({
         activityDate: document.activityDate,
         saCode: document.saCode,
         deliverableType: document.deliverableType,
+        stadiu: document.stadiu,
         declaredTitle: document.declaredTitle,
         docTitle: document.extractedTitle,
         suggestedTitle: document.suggestedTitle,
