@@ -309,6 +309,12 @@ export default function ExpertDashboard() {
     if (offset === 1) return nextMonthStatus?.expertAccessApproved === true;
     return false;
   };
+  const calendarDraftActivities = useMemo(
+    () => editingActivity
+      ? activities.filter((activity) => activity.id !== editingActivity.id)
+      : activities,
+    [activities, editingActivity],
+  );
 
   const getMonthAccessMessage = (month: number, year: number) =>
     `Luna ${getMonthName(month)} ${year} se poate deschide doar dupa acordul PM.`;
@@ -1605,7 +1611,7 @@ export default function ExpertDashboard() {
                   onSelectDates={handleSelectDates}
                   selectedHours={selectedHours}
                   onSelectedHoursChange={setSelectedHours}
-                  activities={activities}
+                  activities={calendarDraftActivities}
                   onMonthChange={handleMonthChange}
                   onBlockedMonthChange={handleBlockedMonthChange}
                   canGoToPreviousMonth={canOpenMonth(previousCalendarDate.getMonth(), previousCalendarDate.getFullYear())}
