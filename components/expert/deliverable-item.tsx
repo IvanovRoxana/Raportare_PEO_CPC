@@ -11,6 +11,7 @@ import { extractDocxFirstPageText, extractDocxText, extractImageTextWithSource, 
 import { DELIVERABLE_ELIGIBILITY_UI_MESSAGE, isDeliverableEligibilityCheckEnabledClient } from '@/lib/feature-flags';
 import { applyAutomaticTitleSuggestion, suggestTitleFromFirstPage, validateDeclaredTitleOnFirstPage } from '@/lib/title-suggestion';
 import { getDocumentAuditTitle, hashFirstPageText, normalizeDocumentTextForFingerprint, sha256Hex, type DuplicateIssueType } from '@/lib/document-sharing';
+import type { ActivityCatalog } from '@/lib/types';
 
 export interface DeliverableDuplicateInfo {
   documentId: string;
@@ -22,6 +23,9 @@ export interface DeliverableDuplicateInfo {
   isPreviousPeriod: boolean;
   isOtherExpert: boolean;
 }
+
+type EligibilitySuggestedSettings = NonNullable<NonNullable<DeliverableSlot['eligibilityCheck']>['suggestedSettings']>;
+type EligibilitySuggestedSettingsChange = 'activity' | 'deliverableType';
 
 interface DeliverableItemProps {
   deliverable: DeliverableSlot;
@@ -46,9 +50,15 @@ interface DeliverableItemProps {
   label?: string;
   hint?: string;
   deliverableOptions?: string[];
+  activityCatalogCandidates?: ActivityCatalog[];
   duplicateInfo?: DeliverableDuplicateInfo;
   canCheckEligibility?: boolean;
   eligibilityBlockedReason?: string;
+  onApplyEligibilitySuggestion?: (
+    settings: EligibilitySuggestedSettings,
+    change: EligibilitySuggestedSettingsChange,
+    deliverableId: string,
+  ) => void;
   notesMode?: 'inline' | 'external';
   showEligibilityControl?: boolean;
 }
@@ -76,9 +86,11 @@ export function DeliverableItem({
   label,
   hint,
   deliverableOptions,
+  activityCatalogCandidates = [],
   duplicateInfo,
   canCheckEligibility = true,
   eligibilityBlockedReason,
+  onApplyEligibilitySuggestion,
   notesMode = 'inline',
   showEligibilityControl = true,
 }: DeliverableItemProps) {
@@ -215,8 +227,11 @@ export function DeliverableItem({
           fileName: deliverable.filename || deliverable.name,
           extractedText,
           selectedActivityId: selectedActivityId || subActivity,
+          currentSaCode: subActivity,
           selectedActivityName: activityTitle,
           deliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
+          activityCatalogCandidates,
+          deliverableOptions: typeOptions,
           catalogDescription,
           catalogObjectives,
           catalogComponent,
@@ -271,6 +286,23 @@ export function DeliverableItem({
     } finally {
       setAiLoading(false);
     }
+  };
+
+  const handleApplyEligibilitySuggestion = (
+    settings: EligibilitySuggestedSettings,
+    change: EligibilitySuggestedSettingsChange,
+  ) => {
+    if (change === 'deliverableType' && settings.deliverableType) {
+      onUpdate({
+        type: settings.deliverableType,
+        deliverableType: settings.deliverableType,
+        eligibilityCheck: null,
+        aiCheck: null,
+      });
+      return;
+    }
+
+    onApplyEligibilitySuggestion?.(settings, change, deliverable.id);
   };
 
   const validateTitle = (title: string, source: DeliverableSlot['titleSource']) =>
@@ -769,7 +801,10 @@ export function DeliverableItem({
           )}
 
           {deliverable.eligibilityCheck && (
-            <EligibilityResultCard check={deliverable.eligibilityCheck} />
+            <EligibilityResultCard
+              check={deliverable.eligibilityCheck}
+              onApplySuggestedSettings={handleApplyEligibilitySuggestion}
+            />
           )}
         </div>
       )}
@@ -816,7 +851,10 @@ export function DeliverableItem({
         </div>
       )}
       {showEligibilityControl && !renderInlineNotes && deliverable.uploaded && !deliverable.isPhoto && deliverable.eligibilityCheck && (
-        <EligibilityResultCard check={deliverable.eligibilityCheck} />
+        <EligibilityResultCard
+          check={deliverable.eligibilityCheck}
+          onApplySuggestedSettings={handleApplyEligibilitySuggestion}
+        />
       )}
     </div>
   );
@@ -839,8 +877,15 @@ export interface DeliverableEligibilityControlProps {
   year?: number;
   expertName?: string;
   onUpdate: (patch: Partial<DeliverableSlot>) => void;
+  deliverableOptions?: string[];
+  activityCatalogCandidates?: ActivityCatalog[];
   canCheckEligibility?: boolean;
   eligibilityBlockedReason?: string;
+  onApplyEligibilitySuggestion?: (
+    settings: EligibilitySuggestedSettings,
+    change: EligibilitySuggestedSettingsChange,
+    deliverableId: string,
+  ) => void;
   className?: string;
 }
 
@@ -861,12 +906,16 @@ export function DeliverableEligibilityControl({
   year,
   expertName,
   onUpdate,
+  deliverableOptions,
+  activityCatalogCandidates = [],
   canCheckEligibility = true,
   eligibilityBlockedReason,
+  onApplyEligibilitySuggestion,
   className = 'space-y-2',
 }: DeliverableEligibilityControlProps) {
   const [aiLoading, setAiLoading] = useState(false);
   const eligibilityCheckEnabled = isDeliverableEligibilityCheckEnabledClient();
+  const typeOptions = deliverableOptions || ALL_DELIVERABLE_TYPES;
 
   if (!deliverable.uploaded || deliverable.isPhoto) return null;
 
@@ -895,8 +944,11 @@ export function DeliverableEligibilityControl({
           fileName: deliverable.filename || deliverable.name,
           extractedText,
           selectedActivityId: selectedActivityId || subActivity,
+          currentSaCode: subActivity,
           selectedActivityName: activityTitle,
           deliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
+          activityCatalogCandidates,
+          deliverableOptions: typeOptions,
           catalogDescription,
           catalogObjectives,
           catalogComponent,
@@ -953,6 +1005,23 @@ export function DeliverableEligibilityControl({
     }
   };
 
+  const handleApplyEligibilitySuggestion = (
+    settings: EligibilitySuggestedSettings,
+    change: EligibilitySuggestedSettingsChange,
+  ) => {
+    if (change === 'deliverableType' && settings.deliverableType) {
+      onUpdate({
+        type: settings.deliverableType,
+        deliverableType: settings.deliverableType,
+        eligibilityCheck: null,
+        aiCheck: null,
+      });
+      return;
+    }
+
+    onApplyEligibilitySuggestion?.(settings, change, deliverable.id);
+  };
+
   return (
     <div className={className}>
       {eligibilityCheckEnabled && canRunEligibilityCheck ? (
@@ -997,7 +1066,10 @@ export function DeliverableEligibilityControl({
       )}
 
       {deliverable.eligibilityCheck && (
-        <EligibilityResultCard check={deliverable.eligibilityCheck} />
+        <EligibilityResultCard
+          check={deliverable.eligibilityCheck}
+          onApplySuggestedSettings={handleApplyEligibilitySuggestion}
+        />
       )}
     </div>
   );
@@ -1050,8 +1122,29 @@ function getEligibilityClass(status: string) {
   return 'bg-slate-100 text-slate-700 border-slate-300';
 }
 
-function EligibilityResultCard({ check }: { check: NonNullable<DeliverableSlot['eligibilityCheck']> }) {
+function EligibilityResultCard({
+  check,
+  onApplySuggestedSettings,
+}: {
+  check: NonNullable<DeliverableSlot['eligibilityCheck']>;
+  onApplySuggestedSettings?: (
+    settings: EligibilitySuggestedSettings,
+    change: EligibilitySuggestedSettingsChange,
+  ) => void;
+}) {
   const warning = check.status === 'neeligibil' || check.status === 'neconcludent';
+  const suggestedSettings = check.suggestedSettings;
+  const canApplyActivity = Boolean(
+    suggestedSettings?.changes.includes('activity')
+    && suggestedSettings.saCode
+    && suggestedSettings.activityName
+    && onApplySuggestedSettings,
+  );
+  const canApplyDeliverableType = Boolean(
+    suggestedSettings?.changes.includes('deliverableType')
+    && suggestedSettings.deliverableType
+    && onApplySuggestedSettings,
+  );
 
   return (
     <div className={`rounded border p-2 text-[10px] ${getEligibilityClass(check.status)}`}>
@@ -1073,6 +1166,49 @@ function EligibilityResultCard({ check }: { check: NonNullable<DeliverableSlot['
             </li>
           ))}
         </ul>
+      )}
+      {suggestedSettings && (canApplyActivity || canApplyDeliverableType) && (
+        <div className="mt-2 rounded border border-indigo-200 bg-white/70 p-2 text-slate-800">
+          <div className="font-medium text-indigo-800">Setari sugerate</div>
+          <div className="mt-1 text-[10px] text-slate-700">
+            {suggestedSettings.reason}
+            <span className="ml-1 font-medium">Incredere: {suggestedSettings.confidence}</span>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {canApplyActivity && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 border-indigo-300 px-2 text-[10px] text-indigo-700 hover:bg-indigo-50"
+                onClick={() => onApplySuggestedSettings?.(suggestedSettings, 'activity')}
+              >
+                Aplica activitatea sugerata ({suggestedSettings.saCode})
+              </Button>
+            )}
+            {canApplyDeliverableType && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 border-indigo-300 px-2 text-[10px] text-indigo-700 hover:bg-indigo-50"
+                onClick={() => onApplySuggestedSettings?.(suggestedSettings, 'deliverableType')}
+              >
+                Aplica tipul livrabilului
+              </Button>
+            )}
+          </div>
+          {canApplyActivity && (
+            <div className="mt-1 text-[10px] text-slate-600">
+              Activitate propusa: {suggestedSettings.saCode} - {suggestedSettings.activityName}
+            </div>
+          )}
+          {canApplyDeliverableType && (
+            <div className="mt-1 text-[10px] text-slate-600">
+              Tip livrabil propus: {suggestedSettings.deliverableType}
+            </div>
+          )}
+        </div>
       )}
       {check.missingElements.length > 0 && (
         <div className="mt-2">

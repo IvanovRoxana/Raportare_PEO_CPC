@@ -120,6 +120,15 @@ export interface DeliverableEligibilityCheck {
   missingElements: string[];
   recommendations: string[];
   riskFlags: string[];
+  suggestedSettings?: {
+    saCode?: string;
+    activityName?: string;
+    selectedActivityId?: string;
+    deliverableType?: string;
+    confidence: 'high' | 'medium' | 'low' | string;
+    reason: string;
+    changes: Array<'activity' | 'deliverableType' | string>;
+  } | null;
   checkedAt?: string;
   checkedBy?: string;
   modelAuditId?: string;

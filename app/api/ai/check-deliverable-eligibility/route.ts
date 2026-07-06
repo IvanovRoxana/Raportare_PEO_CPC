@@ -1,8 +1,13 @@
 import { Output } from 'ai';
 import { NextResponse } from 'next/server';
-import { z } from 'zod';
 import { governedGenerateText, aiErrorResponse, assertAllowedAiRequest } from '@/lib/ai-governance';
 import { openaiModel } from '@/lib/openai';
+import {
+  deliverableEligibilitySchema,
+  normalizeDeliverableEligibilityActivityCandidates,
+  normalizeDeliverableEligibilityStringList,
+  validateEligibilitySuggestedSettings,
+} from '@/lib/deliverable-eligibility';
 import {
   DELIVERABLE_ELIGIBILITY_DISABLED_MESSAGE,
   DELIVERABLE_ELIGIBILITY_DISABLED_STATUS,
@@ -11,22 +16,6 @@ import {
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-
-const checkSchema = z.object({
-  criterion: z.string(),
-  status: z.enum(['pass', 'warning', 'fail', 'unknown']),
-  explanation: z.string(),
-});
-
-const eligibilitySchema = z.object({
-  status: z.enum(['eligibil', 'eligibil_cu_observatii', 'neeligibil', 'neconcludent']),
-  score: z.number().min(0).max(100),
-  summary: z.string(),
-  checks: z.array(checkSchema),
-  missingElements: z.array(z.string()),
-  recommendations: z.array(z.string()),
-  riskFlags: z.array(z.string()),
-});
 
 function trimText(value: unknown, maxChars: number) {
   return String(value ?? '').slice(0, maxChars);
@@ -70,7 +59,10 @@ export async function POST(req: Request) {
       extractedText,
       selectedActivityId,
       selectedActivityName,
+      currentSaCode,
       deliverableType,
+      activityCatalogCandidates: rawActivityCatalogCandidates,
+      deliverableOptions: rawDeliverableOptions,
       catalogDescription,
       catalogObjectives,
       catalogComponent,
@@ -90,12 +82,18 @@ export async function POST(req: Request) {
       return NextResponse.json(nonConclusive('Textul extras este insuficient pentru verificarea eligibilității.'));
     }
 
+    const activityCatalogCandidates = normalizeDeliverableEligibilityActivityCandidates(rawActivityCatalogCandidates);
+    const deliverableOptions = normalizeDeliverableEligibilityStringList(rawDeliverableOptions);
+    const currentDeliverableType = String(deliverableType || '').trim();
+
     const result = await governedGenerateText({
       endpoint: '/api/ai/check-deliverable-eligibility',
       operation: 'check-deliverable-eligibility',
       request: {
         ...body,
         extractedText: trimText(extractedText, 12000),
+        activityCatalogCandidates,
+        deliverableOptions,
       },
       actorName: expertName,
       projectCode,
@@ -108,11 +106,12 @@ export async function POST(req: Request) {
 Date document:
 - Nume fișier: ${fileName || 'Nespecificat'}
 - Titlu document: ${documentTitle || 'Nespecificat'}
-- Tip livrabil selectat: ${deliverableType || 'Nespecificat'}
+- Tip livrabil selectat: ${currentDeliverableType || 'Nespecificat'}
 - Aria textului analizat: ${textScope || 'Text extras disponibil'}
 
 Activitate selectată:
 - ID: ${selectedActivityId || 'Nespecificat'}
+- Subactivitate: ${currentSaCode || 'Nespecificat'}
 - Nume: ${selectedActivityName || 'Nespecificat'}
 
 Repere din Catalog activități:
@@ -124,10 +123,21 @@ Repere din Catalog activități:
 - Livrabile: ${catalogDeliverables || 'Nespecificat'}
 - Indicatori/observații: ${catalogIndicators || 'Nespecificat'}
 
+Activitati disponibile pentru expert (singurele alternative permise):
+${JSON.stringify(activityCatalogCandidates, null, 2)}
+
+Tipuri de livrabil disponibile (singurele alternative permise):
+${JSON.stringify(deliverableOptions, null, 2)}
+
 Text extras din document:
 ${trimmedExtractedText}
 
 Reguli:
+- Verifica mai intai daca problema vine din setarile alese in formular. Daca documentul pare potrivit pentru alta activitate sau alt tip de livrabil din listele permise, completeaza suggestedSettings.
+- Nu recomanda modificarea documentului cand documentul pare coerent, dar activitatea sau tipul de livrabil selectat sunt gresite. In acel caz foloseste suggestedSettings si explica motivul.
+- suggestedSettings.saCode/activityName/selectedActivityId trebuie sa existe exact in activitatile disponibile.
+- suggestedSettings.deliverableType trebuie sa existe exact in tipurile de livrabil disponibile.
+- Nu include suggestedSettings daca alternativa nu este clara.
 - „eligibil” doar dacă documentul pare clar corelat cu activitatea și tipul de livrabil.
 - „eligibil_cu_observatii” dacă documentul pare potrivit, dar lipsesc elemente sau sunt necesare clarificări.
 - „neeligibil” dacă documentul nu se potrivește cu activitatea, tipul livrabilului sau obiectivele.
@@ -138,11 +148,11 @@ Reguli:
 - Recomandările trebuie să fie practice și scurte.
 
 Returnează strict JSON valid cu:
-status, score, summary, checks, missingElements, recommendations, riskFlags.`,
-      output: Output.object({ schema: eligibilitySchema }),
+status, score, summary, checks, missingElements, recommendations, riskFlags, suggestedSettings.`,
+      output: Output.object({ schema: deliverableEligibilitySchema }),
     });
 
-    const parsed = eligibilitySchema.safeParse(result.output);
+    const parsed = deliverableEligibilitySchema.safeParse(result.output);
     if (!parsed.success) {
       return NextResponse.json({
         ...nonConclusive('Nu am putut interpreta răspunsul AI pentru eligibilitate.'),
@@ -150,7 +160,18 @@ status, score, summary, checks, missingElements, recommendations, riskFlags.`,
       });
     }
 
-    return NextResponse.json({ ...parsed.data, modelAuditId: result.auditId });
+    return NextResponse.json({
+      ...parsed.data,
+      suggestedSettings: validateEligibilitySuggestedSettings({
+        suggestedSettings: parsed.data.suggestedSettings,
+        activityCatalogCandidates,
+        deliverableOptions,
+        currentSaCode,
+        currentActivityName: selectedActivityName,
+        currentDeliverableType,
+      }) ?? null,
+      modelAuditId: result.auditId,
+    });
   } catch (error) {
     console.error('Error checking deliverable eligibility:', error);
     return aiErrorResponse(error, 'Eroare la verificarea eligibilității livrabilului');

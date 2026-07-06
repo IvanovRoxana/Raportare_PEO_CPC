@@ -842,6 +842,39 @@ export function ActivityForm({
     setDeliverables(prev => prev.map(d => d.id === id ? { ...d, ...patch } : d));
   }, []);
 
+  const applyEligibilitySuggestion = useCallback((
+    settings: NonNullable<NonNullable<DeliverableSlot['eligibilityCheck']>['suggestedSettings']>,
+    change: 'activity' | 'deliverableType',
+    deliverableId: string,
+  ) => {
+    if (change === 'activity' && settings.saCode && settings.activityName) {
+      const catalogMatch = filteredCatalog.find((item) => (
+        item.saCode === settings.saCode
+        && item.activityName === settings.activityName
+        && (!settings.selectedActivityId || item.id === settings.selectedActivityId)
+      ));
+      if (!catalogMatch) return;
+
+      setSaCode(catalogMatch.saCode);
+      setActivityTitle(catalogMatch.activityName);
+      updateDeliverable(deliverableId, {
+        eligibilityCheck: null,
+        aiCheck: null,
+        saCode: catalogMatch.saCode,
+      });
+      return;
+    }
+
+    if (change === 'deliverableType' && settings.deliverableType) {
+      updateDeliverable(deliverableId, {
+        type: settings.deliverableType,
+        deliverableType: settings.deliverableType,
+        eligibilityCheck: null,
+        aiCheck: null,
+      });
+    }
+  }, [filteredCatalog, updateDeliverable]);
+
   const removeDeliverable = useCallback((id: string) => {
     setDeliverables(prev => prev.filter((d) => d.id !== id));
   }, []);
@@ -2117,16 +2150,18 @@ export function ActivityForm({
                             catalogExpectedResults={selectedCatalogItem?.expectedResults}
                             catalogDeliverables={selectedCatalogItem?.deliverables}
                             catalogIndicators={selectedCatalogItem?.indicators}
+                            activityCatalogCandidates={filteredCatalog}
+                            deliverableOptions={deliverableOptions}
                             projectCode={expert?.projectCode}
                             month={month}
                             year={year}
                             expertName={expertName}
                             onUpdate={(patch) => updateDeliverable(d.id, patch)}
                             onRemove={() => removeDeliverable(d.id)}
-                            deliverableOptions={deliverableOptions}
                             duplicateInfo={duplicateInfoByDeliverableId.get(d.id)}
                             canCheckEligibility={canCheckDeliverableEligibility}
                             eligibilityBlockedReason={eligibilityBlockedReason}
+                            onApplyEligibilitySuggestion={applyEligibilitySuggestion}
                             notesMode={isWorkspaceLayout ? 'external' : 'inline'}
                             showEligibilityControl={false}
                           />
@@ -2390,6 +2425,8 @@ export function ActivityForm({
                   catalogExpectedResults={selectedCatalogItem?.expectedResults}
                   catalogDeliverables={selectedCatalogItem?.deliverables}
                   catalogIndicators={selectedCatalogItem?.indicators}
+                  activityCatalogCandidates={filteredCatalog}
+                  deliverableOptions={deliverableOptions}
                   projectCode={expert?.projectCode}
                   month={month}
                   year={year}
@@ -2397,6 +2434,7 @@ export function ActivityForm({
                   onUpdate={(patch) => updateDeliverable(mainDeliverableForEligibility.id, patch)}
                   canCheckEligibility={canCheckDeliverableEligibility}
                   eligibilityBlockedReason={eligibilityBlockedReason}
+                  onApplyEligibilitySuggestion={applyEligibilitySuggestion}
                 />
               </div>
             )}
@@ -2631,6 +2669,8 @@ export function ActivityForm({
                         catalogExpectedResults={selectedCatalogItem?.expectedResults}
                         catalogDeliverables={selectedCatalogItem?.deliverables}
                         catalogIndicators={selectedCatalogItem?.indicators}
+                        activityCatalogCandidates={filteredCatalog}
+                        deliverableOptions={deliverableOptions}
                         projectCode={expert?.projectCode}
                         month={month}
                         year={year}
@@ -2641,6 +2681,7 @@ export function ActivityForm({
                         duplicateInfo={duplicateInfoByDeliverableId.get(d.id)}
                         canCheckEligibility={canCheckDeliverableEligibility}
                         eligibilityBlockedReason={eligibilityBlockedReason}
+                        onApplyEligibilitySuggestion={applyEligibilitySuggestion}
                         notesMode={isWorkspaceLayout ? 'external' : 'inline'}
                       />
                     ))}
@@ -2683,12 +2724,27 @@ export function ActivityForm({
                           deliverable={d}
                           subActivity={saCode}
                           activityTitle={activityTitle}
+                          selectedActivityId={selectedCatalogItem?.id}
+                          catalogDescription={selectedCatalogItem?.description}
+                          catalogObjectives={selectedCatalogItem?.objectives}
+                          catalogComponent={selectedCatalogItem?.serviceComponent}
+                          catalogBeneficiaries={selectedCatalogItem?.beneficiaries}
+                          catalogExpectedResults={selectedCatalogItem?.expectedResults}
+                          catalogDeliverables={selectedCatalogItem?.deliverables}
+                          catalogIndicators={selectedCatalogItem?.indicators}
+                          activityCatalogCandidates={filteredCatalog}
+                          deliverableOptions={deliverableOptions}
+                          projectCode={expert?.projectCode}
+                          month={month}
+                          year={year}
+                          expertName={expertName}
                           onUpdate={(patch) => updateDeliverable(d.id, patch)}
                           onRemove={() => removeDeliverable(d.id)}
                           required={false}
                           duplicateInfo={duplicateInfoByDeliverableId.get(d.id)}
                           canCheckEligibility={canCheckDeliverableEligibility}
                           eligibilityBlockedReason={eligibilityBlockedReason}
+                          onApplyEligibilitySuggestion={applyEligibilitySuggestion}
                           notesMode={isWorkspaceLayout ? 'external' : 'inline'}
                         />
                       ))}
