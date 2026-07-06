@@ -1,8 +1,9 @@
 import { Output } from 'ai';
 import { NextResponse } from 'next/server';
-import { governedGenerateText, aiErrorResponse, assertAllowedAiRequest } from '@/lib/ai-governance';
-import { openaiModel } from '@/lib/openai';
+import { governedGenerateText, aiErrorResponse, assertAllowedAiRequest, AiGovernanceError } from '@/lib/ai-governance';
+import { isOpenAIConfigurationError, openaiModel } from '@/lib/openai';
 import {
+  buildNonConclusiveAiFailure,
   deliverableEligibilitySchema,
   normalizeDeliverableEligibilityActivityCandidates,
   normalizeDeliverableEligibilityStringList,
@@ -21,6 +22,45 @@ function trimText(value: unknown, maxChars: number) {
   return String(value ?? '').slice(0, maxChars);
 }
 
+function normalizeForSearch(value: unknown) {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function shortlistActivityCandidates(
+  candidates: ReturnType<typeof normalizeDeliverableEligibilityActivityCandidates>,
+  context: string,
+  currentSaCode?: string,
+) {
+  const query = normalizeForSearch(context);
+  return candidates
+    .map((candidate, index) => {
+      const text = normalizeForSearch([
+        candidate.saCode,
+        candidate.activityName,
+        candidate.serviceCategory,
+        candidate.description,
+        candidate.objectives,
+        candidate.deliverables,
+        candidate.indicators,
+      ].filter(Boolean).join(' '));
+      let score = candidate.saCode === currentSaCode ? 15 : 0;
+      text.split(' ').forEach((token) => {
+        if (token.length >= 4 && query.includes(token)) score += 1;
+      });
+      if (query.includes(normalizeForSearch(candidate.activityName))) score += 20;
+      return { candidate, score, index };
+    })
+    .sort((a, b) => (b.score - a.score) || (a.index - b.index))
+    .slice(0, 12)
+    .map((item) => item.candidate);
+}
+
 function nonConclusive(reason: string) {
   return {
     status: 'neconcludent' as const,
@@ -37,6 +77,11 @@ function nonConclusive(reason: string) {
     recommendations: ['Extrage sau încarcă un document cu text lizibil și repetă verificarea.'],
     riskFlags: ['Analiza nu poate confirma eligibilitatea fără conținut relevant.'],
   };
+}
+
+function nonConclusiveAiFailure(error: unknown) {
+  const message = error instanceof Error ? error.message : 'Eroare necunoscuta.';
+  return buildNonConclusiveAiFailure(trimText(message, 180));
 }
 
 export async function POST(req: Request) {
@@ -82,11 +127,27 @@ export async function POST(req: Request) {
       return NextResponse.json(nonConclusive('Textul extras este insuficient pentru verificarea eligibilității.'));
     }
 
-    const activityCatalogCandidates = normalizeDeliverableEligibilityActivityCandidates(rawActivityCatalogCandidates);
+    const allActivityCatalogCandidates = normalizeDeliverableEligibilityActivityCandidates(rawActivityCatalogCandidates);
     const deliverableOptions = normalizeDeliverableEligibilityStringList(rawDeliverableOptions);
     const currentDeliverableType = String(deliverableType || '').trim();
+    const activityCatalogCandidates = shortlistActivityCandidates(
+      allActivityCatalogCandidates,
+      [
+        documentTitle,
+        fileName,
+        currentDeliverableType,
+        selectedActivityName,
+        catalogDescription,
+        catalogObjectives,
+        catalogDeliverables,
+        trimmedExtractedText.slice(0, 3000),
+      ].filter(Boolean).join(' '),
+      currentSaCode,
+    );
 
-    const result = await governedGenerateText({
+    let result;
+    try {
+      result = await governedGenerateText({
       endpoint: '/api/ai/check-deliverable-eligibility',
       operation: 'check-deliverable-eligibility',
       request: {
@@ -150,7 +211,14 @@ Reguli:
 Returnează strict JSON valid cu:
 status, score, summary, checks, missingElements, recommendations, riskFlags, suggestedSettings.`,
       output: Output.object({ schema: deliverableEligibilitySchema }),
-    });
+      });
+    } catch (generationError) {
+      console.error('Recoverable deliverable eligibility AI failure:', generationError);
+      if (isOpenAIConfigurationError(generationError) || generationError instanceof AiGovernanceError) {
+        throw generationError;
+      }
+      return NextResponse.json(nonConclusiveAiFailure(generationError));
+    }
 
     const parsed = deliverableEligibilitySchema.safeParse(result.output);
     if (!parsed.success) {

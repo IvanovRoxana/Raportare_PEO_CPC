@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { validateEligibilitySuggestedSettings } from '../lib/deliverable-eligibility.ts';
+import { buildNonConclusiveAiFailure, validateEligibilitySuggestedSettings } from '../lib/deliverable-eligibility.ts';
 
 const activityCatalogCandidates = [
   {
@@ -85,4 +85,14 @@ test('nu pastreaza sugestii identice cu setarile curente', () => {
   });
 
   assert.equal(suggestion, undefined);
+});
+
+test('fallbackul pentru esec AI ramane raspuns neconcludent controlat', () => {
+  const fallback = buildNonConclusiveAiFailure('schema response failed');
+
+  assert.equal(fallback.status, 'neconcludent');
+  assert.equal(fallback.score, 0);
+  assert.equal(fallback.suggestedSettings, null);
+  assert.match(fallback.summary, /nu a putut fi finalizata/);
+  assert.match(fallback.riskFlags.join('\n'), /schema response failed/);
 });

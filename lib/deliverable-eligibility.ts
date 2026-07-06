@@ -101,3 +101,22 @@ export function validateEligibilitySuggestedSettings(input: {
 
   return output.changes.length > 0 ? output : undefined;
 }
+
+export function buildNonConclusiveAiFailure(reason: string) {
+  return {
+    status: 'neconcludent' as const,
+    score: 0,
+    summary: 'Verificarea AI nu a putut fi finalizata automat. Reincearca verificarea sau valideaza manual livrabilul.',
+    checks: [
+      {
+        criterion: 'Verificare AI',
+        status: 'unknown' as const,
+        explanation: reason,
+      },
+    ],
+    missingElements: [],
+    recommendations: ['Reincearca verificarea eligibilitatii dupa cateva momente sau valideaza manual livrabilul.'],
+    riskFlags: [`Verificarea AI a esuat: ${reason}`],
+    suggestedSettings: null,
+  };
+}
