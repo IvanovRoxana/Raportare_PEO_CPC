@@ -35,6 +35,10 @@ export interface RagChunk {
 export interface RagRetrievalRequest {
   deliverables: ActivityAutofillDeliverable[];
   catalogCandidates: ActivityAutofillCatalogCandidate[];
+  selectedActivityId?: string;
+  saCode: string;
+  activityName: string;
+  currentDescription: string;
   expertId?: string;
   expertName?: string;
   expertRole?: string;

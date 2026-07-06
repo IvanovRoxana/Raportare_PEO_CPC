@@ -35,6 +35,10 @@ export const activityAutofillCatalogCandidateSchema = z.object({
 export const activityAutofillRequestSchema = z.object({
   deliverables: z.array(activityAutofillDeliverableSchema).min(1),
   catalogCandidates: z.array(activityAutofillCatalogCandidateSchema).min(1),
+  selectedActivityId: z.string().optional(),
+  saCode: z.string().min(1),
+  activityName: z.string().min(1),
+  currentDescription: z.string().min(1),
   expertId: z.string().optional(),
   expertName: z.string().optional(),
   expertRole: z.string().optional(),
@@ -53,15 +57,9 @@ export const activityAutofillRequestSchema = z.object({
 });
 
 export const activityAutofillSuggestionSchema = z.object({
-  recommended: z.object({
-    saCode: z.string().min(1),
-    activityName: z.string().min(1),
-    description: z.string().min(20),
-  }),
+  description: z.string().min(20),
   confidence: z.enum(['high', 'medium', 'low']),
   fieldInstructions: z.object({
-    saCode: z.string().min(1),
-    activityName: z.string().min(1),
     description: z.string().min(1),
   }),
   evidence: z.array(z.string()),
@@ -185,6 +183,9 @@ function getCandidateSearchText(candidate: ActivityAutofillCatalogCandidate) {
 
 function getRequestSearchText(input: ActivityAutofillRequest) {
   return [
+    input.saCode,
+    input.activityName,
+    input.currentDescription,
     input.expertRole,
     input.category,
     input.knowledgeContext,
@@ -198,6 +199,14 @@ function getRequestSearchText(input: ActivityAutofillRequest) {
       deliverable.extractedText,
     ]),
   ].filter(Boolean).join(' ');
+}
+
+export function getSelectedCatalogCandidate(input: ActivityAutofillRequest) {
+  const normalizedSaCode = normalizeSaCode(input.saCode);
+  return input.catalogCandidates.find((candidate) => (
+    normalizeSaCode(candidate.saCode) === normalizedSaCode
+    && candidate.activityName === input.activityName
+  )) || null;
 }
 
 function scoreCatalogCandidate(candidate: ActivityAutofillCatalogCandidate, requestText: string, requestTokens: Set<string>) {
@@ -276,7 +285,7 @@ export function buildActivityAutofillCatalogShortlist(
 
 export function buildFallbackActivityAutofillSuggestion(input: ActivityAutofillRequest): ActivityAutofillSuggestion | null {
   const normalized = normalizeActivityAutofillRequest(input);
-  const candidate = scoreCatalogCandidates(normalized)[0]?.candidate;
+  const candidate = getSelectedCatalogCandidate(normalized) || scoreCatalogCandidates(normalized)[0]?.candidate;
   if (!candidate) return null;
 
   const deliverableLabels = normalized.deliverables
@@ -288,29 +297,24 @@ export function buildFallbackActivityAutofillSuggestion(input: ActivityAutofillR
     : 'livrabilul atasat';
   const saGuide = PA_SA_GUIDE[normalizeSaCode(candidate.saCode)]?.label || candidate.serviceCategory || 'activitatea selectata';
   const activityPurpose = candidate.description || candidate.objectives || candidate.serviceComponent || saGuide;
+  const currentDescription = trimText(normalized.currentDescription, 1400);
 
   return {
-    recommended: {
-      saCode: candidate.saCode,
-      activityName: candidate.activityName,
-      description: [
-        `Am analizat si am pregatit documentarea aferenta ${deliverableSummary}, incadrand activitatea in ${candidate.saCode} - ${candidate.activityName}.`,
-        `Activitatea a inclus verificarea continutului disponibil, corelarea acestuia cu obiectivul din catalog (${activityPurpose}) si pregatirea informatiilor necesare pentru raportarea lunara.`,
-        'Descrierea poate fi ajustata manual cu detalii suplimentare despre participanti, concluzii sau etape de lucru, daca acestea reies din documentul incarcat.',
-      ].join(' '),
-    },
+    description: [
+      currentDescription,
+      `In raport cu livrabilul ${deliverableSummary}, am detaliat activitatea prin verificarea continutului disponibil, corelarea acestuia cu obiectivul din catalog (${activityPurpose}) si pregatirea informatiilor necesare pentru raportarea lunara.`,
+      'Descrierea poate fi ajustata manual cu detalii suplimentare despre participanti, concluzii sau etape de lucru, numai daca acestea reies din documentul incarcat.',
+    ].filter(Boolean).join(' '),
     confidence: 'low',
     fieldInstructions: {
-      saCode: `Subactivitatea a fost aleasa automat din catalog pe baza potrivirii dintre livrabil si ${saGuide}.`,
-      activityName: `Activitatea "${candidate.activityName}" este cea mai apropiata optiune identificata local cand autocompletarea AI nu a raspuns.`,
       description: 'Revizuieste descrierea si completeaza numai cu informatii sustinute de livrabil.',
     },
     evidence: [
       `Livrabile analizate local: ${deliverableSummary}.`,
-      `Candidat catalog selectat: ${candidate.saCode} :: ${candidate.activityName}.`,
+      `Activitate selectata: ${candidate.saCode} :: ${candidate.activityName}.`,
     ],
     warnings: [
-      'Autocompletarea AI nu a raspuns; sugestia a fost generata local pe baza catalogului si trebuie verificata manual.',
+      'Descrierea asistata AI nu a raspuns; sugestia a fost generata local pe baza catalogului si trebuie verificata manual.',
     ],
   };
 }
@@ -349,6 +353,7 @@ export function buildActivityAutofillDeliverablesPayload(
 export function normalizeActivityAutofillRequest(input: ActivityAutofillRequest): ActivityAutofillRequest {
   return {
     ...input,
+    currentDescription: trimText(input.currentDescription, 3000),
     deliverables: input.deliverables
       .map((deliverable) => ({
         ...deliverable,
@@ -378,9 +383,7 @@ export function normalizeActivityAutofillRequest(input: ActivityAutofillRequest)
 
 export function buildActivityAutofillPrompt(input: ActivityAutofillRequest) {
   const normalized = normalizeActivityAutofillRequest(input);
-  const catalogPairs = normalized.catalogCandidates
-    .map((candidate) => `${candidate.saCode} :: ${candidate.activityName}`)
-    .join('\n');
+  const selectedCandidate = getSelectedCatalogCandidate(normalized);
   const ragPromptContext = normalized.internalRagContext?.promptContext || normalized.knowledgeContext;
   const ragSection = ragPromptContext
     ? `\nContext RAG intern (folosit doar pentru orientare, nu pentru inventare):\n${ragPromptContext}\n`
@@ -391,45 +394,40 @@ export function buildActivityAutofillPrompt(input: ActivityAutofillRequest) {
 
   return {
     system: `Esti un asistent specializat in redactarea Raportului de Activitate pentru un Expert / Responsabil Afaceri Publice in proiectul "Consolidarea capacitatii Concordia pentru dialog social" (PEO). Transformi livrabile, note, minute, agende, emailuri sintetizate, liste de sarcini, rapoarte preliminare sau rezumate de lucru in completari narative profesioniste, auditabile si fidele inputului. Nu inventa persoane, date, documente, rezultate sau contexte care nu apar in input ori nu rezulta direct si necesar din natura livrabilului. Returneaza doar JSON valid, fara text in afara JSON.`,
-    prompt: `Obiectiv: sugereaza subactivitatea, activitatea si descrierea activitatii pentru formularul "Adaugare Activitate".
+    prompt: `Obiectiv: rescrie doar descrierea activitatii pentru formularul "Adaugare Activitate".
 
 Reguli obligatorii pentru fiecare camp:
-- recommended.saCode: alege exact un cod din catalogCandidates. Nu inventa subactivitati si nu schimba codul.
-- recommended.activityName: alege exact denumirea unei activitati din catalogCandidates pentru subactivitatea aleasa. Nu reformula titlul.
-- recommended.description: redacteaza in romana, la persoana I singular, profesional, administrativ si suficient de detaliat pentru raportare. Foloseste paragrafe ample si coerente, doar pe baza documentelor, a logicii catalogului si a contextului RAG. Nu inventa participanti, functii, indicatori, rezultate decizionale, locatii sau ore.
-- fieldInstructions.saCode: explica de ce subactivitatea aleasa este compatibila cu documentele si cu logica activitatilor.
-- fieldInstructions.activityName: explica de ce activitatea aleasa este cea mai apropiata din catalog.
-- fieldInstructions.description: explica ce informatii din documente/catalog trebuie sa se regaseasca in descriere.
+- description: redacteaza in romana, la persoana I singular, profesional, administrativ si suficient de detaliat pentru raportare. Foloseste paragrafe ample si coerente, doar pe baza descrierii curente, documentelor, logicii catalogului si contextului RAG. Nu inventa participanti, functii, indicatori, rezultate decizionale, locatii sau ore.
+- fieldInstructions.description: explica ce informatii din descrierea curenta, documente si catalog au fost pastrate sau detaliate.
 - Daca documentele nu sustin clar alegerea, foloseste confidence "low" si pune avertisment explicit in warnings.
-- Nu propune modificari pentru ore, tip zi, locatie, colaborare, GDPR sau eligibilitatea livrabilelor.
-- Catalogul ramane sursa obligatorie pentru recommended.saCode si recommended.activityName.
-- Contextul RAG intern ajuta doar la alegerea dintre activitatile permise si la redactarea descrierii.
+- Nu propune modificari pentru subactivitate, activitate, ore, tip zi, locatie, colaborare, GDPR sau eligibilitatea livrabilelor.
+- Subactivitatea si activitatea sunt deja selectate de utilizator si sunt obligatorii. Nu le schimba si nu returna campuri pentru ele.
+- Contextul RAG intern ajuta doar la redactarea descrierii si la stilul raportarilor aprobate similare.
 - Daca sursele RAG contrazic orice element din catalog, catalogul are prioritate.
 - Poti inspira stilul descrierii din raportari aprobate, dar nu copia mecanic fragmente lungi.
 
 Ghid de incadrare AP/PA:
 ${paSaGuide}
 
-Reguli pentru selectarea activitatii:
-- Alege intai subactivitatea pe baza continutului real al livrabilului, nu pe baza unui singur cuvant izolat.
-- Daca livrabilul este newsletter, informare membri, analiza legislativa, document de pozitie, consultare publica, grup de lucru, sinteza, speaking points sau material suport pentru membri, trateaza cu prioritate SA3.4.
-- Daca livrabilul vizeaza infrastructura operationala, Business HUB, harta interactiva, baze de date, site sau mecanisme de functionare, trateaza cu prioritate SA3.2.
-- Daca livrabilul vizeaza recrutare, prospectare, afiliere sau integrarea orientata spre membri noi, trateaza cu prioritate SA3.3.
-- Daca livrabilul vizeaza UE, BusinessEurope, IOE, BIAC, schimb de bune practici sau interactiuni europene, trateaza cu prioritate SA3.5.
-- Daca exista dubiu intre doua activitati din aceeasi SA, alege activitatea cu cea mai apropiata denumire si descriere din catalogCandidates, apoi marcheaza confidence "medium" sau "low".
-
 Reguli pentru descrierea propusa:
 - Scrie un text complet, coerent, credibil, natural si auditabil.
+- Porneste de la descrierea curenta din formular si imbunatateste-o; nu o ignora decat daca este goala sau evident generica.
 - Include natural: ce am facut concret, pentru cine/ce structura am lucrat, scopul activitatii, etapele de lucru, rezultatul obtinut, livrabilul/documentul rezultat, tipul documentului si gradul de realizare, doar daca aceste elemente apar in input sau rezulta direct din natura livrabilului.
 - Daca utilizatorul indica mai multe zile in selectedDates, redacteaza cel putin un paragraf distinct pentru fiecare zi, in ordine cronologica, doar daca succesiunea este credibila pentru acel livrabil.
 - Daca inputul include doar un livrabil si datele lucrate, poti reconstrui prudent etape standard compatibile cu livrabilul: analiza, extragerea si structurarea informatiilor relevante, redactare, revizuire, consolidare, verificarea coerentei si pregatirea versiunii de lucru sau finale.
 - Nu crea artificial volum si nu adauga activitati neverosimile. Cand exista dubiu intre detaliere si fidelitate, fidelitatea fata de input are prioritate.
-- Evita bullets, liste, tabele, meta-explicatii, formule vagi sau repetitii. Outputul din recommended.description trebuie sa fie doar text narativ.
+- Evita bullets, liste, tabele, meta-explicatii, formule vagi sau repetitii. Outputul din description trebuie sa fie doar text narativ.
 - Daca informatia este suficienta, descrierea trebuie sa aiba de regula 900-1600 de caractere; daca informatia este limitata, redacteaza prudent dar nu schematic.
 - La final poti adauga 1-2 fraze prudente de legatura cu subactivitatea, de tip "Aceasta activitate a contribuit la...", doar daca legatura reiese clar.
 
-Activitati permise:
-${catalogPairs}
+Activitate selectata:
+${JSON.stringify({
+  selectedActivityId: normalized.selectedActivityId,
+  saCode: normalized.saCode,
+  activityName: normalized.activityName,
+  currentDescription: normalized.currentDescription,
+  catalog: selectedCandidate,
+}, null, 2)}
 
 Context:
 ${JSON.stringify({
@@ -443,23 +441,17 @@ ${JSON.stringify({
 }, null, 2)}
 ${ragSection}
 
-Catalog activitati:
-${JSON.stringify(normalized.catalogCandidates, null, 2)}
+Catalog activitate selectata:
+${JSON.stringify(selectedCandidate ? [selectedCandidate] : normalized.catalogCandidates, null, 2)}
 
 Livrabile analizate:
 ${JSON.stringify(normalized.deliverables, null, 2)}
 
 Returneaza strict JSON valid cu:
 {
-  "recommended": {
-    "saCode": "...",
-    "activityName": "...",
-    "description": "..."
-  },
+  "description": "...",
   "confidence": "high|medium|low",
   "fieldInstructions": {
-    "saCode": "...",
-    "activityName": "...",
     "description": "..."
   },
   "evidence": ["..."],
@@ -471,21 +463,17 @@ Returneaza strict JSON valid cu:
 export function validateActivityAutofillSuggestionAgainstCatalog(
   output: unknown,
   catalogCandidates: ActivityAutofillCatalogCandidate[],
+  request?: ActivityAutofillRequest,
 ) {
   const parsed = activityAutofillSuggestionSchema.safeParse(output);
   if (!parsed.success) {
     return { ok: false as const, error: 'Raspunsul AI nu respecta schema asteptata.' };
   }
 
-  const match = catalogCandidates.some((candidate) => (
-    normalizeSaCode(candidate.saCode) === normalizeSaCode(parsed.data.recommended.saCode)
-    && candidate.activityName === parsed.data.recommended.activityName
-  ));
-
-  if (!match) {
+  if (request && !getSelectedCatalogCandidate({ ...request, catalogCandidates })) {
     return {
       ok: false as const,
-      error: 'Raspunsul AI a propus o subactivitate sau activitate in afara catalogului disponibil.',
+      error: 'Activitatea selectata nu exista in catalogul disponibil.',
     };
   }
 

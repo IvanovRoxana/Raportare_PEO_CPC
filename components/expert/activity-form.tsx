@@ -448,8 +448,6 @@ export function ActivityForm({
   }, [businessHubContactPersonName, businessHubEntityOptions]);
   
   // Verification
-  const [isVerifyingTitle, setIsVerifyingTitle] = useState(false);
-  const [titleVerificationResult, setTitleVerificationResult] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const businessHubPvInputRef = useRef<HTMLInputElement>(null);
@@ -586,15 +584,15 @@ export function ActivityForm({
     expertId,
     expertName,
     month,
+    selectedActivityId: selectedCatalogItem?.id,
+    saCode,
+    activityName: activityTitle,
+    currentDescription: description,
     selectedDates,
-    setActivityTitle,
     setDescription,
-    setDeliverables,
-    setSaCode,
     year,
     onApplied: () => {
       lastAutoDescriptionRef.current = '__activity_autofill_applied__';
-      setTitleVerificationResult(null);
     },
   });
 
@@ -887,32 +885,6 @@ export function ActivityForm({
   const removeGrupTintaEntry = useCallback((id: string) => {
     setGrupTinta((prev) => prev.filter((g) => g.id !== id));
   }, []);
-
-  const verifyTitleWithAI = useCallback(async () => {
-    if (!activityTitle.trim()) return;
-
-    setIsVerifyingTitle(true);
-    setTitleVerificationResult(null);
-
-    try {
-      const response = await fetch('/api/ai/verify-title', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: activityTitle,
-          saCode,
-          description,
-        }),
-      });
-
-      const data = await response.json();
-      setTitleVerificationResult(data.result || data.error);
-    } catch {
-      setTitleVerificationResult('Eroare la verificarea titlului');
-    } finally {
-      setIsVerifyingTitle(false);
-    }
-  }, [activityTitle, description, saCode]);
 
   const dataUrlToBlob = useCallback((dataUrl: string, fallbackType: string) => {
     const [header, data] = dataUrl.split(',');
@@ -1798,7 +1770,7 @@ export function ActivityForm({
                   Porneste de la livrabil
                 </div>
                 <p className="mt-1 text-xs text-slate-600">
-                  Incarca sau ataseaza un livrabil existent, apoi foloseste AI pentru subactivitate, activitate si descriere. Completarea manuala ramane disponibila mai jos.
+                  Incarca sau ataseaza un livrabil existent, apoi selecteaza activitatea si foloseste AI-ul de descriere din formular.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -1809,19 +1781,6 @@ export function ActivityForm({
                 <Button type="button" variant="outline" size="sm" onClick={startDeliverableFlow}>
                   <Plus className="h-4 w-4 mr-1" />
                   Adauga livrabil
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={handleSuggestActivityFromDeliverables}
-                  disabled={isAutofillingActivity}
-                >
-                  {isAutofillingActivity ? (
-                    <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                  ) : (
-                    <Sparkles className="h-4 w-4 mr-1" />
-                  )}
-                  Autocompletare cu AI
                 </Button>
               </div>
             </div>
@@ -2176,123 +2135,6 @@ export function ActivityForm({
                     })}
                   </div>
 
-                  <div className="mt-4 rounded-md border border-slate-200 bg-white p-3">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <div className="text-sm font-medium text-slate-900">Autocompletare activitate</div>
-                        <div className="text-xs text-slate-600">
-                          Sugereaza subactivitatea, activitatea si descrierea pe baza tuturor livrabilelor citite.
-                        </div>
-                      </div>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={handleSuggestActivityFromDeliverables}
-                        disabled={isAutofillingActivity}
-                      >
-                        {isAutofillingActivity ? (
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        ) : (
-                          <Sparkles className="h-4 w-4 mr-2" />
-                        )}
-                        Autocompletare
-                      </Button>
-                    </div>
-
-                    {!isWorkspaceLayout && activityAutofillError && (
-                      <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
-                        {activityAutofillError}
-                      </div>
-                    )}
-
-                    {activityAutofillSuggestion && (
-                      <div className="mt-3 space-y-3 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-950">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div className="font-medium">Sugestie pregatita pentru revizuire</div>
-                          <div className="flex flex-wrap gap-1.5">
-                            <Badge variant="outline" className="border-emerald-300 bg-white text-[10px] text-emerald-800">
-                              {getAutofillConfidenceLabel(activityAutofillSuggestion.confidence)}
-                            </Badge>
-                            <Badge variant="outline" className="border-emerald-300 bg-white text-[10px] text-emerald-800">
-                              {getAutofillRagLabel(activityAutofillSuggestion)}
-                            </Badge>
-                          </div>
-                        </div>
-                        <div className="grid gap-2 md:grid-cols-2">
-                          <div>
-                            <div className="text-xs font-medium text-emerald-800">Subactivitate</div>
-                            <div>{activityAutofillSuggestion.recommended.saCode}</div>
-                          </div>
-                          <div>
-                            <div className="text-xs font-medium text-emerald-800">Activitate</div>
-                            <div>{activityAutofillSuggestion.recommended.activityName}</div>
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-xs font-medium text-emerald-800">Descriere propusa</div>
-                          <div className="mt-1 whitespace-pre-wrap rounded border border-emerald-200 bg-white p-2 text-xs text-slate-800">
-                            {activityAutofillSuggestion.recommended.description}
-                          </div>
-                        </div>
-                        {(activityAutofillSuggestion.evidence.length > 0 || activityAutofillSuggestion.warnings.length > 0) && (
-                          <div className="grid gap-2 md:grid-cols-2">
-                            {activityAutofillSuggestion.evidence.length > 0 && (
-                              <div className="rounded border border-emerald-200 bg-white p-2 text-xs text-slate-800">
-                                <div className="font-medium text-emerald-800">Dovezi folosite</div>
-                                <ul className="mt-1 list-disc space-y-1 pl-4">
-                                  {activityAutofillSuggestion.evidence.slice(0, 4).map((item, index) => (
-                                    <li key={`activity-autofill-evidence-${index}`}>{item}</li>
-                                  ))}
-                                </ul>
-                              </div>
-                            )}
-                            {activityAutofillSuggestion.warnings.length > 0 && (
-                              <div className="rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
-                                <div className="font-medium">Atentionari</div>
-                                <ul className="mt-1 list-disc space-y-1 pl-4">
-                                  {activityAutofillSuggestion.warnings.slice(0, 4).map((item, index) => (
-                                    <li key={`activity-autofill-warning-${index}`}>{item}</li>
-                                  ))}
-                                </ul>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                        {activityAutofillSuggestion.rag && (
-                          <div className="rounded border border-emerald-200 bg-white p-2 text-xs text-slate-800">
-                            <div className="font-medium text-emerald-800">Context RAG</div>
-                            {activityAutofillSuggestion.rag.warnings.length > 0 && (
-                              <div className="mt-1 text-amber-700">
-                                {activityAutofillSuggestion.rag.warnings.join(' ')}
-                              </div>
-                            )}
-                            {activityAutofillSuggestion.rag.sources.length > 0 ? (
-                              <ul className="mt-1 list-disc space-y-1 pl-4">
-                                {activityAutofillSuggestion.rag.sources.map((source) => (
-                                  <li key={`activity-autofill-rag-source-${source.rank}`}>
-                                    #{source.rank} ({Math.round(source.score * 100)}%) {formatAutofillRagSource(source)}
-                                  </li>
-                                ))}
-                              </ul>
-                            ) : (
-                              <div className="mt-1 text-slate-600">Nu au fost returnate fragmente RAG pentru aceasta sugestie.</div>
-                            )}
-                          </div>
-                        )}
-                        <div className="flex justify-end gap-2">
-                          <Button type="button" variant="outline" size="sm" onClick={dismissActivityAutofillSuggestion}>
-                            Renunta
-                          </Button>
-                          <Button type="button" size="sm" onClick={applyActivityAutofillSuggestion}>
-                            <CheckCircle className="h-4 w-4 mr-2" />
-                            Aplica sugestia
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
                   <input
                     ref={fileInputRef}
                     type="file"
@@ -2355,27 +2197,7 @@ export function ActivityForm({
                 {/* Activity from catalog */}
                 {!isGdprExpert && (
                   <Field>
-                    <div className="flex items-center justify-between">
-                      <FieldLabel htmlFor="activity">Activitate</FieldLabel>
-                      {activityTitle && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={verifyTitleWithAI}
-                          disabled={isVerifyingTitle}
-                        >
-                          {isVerifyingTitle ? (
-                            <>
-                              <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                              Verificare...
-                            </>
-                          ) : (
-                            'Verifica cu AI'
-                          )}
-                        </Button>
-                      )}
-                    </div>
+                    <FieldLabel htmlFor="activity">Activitate</FieldLabel>
                     <Select value={activityTitle} onValueChange={setActivityTitle} disabled={!saCode || availableActivities.length === 0}>
                       <SelectTrigger id="activity">
                         <SelectValue placeholder={!saCode ? "Selecteaza SA mai intai" : "Selecteaza activitatea"} />
@@ -2393,11 +2215,6 @@ export function ActivityForm({
                     {selectedCatalogItem && (
                       <p className="text-xs text-muted-foreground mt-1">
                         {selectedCatalogItem.serviceCategory} - {selectedCatalogItem.description}
-                      </p>
-                    )}
-                    {titleVerificationResult && (
-                      <p className="text-sm text-muted-foreground mt-1 p-2 bg-muted rounded">
-                        {titleVerificationResult}
                       </p>
                     )}
                   </Field>
@@ -2436,6 +2253,112 @@ export function ActivityForm({
                   Specifica contributia ta individuala.
                 </div>
               )}
+              <div className="mt-3 rounded-md border border-slate-200 bg-white p-3">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-medium text-slate-900">Descriere asistata AI</div>
+                    <div className="text-xs text-slate-600">
+                      Foloseste descrierea curenta, activitatea selectata si livrabilele citite.
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleSuggestActivityFromDeliverables}
+                    disabled={isAutofillingActivity}
+                  >
+                    {isAutofillingActivity ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Sparkles className="h-4 w-4 mr-2" />
+                    )}
+                    Rescrie descrierea
+                  </Button>
+                </div>
+
+                {!isWorkspaceLayout && activityAutofillError && (
+                  <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
+                    {activityAutofillError}
+                  </div>
+                )}
+
+                {activityAutofillSuggestion && (
+                  <div className="mt-3 space-y-3 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-950">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="font-medium">Descriere pregatita pentru revizuire</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        <Badge variant="outline" className="border-emerald-300 bg-white text-[10px] text-emerald-800">
+                          {getAutofillConfidenceLabel(activityAutofillSuggestion.confidence)}
+                        </Badge>
+                        <Badge variant="outline" className="border-emerald-300 bg-white text-[10px] text-emerald-800">
+                          {getAutofillRagLabel(activityAutofillSuggestion)}
+                        </Badge>
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs font-medium text-emerald-800">Descriere propusa</div>
+                      <div className="mt-1 whitespace-pre-wrap rounded border border-emerald-200 bg-white p-2 text-xs text-slate-800">
+                        {activityAutofillSuggestion.description}
+                      </div>
+                    </div>
+                    {(activityAutofillSuggestion.evidence.length > 0 || activityAutofillSuggestion.warnings.length > 0) && (
+                      <div className="grid gap-2 md:grid-cols-2">
+                        {activityAutofillSuggestion.evidence.length > 0 && (
+                          <div className="rounded border border-emerald-200 bg-white p-2 text-xs text-slate-800">
+                            <div className="font-medium text-emerald-800">Dovezi folosite</div>
+                            <ul className="mt-1 list-disc space-y-1 pl-4">
+                              {activityAutofillSuggestion.evidence.slice(0, 4).map((item, index) => (
+                                <li key={`activity-description-ai-evidence-${index}`}>{item}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        {activityAutofillSuggestion.warnings.length > 0 && (
+                          <div className="rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
+                            <div className="font-medium">Atentionari</div>
+                            <ul className="mt-1 list-disc space-y-1 pl-4">
+                              {activityAutofillSuggestion.warnings.slice(0, 4).map((item, index) => (
+                                <li key={`activity-description-ai-warning-${index}`}>{item}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {activityAutofillSuggestion.rag && (
+                      <div className="rounded border border-emerald-200 bg-white p-2 text-xs text-slate-800">
+                        <div className="font-medium text-emerald-800">Context RAG</div>
+                        {activityAutofillSuggestion.rag.warnings.length > 0 && (
+                          <div className="mt-1 text-amber-700">
+                            {activityAutofillSuggestion.rag.warnings.join(' ')}
+                          </div>
+                        )}
+                        {activityAutofillSuggestion.rag.sources.length > 0 ? (
+                          <ul className="mt-1 list-disc space-y-1 pl-4">
+                            {activityAutofillSuggestion.rag.sources.map((source) => (
+                              <li key={`activity-description-ai-rag-source-${source.rank}`}>
+                                #{source.rank} ({Math.round(source.score * 100)}%) {formatAutofillRagSource(source)}
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <div className="mt-1 text-slate-600">Nu au fost returnate fragmente RAG pentru aceasta sugestie.</div>
+                        )}
+                      </div>
+                    )}
+                    <div className="flex justify-end gap-2">
+                      <Button type="button" variant="outline" size="sm" onClick={dismissActivityAutofillSuggestion}>
+                        Renunta
+                      </Button>
+                      <Button type="button" size="sm" onClick={applyActivityAutofillSuggestion}>
+                        <CheckCircle className="h-4 w-4 mr-2" />
+                        Aplica descrierea
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </Field>
             )}
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { fetchAuthSession } from 'aws-amplify/auth';
 import {
   buildActivityAutofillDeliverablesPayload,
@@ -19,11 +19,12 @@ interface UseActivityAutofillParams {
   expertId: string;
   expertName: string;
   month: number;
+  selectedActivityId?: string;
+  saCode: string;
+  activityName: string;
+  currentDescription: string;
   selectedDates: string[];
-  setActivityTitle: (value: string) => void;
   setDescription: (value: string) => void;
-  setDeliverables: Dispatch<SetStateAction<DeliverableSlot[]>>;
-  setSaCode: (value: string) => void;
   year: number;
   onApplied?: (suggestion: ActivityAutofillSuggestion) => void;
 }
@@ -44,15 +45,15 @@ async function readJsonResponse(response: Response) {
   if (!text.trim()) {
     throw new Error(
       response.ok
-        ? 'Serverul nu a returnat un raspuns pentru autocompletare.'
-        : `Autocompletarea a esuat fara detalii de la server (${response.status}).`,
+        ? 'Serverul nu a returnat un raspuns pentru descrierea asistata.'
+        : `Descrierea asistata a esuat fara detalii de la server (${response.status}).`,
     );
   }
 
   try {
     return JSON.parse(text);
   } catch {
-    throw new Error(`Raspuns invalid de la server pentru autocompletare (${response.status}).`);
+    throw new Error(`Raspuns invalid de la server pentru descrierea asistata (${response.status}).`);
   }
 }
 
@@ -68,10 +69,12 @@ export function useActivityAutofill({
   expertId,
   expertName,
   month,
+  selectedActivityId,
+  saCode,
+  activityName,
+  currentDescription,
   selectedDates,
-  setActivityTitle,
   setDescription,
-  setSaCode,
   year,
   onApplied,
 }: UseActivityAutofillParams) {
@@ -116,10 +119,14 @@ export function useActivityAutofill({
   ), [catalog]);
 
   const unavailableMessage = autofillDeliverables.length === 0
-    ? 'Incarca un PDF/DOC/DOCX sau o imagine scanata; aplicatia va extrage textul nativ sau OCR pentru autocompletare.'
-    : catalogCandidates.length === 0
-      ? 'Nu exista activitati de catalog disponibile pentru rolul curent.'
-      : null;
+    ? 'Incarca un PDF/DOC/DOCX sau o imagine scanata; aplicatia va extrage textul nativ sau OCR pentru descrierea asistata.'
+    : !saCode || !activityName
+      ? 'Selecteaza subactivitatea si activitatea inainte de rescrierea descrierii cu AI.'
+      : !currentDescription.trim()
+        ? 'Descrierea curenta este goala. Selecteaza activitatea pentru a prelua descrierea standard sau completeaza un draft.'
+        : catalogCandidates.length === 0
+          ? 'Nu exista activitati de catalog disponibile pentru rolul curent.'
+          : null;
 
   const suggest = useCallback(async () => {
     if (unavailableMessage) {
@@ -139,6 +146,10 @@ export function useActivityAutofill({
         body: JSON.stringify({
           deliverables: autofillDeliverables,
           catalogCandidates,
+          selectedActivityId,
+          saCode,
+          activityName,
+          currentDescription,
           expertName,
           expertId,
           expertRole: expert?.positionInProject || expert?.role,
@@ -156,6 +167,10 @@ export function useActivityAutofill({
           const fallback = buildFallbackActivityAutofillSuggestion({
             deliverables: autofillDeliverables,
             catalogCandidates,
+            selectedActivityId,
+            saCode,
+            activityName,
+            currentDescription,
             expertName,
             expertId,
             expertRole: expert?.positionInProject || expert?.role,
@@ -170,12 +185,12 @@ export function useActivityAutofill({
             return;
           }
         }
-        throw new Error(data.error || 'Autocompletarea activitatii a esuat.');
+        throw new Error(data.error || 'Rescrierea descrierii a esuat.');
       }
 
       setSuggestion(data);
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : 'Eroare la autocompletarea activitatii.');
+      setError(caughtError instanceof Error ? caughtError.message : 'Eroare la rescrierea descrierii.');
     } finally {
       setIsLoading(false);
     }
@@ -185,6 +200,10 @@ export function useActivityAutofill({
     expert,
     expertId,
     expertName,
+    selectedActivityId,
+    saCode,
+    activityName,
+    currentDescription,
     month,
     selectedDates,
     unavailableMessage,
@@ -201,43 +220,41 @@ export function useActivityAutofill({
         headers,
         body: JSON.stringify({
           modelAuditId: appliedSuggestion.modelAuditId,
-          finalSaCode: appliedSuggestion.recommended.saCode,
-          finalActivityName: appliedSuggestion.recommended.activityName,
-          finalDescriptionPreview: appliedSuggestion.recommended.description.slice(0, 500),
+          finalSaCode: saCode,
+          finalActivityName: activityName,
+          finalDescriptionPreview: appliedSuggestion.description.slice(0, 500),
         }),
       });
     })().catch((caughtError) => {
       console.warn('Nu s-a putut marca auditul AI ca aplicat.', caughtError);
     });
-  }, []);
+  }, [activityName, saCode]);
 
   const apply = useCallback(() => {
     if (!suggestion) return;
 
     const catalogMatch = catalogCandidates.find((candidate) => (
-      candidate.saCode === suggestion.recommended.saCode
-      && candidate.activityName === suggestion.recommended.activityName
+      candidate.saCode === saCode
+      && candidate.activityName === activityName
     ));
 
     if (!catalogMatch) {
-      setError('Sugestia nu mai exista in catalogul disponibil pentru rolul curent.');
+      setError('Activitatea selectata nu mai exista in catalogul disponibil pentru rolul curent.');
       return;
     }
 
-    setSaCode(suggestion.recommended.saCode);
-    setActivityTitle(suggestion.recommended.activityName);
-    setDescription(suggestion.recommended.description);
+    setDescription(suggestion.description);
     setError(null);
     setSuggestion(null);
     onApplied?.(suggestion);
     markSuggestionApplied(suggestion);
   }, [
     catalogCandidates,
+    saCode,
+    activityName,
     markSuggestionApplied,
     onApplied,
-    setActivityTitle,
     setDescription,
-    setSaCode,
     suggestion,
   ]);
 

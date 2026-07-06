@@ -34,7 +34,14 @@ const catalogCandidates: ActivityAutofillCatalogCandidate[] = [
   },
 ];
 
-test('payloadul pentru autocompletare include toate livrabilele cu text si le ignora pe cele fara text', () => {
+const selectedActivityContext = {
+  selectedActivityId: 'cat-1',
+  saCode: 'SA1.1',
+  activityName: 'Analiza documente de politici publice',
+  currentDescription: 'Analiza documentelor relevante pentru dialog social.',
+};
+
+test('payloadul pentru descriere asistata include toate livrabilele cu text si le ignora pe cele fara text', () => {
   const payload = buildActivityAutofillDeliverablesPayload([
     {
       id: 'doc-1',
@@ -67,7 +74,7 @@ test('payloadul pentru autocompletare include toate livrabilele cu text si le ig
   assert.equal(payload[1].textScope, 'Prima pagina / inceputul documentului');
 });
 
-test('promptul cere instructiuni clare pentru fiecare linie completata din formular', () => {
+test('promptul cere doar rescrierea descrierii activitatii', () => {
   const { prompt } = buildActivityAutofillPrompt({
     deliverables: [
       {
@@ -77,6 +84,7 @@ test('promptul cere instructiuni clare pentru fiecare linie completata din formu
       },
     ],
     catalogCandidates,
+    ...selectedActivityContext,
     expertName: 'Expert Test',
     expertRole: 'Expert politici publice',
     projectCode: '302141',
@@ -85,11 +93,11 @@ test('promptul cere instructiuni clare pentru fiecare linie completata din formu
     selectedDates: ['2026-06-10'],
   });
 
-  assert.match(prompt, /recommended\.saCode/);
-  assert.match(prompt, /recommended\.activityName/);
-  assert.match(prompt, /recommended\.description/);
-  assert.match(prompt, /fieldInstructions\.saCode/);
-  assert.match(prompt, /fieldInstructions\.activityName/);
+  assert.match(prompt, /rescrie doar descrierea/);
+  assert.match(prompt, /currentDescription/);
+  assert.match(prompt, /Analiza documentelor relevante/);
+  assert.doesNotMatch(prompt, /recommended\.saCode/);
+  assert.doesNotMatch(prompt, /recommended\.activityName/);
   assert.match(prompt, /fieldInstructions\.description/);
   assert.match(prompt, /persoana I singular/);
   assert.match(prompt, /Ghid de incadrare AP\/PA/);
@@ -105,6 +113,7 @@ test('promptul include context RAG doar cand este furnizat', () => {
       },
     ],
     catalogCandidates,
+    ...selectedActivityContext,
     expertName: 'Expert Test',
   };
 
@@ -121,7 +130,7 @@ test('promptul include context RAG doar cand este furnizat', () => {
   assert.match(withRag.prompt, /context aprobat/);
 });
 
-test('validarea respinge sugestiile care nu exista exact in catalog', () => {
+test('validarea respinge raspunsurile care incearca sa propuna activitatea', () => {
   const result = validateActivityAutofillSuggestionAgainstCatalog(
     {
       recommended: {
@@ -139,55 +148,60 @@ test('validarea respinge sugestiile care nu exista exact in catalog', () => {
       warnings: [],
     },
     catalogCandidates,
+    {
+      deliverables: [],
+      catalogCandidates,
+      ...selectedActivityContext,
+    },
   );
 
   assert.equal(result.ok, false);
 });
 
-test('validarea accepta sugestiile care corespund unei activitati din catalog', () => {
+test('validarea accepta descrierea pentru activitatea selectata din catalog', () => {
   const result = validateActivityAutofillSuggestionAgainstCatalog(
     {
-      recommended: {
-        saCode: 'SA1.1',
-        activityName: 'Analiza documente de politici publice',
-        description: 'Am analizat documentele de politici publice si am sintetizat recomandarile relevante.',
-      },
+      description: 'Am analizat documentele de politici publice si am sintetizat recomandarile relevante.',
       confidence: 'medium',
       fieldInstructions: {
-        saCode: 'Documentul se incadreaza in SA1.1.',
-        activityName: 'Activitatea corespunde analizei documentare.',
         description: 'Descrierea include actiunea si rezultatul documentat.',
       },
       evidence: ['Livrabilul este un raport de analiza.'],
       warnings: ['Revizuieste formularea finala inainte de salvare.'],
     },
     catalogCandidates,
+    {
+      deliverables: [],
+      catalogCandidates,
+      ...selectedActivityContext,
+    },
   );
 
   assert.equal(result.ok, true);
 });
 
-test('validarea accepta coduri SA echivalente dupa normalizare', () => {
+test('validarea respinge cand activitatea selectata nu exista in catalog', () => {
   const result = validateActivityAutofillSuggestionAgainstCatalog(
     {
-      recommended: {
-        saCode: 'SA 1.1',
-        activityName: 'Analiza documente de politici publice',
-        description: 'Am analizat documentele de politici publice si am sintetizat recomandarile relevante.',
-      },
+      description: 'Am analizat documentele de politici publice si am sintetizat recomandarile relevante.',
       confidence: 'medium',
       fieldInstructions: {
-        saCode: 'Documentul se incadreaza in SA1.1.',
-        activityName: 'Activitatea corespunde analizei documentare.',
         description: 'Descrierea include actiunea si rezultatul documentat.',
       },
       evidence: ['Livrabilul este un raport de analiza.'],
       warnings: [],
     },
     catalogCandidates,
+    {
+      deliverables: [],
+      catalogCandidates,
+      ...selectedActivityContext,
+      saCode: 'SA9.9',
+      activityName: 'Activitate inventata',
+    },
   );
 
-  assert.equal(result.ok, true);
+  assert.equal(result.ok, false);
 });
 
 test('shortlistul favorizeaza activitatea cea mai apropiata de livrabil', () => {
@@ -223,13 +237,17 @@ test('shortlistul favorizeaza activitatea cea mai apropiata de livrabil', () => 
       },
     ],
     catalogCandidates: candidates,
+    selectedActivityId: 'cat-1',
+    saCode: 'SA3.4',
+    activityName: 'Redactare Newsletter lunar CPC',
+    currentDescription: 'Newsletter si informari pentru membri.',
     expertRole: 'Expert Afaceri Publice',
   }, 1);
 
   assert.equal(shortlist[0].activityName, 'Redactare Newsletter lunar CPC');
 });
 
-test('fallbackul local propune o activitate AP pentru Andreea cand AI nu raspunde', () => {
+test('fallbackul local rescrie prudent descrierea fara sa schimbe activitatea selectata', () => {
   const candidates: ActivityAutofillCatalogCandidate[] = [
     {
       id: 'cat-1',
@@ -256,6 +274,10 @@ test('fallbackul local propune o activitate AP pentru Andreea cand AI nu raspund
       },
     ],
     catalogCandidates: candidates,
+    selectedActivityId: 'cat-2',
+    saCode: 'SA3.4',
+    activityName: 'Organizare eveniment / masa rotunda / dezbatere',
+    currentDescription: 'Organizarea de evenimente si mese rotunde cu stakeholderi pe teme economice si sociale.',
     expertName: 'Andreea Cojocaru',
     expertRole: 'Expert Afaceri Publice',
     category: 'ap',
@@ -265,7 +287,8 @@ test('fallbackul local propune o activitate AP pentru Andreea cand AI nu raspund
     selectedDates: ['2026-06-15'],
   });
 
-  assert.equal(fallback?.recommended.activityName, 'Organizare eveniment / masa rotunda / dezbatere');
+  assert.match(fallback?.description || '', /Organizarea de evenimente/);
+  assert.match(fallback?.evidence.join('\n') || '', /SA3.4 :: Organizare eveniment/);
   assert.equal(fallback?.confidence, 'low');
   assert.match(fallback?.warnings.join('\n') || '', /generata local/);
 });

@@ -50,6 +50,10 @@ test('retrieval fallback returns empty context when RAG is disabled', async () =
         activityName: 'Activitate PA',
       },
     ],
+    selectedActivityId: 'cat-1',
+    saCode: 'SA1.1',
+    activityName: 'Activitate PA',
+    currentDescription: 'Descriere curenta pentru activitatea PA.',
   });
 
   assert.equal(result.enabled, false);

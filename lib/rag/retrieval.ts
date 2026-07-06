@@ -9,7 +9,6 @@ import { cosineSimilarity, generateEmbedding, getRagEmbeddingModelName, parseEmb
 import type { RagAuthContext, RagRetrievalRequest, RagRetrievalResult } from './types.ts';
 
 const MAX_QUERY_CHARS = 5000;
-const MAX_CANDIDATES_FOR_QUERY = 12;
 const MAX_CHUNKS_TO_SCORE = 900;
 const DEFAULT_TOP_K = 8;
 const DEFAULT_RETRIEVAL_TIMEOUT_MS = 5500;
@@ -52,17 +51,20 @@ export function buildActivityAutofillRagQuery(request: RagRetrievalRequest) {
     ].filter(Boolean).join('\n'))
     .join('\n\n');
 
-  const catalogText = request.catalogCandidates
-    .slice(0, MAX_CANDIDATES_FOR_QUERY)
-    .map((candidate) => [
-      candidate.saCode,
-      candidate.activityName,
-      candidate.description,
-      candidate.objectives,
-      candidate.deliverables,
-      candidate.indicators,
-    ].filter(Boolean).join(' | '))
-    .join('\n');
+  const selectedCatalog = request.catalogCandidates.find((candidate) => (
+    candidate.saCode === request.saCode && candidate.activityName === request.activityName
+  ));
+
+  const catalogText = [
+    request.selectedActivityId,
+    request.saCode,
+    request.activityName,
+    request.currentDescription,
+    selectedCatalog?.description,
+    selectedCatalog?.objectives,
+    selectedCatalog?.deliverables,
+    selectedCatalog?.indicators,
+  ].filter(Boolean).join(' | ');
 
   return normalizeRagText([
     `Expert: ${request.expertName ?? ''}`,
@@ -72,7 +74,7 @@ export function buildActivityAutofillRagQuery(request: RagRetrievalRequest) {
     `Luna/an: ${request.month ?? ''}/${request.year ?? ''}`,
     'Livrabile:',
     deliverableText,
-    'Catalog candidat:',
+    'Activitate selectata:',
     catalogText,
   ].join('\n')).slice(0, MAX_QUERY_CHARS);
 }
@@ -106,15 +108,7 @@ function activeChunkFilter(category?: string, extra: Record<string, unknown> = {
 }
 
 function getCandidateSaCodes(request: RagRetrievalRequest) {
-  const seen = new Set<string>();
-  const values: string[] = [];
-  request.catalogCandidates.forEach((candidate) => {
-    const value = candidate.saCode?.trim();
-    if (!value || seen.has(value)) return;
-    seen.add(value);
-    values.push(value);
-  });
-  return values.slice(0, 6);
+  return request.saCode?.trim() ? [request.saCode.trim()] : [];
 }
 
 function addUniqueCandidates(
@@ -303,7 +297,7 @@ export async function retrieveActivityAutofillContext(
       enabled: true,
       skippedReason: 'retrieval_failed',
       chunks: [],
-      warnings: ['Retrieval RAG indisponibil; autocompletarea a continuat fara context RAG.'],
+      warnings: ['Retrieval RAG indisponibil; descrierea asistata a continuat fara context RAG.'],
     };
   }
 }

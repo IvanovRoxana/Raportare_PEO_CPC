@@ -6,8 +6,8 @@ import { isActivityAutofillRagAuditEnabled } from '@/lib/feature-flags';
 import {
   activityAutofillRequestSchema,
   activityAutofillSuggestionSchema,
-  buildActivityAutofillCatalogShortlist,
   buildActivityAutofillPrompt,
+  getSelectedCatalogCandidate,
   normalizeActivityAutofillRequest,
   validateActivityAutofillSuggestionAgainstCatalog,
 } from '@/lib/activity-autofill';
@@ -26,7 +26,7 @@ function uniqueMessages(messages: string[]) {
 
 function buildRagResponse(retrieval: RagRetrievalResult, authToken: string) {
   const authWarnings = retrieval.enabled && !authToken
-    ? ['RAG intern nu a putut fi citit fara sesiunea Cognito a utilizatorului; autocompletarea a continuat fara context RAG.']
+    ? ['RAG intern nu a putut fi citit fara sesiunea Cognito a utilizatorului; descrierea asistata a continuat fara context RAG.']
     : [];
 
   return {
@@ -58,7 +58,7 @@ export async function POST(req: Request) {
     if (!parsed.success) {
       return NextResponse.json(
         {
-          error: 'Cererea de autocompletare nu contine livrabile si catalog valide.',
+          error: 'Cererea de descriere asistata nu contine livrabile, descriere si catalog valide.',
           issues: parsed.error.flatten(),
         },
         { status: 400 },
@@ -69,7 +69,13 @@ export async function POST(req: Request) {
     const authToken = getCognitoAccessTokenFromRequest(req, { allowAuthorizationHeader: true });
     if (request.deliverables.length === 0) {
       return NextResponse.json(
-        { error: 'Nu exista text extras din livrabile pentru autocompletare.' },
+        { error: 'Nu exista text extras din livrabile pentru descrierea asistata.' },
+        { status: 400 },
+      );
+    }
+    if (!getSelectedCatalogCandidate(request)) {
+      return NextResponse.json(
+        { error: 'Activitatea selectata nu exista in catalogul disponibil pentru rolul curent.' },
         { status: 400 },
       );
     }
@@ -87,10 +93,10 @@ export async function POST(req: Request) {
           internalRagContext: ragContext,
         })
       : request;
-    const shortlistedCatalogCandidates = buildActivityAutofillCatalogShortlist(contextRequest);
+    const selectedCandidate = getSelectedCatalogCandidate(contextRequest);
     const promptRequest = normalizeActivityAutofillRequest({
       ...contextRequest,
-      catalogCandidates: shortlistedCatalogCandidates,
+      catalogCandidates: selectedCandidate ? [selectedCandidate] : contextRequest.catalogCandidates,
     });
 
     const { system, prompt } = buildActivityAutofillPrompt(promptRequest);
@@ -121,6 +127,7 @@ export async function POST(req: Request) {
     const suggestion = validateActivityAutofillSuggestionAgainstCatalog(
       result.output,
       promptRequest.catalogCandidates,
+      promptRequest,
     );
 
     if (!suggestion.ok) {
@@ -147,7 +154,7 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({
-      recommended: suggestion.data.recommended,
+      description: suggestion.data.description,
       confidence: suggestion.data.confidence,
       fieldInstructions: suggestion.data.fieldInstructions,
       evidence: suggestion.data.evidence,
@@ -156,7 +163,7 @@ export async function POST(req: Request) {
       modelAuditId: result.auditId,
     });
   } catch (error) {
-    console.error('Error suggesting activity from deliverables:', error);
-    return aiErrorResponse(error, 'Eroare la autocompletarea activitatii din livrabile');
+    console.error('Error rewriting activity description from deliverables:', error);
+    return aiErrorResponse(error, 'Eroare la rescrierea descrierii din livrabile');
   }
 }
