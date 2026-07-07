@@ -769,6 +769,10 @@ export function ActivityForm({
     needsExtendedDesc ? 'Pentru evenimente cu ore peste durata evenimentului, completeaza descrierea extinsa.' : null,
   ].filter((message): message is string => Boolean(message));
   const isSaveDisabled = saveBlockers.length > 0;
+  const footerValidationMessage = validationError || saveBlockers[0] || null;
+  const footerAdditionalBlockersCount = validationError
+    ? saveBlockers.length
+    : Math.max(0, saveBlockers.length - 1);
 
   // Update activity when SA changes
   useEffect(() => {
@@ -2964,23 +2968,39 @@ export function ActivityForm({
         )}
 
         {/* Actions */}
-        <div className={isWorkspaceLayout ? 'sticky bottom-0 z-10 -mx-4 -mb-4 flex flex-col-reverse gap-2 border-t bg-white/95 px-4 py-3 shadow-[0_-10px_24px_rgba(15,23,42,0.08)] backdrop-blur sm:-mx-6 sm:-mb-6 sm:flex-row sm:justify-end sm:px-6' : 'flex justify-end gap-2 pt-4 border-t'}>
-          <Button type="button" variant="outline" onClick={onCancel} className={isWorkspaceLayout ? 'w-full sm:w-auto' : undefined}>
-            Anuleaza
-          </Button>
-          <Button 
-            type="button" 
-            onClick={handleSave} 
-            disabled={isSaveDisabled}
-            className={isWorkspaceLayout ? 'w-full sm:w-auto' : undefined}
-          >
-            {isSaving ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Se salveaza...
-              </>
-            ) : initialActivity ? 'Salveaza modificarile' : 'Adauga activitate'}
-          </Button>
+        <div className={isWorkspaceLayout ? 'sticky bottom-0 z-10 -mx-4 -mb-4 flex flex-col gap-3 border-t bg-white/95 px-4 py-3 shadow-[0_-10px_24px_rgba(15,23,42,0.08)] backdrop-blur sm:-mx-6 sm:-mb-6 sm:flex-row sm:items-center sm:justify-between sm:px-6' : 'flex justify-end gap-2 pt-4 border-t'}>
+          {isWorkspaceLayout && footerValidationMessage && !isSaving ? (
+            <div className="flex min-w-0 items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 sm:max-w-[min(720px,calc(100%-220px))]">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+              <div className="min-w-0">
+                <span className="font-medium">Nu se poate salva inca: </span>
+                <span>{footerValidationMessage}</span>
+                {footerAdditionalBlockersCount > 0 && (
+                  <span className="text-amber-800"> Inca {footerAdditionalBlockersCount} {footerAdditionalBlockersCount === 1 ? 'motiv' : 'motive'}.</span>
+                )}
+              </div>
+            </div>
+          ) : isWorkspaceLayout ? (
+            <div className="hidden sm:block" />
+          ) : null}
+          <div className={isWorkspaceLayout ? 'flex flex-col-reverse gap-2 sm:flex-row sm:justify-end' : 'flex justify-end gap-2'}>
+            <Button type="button" variant="outline" onClick={onCancel} className={isWorkspaceLayout ? 'w-full sm:w-auto' : undefined}>
+              Anuleaza
+            </Button>
+            <Button
+              type="button"
+              onClick={handleSave}
+              disabled={isSaveDisabled}
+              className={isWorkspaceLayout ? 'w-full sm:w-auto' : undefined}
+            >
+              {isSaving ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Se salveaza...
+                </>
+              ) : initialActivity ? 'Salveaza modificarile' : 'Adauga activitate'}
+            </Button>
+          </div>
         </div>
       </CardContent>
     </Card>
