@@ -31,6 +31,7 @@ import type {
 } from '@/lib/types';
 import { generateOpisDocument, downloadOpis } from '@/lib/opis-generator';
 import { getSecureDocumentUrl } from '@/lib/document-retrieval';
+import { getDocumentAuditTitle } from '@/lib/document-sharing';
 import { GDPR_CONCLUSION_OPTIONS, getGdprDeliverableRequirementLabel, getGdprMinimumEvidenceLabels, getGdprTemplate, parseGdprMetaJson, validateGdprActivityDraft } from '@/lib/gdpr-reporting';
 
 interface DosarExpertModalProps {
@@ -66,6 +67,7 @@ type ReviewAction = 'in_review' | 'clarifications' | 'rejected' | 'approved';
 type DossierActivityGroup = {
   key: string;
   type: string;
+  saCode: string;
   title: string;
   description?: string;
   activities: Activity[];
@@ -194,13 +196,38 @@ export function DosarExpertModal({
     return isNaN(dt.getTime()) ? date : dt.toLocaleDateString('ro-RO', { day: '2-digit' });
   };
 
-  // Group activities by type and consolidate multi-day entries from the same pontaj thread.
+  const getActivitySaLabel = (activity: Activity) => activity.saCode || activity.deliverables?.find((deliverable) => deliverable.saCode)?.saCode || 'SA neprecizata';
+
+  const getDeliverableTitle = (deliverable: Deliverable) => getDocumentAuditTitle({
+    declaredTitle: deliverable.declaredTitle,
+    suggestedTitle: deliverable.suggestedTitle,
+    extractedTitle: deliverable.docTitle,
+    docTitle: deliverable.docTitle,
+    originalFileName: deliverable.originalFileName,
+    fileName: deliverable.fileName,
+  });
+
+  const getDeliverableFileName = (deliverable: Deliverable) =>
+    deliverable.originalFileName || deliverable.fileName || 'livrabil';
+
+  const saveBlob = (blob: Blob, fileName: string) => {
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = fileName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+  };
+
+  // Group activities by SA and consolidate multi-day entries from the same pontaj thread.
   const activitiesByType = useMemo(() => {
     const byType: Record<string, DossierActivityGroup[]> = {};
     const groupsByKey = new Map<string, DossierActivityGroup>();
 
     activities.forEach(act => {
-      const type = act.activityType || 'Nespecificat';
+      const type = getActivitySaLabel(act);
       const groupIdentity = act.periodGroupId
         || act.workingGroupId
         || act.originActivityId
@@ -225,6 +252,7 @@ export function DosarExpertModal({
       const group: DossierActivityGroup = {
         key,
         type,
+        saCode: type,
         title: act.title || 'Activitate',
         description: act.description,
         activities: [act],
@@ -286,7 +314,7 @@ export function DosarExpertModal({
     );
 
   const resolveDeliverableUrl = async (deliverable: DossierDeliverable) => {
-    const fileName = deliverable.originalFileName || deliverable.fileName || 'livrabil';
+    const fileName = getDeliverableFileName(deliverable);
 
     if (deliverable.s3Key) {
       const result = await getSecureDocumentUrl({
@@ -321,14 +349,32 @@ export function DosarExpertModal({
     const key = getDeliverableKey(deliverable, index);
     setDocumentActionId(`open-${key}`);
     setDocumentError(null);
+    const previewWindow = window.open('', '_blank');
 
     try {
       const result = await resolveDeliverableUrl(deliverable);
-      window.open(result.url, '_blank', 'noopener,noreferrer');
       if (result.shouldRevoke) {
+        if (previewWindow) {
+          previewWindow.location.href = result.url;
+        } else {
+          window.open(result.url, '_blank');
+        }
         window.setTimeout(() => URL.revokeObjectURL(result.url), 60_000);
+        return;
       }
+
+      const response = await fetch(result.url);
+      if (!response.ok) throw new Error('Fisierul nu a putut fi preluat pentru vizualizare.');
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      if (previewWindow) {
+        previewWindow.location.href = objectUrl;
+      } else {
+        window.open(objectUrl, '_blank');
+      }
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
     } catch (error) {
+      previewWindow?.close();
       setDocumentError(error instanceof Error ? error.message : 'Fisierul nu a putut fi deschis.');
     } finally {
       setDocumentActionId(null);
@@ -342,15 +388,18 @@ export function DosarExpertModal({
 
     try {
       const result = await resolveDeliverableUrl(deliverable);
-      const anchor = document.createElement('a');
-      anchor.href = result.url;
-      anchor.download = result.fileName;
-      document.body.appendChild(anchor);
-      anchor.click();
-      document.body.removeChild(anchor);
       if (result.shouldRevoke) {
-        window.setTimeout(() => URL.revokeObjectURL(result.url), 1_000);
+        const response = await fetch(result.url);
+        const blob = await response.blob();
+        saveBlob(blob, result.fileName);
+        URL.revokeObjectURL(result.url);
+        return;
       }
+
+      const response = await fetch(result.url);
+      if (!response.ok) throw new Error('Fisierul nu a putut fi preluat pentru descarcare.');
+      const blob = await response.blob();
+      saveBlob(blob, result.fileName);
     } catch (error) {
       setDocumentError(error instanceof Error ? error.message : 'Fisierul nu a putut fi descarcat.');
     } finally {
@@ -513,7 +562,7 @@ export function DosarExpertModal({
               {/* Activities by Type */}
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm">Activitati per Sub-Activitate</CardTitle>
+                  <CardTitle className="text-sm">Activitati per SA</CardTitle>
                 </CardHeader>
                 <CardContent>
                   {activitiesByType.length === 0 ? (
@@ -545,7 +594,7 @@ export function DosarExpertModal({
                                   <div className="min-w-0 flex-1">
                                     <div className="flex gap-2">
                                       <span className="text-slate-400 w-20 shrink-0">{fullDatesLabel}</span>
-                                      <span className="font-medium text-slate-700">{group.title}</span>
+                                      <span className="font-medium text-slate-700">{group.saCode} · {group.title}</span>
                                     </div>
                                     {group.description && (
                                       <p className="mt-1 pl-12 text-[11px] leading-5 text-slate-500">
@@ -556,7 +605,7 @@ export function DosarExpertModal({
                                       <div className="mt-1 flex flex-wrap gap-1 pl-12">
                                         {group.deliverables.slice(0, 3).map((deliverable) => (
                                           <Badge key={deliverable.id || deliverable.fileName} variant="secondary" className="max-w-[220px] truncate text-[10px]">
-                                            {deliverable.fileName}
+                                            {getDeliverableTitle(deliverable)}
                                           </Badge>
                                         ))}
                                         {group.deliverables.length > 3 && (
@@ -745,16 +794,21 @@ export function DosarExpertModal({
                         const hasSource = hasDeliverableSource(deliv);
                         const isOpening = documentActionId === `open-${deliverableKey}`;
                         const isDownloading = documentActionId === `download-${deliverableKey}`;
+                        const deliverableTitle = getDeliverableTitle(deliv);
+                        const fileName = getDeliverableFileName(deliv);
                         
                         return (
                           <div key={i} className="flex items-start gap-3 p-2 bg-slate-50 rounded-lg">
                             <div className="text-[10px] text-slate-400 font-mono w-8">{i + 1}.</div>
                             <div className="flex-1 min-w-0">
                               <div className="text-xs font-medium text-slate-900 truncate">
-                                {deliv.fileName}
+                                {fileName}
+                              </div>
+                              <div className="mt-0.5 text-[11px] font-medium text-slate-700">
+                                Titlu livrabil: {deliverableTitle}
                               </div>
                               <div className="text-[10px] text-slate-500">
-                                {ds} · {deliv.activityType || 'Activitate'} · {deliv.activityTitle}
+                                {ds} · {deliv.saCode || 'SA neprecizata'} · {deliv.activityType || 'Activitate'} · {deliv.activityTitle}
                               </div>
                               {!hasSource && (
                                 <div className="mt-1 text-[10px] text-amber-700">
