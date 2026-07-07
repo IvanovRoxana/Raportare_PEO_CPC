@@ -95,6 +95,7 @@ import type {
   VerificationNote,
   ReportStatus,
   Expert,
+  Activity,
 } from '@/lib/types';
 import { UserMenu } from '@/components/user-menu';
 import { ProgressReportTab } from '@/components/pm/progress-report-tab';
@@ -173,7 +174,7 @@ export default function PMDashboard() {
   const { create: createNeconformitate, resolve: resolveNeconformitate, remove: removeNeconformitate } = useNeconformitateMutations();
   const { notes, isLoading: notesLoading } = useNotes(verification?.id || null);
   const { create: createNote, update: updateNote, remove: removeNote } = useNoteMutations();
-  const { create: createActivity } = useActivityMutations();
+  const { create: createActivity, update: updateActivity } = useActivityMutations();
   const {
     status: reportStatus,
     updateStatus: updateReportStatus,
@@ -432,6 +433,41 @@ export default function PMDashboard() {
     const note = window.prompt('Ce clarificari soliciti expertului pentru aceasta raportare?');
     if (note === null) return;
     await setReviewMonthlyStatus('clarifications', note.trim() || 'Clarificari solicitate de PM.');
+  };
+
+  const approveReviewActivities = async (activities: Activity[]) => {
+    if (!canManagePmReview || activities.length === 0) return;
+
+    await Promise.all(
+      activities.map((activity) => updateActivity(activity.id, {
+        status: 'approved',
+        pmNotes: activity.pmNotes,
+      }))
+    );
+    await refreshMonthActivities();
+  };
+
+  const requestReviewActivityClarification = async (activities: Activity[]) => {
+    if (!canManagePmReview || activities.length === 0) return;
+
+    const dates = activities
+      .map((activity) => {
+        const date = new Date(activity.date);
+        return isNaN(date.getTime()) ? activity.date : date.toLocaleDateString('ro-RO', { day: '2-digit', month: '2-digit' });
+      })
+      .join(', ');
+    const note = window.prompt(`Ce clarificari soliciti pentru activitatea din ${dates}?`);
+    if (note === null) return;
+
+    const pmNote = note.trim() || 'Clarificari solicitate de PM pentru aceasta activitate.';
+    await Promise.all(
+      activities.map((activity) => updateActivity(activity.id, {
+        status: 'sent',
+        pmNotes: pmNote,
+      }))
+    );
+    await setReviewMonthlyStatus('clarifications', activeReviewReportStatus?.pmNotes || 'Clarificari solicitate punctual pe activitati.');
+    await refreshMonthActivities();
   };
 
   const rejectReviewMonth = async () => {
@@ -1208,6 +1244,8 @@ export default function PMDashboard() {
         onRequestClarifications={requestReviewClarifications}
         onRejectMonth={rejectReviewMonth}
         onApproveMonth={() => setReviewMonthlyStatus('approved', activeReviewReportStatus?.pmNotes)}
+        onApproveActivity={approveReviewActivities}
+        onRequestActivityClarification={requestReviewActivityClarification}
         projectCode="302141"
         projectTitle="Consolidarea capacității Concordia pentru dialog social"
       />

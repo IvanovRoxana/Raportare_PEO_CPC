@@ -49,6 +49,8 @@ interface DosarExpertModalProps {
   onRequestClarifications?: () => Promise<void> | void;
   onRejectMonth?: () => Promise<void> | void;
   onApproveMonth?: () => Promise<void> | void;
+  onApproveActivity?: (activities: Activity[]) => Promise<void> | void;
+  onRequestActivityClarification?: (activities: Activity[]) => Promise<void> | void;
   projectCode?: string;
   projectTitle?: string;
 }
@@ -60,6 +62,18 @@ type DossierDeliverable = Deliverable & {
 };
 
 type ReviewAction = 'in_review' | 'clarifications' | 'rejected' | 'approved';
+
+type DossierActivityGroup = {
+  key: string;
+  type: string;
+  title: string;
+  description?: string;
+  activities: Activity[];
+  dates: string[];
+  totalHours: number;
+  deliverables: Deliverable[];
+  representative: Activity;
+};
 
 const REPORT_STATUS_LABELS: Record<ReportStatus['status'], { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
   draft: { label: 'Draft', variant: 'secondary' },
@@ -131,12 +145,15 @@ export function DosarExpertModal({
   onRequestClarifications,
   onRejectMonth,
   onApproveMonth,
+  onApproveActivity,
+  onRequestActivityClarification,
   projectCode = 'PEO',
   projectTitle = 'Program de Educatie si Ocupare',
 }: DosarExpertModalProps) {
   const [activeTab, setActiveTab] = useState('sectiunea-a');
   const [isGeneratingOpis, setIsGeneratingOpis] = useState(false);
   const [reviewAction, setReviewAction] = useState<ReviewAction | null>(null);
+  const [activityActionId, setActivityActionId] = useState<string | null>(null);
   const [documentActionId, setDocumentActionId] = useState<string | null>(null);
   const [documentError, setDocumentError] = useState<string | null>(null);
 
@@ -167,15 +184,66 @@ export function DosarExpertModal({
     return { totalHours, totalActivities, totalDeliverables, workDays, openIssues };
   }, [activities, neconformitati]);
 
-  // Group activities by type
+  const formatActivityDate = (date: string) => {
+    const dt = new Date(date);
+    return isNaN(dt.getTime()) ? date : dt.toLocaleDateString('ro-RO', { day: '2-digit', month: '2-digit' });
+  };
+
+  const formatActivityDay = (date: string) => {
+    const dt = new Date(date);
+    return isNaN(dt.getTime()) ? date : dt.toLocaleDateString('ro-RO', { day: '2-digit' });
+  };
+
+  // Group activities by type and consolidate multi-day entries from the same pontaj thread.
   const activitiesByType = useMemo(() => {
-    const byType: Record<string, Activity[]> = {};
+    const byType: Record<string, DossierActivityGroup[]> = {};
+    const groupsByKey = new Map<string, DossierActivityGroup>();
+
     activities.forEach(act => {
       const type = act.activityType || 'Nespecificat';
+      const groupIdentity = act.periodGroupId
+        || act.workingGroupId
+        || act.originActivityId
+        || [
+          type,
+          act.title || 'Activitate',
+          act.description || '',
+          act.gdprTemplateCode || '',
+          act.gdprMetaJson || '',
+        ].join('|');
+      const key = `${type}|${groupIdentity}`;
+      const existing = groupsByKey.get(key);
+
+      if (existing) {
+        existing.activities.push(act);
+        existing.totalHours += act.hours || 0;
+        existing.deliverables.push(...(act.deliverables || []));
+        existing.dates = Array.from(new Set([...existing.dates, act.date])).sort();
+        return;
+      }
+
+      const group: DossierActivityGroup = {
+        key,
+        type,
+        title: act.title || 'Activitate',
+        description: act.description,
+        activities: [act],
+        dates: [act.date],
+        totalHours: act.hours || 0,
+        deliverables: [...(act.deliverables || [])],
+        representative: act,
+      };
+      groupsByKey.set(key, group);
       if (!byType[type]) byType[type] = [];
-      byType[type].push(act);
+      byType[type].push(group);
     });
-    return Object.entries(byType).sort((a, b) => b[1].length - a[1].length);
+
+    return Object.entries(byType)
+      .map(([type, groups]) => [
+        type,
+        groups.sort((a, b) => a.dates[0].localeCompare(b.dates[0]) || a.title.localeCompare(b.title)),
+      ] as const)
+      .sort((a, b) => b[1].length - a[1].length);
   }, [activities]);
 
   const documentsById = useMemo(() => {
@@ -301,6 +369,21 @@ export function DosarExpertModal({
     }
   };
 
+  const runActivityAction = async (
+    action: 'approve' | 'clarification',
+    group: DossierActivityGroup,
+    handler?: (activities: Activity[]) => Promise<void> | void
+  ) => {
+    if (!handler) return;
+
+    setActivityActionId(`${action}-${group.key}`);
+    try {
+      await handler(group.activities);
+    } finally {
+      setActivityActionId(null);
+    }
+  };
+
   if (!expert) return null;
 
   return (
@@ -412,7 +495,7 @@ export function DosarExpertModal({
           </div>
         </div>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="sectiunea-a" className="text-xs">
               <FileText className="h-3 w-3 mr-1" />
@@ -424,7 +507,7 @@ export function DosarExpertModal({
             </TabsTrigger>
           </TabsList>
 
-          <ScrollArea className="flex-1 mt-3">
+          <ScrollArea className="mt-3 min-h-0 flex-1 overflow-y-auto pr-3">
             {/* Section A - Activities */}
             <TabsContent value="sectiunea-a" className="mt-0 space-y-4">
               {/* Activities by Type */}
@@ -438,50 +521,95 @@ export function DosarExpertModal({
                       Nicio activitate inregistrata
                     </div>
                   ) : (
-                    <div className="space-y-3">
-                      {activitiesByType.map(([type, acts]) => (
+                    <div className="space-y-4">
+                      {activitiesByType.map(([type, groups]) => (
                         <div key={type}>
                           <div className="flex justify-between items-center mb-2">
                             <Badge variant="outline" className="text-xs">{type}</Badge>
                             <span className="text-xs text-slate-500">
-                              {acts.length} activitati · {acts.reduce((s, a) => s + (a.hours || 0), 0)}h
+                              {groups.length} activitati · {groups.reduce((s, group) => s + group.totalHours, 0)}h
                             </span>
                           </div>
-                          <div className="space-y-1 pl-3 border-l-2 border-slate-200">
-                            {acts.map(act => {
-                              const dt = new Date(act.date);
-                              const ds = isNaN(dt.getTime()) ? '' : dt.toLocaleDateString('ro-RO', { day: '2-digit', month: '2-digit' });
+                          <div className="space-y-2 pl-3 border-l-2 border-slate-200">
+                            {groups.map(group => {
+                              const datesLabel = group.dates.map(formatActivityDay).join(', ');
+                              const fullDatesLabel = group.dates.map(formatActivityDate).join(', ');
+                              const isApproved = group.activities.every((activity) => activity.status === 'approved');
+                              const hasClarification = group.activities.some((activity) => Boolean(activity.pmNotes));
+                              const approveActionId = `approve-${group.key}`;
+                              const clarificationActionId = `clarification-${group.key}`;
+
                               return (
-                                <div key={act.id} className="flex justify-between items-start gap-3 text-xs py-1">
+                                <div key={group.key} className="rounded-lg border border-slate-200 bg-white p-3 text-xs shadow-sm">
+                                  <div className="flex justify-between items-start gap-3">
                                   <div className="min-w-0 flex-1">
                                     <div className="flex gap-2">
-                                      <span className="text-slate-400 w-10">{ds}</span>
-                                      <span className="text-slate-700">{act.title || 'Activitate'}</span>
+                                      <span className="text-slate-400 w-20 shrink-0">{fullDatesLabel}</span>
+                                      <span className="font-medium text-slate-700">{group.title}</span>
                                     </div>
-                                    {act.description && (
+                                    {group.description && (
                                       <p className="mt-1 pl-12 text-[11px] leading-5 text-slate-500">
-                                        {act.description}
+                                        In zilele de {datesLabel} am {group.description}
                                       </p>
                                     )}
-                                    {(act.deliverables?.length || 0) > 0 && (
+                                    {(group.deliverables.length || 0) > 0 && (
                                       <div className="mt-1 flex flex-wrap gap-1 pl-12">
-                                        {act.deliverables?.slice(0, 3).map((deliverable) => (
+                                        {group.deliverables.slice(0, 3).map((deliverable) => (
                                           <Badge key={deliverable.id || deliverable.fileName} variant="secondary" className="max-w-[220px] truncate text-[10px]">
                                             {deliverable.fileName}
                                           </Badge>
                                         ))}
-                                        {(act.deliverables?.length || 0) > 3 && (
+                                        {group.deliverables.length > 3 && (
                                           <Badge variant="outline" className="text-[10px]">
-                                            +{(act.deliverables?.length || 0) - 3}
+                                            +{group.deliverables.length - 3}
                                           </Badge>
                                         )}
                                       </div>
                                     )}
-                                    {act.gdprTemplateCode && (
-                                      <GdprPmSummary activity={act} />
+                                    {group.representative.gdprTemplateCode && (
+                                      <GdprPmSummary activity={group.representative} />
+                                    )}
+                                    {hasClarification && (
+                                      <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] text-amber-800">
+                                        Clarificare PM: {group.activities.find((activity) => activity.pmNotes)?.pmNotes}
+                                      </div>
                                     )}
                                   </div>
-                                  <span className="text-slate-500">{act.hours}h</span>
+                                  <div className="flex shrink-0 flex-col items-end gap-1">
+                                    <span className="text-slate-500">{group.totalHours}h</span>
+                                    {isApproved && (
+                                      <Badge variant="outline" className="border-green-200 bg-green-50 text-[10px] text-green-700">
+                                        conform
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  </div>
+                                  {canManagePmReview && (
+                                    <div className="mt-3 flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-2">
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="h-7 px-2 text-[10px]"
+                                        onClick={() => runActivityAction('approve', group, onApproveActivity)}
+                                        disabled={!onApproveActivity || activityActionId !== null || isApproved}
+                                        title="Marcheaza activitatea ca fiind conforma"
+                                      >
+                                        {activityActionId === approveActionId ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle className="h-3 w-3" />}
+                                        Bifeaza conform
+                                      </Button>
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="h-7 px-2 text-[10px]"
+                                        onClick={() => runActivityAction('clarification', group, onRequestActivityClarification)}
+                                        disabled={!onRequestActivityClarification || activityActionId !== null}
+                                        title="Cere clarificari pentru aceasta activitate"
+                                      >
+                                        {activityActionId === clarificationActionId ? <Loader2 className="h-3 w-3 animate-spin" /> : <MessageSquare className="h-3 w-3" />}
+                                        Cere clarificari
+                                      </Button>
+                                    </div>
+                                  )}
                                 </div>
                               );
                             })}
