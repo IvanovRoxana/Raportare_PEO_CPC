@@ -37,6 +37,7 @@ export interface Activity {
   catalogActivityId?: string;
   title: string;
   description?: string;
+  activityKeywords?: string;
   deliverables?: Deliverable[];
   location?: string;
   dayType?: 'lucratoare' | 'weekend' | 'sarbatoare' | 'CO' | 'CM' | string;

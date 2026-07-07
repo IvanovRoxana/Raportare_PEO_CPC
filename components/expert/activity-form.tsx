@@ -22,6 +22,16 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Field, FieldLabel } from '@/components/ui/field';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { generateId, formatDateRo } from '@/lib/app-utils';
 import { EventDocsPanel } from './event-docs-panel';
 import { DeliverableEligibilityControl, DeliverableItem, type DeliverableDuplicateInfo } from './deliverable-item';
@@ -284,8 +294,13 @@ export function ActivityForm({
     (activitySeed?.dayType as 'lucratoare' | 'CO' | 'CM') || 'lucratoare'
   );
   const [description, setDescription] = useState(activitySeed?.description || '');
+  const [activityKeywords, setActivityKeywords] = useState(activitySeed?.activityKeywords || '');
   const [location, setLocation] = useState(activitySeed?.location || 'Birou');
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [duplicateConfirmation, setDuplicateConfirmation] = useState<{
+    identity: string;
+    dates: string[];
+  } | null>(null);
   const [existingDeliverablePickerOpen, setExistingDeliverablePickerOpen] = useState(false);
 
   // Deliverables state with slots
@@ -1002,7 +1017,7 @@ export function ActivityForm({
     selectedDates,
   ]);
 
-  const handleSave = useCallback(async () => {
+  const handleSave = useCallback(async (confirmedDuplicate = false) => {
     setValidationError(null);
     const reportingWarnings: string[] = [];
 
@@ -1056,6 +1071,35 @@ export function ActivityForm({
         ? initialActivity.date
         : activityDatesForSave[0]
       : null;
+    const normalizedIdentity = (activityKeywords.trim() || description.trim())
+      .toLowerCase()
+      .replace(/\s+/g, ' ');
+    const hasCurrentDeliverable = deliverables.some((d) => d.uploaded && (d.filename || d.name));
+    if (!confirmedDuplicate && !hasCurrentDeliverable && normalizedIdentity.length > 0) {
+      const duplicateDates = [...new Set(
+        allActivities
+          .filter((activity) => activity.expertId === expertId)
+          .filter((activity) => !initialActivity || activity.id !== initialActivity.id)
+          .filter((activity) => !activityDatesForSave.includes(activity.date))
+          .filter((activity) => {
+            const existingIdentity = ((activity.activityKeywords || '').trim() || (activity.description || '').trim())
+              .toLowerCase()
+              .replace(/\s+/g, ' ');
+            return existingIdentity === normalizedIdentity;
+          })
+          .map((activity) => activity.date),
+      )].sort();
+
+      if (duplicateDates.length > 0) {
+        setDuplicateConfirmation({
+          identity: activityKeywords.trim() || description.trim(),
+          dates: duplicateDates,
+        });
+        return;
+      }
+    }
+    setDuplicateConfirmation(null);
+
     const newActivityDrafts: ActivityDraftForValidation[] = activityDatesForSave.map((date) => ({
       id: initialActivity && date === editedActivityDate ? initialActivity.id : undefined,
       expertId,
@@ -1145,6 +1189,7 @@ export function ActivityForm({
           : selectedCatalogItem?.id,
         title: effectiveActivityTitle,
         description,
+        activityKeywords: activityKeywords.trim() || undefined,
         deliverables: shouldAttachDeliverables ? uploadedDeliverables
           .map(d => ({
             id: d.id,
@@ -1222,6 +1267,7 @@ export function ActivityForm({
     await onSave(activities);
   }, [
     activityCommon,
+    activityKeywords,
     allActivities,
     collaborators,
     dayType,
@@ -2339,28 +2385,40 @@ export function ActivityForm({
 
                 {/* Activity from catalog */}
                 {!isGdprExpert && (
-                  <Field>
-                    <FieldLabel htmlFor="activity">Activitate</FieldLabel>
-                    <Select value={activityTitle} onValueChange={setActivityTitle} disabled={!saCode || availableActivities.length === 0}>
-                      <SelectTrigger id="activity">
-                        <SelectValue placeholder={!saCode ? "Selecteaza SA mai intai" : "Selecteaza activitatea"} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {availableActivities.length === 0 ? (
-                          <div className="px-2 py-1.5 text-sm text-muted-foreground">Nicio activitate pentru acest SA</div>
-                        ) : (
-                          availableActivities.map((act) => (
-                            <SelectItem key={act} value={act}>{act}</SelectItem>
-                          ))
-                        )}
-                      </SelectContent>
-                    </Select>
-                    {selectedCatalogItem && (
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {selectedCatalogItem.serviceCategory} - {selectedCatalogItem.description}
-                      </p>
-                    )}
-                  </Field>
+                  <div className="grid gap-4 lg:grid-cols-[minmax(0,0.72fr)_minmax(220px,0.28fr)]">
+                    <Field>
+                      <FieldLabel htmlFor="activity">Activitate</FieldLabel>
+                      <Select value={activityTitle} onValueChange={setActivityTitle} disabled={!saCode || availableActivities.length === 0}>
+                        <SelectTrigger id="activity">
+                          <SelectValue placeholder={!saCode ? "Selecteaza SA mai intai" : "Selecteaza activitatea"} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableActivities.length === 0 ? (
+                            <div className="px-2 py-1.5 text-sm text-muted-foreground">Nicio activitate pentru acest SA</div>
+                          ) : (
+                            availableActivities.map((act) => (
+                              <SelectItem key={act} value={act}>{act}</SelectItem>
+                            ))
+                          )}
+                        </SelectContent>
+                      </Select>
+                      {selectedCatalogItem && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {selectedCatalogItem.serviceCategory} - {selectedCatalogItem.description}
+                        </p>
+                      )}
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor="activityKeywords">Cheie interna optionala</FieldLabel>
+                      <Input
+                        id="activityKeywords"
+                        value={activityKeywords}
+                        onChange={(event) => setActivityKeywords(event.target.value)}
+                        placeholder="ex: monitorizare iulie"
+                        maxLength={120}
+                      />
+                    </Field>
+                  </div>
                 )}
               </>
             )}
@@ -2504,6 +2562,25 @@ export function ActivityForm({
               </div>
             </Field>
             )}
+
+            <AlertDialog open={Boolean(duplicateConfirmation)} onOpenChange={(open) => !open && setDuplicateConfirmation(null)}>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Activitate similara gasita</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Ai mai descris aceasta activitate in zilele{' '}
+                    {duplicateConfirmation?.dates.map((date) => formatDateRo(date)).join(', ')}.
+                    Confirma ca vrei sa salvezi separat sau anuleaza si editeaza activitatea existenta.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Anuleaza</AlertDialogCancel>
+                  <AlertDialogAction onClick={() => handleSave(true)}>
+                    Confirma salvarea
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
 
             {showStandardActivityWorkflow && mainDeliverableForEligibility && !isLeave && !isException && (
               <div className="rounded-lg border border-indigo-100 bg-white p-3 shadow-sm">
@@ -2994,7 +3071,7 @@ export function ActivityForm({
             </Button>
             <Button
               type="button"
-              onClick={handleSave}
+              onClick={() => handleSave()}
               disabled={isSaveDisabled}
               className={isWorkspaceLayout ? 'w-full sm:w-auto' : undefined}
             >

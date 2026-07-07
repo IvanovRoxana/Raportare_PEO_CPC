@@ -43,6 +43,7 @@ const schema = a.schema({
       catalogActivityId: a.id(),
       title: a.string().required(),
       description: a.string(),
+      activityKeywords: a.string(),
       location: a.string(),
       dayType: a.string(),
       workingGroupId: a.id(),
