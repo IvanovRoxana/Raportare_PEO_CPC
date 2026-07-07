@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { ArrowLeft, CalendarDays, CheckCircle, ClipboardList, Clock3, FileText, Loader2, Plus, Send, Lock, AlertTriangle, Upload } from 'lucide-react';
+import { ArrowLeft, CalendarDays, CheckCircle, ClipboardList, Clock3, FileText, Loader2, Plus, RotateCcw, Send, Lock, AlertTriangle, Upload, X } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { DashboardShell, expertNavItems } from '@/components/layout/dashboard-shell';
@@ -98,6 +98,10 @@ interface SubmitReadinessItem {
   issues: SubmitReadinessIssue[];
 }
 
+type DeletedActivityUndo = {
+  activity: Activity;
+};
+
 const SUBMIT_MIN_NORM_PERCENT = 80;
 
 const isActivityException = isActivityExceptionForSubmit;
@@ -138,6 +142,11 @@ function getDeliverableDisplayName(deliverable: Deliverable) {
     || 'Livrabil fara titlu';
 }
 
+function toRestoredActivityInput(activity: Activity): Omit<Activity, 'id' | 'createdAt' | 'updatedAt'> {
+  const { id: _id, createdAt: _createdAt, updatedAt: _updatedAt, ...restoredActivity } = activity;
+  return restoredActivity;
+}
+
 export default function ExpertDashboard() {
   const router = useRouter();
   const today = new Date();
@@ -163,6 +172,8 @@ export default function ExpertDashboard() {
   const [selectedReadinessKey, setSelectedReadinessKey] = useState<SubmitReadinessKey | null>(null);
   const [activityResolutionHint, setActivityResolutionHint] = useState<ActivityResolutionHint | null>(null);
   const [isDeliverablesDialogOpen, setIsDeliverablesDialogOpen] = useState(false);
+  const [deletedActivityUndo, setDeletedActivityUndo] = useState<DeletedActivityUndo | null>(null);
+  const [isUndoingDelete, setIsUndoingDelete] = useState(false);
 
   // Data hooks
   const { experts, isLoading: expertsLoading } = useExperts();
@@ -170,7 +181,7 @@ export default function ExpertDashboard() {
   const { activities: allMonthActivities, isLoading: activitiesLoading, mutate: refreshActivities } = useActivitiesByMonth(currentMonth, currentYear);
   const { documents } = useDocuments();
   const { documents: colleagueDocuments } = useColleagueDocumentsByMonth(currentMonth, currentYear);
-  const { createBatch, update: updateActivity, remove: removeActivity } = useActivityMutations();
+  const { create: createActivity, createBatch, update: updateActivity, remove: removeActivity } = useActivityMutations();
   const { status: reportStatus, updateStatus: updateReportStatus, isLoading: reportStatusLoading } = useReportStatus(selectedExpertId, currentMonth, currentYear);
   const previousMonthDate = useMemo(() => new Date(baseYear, baseMonth - 1, 1), [baseMonth, baseYear]);
   const nextMonthDate = useMemo(() => new Date(baseYear, baseMonth + 1, 1), [baseMonth, baseYear]);
@@ -189,6 +200,16 @@ export default function ExpertDashboard() {
     isLoading: sharedActivityRegistrationLoading,
   } = useSharedActivityRegistrationContext(pendingSharedActivityRelationId);
   const { registerForActivity } = useSharedDeliverableMutations();
+
+  useEffect(() => {
+    if (!deletedActivityUndo) return undefined;
+
+    const timeout = window.setTimeout(() => {
+      setDeletedActivityUndo(null);
+    }, 15000);
+
+    return () => window.clearTimeout(timeout);
+  }, [deletedActivityUndo]);
 
   // Get logged in user email
   useEffect(() => {
@@ -525,11 +546,37 @@ export default function ExpertDashboard() {
   const handleDeleteActivity = async (activityId: string) => {
     if (reportStatus?.status === 'approved') return;
 
+    const activityToDelete = activities.find((activity) => activity.id === activityId);
+
     try {
       await removeActivity(activityId);
+      if (activityToDelete) {
+        setDeletedActivityUndo({
+          activity: activityToDelete,
+        });
+      }
+      if (editingActivity?.id === activityId) {
+        closeActivityForm();
+      }
       await refreshActivities();
     } catch (error) {
       console.error('Error deleting activity:', error);
+    }
+  };
+
+  const handleUndoDeleteActivity = async () => {
+    if (!deletedActivityUndo || reportStatus?.status === 'approved') return;
+
+    setIsUndoingDelete(true);
+    try {
+      await createActivity(toRestoredActivityInput(deletedActivityUndo.activity));
+      setDeletedActivityUndo(null);
+      await refreshActivities();
+    } catch (error) {
+      console.error('Error restoring activity:', error);
+      setSaveError(error instanceof Error ? error.message : 'Activitatea stearsa nu a putut fi restaurata.');
+    } finally {
+      setIsUndoingDelete(false);
     }
   };
 
@@ -1839,6 +1886,39 @@ export default function ExpertDashboard() {
           onEditActivity={handleEditDeliverableActivity}
         />
       </DashboardShell>
+
+      {deletedActivityUndo && (
+        <div className="fixed bottom-4 left-1/2 z-50 w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2 rounded-lg border border-slate-200 bg-white p-4 shadow-2xl">
+          <div className="flex items-start gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-slate-950">Activitatea a fost stearsa.</p>
+              <p className="mt-1 truncate text-xs text-muted-foreground">
+                {getActivityDisplayTitle(deletedActivityUndo.activity)}
+              </p>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={handleUndoDeleteActivity}
+              disabled={isUndoingDelete}
+            >
+              {isUndoingDelete ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+              Undo
+            </Button>
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="h-8 w-8 shrink-0"
+              onClick={() => setDeletedActivityUndo(null)}
+              aria-label="Inchide notificarea"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
 
     </>
   );
