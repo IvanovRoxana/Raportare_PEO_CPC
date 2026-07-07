@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { prepareExistingActivityUpdate } from '../lib/activity-edit.ts';
+import { prepareExistingActivityUpdate, splitActivityEditPayload } from '../lib/activity-edit.ts';
 import { planDeliverableSync } from '../lib/activity-deliverable-sync.ts';
 import type { Activity, Deliverable } from '../lib/types.ts';
 
@@ -49,6 +49,23 @@ test('editarea unei activitati refuza payload-uri care ar crea sau modifica alt 
     () => prepareExistingActivityUpdate({ id: 'activity-1' }, [activity('activity-1'), activity('activity-2')], 'expert-1'),
     /o singura activitate/,
   );
+});
+
+test('editarea unei activitati separa zilele noi pentru creare', () => {
+  const { existingActivity, newActivities } = splitActivityEditPayload(
+    { id: 'activity-1' },
+    [
+      activity('activity-1', { date: '2026-06-03', title: 'Activitate modificata' }),
+      activity('new-activity', { date: '2026-06-04', expertId: 'wrong-expert' }),
+    ],
+    'expert-1',
+  );
+
+  assert.equal(existingActivity.id, 'activity-1');
+  assert.equal(existingActivity.date, '2026-06-03');
+  assert.equal(existingActivity.expertId, 'expert-1');
+  assert.deepEqual(newActivities.map((item) => item.date), ['2026-06-04']);
+  assert.equal(newActivities[0].expertId, 'expert-1');
 });
 
 test('sincronizarea livrabilelor actualizeaza livrabilul existent fara sa il recreeze', () => {

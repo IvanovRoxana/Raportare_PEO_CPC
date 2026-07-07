@@ -60,7 +60,7 @@ import {
   validateActivitiesBeforeCreate,
   type ActivityDraftForValidation,
 } from '@/lib/pontaj-rules';
-import { prepareExistingActivityUpdate } from '@/lib/activity-edit';
+import { splitActivityEditPayload } from '@/lib/activity-edit';
 import { filterPendingSharedDeliverablesNotCoveredByActivity, filterSharedRelationsForMonths } from '@/lib/document-sharing';
 import { buildExpertDeliverableRows } from '@/lib/expert-deliverables';
 
@@ -432,6 +432,34 @@ export default function ExpertDashboard() {
         throw new Error('Selecteaza un expert inainte de salvare.');
       }
 
+      const submittedActivities = editingActivity
+        ? (() => {
+            const templateActivity = newActivities.find((activity) => activity.id === editingActivity.id)
+              ?? newActivities[0]
+              ?? editingActivity;
+            const submittedByDate = new Map(newActivities.map((activity) => [activity.date, activity]));
+            const datesForSave = selectedDates.length > 0 ? selectedDates : newActivities.map((activity) => activity.date);
+            const editedDate = datesForSave.includes(editingActivity.date)
+              ? editingActivity.date
+              : datesForSave[0] || editingActivity.date;
+
+            return [...new Set(datesForSave)].sort().map((date) => {
+              const sourceActivity = submittedByDate.get(date) ?? templateActivity;
+              return {
+                ...sourceActivity,
+                id: date === editedDate
+                  ? editingActivity.id
+                  : sourceActivity.id === editingActivity.id
+                    ? `activity-${crypto.randomUUID?.() ?? `${Date.now()}-${date}`}`
+                    : sourceActivity.id,
+                date,
+                expertId: selectedExpertId,
+                hours: Number(normalizePontajHoursValue(selectedHours[date], sourceActivity.hours.toString())),
+              };
+            });
+          })()
+        : newActivities;
+
       const toValidationDraft = (activity: Activity): ActivityDraftForValidation => ({
         id: activity.id,
         expertId: activity.expertId || selectedExpertId,
@@ -445,7 +473,7 @@ export default function ExpertDashboard() {
         existingActivities: activities
           .filter((activity) => !editingActivity || activity.id !== editingActivity.id)
           .map(toValidationDraft),
-        newActivities: newActivities.map((activity) =>
+        newActivities: submittedActivities.map((activity) =>
           toValidationDraft({
             ...activity,
             expertId: selectedExpertId,
@@ -460,8 +488,15 @@ export default function ExpertDashboard() {
       }
 
       if (editingActivity) {
-        const activityUpdate = prepareExistingActivityUpdate(editingActivity, newActivities, selectedExpertId);
-        await updateActivity(editingActivity.id, activityUpdate);
+        const { existingActivity, newActivities: activitiesToCreate } = splitActivityEditPayload(
+          editingActivity,
+          submittedActivities,
+          selectedExpertId,
+        );
+        await updateActivity(editingActivity.id, existingActivity);
+        if (activitiesToCreate.length > 0) {
+          await createBatch(activitiesToCreate);
+        }
       } else {
         // Add new activities
         const createdActivities = await createBatch(newActivities.map(a => ({
