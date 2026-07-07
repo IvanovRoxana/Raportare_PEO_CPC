@@ -714,7 +714,7 @@ export default function ExpertDashboard() {
         key: 'deliverables',
         label: 'Livrabile pe activitati',
         detail: activitiesMissingDeliverables.length === 0
-          ? 'Activitatile individuale au livrabil, iar perioadele multi-zi au livrabil final.'
+          ? 'Activitatile individuale au livrabil, iar activitatile multi-zi au livrabil final.'
           : `${activitiesMissingDeliverables.length} activitati fara livrabil.`,
         severity: activitiesMissingDeliverables.length === 0 ? 'ok' : 'blocking',
         issues: missingDeliverableIssues,

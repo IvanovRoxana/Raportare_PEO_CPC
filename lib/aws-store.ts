@@ -393,6 +393,7 @@ function withSupportedActivityShareFields(payload: Record<string, unknown>, acti
     shareStatus: activity.shareStatus,
     originActivityId: activity.originActivityId,
     takenByExperts: activity.takenByExperts,
+    periodGroupId: activity.periodGroupId,
     gdprTemplateCode: activity.gdprTemplateCode,
     gdprMetaJson: activity.gdprMetaJson,
     gdprGeneratedText: activity.gdprGeneratedText,
@@ -1368,6 +1369,7 @@ async function attachActivityChildren(activity: any): Promise<Activity> {
     location: activity.location ?? undefined,
     dayType: activity.dayType ?? undefined,
     workingGroupId: activity.workingGroupId ?? undefined,
+    periodGroupId: activity.periodGroupId ?? undefined,
     status: activity.status ?? 'draft',
     shareStatus: activity.shareStatus ?? 'private',
     originActivityId: activity.originActivityId ?? undefined,
@@ -1507,6 +1509,7 @@ async function createActivityUnchecked(
     shareStatus: activity.shareStatus ?? 'private',
     originActivityId: activity.originActivityId,
     takenByExperts: activity.takenByExperts ?? [],
+    periodGroupId: activity.periodGroupId,
   }));
   assertNoErrors(created, 'AWS create activity');
 

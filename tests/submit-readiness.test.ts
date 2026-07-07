@@ -20,14 +20,14 @@ const baseActivity = (overrides: Partial<Activity>): Activity => ({
 });
 
 test('validarea livrabilelor accepta un livrabil final pentru o activitate multi-zi', () => {
-  const workingGroupId = createActivityPeriodGroupId('period-1');
+  const periodGroupId = createActivityPeriodGroupId('period-1');
   const activities: Activity[] = [
-    baseActivity({ id: 'day-1', date: '2026-05-06', workingGroupId, deliverables: [] }),
-    baseActivity({ id: 'day-2', date: '2026-05-07', workingGroupId, deliverables: [] }),
+    baseActivity({ id: 'day-1', date: '2026-05-06', periodGroupId, deliverables: [] }),
+    baseActivity({ id: 'day-2', date: '2026-05-07', periodGroupId, deliverables: [] }),
     baseActivity({
       id: 'day-3',
       date: '2026-05-08',
-      workingGroupId,
+      periodGroupId,
       deliverables: [{ id: 'deliverable-1', fileName: 'raport.pdf', fileType: 'application/pdf', fileSize: 1234 }],
     }),
   ];
@@ -89,15 +89,32 @@ test('activitatile Business Hub cu registru incomplet raman in validarea de livr
 });
 
 test('activitatile multi-zi raman blocante cand grupul nu are niciun livrabil', () => {
-  const workingGroupId = createActivityPeriodGroupId('period-2');
+  const periodGroupId = createActivityPeriodGroupId('period-2');
   const activities: Activity[] = [
-    baseActivity({ id: 'day-1', date: '2026-05-06', workingGroupId, deliverables: [] }),
-    baseActivity({ id: 'day-2', date: '2026-05-07', workingGroupId, deliverables: [] }),
+    baseActivity({ id: 'day-1', date: '2026-05-06', periodGroupId, deliverables: [] }),
+    baseActivity({ id: 'day-2', date: '2026-05-07', periodGroupId, deliverables: [] }),
   ];
 
   const missingDeliverables = getActivitiesMissingDeliverables(activities);
 
   assert.deepEqual(missingDeliverables.map((activity) => activity.id), ['day-1', 'day-2']);
+});
+
+test('activitatile salvate anterior cu workingGroupId de perioada raman validate ca grup', () => {
+  const workingGroupId = createActivityPeriodGroupId('legacy-period-1');
+  const activities: Activity[] = [
+    baseActivity({ id: 'day-1', date: '2026-05-06', workingGroupId, deliverables: [] }),
+    baseActivity({
+      id: 'day-2',
+      date: '2026-05-07',
+      workingGroupId,
+      deliverables: [{ id: 'deliverable-1', fileName: 'raport.pdf', fileType: 'application/pdf', fileSize: 1234 }],
+    }),
+  ];
+
+  const missingDeliverables = getActivitiesMissingDeliverables(activities);
+
+  assert.deepEqual(missingDeliverables.map((activity) => activity.id), []);
 });
 
 test('workingGroupId fara prefix de perioada nu grupeaza activitatile existente accidental', () => {

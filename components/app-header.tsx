@@ -13,6 +13,9 @@ import {
   PanelLeftIcon,
   SearchIcon,
   Settings,
+  Upload,
+  Users,
+  UsersRound,
   type LucideIcon,
 } from 'lucide-react';
 import { getSignedInUser, type AppRole } from '@/lib/aws/auth';
@@ -45,7 +48,7 @@ const headerNavItems: HeaderNavItem[] = [
     label: 'Pontaj',
     href: '/expert',
     icon: CalendarDays,
-    roles: ['expert'],
+    roles: ['expert', 'admin'],
     active: (pathname) => pathname === '/expert',
   },
   {
@@ -56,6 +59,20 @@ const headerNavItems: HeaderNavItem[] = [
     active: (pathname) => pathname === '/expert/peo' || pathname.startsWith('/expert/peo/'),
   },
   {
+    label: 'Rapoarte',
+    href: '/expert/peo#rapoarte',
+    icon: FileText,
+    roles: ['expert', 'admin'],
+    active: () => false,
+  },
+  {
+    label: 'Livrabile',
+    href: '/expert/peo#livrabile',
+    icon: Upload,
+    roles: ['expert', 'admin'],
+    active: () => false,
+  },
+  {
     label: 'Verificari PM',
     href: '/pm',
     icon: SearchIcon,
@@ -63,11 +80,25 @@ const headerNavItems: HeaderNavItem[] = [
     active: (pathname) => pathname === '/pm' || pathname.startsWith('/pm/'),
   },
   {
+    label: 'Grup Tinta',
+    href: '/gt',
+    icon: UsersRound,
+    roles: ['expert', 'pm', 'admin'],
+    active: (pathname) => pathname === '/gt' || pathname.startsWith('/gt/'),
+  },
+  {
     label: 'Achizitii',
     href: '/achizitii',
     icon: ClipboardList,
     roles: ['pm', 'admin'],
     active: (pathname) => pathname === '/achizitii' || pathname.startsWith('/achizitii/'),
+  },
+  {
+    label: 'Experti',
+    href: '/pm#situatie-lunara',
+    icon: Users,
+    roles: ['pm', 'admin'],
+    active: () => false,
   },
   {
     label: 'Financiar',
@@ -137,7 +168,10 @@ export function AppHeader() {
         </Link>
 
         {visibleNavItems.length ? (
-          <nav className="hidden min-w-0 flex-1 items-center gap-1 xl:flex" aria-label="Navigatie principala">
+          <nav
+            className="hidden min-w-0 flex-1 items-center gap-1 overflow-x-auto py-2 xl:flex"
+            aria-label="Navigatie principala"
+          >
             {visibleNavItems.map((item) => {
               const Icon = item.icon;
               const isActive = item.active(pathname);
@@ -148,7 +182,7 @@ export function AppHeader() {
                   asChild
                   variant="ghost"
                   className={cn(
-                    'h-10 rounded-md px-3 text-sm font-semibold text-slate-700 hover:bg-[#eef3ff] hover:text-primary',
+                    'h-10 shrink-0 rounded-md px-3 text-sm font-semibold text-slate-700 hover:bg-[#eef3ff] hover:text-primary',
                     isActive && 'bg-[#315be7] text-white shadow-sm hover:bg-[#274bd0] hover:text-white',
                   )}
                 >
