@@ -1704,6 +1704,7 @@ export default function ExpertDashboard() {
                         onEdit={handleEditActivity}
                         onDelete={handleDeleteActivity}
                         activeActivityId={editingActivity?.id}
+                        compact={showForm && !showPopoutForm}
                       />
                     )}
                   </CardContent>

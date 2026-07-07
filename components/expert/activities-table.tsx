@@ -38,6 +38,7 @@ interface ActivitiesTableProps {
   onEdit: (activity: Activity) => void;
   onDelete: (activityId: string) => void;
   activeActivityId?: string;
+  compact?: boolean;
 }
 
 interface ActivityDayGroup {
@@ -120,6 +121,7 @@ export function ActivitiesTable({
   onEdit,
   onDelete,
   activeActivityId,
+  compact = false,
 }: ActivitiesTableProps) {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const dayGroups = useMemo(() => groupActivitiesByDay(activities), [activities]);
@@ -146,15 +148,15 @@ export function ActivitiesTable({
   }
 
   return (
-    <div className="space-y-4">
+    <div className={cn('space-y-4', compact && 'p-3')}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h3 className="text-lg font-semibold text-foreground">Jurnal activitati</h3>
-          <p className="text-sm text-muted-foreground">
+          <h3 className={cn('font-semibold text-foreground', compact ? 'text-base' : 'text-lg')}>Jurnal activitati</h3>
+          <p className={cn('text-muted-foreground', compact ? 'text-xs' : 'text-sm')}>
             {activities.length} activitati grupate pe {dayGroups.length} zile pontate.
           </p>
         </div>
-        <Badge variant="secondary" className="rounded-lg px-3 py-1 text-sm">
+        <Badge variant="secondary" className={cn('rounded-lg px-3 py-1', compact ? 'text-xs' : 'text-sm')}>
           Total: {totalHours} ore
         </Badge>
       </div>
@@ -193,15 +195,17 @@ export function ActivitiesTable({
                   <Fragment key={activity.id}>
                     <article
                       className={cn(
-                        'grid gap-3 px-4 py-4 transition-colors xl:grid-cols-[72px_minmax(0,1fr)_auto]',
+                        compact
+                          ? 'space-y-3 px-4 py-4 transition-colors'
+                          : 'grid gap-3 px-4 py-4 transition-colors xl:grid-cols-[72px_minmax(0,1fr)_auto]',
                         isActive ? 'bg-primary/5 ring-1 ring-inset ring-primary/30' : 'hover:bg-muted/30',
                       )}
                     >
-                      <div className="flex items-start gap-3 xl:block">
-                        <div className="flex h-12 w-14 shrink-0 items-center justify-center rounded-lg border bg-background text-sm font-semibold text-foreground">
+                      <div className={cn('flex items-start gap-3', !compact && 'xl:block')}>
+                        <div className={cn('flex shrink-0 items-center justify-center rounded-lg border bg-background text-sm font-semibold text-foreground', compact ? 'h-10 w-12' : 'h-12 w-14')}>
                           {Number(activity.hours) || 0}h
                         </div>
-                        <div className="min-w-0 xl:mt-2">
+                        <div className={cn('min-w-0', !compact && 'xl:mt-2')}>
                           <Badge variant="outline" className="max-w-full truncate text-xs">
                             {activity.activityType || 'Tip neprecizat'}
                           </Badge>
@@ -210,14 +214,14 @@ export function ActivitiesTable({
 
                       <div className="min-w-0 space-y-3">
                         <div className="space-y-1">
-                          <h4 className="text-sm font-semibold leading-5 text-foreground">
+                          <h4 className="break-words text-sm font-semibold leading-5 text-foreground">
                             {activityTitle}
                           </h4>
                           <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
                             <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                               Livrabil
                             </p>
-                            <p className="mt-1 text-sm font-medium leading-5 text-foreground">
+                            <p className="mt-1 break-words text-sm font-medium leading-5 text-foreground">
                               {primaryDeliverableTitle || 'Fara livrabil atasat'}
                             </p>
                           </div>
@@ -227,7 +231,7 @@ export function ActivitiesTable({
                           <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                             Descriere scurta
                           </p>
-                          <p className="text-sm leading-6 text-muted-foreground">
+                          <p className="break-words text-sm leading-6 text-muted-foreground">
                             {getActivitySummary(activity)}
                           </p>
                         </div>
@@ -253,12 +257,13 @@ export function ActivitiesTable({
                         </div>
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+                      <div className={cn('flex flex-wrap items-center gap-2', !compact && 'xl:justify-end')}>
                         <Button
                           type="button"
                           variant="outline"
                           size="sm"
                           onClick={() => onEdit(activity)}
+                          className={compact ? 'flex-1 justify-center' : undefined}
                         >
                           <Edit2 className="h-4 w-4" />
                           Editeaza
@@ -268,6 +273,7 @@ export function ActivitiesTable({
                           variant="ghost"
                           size="sm"
                           onClick={() => toggleRow(activity.id)}
+                          className={compact ? 'flex-1 justify-center' : undefined}
                         >
                           {isExpanded ? (
                             <>
