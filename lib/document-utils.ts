@@ -25,9 +25,25 @@ export type DocumentTextExtractionResult = {
   source?: DocumentTextExtractionSource;
 };
 
+type PdfJsModule = typeof import('pdfjs-dist');
+
 const MIN_USEFUL_TEXT_LENGTH = 40;
 const MAX_OCR_PDF_PAGES = 3;
 const PDF_OCR_SCALE = 2;
+
+let pdfJsModulePromise: Promise<PdfJsModule> | null = null;
+
+async function loadPdfJs() {
+  pdfJsModulePromise ??= import('pdfjs-dist').then((pdfjsLib) => {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+      'pdfjs-dist/build/pdf.worker.mjs',
+      import.meta.url,
+    ).toString();
+    return pdfjsLib;
+  });
+
+  return pdfJsModulePromise;
+}
 
 function pdfTextItemsToLines(items: PdfTextItem[]) {
   const rows = new Map<number, string[]>();
@@ -182,11 +198,10 @@ export async function extractPdfTitle(file: File): Promise<string | null> {
 // Extract text from the first PDF page only.
 export async function extractPdfFirstPageTextWithSource(file: File): Promise<DocumentTextExtractionResult> {
   try {
-    const pdfjsLib = await import('pdfjs-dist');
-    pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+    const pdfjsLib = await loadPdfJs();
 
     const arrayBuffer = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
     const page = await pdf.getPage(1);
     return extractPdfPageTextWithOcrFallback(page as unknown as PdfPage);
   } catch (error) {
@@ -202,11 +217,10 @@ export async function extractPdfFirstPageText(file: File): Promise<string | null
 // Extract text from PDF file, with OCR fallback for scanned pages.
 export async function extractPdfTextWithSource(file: File): Promise<DocumentTextExtractionResult> {
   try {
-    const pdfjsLib = await import('pdfjs-dist');
-    pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+    const pdfjsLib = await loadPdfJs();
     
     const arrayBuffer = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
     
     let fullText = '';
     for (let i = 1; i <= pdf.numPages; i++) {
