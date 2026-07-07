@@ -12,6 +12,10 @@ export function createActivityPeriodGroupId(id: string) {
 }
 
 function getActivityPeriodGroupId(activity: Activity) {
+  if (activity.periodGroupId?.startsWith(ACTIVITY_PERIOD_GROUP_PREFIX)) {
+    return activity.periodGroupId;
+  }
+
   return activity.workingGroupId?.startsWith(ACTIVITY_PERIOD_GROUP_PREFIX)
     ? activity.workingGroupId
     : undefined;
@@ -28,7 +32,7 @@ function getActivityCreatedTime(activity: Activity) {
 }
 
 function getLegacyActivityPeriodSignature(activity: Activity) {
-  if (activity.workingGroupId) return null;
+  if (activity.periodGroupId || activity.workingGroupId) return null;
   if (getActivityCreatedTime(activity) === null) return null;
 
   return [
