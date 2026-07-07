@@ -60,7 +60,7 @@ import {
   validateActivitiesBeforeCreate,
   type ActivityDraftForValidation,
 } from '@/lib/pontaj-rules';
-import { prepareExistingActivityUpdate } from '@/lib/activity-edit';
+import { splitActivityEditPayload } from '@/lib/activity-edit';
 import { filterPendingSharedDeliverablesNotCoveredByActivity, filterSharedRelationsForMonths } from '@/lib/document-sharing';
 import { buildExpertDeliverableRows } from '@/lib/expert-deliverables';
 
@@ -460,8 +460,15 @@ export default function ExpertDashboard() {
       }
 
       if (editingActivity) {
-        const activityUpdate = prepareExistingActivityUpdate(editingActivity, newActivities, selectedExpertId);
-        await updateActivity(editingActivity.id, activityUpdate);
+        const { existingActivity, newActivities: activitiesToCreate } = splitActivityEditPayload(
+          editingActivity,
+          newActivities,
+          selectedExpertId,
+        );
+        await updateActivity(editingActivity.id, existingActivity);
+        if (activitiesToCreate.length > 0) {
+          await createBatch(activitiesToCreate);
+        }
       } else {
         // Add new activities
         const createdActivities = await createBatch(newActivities.map(a => ({
