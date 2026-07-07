@@ -491,6 +491,7 @@ export default function ExpertDashboard() {
         const { existingActivity, newActivities: activitiesToCreate } = splitActivityEditPayload(
           editingActivity,
           submittedActivities,
+          newActivities,
           selectedExpertId,
         );
         await updateActivity(editingActivity.id, existingActivity);
