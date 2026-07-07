@@ -773,6 +773,7 @@ export function ActivityForm({
   const eventDur = parseFloat(eventDuration) || 0;
   const needsExtendedDesc = isEvent && eventDur > 0 && totalHours > eventDur && (eventExtendedDesc || '').trim().length < 20;
   const saveBlockers = [
+    selectedDates.length === 0 ? 'Selecteaza cel putin o zi din calendar.' : null,
     (!effectiveActivityTitle.trim() && !isLeave) ? 'Selecteaza tipul activitatii.' : null,
     isSaving ? 'Salvarea este deja in curs.' : null,
     (isBusinessHubTabActive && selectedDates.length !== 1) ? 'Registrul Business Hub se completeaza pentru o singura zi selectata.' : null,

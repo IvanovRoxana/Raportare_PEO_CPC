@@ -1192,9 +1192,6 @@ export default function ExpertDashboard() {
     }
 
     setSaveError(null);
-    if (selectedDates.length === 0) {
-      syncSelectedDates([getDefaultActivityDate()]);
-    }
     setEditingActivity(null);
     setSharedActivityPrefill(null);
     setActivityResolutionHint(null);

@@ -259,7 +259,8 @@ export function MultiSelectCalendar({
                 isNonWorkingDay && 'cursor-default bg-muted/50',
                 isCurrentMonth && !isNonWorkingDay && 'hover:bg-accent',
                 isSelected && 'border-primary bg-primary/20',
-                isToday && 'ring-2 ring-primary',
+                isToday && !isSelected && 'ring-1 ring-slate-300',
+                isToday && isSelected && 'ring-2 ring-primary',
                 hasActivities && !isSelected && 'bg-green-50 dark:bg-green-950/30',
                 exceedsDailyLimit && 'border-amber-500 bg-amber-50 text-amber-950 dark:bg-amber-950/30',
               )}
