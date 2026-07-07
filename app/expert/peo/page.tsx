@@ -1299,7 +1299,7 @@ export default function ExpertDashboard() {
           { label: 'Livrabile', href: '#livrabile', icon: Upload },
           { label: 'Rapoarte', href: '#rapoarte', icon: FileText },
         ]}
-        aside={
+        aside={showForm ? undefined : (
           <>
             <RightInfoCard title="Rezumat zi" icon={Clock3}>
               <p className="text-sm font-semibold text-muted-foreground">Luni, 12 mai 2026</p>
@@ -1349,7 +1349,7 @@ export default function ExpertDashboard() {
               </div>
             </RightInfoCard>
           </>
-        }
+        )}
       >
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-4">
           <div className="space-y-1">
