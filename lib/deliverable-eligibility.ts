@@ -15,14 +15,14 @@ export const deliverableEligibilitySchema = z.object({
   recommendations: z.array(z.string()),
   riskFlags: z.array(z.string()),
   suggestedSettings: z.object({
-    saCode: z.string().optional(),
-    activityName: z.string().optional(),
-    selectedActivityId: z.string().optional(),
-    deliverableType: z.string().optional(),
+    saCode: z.string().nullable(),
+    activityName: z.string().nullable(),
+    selectedActivityId: z.string().nullable(),
+    deliverableType: z.string().nullable(),
     confidence: z.enum(['high', 'medium', 'low']),
     reason: z.string(),
     changes: z.array(z.enum(['activity', 'deliverableType'])),
-  }).optional().nullable(),
+  }).nullable(),
 });
 
 export const deliverableEligibilityActivityCandidateSchema = z.object({
@@ -64,6 +64,10 @@ export function validateEligibilitySuggestedSettings(input: {
 
   const requestedChanges = new Set(suggestion.changes);
   const output: NonNullable<z.infer<typeof deliverableEligibilitySchema>['suggestedSettings']> = {
+    saCode: null,
+    activityName: null,
+    selectedActivityId: null,
+    deliverableType: null,
     confidence: suggestion.confidence,
     reason: suggestion.reason,
     changes: [],

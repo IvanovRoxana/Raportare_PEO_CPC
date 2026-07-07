@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildNonConclusiveAiFailure, validateEligibilitySuggestedSettings } from '../lib/deliverable-eligibility.ts';
+import { buildNonConclusiveAiFailure, deliverableEligibilitySchema, validateEligibilitySuggestedSettings } from '../lib/deliverable-eligibility.ts';
 
 const activityCatalogCandidates = [
   {
@@ -95,4 +95,30 @@ test('fallbackul pentru esec AI ramane raspuns neconcludent controlat', () => {
   assert.equal(fallback.suggestedSettings, null);
   assert.match(fallback.summary, /nu a putut fi finalizata/);
   assert.match(fallback.riskFlags.join('\n'), /schema response failed/);
+});
+
+test('schema AI accepta suggestedSettings null sau campuri nullable', () => {
+  const base = {
+    status: 'neconcludent',
+    score: 0,
+    summary: 'Text insuficient.',
+    checks: [{ criterion: 'Context', status: 'unknown', explanation: 'Nu exista destul text.' }],
+    missingElements: [],
+    recommendations: [],
+    riskFlags: [],
+  };
+
+  assert.equal(deliverableEligibilitySchema.safeParse({ ...base, suggestedSettings: null }).success, true);
+  assert.equal(deliverableEligibilitySchema.safeParse({
+    ...base,
+    suggestedSettings: {
+      saCode: null,
+      activityName: null,
+      selectedActivityId: null,
+      deliverableType: 'Minute intalnire / MOM',
+      confidence: 'medium',
+      reason: 'Documentul seamana cu o minuta.',
+      changes: ['deliverableType'],
+    },
+  }).success, true);
 });
