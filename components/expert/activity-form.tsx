@@ -1049,10 +1049,15 @@ export function ActivityForm({
     }
 
     const activityDatesForSave = initialActivity
-      ? [selectedDates[0] || initialActivity.date]
+      ? (selectedDates.length > 0 ? selectedDates : [initialActivity.date])
       : selectedDates;
+    const editedActivityDate = initialActivity
+      ? activityDatesForSave.includes(initialActivity.date)
+        ? initialActivity.date
+        : activityDatesForSave[0]
+      : null;
     const newActivityDrafts: ActivityDraftForValidation[] = activityDatesForSave.map((date) => ({
-      id: initialActivity?.id,
+      id: initialActivity && date === editedActivityDate ? initialActivity.id : undefined,
       expertId,
       date,
       hours: isLeave ? 0 : Number(normalizePontajHoursValue(hoursPerDay[date] || initialActivity?.hours, defaultHours)),
@@ -1125,7 +1130,7 @@ export function ActivityForm({
       // Get hours for this specific date, fallback to default
       const dateHours = isLeave ? 0 : Number(normalizePontajHoursValue(hoursPerDay[date] || initialActivity?.hours, defaultHours));
       const shouldAttachDeliverables = shouldAttachUploadedDeliverablesToDate(activityDatesForSave, date);
-      const activityId = initialActivity?.id || generateId();
+      const activityId = initialActivity && date === editedActivityDate ? initialActivity.id : generateId();
       
       return {
         id: activityId,
