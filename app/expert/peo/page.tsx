@@ -1240,6 +1240,7 @@ export default function ExpertDashboard() {
       <DashboardShell
         activeHref="/expert/peo"
         navItems={expertNavItems}
+        contentClassName={showForm ? 'max-w-none' : undefined}
         eyebrow="Modul Expert"
         title={showForm ? 'Adaugă activitate' : 'Activitățile mele'}
         description={
@@ -1652,9 +1653,9 @@ export default function ExpertDashboard() {
               </div>
             </div>
 
-            <div className={showForm && !showPopoutForm ? 'grid gap-6 xl:grid-cols-12 xl:items-start' : 'grid gap-6 lg:grid-cols-3'}>
+            <div className={showForm && !showPopoutForm ? 'grid gap-6 xl:grid-cols-[minmax(220px,300px)_minmax(0,1fr)] xl:items-start' : 'grid gap-6 lg:grid-cols-3'}>
               {/* Calendar Section */}
-              <div className={showForm && !showPopoutForm ? 'xl:col-span-3 xl:sticky xl:top-24 xl:self-start' : 'lg:col-span-1'}>
+              <div className={showForm && !showPopoutForm ? 'xl:row-span-2 xl:sticky xl:top-24 xl:self-start' : 'lg:col-span-1'}>
                 <MultiSelectCalendar
                   selectedDates={selectedDates}
                   onSelectDates={handleSelectDates}
@@ -1675,12 +1676,12 @@ export default function ExpertDashboard() {
               </div>
 
               {showForm && !showPopoutForm && (
-                <div className="min-w-0 xl:col-span-6">
+                <div className="min-w-0">
                   {activityFormElement}
                 </div>
               )}
 
-              <div className={showForm && !showPopoutForm ? 'min-w-0 xl:col-span-3 xl:sticky xl:top-24 xl:self-start' : 'min-w-0 lg:col-span-2'}>
+              <div className={showForm && !showPopoutForm ? 'min-w-0' : 'min-w-0 lg:col-span-2'}>
                 <Card className={showForm && !showPopoutForm ? 'overflow-hidden' : undefined}>
                   <CardHeader className={showForm && !showPopoutForm ? 'space-y-1 pb-3' : undefined}>
                     <CardTitle className={showForm && !showPopoutForm ? 'text-base' : undefined}>
@@ -1693,7 +1694,7 @@ export default function ExpertDashboard() {
                       </p>
                     )}
                   </CardHeader>
-                  <CardContent className={showForm && !showPopoutForm ? 'max-h-[calc(100vh-12rem)] overflow-y-auto p-0' : undefined}>
+                  <CardContent className={showForm && !showPopoutForm ? 'max-h-[42rem] overflow-y-auto p-0' : undefined}>
                     {activitiesLoading ? (
                       <div className="flex items-center justify-center py-8">
                         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -1704,7 +1705,7 @@ export default function ExpertDashboard() {
                         onEdit={handleEditActivity}
                         onDelete={handleDeleteActivity}
                         activeActivityId={editingActivity?.id}
-                        compact={showForm && !showPopoutForm}
+                        compact={false}
                       />
                     )}
                   </CardContent>
