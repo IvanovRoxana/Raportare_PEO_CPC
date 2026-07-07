@@ -25,6 +25,26 @@ export const deliverableEligibilitySchema = z.object({
   }).nullable(),
 });
 
+export const deliverableEligibilityAiSchema = z.object({
+  status: z.enum(['eligibil', 'eligibil_cu_observatii', 'neeligibil', 'neconcludent']),
+  score: z.number().min(0).max(100),
+  summary: z.string(),
+  checks: z.array(deliverableEligibilityCheckSchema),
+  missingElements: z.array(z.string()),
+  recommendations: z.array(z.string()),
+  riskFlags: z.array(z.string()),
+  suggestedSettings: z.object({
+    hasSuggestion: z.boolean(),
+    saCode: z.string(),
+    activityName: z.string(),
+    selectedActivityId: z.string(),
+    deliverableType: z.string(),
+    confidence: z.enum(['high', 'medium', 'low']),
+    reason: z.string(),
+    changes: z.array(z.enum(['activity', 'deliverableType'])),
+  }),
+});
+
 export const deliverableEligibilityActivityCandidateSchema = z.object({
   id: z.string(),
   saCode: z.string(),
@@ -104,6 +124,25 @@ export function validateEligibilitySuggestedSettings(input: {
   }
 
   return output.changes.length > 0 ? output : undefined;
+}
+
+export function normalizeDeliverableEligibilityAiOutput(
+  output: z.infer<typeof deliverableEligibilityAiSchema>,
+): z.infer<typeof deliverableEligibilitySchema> {
+  return {
+    ...output,
+    suggestedSettings: output.suggestedSettings.hasSuggestion
+      ? {
+          saCode: output.suggestedSettings.saCode || null,
+          activityName: output.suggestedSettings.activityName || null,
+          selectedActivityId: output.suggestedSettings.selectedActivityId || null,
+          deliverableType: output.suggestedSettings.deliverableType || null,
+          confidence: output.suggestedSettings.confidence,
+          reason: output.suggestedSettings.reason,
+          changes: output.suggestedSettings.changes,
+        }
+      : null,
+  };
 }
 
 export function buildNonConclusiveAiFailure(reason: string) {

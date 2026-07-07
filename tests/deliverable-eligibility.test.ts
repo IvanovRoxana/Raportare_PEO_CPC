@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildNonConclusiveAiFailure, deliverableEligibilitySchema, validateEligibilitySuggestedSettings } from '../lib/deliverable-eligibility.ts';
+import {
+  buildNonConclusiveAiFailure,
+  deliverableEligibilityAiSchema,
+  deliverableEligibilitySchema,
+  normalizeDeliverableEligibilityAiOutput,
+  validateEligibilitySuggestedSettings,
+} from '../lib/deliverable-eligibility.ts';
 
 const activityCatalogCandidates = [
   {
@@ -121,4 +127,33 @@ test('schema AI accepta suggestedSettings null sau campuri nullable', () => {
       changes: ['deliverableType'],
     },
   }).success, true);
+});
+
+test('schema trimisa catre AI foloseste obiect suggestedSettings fara nullable', () => {
+  const aiOutput = {
+    status: 'neconcludent',
+    score: 0,
+    summary: 'Text insuficient.',
+    checks: [{ criterion: 'Context', status: 'unknown', explanation: 'Nu exista destul text.' }],
+    missingElements: [],
+    recommendations: [],
+    riskFlags: [],
+    suggestedSettings: {
+      hasSuggestion: false,
+      saCode: '',
+      activityName: '',
+      selectedActivityId: '',
+      deliverableType: '',
+      confidence: 'low',
+      reason: '',
+      changes: [],
+    },
+  };
+
+  const parsed = deliverableEligibilityAiSchema.safeParse(aiOutput);
+  assert.equal(parsed.success, true);
+  assert.equal(
+    parsed.success ? normalizeDeliverableEligibilityAiOutput(parsed.data).suggestedSettings : undefined,
+    null,
+  );
 });

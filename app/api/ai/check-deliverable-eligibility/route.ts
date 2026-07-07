@@ -4,7 +4,9 @@ import { governedGenerateText, aiErrorResponse, assertAllowedAiRequest, AiGovern
 import { isOpenAIConfigurationError, openaiModel } from '@/lib/openai';
 import {
   buildNonConclusiveAiFailure,
+  deliverableEligibilityAiSchema,
   deliverableEligibilitySchema,
+  normalizeDeliverableEligibilityAiOutput,
   normalizeDeliverableEligibilityActivityCandidates,
   normalizeDeliverableEligibilityStringList,
   validateEligibilitySuggestedSettings,
@@ -198,7 +200,8 @@ Reguli:
 - Nu recomanda modificarea documentului cand documentul pare coerent, dar activitatea sau tipul de livrabil selectat sunt gresite. In acel caz foloseste suggestedSettings si explica motivul.
 - suggestedSettings.saCode/activityName/selectedActivityId trebuie sa existe exact in activitatile disponibile.
 - suggestedSettings.deliverableType trebuie sa existe exact in tipurile de livrabil disponibile.
-- Nu include suggestedSettings daca alternativa nu este clara.
+- Daca alternativa nu este clara, seteaza suggestedSettings.hasSuggestion=false si lasa campurile text goale.
+- Daca exista alternativa clara, seteaza suggestedSettings.hasSuggestion=true si completeaza campurile relevante.
 - „eligibil” doar dacă documentul pare clar corelat cu activitatea și tipul de livrabil.
 - „eligibil_cu_observatii” dacă documentul pare potrivit, dar lipsesc elemente sau sunt necesare clarificări.
 - „neeligibil” dacă documentul nu se potrivește cu activitatea, tipul livrabilului sau obiectivele.
@@ -209,8 +212,9 @@ Reguli:
 - Recomandările trebuie să fie practice și scurte.
 
 Returnează strict JSON valid cu:
-status, score, summary, checks, missingElements, recommendations, riskFlags, suggestedSettings.`,
-      output: Output.object({ schema: deliverableEligibilitySchema }),
+status, score, summary, checks, missingElements, recommendations, riskFlags, suggestedSettings.
+suggestedSettings trebuie sa fie mereu obiect cu: hasSuggestion, saCode, activityName, selectedActivityId, deliverableType, confidence, reason, changes.`,
+      output: Output.object({ schema: deliverableEligibilityAiSchema }),
       });
     } catch (generationError) {
       console.error('Recoverable deliverable eligibility AI failure:', generationError);
@@ -220,7 +224,10 @@ status, score, summary, checks, missingElements, recommendations, riskFlags, sug
       return NextResponse.json(nonConclusiveAiFailure(generationError));
     }
 
-    const parsed = deliverableEligibilitySchema.safeParse(result.output);
+    const aiParsed = deliverableEligibilityAiSchema.safeParse(result.output);
+    const parsed = aiParsed.success
+      ? deliverableEligibilitySchema.safeParse(normalizeDeliverableEligibilityAiOutput(aiParsed.data))
+      : aiParsed;
     if (!parsed.success) {
       return NextResponse.json({
         ...nonConclusive('Nu am putut interpreta răspunsul AI pentru eligibilitate.'),
