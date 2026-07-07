@@ -1652,7 +1652,7 @@ export default function ExpertDashboard() {
               </div>
             </div>
 
-            <div className={showForm && !showPopoutForm ? 'grid gap-6 xl:grid-cols-12' : 'grid gap-6 lg:grid-cols-3'}>
+            <div className={showForm && !showPopoutForm ? 'grid gap-6 xl:grid-cols-12 xl:items-start' : 'grid gap-6 lg:grid-cols-3'}>
               {/* Calendar Section */}
               <div className={showForm && !showPopoutForm ? 'xl:col-span-3 xl:sticky xl:top-24 xl:self-start' : 'lg:col-span-1'}>
                 <MultiSelectCalendar
@@ -1674,15 +1674,26 @@ export default function ExpertDashboard() {
                 {/* Form opens automatically when dates are selected */}
               </div>
 
-              <div className={showForm && !showPopoutForm ? 'min-w-0 xl:col-span-5' : 'min-w-0 lg:col-span-2'}>
-                <Card>
-                  <CardHeader>
-                    <CardTitle>
-                      Activitati - {selectedExpert.name} - {getMonthName(currentMonth)}{' '}
+              {showForm && !showPopoutForm && (
+                <div className="min-w-0 xl:col-span-6">
+                  {activityFormElement}
+                </div>
+              )}
+
+              <div className={showForm && !showPopoutForm ? 'min-w-0 xl:col-span-3 xl:sticky xl:top-24 xl:self-start' : 'min-w-0 lg:col-span-2'}>
+                <Card className={showForm && !showPopoutForm ? 'overflow-hidden' : undefined}>
+                  <CardHeader className={showForm && !showPopoutForm ? 'space-y-1 pb-3' : undefined}>
+                    <CardTitle className={showForm && !showPopoutForm ? 'text-base' : undefined}>
+                      {showForm && !showPopoutForm ? 'Context activitati' : 'Activitati'} - {selectedExpert.name} - {getMonthName(currentMonth)}{' '}
                       {currentYear}
                     </CardTitle>
+                    {showForm && !showPopoutForm && (
+                      <p className="text-xs text-muted-foreground">
+                        Jurnalul ramane aici pentru comparare rapida in timp ce completezi formularul.
+                      </p>
+                    )}
                   </CardHeader>
-                  <CardContent>
+                  <CardContent className={showForm && !showPopoutForm ? 'max-h-[calc(100vh-12rem)] overflow-y-auto p-0' : undefined}>
                     {activitiesLoading ? (
                       <div className="flex items-center justify-center py-8">
                         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -1698,12 +1709,6 @@ export default function ExpertDashboard() {
                   </CardContent>
                 </Card>
               </div>
-
-              {showForm && !showPopoutForm && (
-                <div className="min-w-0 xl:col-span-4 xl:sticky xl:top-24 xl:self-start">
-                  {activityFormElement}
-                </div>
-              )}
             </div>
           </TabsContent>
 

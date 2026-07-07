@@ -1668,12 +1668,12 @@ export function ActivityForm({
   const formPanel = (
     <Card id={isWorkspaceLayout ? undefined : 'activity-form-panel'} className={isWorkspaceLayout ? 'scroll-mt-24 overflow-hidden border-slate-200 shadow-sm' : 'scroll-mt-24'}>
       {isWorkspaceLayout ? (
-        <div className="flex flex-col gap-3 border-b bg-white px-4 py-3 sm:flex-row sm:items-start sm:justify-between sm:px-5">
+        <div className="flex flex-col gap-3 border-b bg-white px-4 py-4 sm:flex-row sm:items-start sm:justify-between sm:px-6">
           <div className="min-w-0">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               {initialActivity ? 'Editare activitate' : 'Activitate noua'}
             </p>
-            <h2 className="truncate text-base font-semibold text-foreground">
+            <h2 className="text-lg font-semibold leading-tight text-foreground">
               {initialActivity ? 'Actualizeaza raportarea' : 'Completeaza activitatea selectata'}
             </h2>
             {selectedDates.length > 0 && (
@@ -1703,7 +1703,7 @@ export function ActivityForm({
           )}
         </CardHeader>
       )}
-      <CardContent className={isWorkspaceLayout ? 'space-y-5 bg-slate-50/60 p-4 sm:p-5' : 'space-y-6'}>
+      <CardContent className={isWorkspaceLayout ? 'space-y-6 bg-slate-50/60 p-4 sm:p-6' : 'space-y-6'}>
         {!isWorkspaceLayout && resolutionHint && (
           <div className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -1721,7 +1721,7 @@ export function ActivityForm({
           <Tabs
             value={activityFormTab}
             onValueChange={(value) => setActivityFormTab(value as 'business_hub' | 'standard' | 'event')}
-            className="rounded-lg border bg-white p-3 shadow-sm"
+            className="rounded-lg border bg-white p-3 shadow-sm sm:p-4"
           >
             <TabsList className={`grid w-full rounded-lg ${isBusinessHubExpert ? 'grid-cols-3' : 'grid-cols-2'}`}>
               {isBusinessHubExpert && (
@@ -1923,7 +1923,7 @@ export function ActivityForm({
         )}
 
         {/* Day Type and Hours */}
-        <div id="activity-form-details-section" className="grid scroll-mt-24 grid-cols-2 gap-4">
+        <div id="activity-form-details-section" className="grid scroll-mt-24 gap-4 md:grid-cols-2">
           <Field>
             <FieldLabel htmlFor="dayType">Tip zi</FieldLabel>
             <Select value={dayType} onValueChange={(v) => setDayType(v as typeof dayType)}>
@@ -1966,7 +1966,7 @@ export function ActivityForm({
         {!isLeave && selectedDates.length > 1 && (
           <div className="space-y-3">
             <FieldLabel>Ore pentru fiecare zi (max 8h/zi, norma {expertNorma}h)</FieldLabel>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {selectedDates.sort().map(date => (
                 <div key={date} className="flex items-center gap-2 p-2 bg-muted/50 rounded-md">
                   <span className="text-xs font-medium min-w-[70px]">
@@ -2933,7 +2933,7 @@ export function ActivityForm({
         )}
 
         {/* Validation warnings */}
-        {!isWorkspaceLayout && showStandardActivityWorkflow && !isLeave && !isException && mainDeliverables.length === 0 && !hasEventMomAsMainDeliverable && (
+        {(!isWorkspaceLayout || !showObservationRail) && showStandardActivityWorkflow && !isLeave && !isException && mainDeliverables.length === 0 && !hasEventMomAsMainDeliverable && (
           <div className="flex items-center gap-2 p-3 bg-amber-50 rounded-lg border border-amber-200">
             <AlertTriangle className="h-4 w-4 text-amber-600" />
             <span className="text-sm text-amber-800">
@@ -2942,14 +2942,14 @@ export function ActivityForm({
           </div>
         )}
 
-        {!isWorkspaceLayout && validationError && (
+        {(!isWorkspaceLayout || !showObservationRail) && validationError && (
           <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
             <span>{validationError}</span>
           </div>
         )}
 
-        {!isWorkspaceLayout && isSaveDisabled && !isSaving && (
+        {(!isWorkspaceLayout || !showObservationRail) && isSaveDisabled && !isSaving && (
           <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
             <div>
@@ -2964,14 +2964,15 @@ export function ActivityForm({
         )}
 
         {/* Actions */}
-        <div className="flex justify-end gap-2 pt-4 border-t">
-          <Button type="button" variant="outline" onClick={onCancel}>
+        <div className={isWorkspaceLayout ? 'sticky bottom-0 z-10 -mx-4 -mb-4 flex flex-col-reverse gap-2 border-t bg-white/95 px-4 py-3 shadow-[0_-10px_24px_rgba(15,23,42,0.08)] backdrop-blur sm:-mx-6 sm:-mb-6 sm:flex-row sm:justify-end sm:px-6' : 'flex justify-end gap-2 pt-4 border-t'}>
+          <Button type="button" variant="outline" onClick={onCancel} className={isWorkspaceLayout ? 'w-full sm:w-auto' : undefined}>
             Anuleaza
           </Button>
           <Button 
             type="button" 
             onClick={handleSave} 
             disabled={isSaveDisabled}
+            className={isWorkspaceLayout ? 'w-full sm:w-auto' : undefined}
           >
             {isSaving ? (
               <>
