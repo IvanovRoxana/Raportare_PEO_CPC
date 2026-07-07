@@ -109,6 +109,10 @@ function assertNoErrors<T>(result: ModelResult<T> | ModelListResult<T>, action: 
   }
 }
 
+function hasConditionalCheckFailedError(errors: unknown) {
+  return JSON.stringify(errors).includes('ConditionalCheckFailedException');
+}
+
 async function listAll<T>(
   listFn: (args?: { filter?: Record<string, unknown>; limit?: number; nextToken?: string | null }) => Promise<ModelListResult<T>>,
   filter?: Record<string, unknown>,
@@ -855,6 +859,7 @@ async function createDocumentMetadataForDeliverable(
   };
 
   const result = await client.models.Document.create(payload);
+  if (hasConditionalCheckFailedError(result.errors)) return;
   assertNoErrors(result, 'AWS create document metadata');
 
   if (duplicate && client.models.AuditLog) {
