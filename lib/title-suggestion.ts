@@ -201,6 +201,14 @@ function uniqueCandidates(candidates: string[]) {
   return result;
 }
 
+export function formatTitleFromFilename(fileName?: string | null) {
+  const withoutExtension = normalizeSpaces(String(fileName || '').replace(/\.[^.]+$/, ''));
+  return withoutExtension
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export function suggestTitleFromFirstPage(text?: string | null): TitleSuggestionResult {
   const lines = splitRelevantLines(text);
   if (lines.length === 0) {
@@ -269,6 +277,7 @@ export function validateDeclaredTitleOnFirstPage(args: {
   firstPageText?: string | null;
   declaredTitle?: string | null;
   titleSource?: TitleSource | string;
+  allowManualConfirmationWithoutExtractedText?: boolean;
 }): TitleCheckResult {
   if (args.titleSource === 'admin_override') {
     return {
@@ -279,6 +288,14 @@ export function validateDeclaredTitleOnFirstPage(args: {
   }
 
   if (!args.firstPageText) {
+    if (args.allowManualConfirmationWithoutExtractedText && normalizeSpaces(args.declaredTitle || '')) {
+      return {
+        titleMatch: true,
+        titleCheckStatus: 'matched',
+        titleCheckMessage: 'Titlul a fost confirmat manual; textul documentului nu a putut fi extras pentru verificare automata.',
+      };
+    }
+
     return {
       titleMatch: false,
       titleCheckStatus: 'extraction_failed',

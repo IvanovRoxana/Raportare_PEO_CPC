@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ALL_DELIVERABLE_TYPES, DOCUMENT_STADIU_OPTIONS, type DeliverableSlot } from '@/lib/deliverable-types';
 import { extractDocxFirstPageText, extractDocxTextWithSource, extractHtmlTextWithSource, extractImageTextWithSource, extractPdfFirstPageTextWithSource, extractPdfTextWithSource, extractXlsxTextWithSource, isImageFile } from '@/lib/document-utils';
 import { DELIVERABLE_ELIGIBILITY_UI_MESSAGE, isDeliverableEligibilityCheckEnabledClient } from '@/lib/feature-flags';
-import { applyAutomaticTitleSuggestion, suggestTitleFromFirstPage, validateDeclaredTitleOnFirstPage } from '@/lib/title-suggestion';
+import { applyAutomaticTitleSuggestion, formatTitleFromFilename, suggestTitleFromFirstPage, validateDeclaredTitleOnFirstPage } from '@/lib/title-suggestion';
 import { getDocumentAuditTitle, hashFirstPageText, normalizeDocumentTextForFingerprint, sha256Hex, type DuplicateIssueType } from '@/lib/document-sharing';
 import type { ActivityCatalog } from '@/lib/types';
 
@@ -35,7 +35,7 @@ function hasEnoughExtractedTextForEligibility(deliverable: DeliverableSlot) {
 function getTextExtractionGateReason(deliverable: DeliverableSlot) {
   if (hasEnoughExtractedTextForEligibility(deliverable)) return null;
   if ((deliverable.filename || deliverable.name || '').toLowerCase().endsWith('.doc')) {
-    return 'Nu s-a putut extrage text din formatul .doc vechi. Salveaza documentul ca .docx sau PDF si reincarca-l.';
+    return 'Nu s-a putut extrage text suficient din documentul .doc. Reincarca documentul ca .docx/PDF cu text selectabil sau verifica manual.';
   }
   if (/\.(ppt|pptx)$/i.test(deliverable.filename || deliverable.name || '')) {
     return 'Nu exista text extras suficient din prezentare. Exporta prezentarea in PDF pentru verificare AI.';
@@ -134,8 +134,7 @@ export function DeliverableItem({
     const isPhoto = isImageFile(file.name);
     const lowerFileName = file.name.toLowerCase();
     const isPdf = lowerFileName.endsWith('.pdf');
-    const isDocx = lowerFileName.endsWith('.docx');
-    const isLegacyDoc = lowerFileName.endsWith('.doc') && !isDocx;
+    const isWordDocument = lowerFileName.endsWith('.docx') || lowerFileName.endsWith('.doc');
     const isSpreadsheet = lowerFileName.endsWith('.xlsx') || lowerFileName.endsWith('.xls');
     const isHtml = lowerFileName.endsWith('.html') || lowerFileName.endsWith('.htm');
     const isPresentation = lowerFileName.endsWith('.ppt') || lowerFileName.endsWith('.pptx');
@@ -155,7 +154,7 @@ export function DeliverableItem({
         textExtractionSource = ocrResult.source;
         titleSuggestion = suggestTitleFromFirstPage(firstPageText);
         docTitle = titleSuggestion.suggestedTitle;
-      } else if (isDocx) {
+      } else if (isWordDocument) {
         firstPageText = await extractDocxFirstPageText(file);
         titleSuggestion = suggestTitleFromFirstPage(firstPageText);
         docTitle = titleSuggestion.suggestedTitle;
@@ -183,13 +182,6 @@ export function DeliverableItem({
         firstPageText = htmlResult.text?.slice(0, 5000) || null;
         docText = htmlResult.text;
         textExtractionSource = htmlResult.source;
-      } else if (isLegacyDoc) {
-        titleSuggestion = {
-          suggestedTitle: null,
-          confidence: 'low',
-          alternatives: [],
-          reason: 'Formatul .doc vechi nu poate fi citit automat. Salveaza documentul ca .docx sau PDF pentru extragere text.',
-        };
       } else if (isPresentation) {
         titleSuggestion = {
           suggestedTitle: null,
@@ -202,6 +194,16 @@ export function DeliverableItem({
       if (!titleSuggestion.suggestedTitle && docText) {
         titleSuggestion = suggestTitleFromFirstPage(docText.slice(0, 8000));
         docTitle = titleSuggestion.suggestedTitle;
+      }
+
+      if (!docTitle) {
+        docTitle = formatTitleFromFilename(file.name) || null;
+        titleSuggestion = {
+          suggestedTitle: docTitle,
+          confidence: 'low',
+          alternatives: titleSuggestion.alternatives,
+          reason: titleSuggestion.reason || 'Titlu propus din numele fisierului; textul extras nu a oferit un titlu clar.',
+        };
       }
 
       const suggestion = applyAutomaticTitleSuggestion({
@@ -358,9 +360,17 @@ export function DeliverableItem({
 
   const validateTitle = (title: string, source: DeliverableSlot['titleSource']) =>
     validateDeclaredTitleOnFirstPage({
-      firstPageText: deliverable.firstPageText || deliverable.docText || deliverable.docTitle,
+      firstPageText: deliverable.firstPageText || deliverable.docText,
       declaredTitle: title,
       titleSource: source,
+    });
+
+  const validateTitleForConfirmation = (title: string, source: DeliverableSlot['titleSource']) =>
+    validateDeclaredTitleOnFirstPage({
+      firstPageText: deliverable.firstPageText || deliverable.docText,
+      declaredTitle: title,
+      titleSource: source,
+      allowManualConfirmationWithoutExtractedText: true,
     });
 
   const handleTitleChange = (title: string) => {
@@ -389,8 +399,8 @@ export function DeliverableItem({
   };
 
   const handleConfirmTitle = () => {
-    const validation = validateTitle(deliverable.declaredTitle, deliverable.titleSource);
-    if (validation.titleCheckStatus === 'mismatch' || validation.titleCheckStatus === 'extraction_failed') {
+    const validation = validateTitleForConfirmation(deliverable.declaredTitle, deliverable.titleSource);
+    if (validation.titleCheckStatus === 'mismatch') {
       onUpdate({
         titleMatch: validation.titleMatch,
         titleCheckStatus: validation.titleCheckStatus,
@@ -778,7 +788,7 @@ export function DeliverableItem({
           variant="outline"
           size="sm"
           onClick={handleConfirmTitle}
-          disabled={deliverable.titleCheckStatus === 'mismatch' || deliverable.titleCheckStatus === 'extraction_failed'}
+          disabled={deliverable.titleCheckStatus === 'mismatch'}
           className={`justify-self-start border-green-400 text-xs text-green-700 hover:bg-green-50 disabled:border-amber-300 disabled:text-amber-700 ${renderInlineNotes ? 'xl:col-start-1' : ''}`}
         >
           {deliverable.titleCheckStatus === 'mismatch' || deliverable.titleCheckStatus === 'extraction_failed' ? (
