@@ -223,10 +223,14 @@ export function DeliverableItem({
       const contentFingerprint = normalizeDocumentTextForFingerprint(firstPageText || docText).slice(0, 500);
 
       onUpdate({
+        documentId: undefined,
         filename: file.name,
         rawFilename: raw,
         fileType: file.type || 'application/octet-stream',
         fileSize: file.size,
+        filePath: undefined,
+        s3Bucket: undefined,
+        s3Key: undefined,
         fileData,
         uploadedAt: new Date().toISOString(),
         uploaded: true,

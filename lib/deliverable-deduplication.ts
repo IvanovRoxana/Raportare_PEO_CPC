@@ -18,9 +18,10 @@ function isActivityInMonth(date: string, month: number, year: number) {
 
 export function getDeliverableDocumentSignature(deliverable: Pick<
   Deliverable,
-  'documentId' | 'fileHash' | 'firstPageTextHash' | 'contentFingerprint' | 'fileName' | 'originalFileName' | 'fileSize' | 'fileType'
+  'documentId' | 'fileHash' | 'firstPageTextHash' | 'contentFingerprint' | 'fileName' | 'originalFileName' | 'fileSize' | 'fileType' | 'fileData'
 >) {
-  const documentId = normalizeSignaturePart(deliverable.documentId);
+  const hasFreshFileUpload = isPresent(deliverable.fileData);
+  const documentId = hasFreshFileUpload ? '' : normalizeSignaturePart(deliverable.documentId);
   if (documentId) return `document:${documentId}`;
 
   const fileHash = normalizeSignaturePart(deliverable.fileHash);

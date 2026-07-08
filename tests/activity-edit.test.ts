@@ -262,3 +262,32 @@ test('validarea lunara permite acelasi document in alta luna si fisiere cu hash 
   assert.equal(otherMonthDuplicate, null);
   assert.equal(differentHashDuplicate, null);
 });
+
+test('validarea lunara ignora documentId vechi cand slotul are fisier nou incarcat', () => {
+  const duplicate = findMonthlyDeliverableDuplicate({
+    existingActivities: [
+      activity('activity-1', {
+        date: '2026-06-03',
+        deliverables: [deliverable('deliverable-1', { documentId: 'document-1', fileHash: 'hash-1' })],
+      }),
+    ],
+    nextActivities: [
+      activity('activity-2', {
+        date: '2026-06-10',
+        deliverables: [
+          deliverable('deliverable-2', {
+            documentId: 'document-1',
+            fileName: 'raport-nou.docx',
+            fileHash: 'hash-2',
+            fileData: 'data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,abc',
+          }),
+        ],
+      }),
+    ],
+    expertId: 'expert-1',
+    month: 5,
+    year: 2026,
+  });
+
+  assert.equal(duplicate, null);
+});
