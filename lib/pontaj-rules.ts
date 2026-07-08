@@ -16,6 +16,11 @@ export interface ActivityDraftForValidation {
   hours: number;
   status?: string;
   projectCode?: string;
+  saCode?: string;
+  catalogActivityId?: string;
+  activityType?: string;
+  title?: string;
+  description?: string;
 }
 
 export interface MonthlyNormInfo {
@@ -28,7 +33,7 @@ export interface MonthlyNormInfo {
 
 export interface PontajValidationResult {
   ok: boolean;
-  code?: 'INVALID_HOURS' | 'NON_WORKING_DAY' | 'DAILY_LIMIT_EXCEEDED' | 'MONTHLY_NORM_EXCEEDED' | 'PROJECT_NORM_EXCEEDED';
+  code?: 'INVALID_HOURS' | 'NON_WORKING_DAY' | 'DAILY_LIMIT_EXCEEDED' | 'MONTHLY_NORM_EXCEEDED' | 'PROJECT_NORM_EXCEEDED' | 'DUPLICATE_ACTIVITY';
   message?: string;
   monthlyNorm: number;
   monthlyTotalBefore: number;
@@ -138,6 +143,53 @@ export function totalActivityHours(activities: Pick<ActivityDraftForValidation, 
   return activities.reduce((sum, activity) => sum + (Number(activity.hours) || 0), 0);
 }
 
+function normalizeActivityText(value?: string) {
+  return normalize(value).replace(/\s+/g, ' ');
+}
+
+function getActivityDuplicateSignature(activity: ActivityDraftForValidation) {
+  const activityLabel = normalizeActivityText(activity.title || activity.activityType);
+  const activityDescription = normalizeActivityText(activity.description);
+  const activityCode = normalizeActivityText(activity.catalogActivityId || activity.saCode);
+  const projectCode = normalizeActivityText(activity.projectCode);
+
+  if (!activityLabel && !activityDescription && !activityCode) return null;
+
+  return [
+    activity.expertId,
+    activity.date,
+    projectCode,
+    activityCode,
+    activityLabel,
+    activityDescription,
+  ].join('|');
+}
+
+function findDuplicateActivity(
+  existingActivities: ActivityDraftForValidation[],
+  newActivities: ActivityDraftForValidation[],
+) {
+  const seen = new Map<string, ActivityDraftForValidation>();
+
+  for (const activity of existingActivities) {
+    const signature = getActivityDuplicateSignature(activity);
+    if (signature) seen.set(signature, activity);
+  }
+
+  for (const activity of newActivities) {
+    const signature = getActivityDuplicateSignature(activity);
+    if (!signature) continue;
+
+    const duplicate = seen.get(signature);
+    if (duplicate && duplicate.id !== activity.id) {
+      return { activity, duplicate };
+    }
+    seen.set(signature, activity);
+  }
+
+  return null;
+}
+
 export function isValidPontajHours(hours: unknown) {
   const value = typeof hours === 'string' ? Number(hours) : hours;
   return (
@@ -189,6 +241,20 @@ export function validateActivitiesBeforeCreate(args: {
   [...existingActivities, ...newActivities].forEach((activity) => {
     dailyTotalsAfter[activity.date] = (dailyTotalsAfter[activity.date] ?? 0) + (Number(activity.hours) || 0);
   });
+
+  const duplicateActivity = findDuplicateActivity(existingActivities, newActivities);
+  if (duplicateActivity) {
+    return {
+      ok: false,
+      code: 'DUPLICATE_ACTIVITY',
+      message: `Activitatea nu a fost creata: exista deja o activitate similara pentru ${duplicateActivity.activity.date}. Editeaza activitatea existenta sau modifica data/descrierea.`,
+      monthlyNorm,
+      monthlyTotalBefore,
+      monthlyTotalAfter,
+      remainingMonthlyHours: Math.max(0, monthlyNorm - monthlyTotalBefore),
+      dailyTotalsAfter,
+    };
+  }
 
   for (const activity of newActivities) {
     if (!isValidPontajHours(activity.hours)) {

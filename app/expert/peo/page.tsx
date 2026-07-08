@@ -169,8 +169,11 @@ function ExpertDashboardContent() {
   const today = new Date();
   const baseMonth = today.getMonth();
   const baseYear = today.getFullYear();
-  const queryMonth = readMonthParam(searchParams.get('month'), baseMonth);
-  const queryYear = readYearParam(searchParams.get('year'), baseYear);
+  const queryMonthParam = searchParams.get('month');
+  const queryYearParam = searchParams.get('year');
+  const hasExplicitMonthContext = queryMonthParam !== null || queryYearParam !== null;
+  const queryMonth = readMonthParam(queryMonthParam, baseMonth);
+  const queryYear = readYearParam(queryYearParam, baseYear);
   const clarificationMode = searchParams.get('mode') === 'clarificari';
   const clarificationActivityId = searchParams.get('activityId');
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
@@ -511,6 +514,11 @@ function ExpertDashboardContent() {
               hours: Number(activity.hours) || 0,
               status: activity.status,
               projectCode: activity.projectCode,
+              saCode: activity.saCode,
+              catalogActivityId: activity.catalogActivityId,
+              activityType: activity.activityType,
+              title: activity.title,
+              description: activity.description,
             })),
           newActivities: [{
             id: nextActivity.id,
@@ -519,6 +527,11 @@ function ExpertDashboardContent() {
             hours: Number(nextActivity.hours) || 0,
             status: nextActivity.status,
             projectCode: nextActivity.projectCode,
+            saCode: nextActivity.saCode,
+            catalogActivityId: nextActivity.catalogActivityId,
+            activityType: nextActivity.activityType,
+            title: nextActivity.title,
+            description: nextActivity.description,
           }],
           month: currentMonth,
           year: currentYear,
@@ -569,6 +582,11 @@ function ExpertDashboardContent() {
         hours: Number(activity.hours) || 0,
         status: activity.status,
         projectCode: activity.projectCode,
+        saCode: activity.saCode,
+        catalogActivityId: activity.catalogActivityId,
+        activityType: activity.activityType,
+        title: activity.title,
+        description: activity.description,
       });
       const validation = validateActivitiesBeforeCreate({
         expert: selectedExpert,
@@ -682,6 +700,21 @@ function ExpertDashboardContent() {
       setClarificationAutoOpenedId(null);
     }
   }, [clarificationMode, currentMonth, currentYear, queryMonth, queryYear]);
+
+  useEffect(() => {
+    if (clarificationMode || !hasExplicitMonthContext) return;
+    if (currentMonth === queryMonth && currentYear === queryYear) return;
+
+    setCurrentMonth(queryMonth);
+    setCurrentYear(queryYear);
+    setSelectedDates([]);
+    setSelectedHours({});
+    setShowForm(false);
+    setEditingActivity(null);
+    setSharedActivityPrefill(null);
+    setActivityResolutionHint(null);
+    setSaveError(null);
+  }, [clarificationMode, currentMonth, currentYear, hasExplicitMonthContext, queryMonth, queryYear]);
 
   useEffect(() => {
     if (!clarificationMode || !clarificationActivityId || activitiesLoading || reportStatusLoading) return;

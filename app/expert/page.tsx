@@ -541,13 +541,14 @@ export default function ExpertHomeDashboard() {
     () => selectedMonthHasAccess ? concurrentTimesheetEntries.filter((entry) => entry.expertId === currentExpert?.id) : [],
     [concurrentTimesheetEntries, currentExpert, selectedMonthHasAccess]
   );
+  const peoHref = `/expert/peo?month=${currentMonth}&year=${currentYear}`;
 
   const projects = useMemo<ProjectItem[]>(
     () => [
       {
         id: 'peo',
         name: 'PEO 302141',
-        href: '/expert/peo',
+        href: peoHref,
         activities: peoActivities,
       },
       ...activeConcurrentProjects.map((project) => ({
@@ -559,7 +560,7 @@ export default function ExpertHomeDashboard() {
         timesheetEntries: expertConcurrentEntries.filter((entry) => entry.concurrentProjectId === project.id),
       })),
     ],
-    [activeConcurrentProjects, expertConcurrentEntries, peoActivities]
+    [activeConcurrentProjects, expertConcurrentEntries, peoActivities, peoHref]
   );
 
   const consolidatedRows = useMemo(
@@ -602,7 +603,7 @@ export default function ExpertHomeDashboard() {
 
   const handleProjectShortcutChange = (projectId: string) => {
     if (projectId === 'peo') {
-      router.push('/expert/peo');
+      router.push(peoHref);
       return;
     }
 
@@ -795,7 +796,7 @@ export default function ExpertHomeDashboard() {
             </Button>
             {selectedMonthHasAccess ? (
               <Button asChild>
-                <Link href="/expert/peo">
+                <Link href={peoHref}>
                   Adaugă activitate
                   <ArrowRight className="h-4 w-4" />
                 </Link>
@@ -816,9 +817,9 @@ export default function ExpertHomeDashboard() {
         }
         quickTabs={[
           { label: 'Pontaj lunar', href: '#calendar-ore', icon: CalendarDays, active: true },
-          { label: 'Activitățile mele', href: '/expert/peo', icon: ClipboardList },
-          { label: 'Livrabile', href: '/expert/peo#livrabile', icon: CheckCircle2 },
-          { label: 'Rapoarte', href: '/expert/peo#rapoarte', icon: BriefcaseBusiness },
+          { label: 'Activitățile mele', href: peoHref, icon: ClipboardList },
+          { label: 'Livrabile', href: `${peoHref}#livrabile`, icon: CheckCircle2 },
+          { label: 'Rapoarte', href: `${peoHref}#rapoarte`, icon: BriefcaseBusiness },
         ]}
         aside={
           <>
@@ -898,7 +899,7 @@ export default function ExpertHomeDashboard() {
                   <span className="rounded-full bg-[#eaf3fb] px-3 py-1 text-xs font-semibold text-primary">În lucru</span>
                 </div>
               </div>
-              <Link href="/expert/peo" className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-primary">
+              <Link href={peoHref} className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-primary">
                 Vezi istoricul raportărilor
                 <ArrowRight className="h-4 w-4" />
               </Link>
@@ -961,7 +962,7 @@ export default function ExpertHomeDashboard() {
                         <SharedActivityMetadata alert={alert} />
                         <div className="mt-3 flex flex-wrap gap-2">
                           <Button asChild size="sm" className="h-8 rounded-md">
-                            <Link href={`/expert/peo?sharedActivityRelationId=${encodeURIComponent(alert.relationId)}`}>Adauga activitate</Link>
+                            <Link href={`${peoHref}&sharedActivityRelationId=${encodeURIComponent(alert.relationId)}`}>Adauga activitate</Link>
                           </Button>
                           <Button
                             type="button"
@@ -1030,7 +1031,7 @@ export default function ExpertHomeDashboard() {
                     <Badge variant="secondary">{alert.status}</Badge>
                   </div>
                   <Button asChild size="sm" className="mt-3 h-8 rounded-md">
-                    <Link href={`/expert/peo?sharedDeliverableRelationId=${encodeURIComponent(alert.relationId)}`}>
+                    <Link href={`${peoHref}&sharedDeliverableRelationId=${encodeURIComponent(alert.relationId)}`}>
                       Asociaza in pontajul meu
                     </Link>
                   </Button>

@@ -92,6 +92,71 @@ test('nu permite depășirea limitei cumulate de 8 ore pe zi', () => {
   assert.equal(result.code, 'DAILY_LIMIT_EXCEEDED');
 });
 
+test('blocheaza activitati duplicate pe aceeasi zi pentru acelasi expert', () => {
+  const result = validateActivitiesBeforeCreate({
+    expert,
+    month: testMonth,
+    year: testYear,
+    existingActivities: [{
+      id: 'activity-existing',
+      expertId: expert.id,
+      date: '2026-02-02',
+      hours: 4,
+      projectCode: 'PEO',
+      saCode: 'COM',
+      title: 'Social Media Management',
+      description: 'Monitorizare si publicare postari social media.',
+    }],
+    newActivities: [{
+      id: 'activity-new',
+      expertId: expert.id,
+      date: '2026-02-02',
+      hours: 4,
+      projectCode: 'PEO',
+      saCode: 'COM',
+      title: 'Social Media Management',
+      description: 'Monitorizare si publicare postari social media.',
+    }],
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, 'DUPLICATE_ACTIVITY');
+});
+
+test('blocheaza duplicatele create in acelasi batch multi-day', () => {
+  const result = validateActivitiesBeforeCreate({
+    expert,
+    month: testMonth,
+    year: testYear,
+    existingActivities: [],
+    newActivities: [
+      {
+        id: 'activity-new-1',
+        expertId: expert.id,
+        date: '2026-02-03',
+        hours: 2,
+        projectCode: 'PEO',
+        saCode: 'COM',
+        title: 'Content digital si vizual SoMe',
+        description: 'Pregatire si verificare continut pentru social media.',
+      },
+      {
+        id: 'activity-new-2',
+        expertId: expert.id,
+        date: '2026-02-03',
+        hours: 2,
+        projectCode: 'PEO',
+        saCode: 'COM',
+        title: 'Content digital si vizual SoMe',
+        description: 'Pregatire si verificare continut pentru social media.',
+      },
+    ],
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, 'DUPLICATE_ACTIVITY');
+});
+
 test('accepta doar ore intregi intre 1 si 8 pentru pontaj nou', () => {
   assert.equal(isValidPontajHours(1), true);
   assert.equal(isValidPontajHours(8), true);
