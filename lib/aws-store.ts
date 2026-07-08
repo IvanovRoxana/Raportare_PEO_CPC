@@ -1412,6 +1412,11 @@ function activityToValidationDraft(activity: any): ActivityDraftForValidation {
   };
 }
 
+function getActivityPeriodGroupId(activity: Pick<Activity, 'periodGroupId' | 'workingGroupId'>) {
+  return activity.periodGroupId
+    || (activity.workingGroupId?.startsWith('activity-period:') ? activity.workingGroupId : undefined);
+}
+
 async function listActivitiesForValidation(
   client: any,
   expertId: string,
@@ -1526,6 +1531,12 @@ async function validateActivityBatchForWrite(
     });
 
     if (monthlyDuplicate) {
+      const duplicateGroupId = getActivityPeriodGroupId(monthlyDuplicate.activity);
+      const existingGroupId = getActivityPeriodGroupId(monthlyDuplicate.existingActivity);
+      if (duplicateGroupId && duplicateGroupId === existingGroupId) {
+        continue;
+      }
+
       const duplicateName = monthlyDuplicate.deliverable.originalFileName
         || monthlyDuplicate.deliverable.fileName
         || monthlyDuplicate.existingDeliverable.originalFileName

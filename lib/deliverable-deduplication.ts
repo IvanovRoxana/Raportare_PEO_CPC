@@ -1,6 +1,6 @@
 import type { Activity, Deliverable } from './types';
 
-type ActivityWithDeliverables = Pick<Activity, 'date' | 'expertId' | 'deliverables'> & { id?: string };
+type ActivityWithDeliverables = Pick<Activity, 'date' | 'expertId' | 'deliverables' | 'periodGroupId' | 'workingGroupId'> & { id?: string };
 
 function normalizeSignaturePart(value?: string | null) {
   return value?.trim().toLowerCase().replace(/\s+/g, ' ') || '';
@@ -91,7 +91,7 @@ export function findMonthlyDeliverableDuplicate(args: {
   excludedActivityIds?: string[];
 }) {
   const excluded = new Set(args.excludedActivityIds ?? []);
-  const seen = new Map<string, { deliverable: Deliverable; activity: Pick<Activity, 'date'> & { id?: string } }>();
+  const seen = new Map<string, { deliverable: Deliverable; activity: ActivityWithDeliverables }>();
   const activities = [
     ...args.existingActivities.filter((activity) => !activity.id || !excluded.has(activity.id)),
     ...args.nextActivities,
