@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { AlertTriangle, ArrowLeft, ArrowRight, CalendarDays, ClipboardList, Loader2 } from 'lucide-react';
@@ -31,6 +31,17 @@ function formatDateRo(date?: string) {
   const parsed = new Date(`${date}T00:00:00`);
   if (Number.isNaN(parsed.getTime())) return date;
   return parsed.toLocaleDateString('ro-RO', { day: '2-digit', month: 'long', year: 'numeric' });
+}
+
+function ClarificationsLoading() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background">
+      <div className="flex flex-col items-center gap-4 text-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <p className="text-sm text-muted-foreground">Se verifica autentificarea...</p>
+      </div>
+    </div>
+  );
 }
 
 function ActivityClarificationCard({ activity, month, year }: { activity: Activity; month: number; year: number }) {
@@ -72,7 +83,7 @@ function ActivityClarificationCard({ activity, month, year }: { activity: Activi
   );
 }
 
-export default function ExpertClarificationsPage() {
+function ExpertClarificationsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const today = useMemo(() => new Date(), []);
@@ -134,14 +145,7 @@ export default function ExpertClarificationsPage() {
   }, [router]);
 
   if (isAuthLoading || !isAuthenticated) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-4 text-center">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <p className="text-sm text-muted-foreground">Se verifica autentificarea...</p>
-        </div>
-      </div>
-    );
+    return <ClarificationsLoading />;
   }
 
   return (
@@ -226,5 +230,13 @@ export default function ExpertClarificationsPage() {
         </div>
       </DashboardShell>
     </>
+  );
+}
+
+export default function ExpertClarificationsPage() {
+  return (
+    <Suspense fallback={<ClarificationsLoading />}>
+      <ExpertClarificationsContent />
+    </Suspense>
   );
 }

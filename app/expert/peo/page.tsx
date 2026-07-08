@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { Suspense, useState, useEffect, useMemo } from 'react';
 import { ArrowLeft, CalendarDays, CheckCircle, ClipboardList, Clock3, FileText, Loader2, Plus, RotateCcw, Send, Lock, AlertTriangle, Upload, X } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -163,7 +163,7 @@ function toRestoredActivityInput(activity: Activity): Omit<Activity, 'id' | 'cre
   return restoredActivity;
 }
 
-export default function ExpertDashboard() {
+function ExpertDashboardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const today = new Date();
@@ -2125,5 +2125,20 @@ export default function ExpertDashboard() {
       )}
 
     </>
+  );
+}
+
+export default function ExpertDashboard() {
+  return (
+    <Suspense fallback={
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-3 text-muted-foreground">
+          <Loader2 className="h-6 w-6 animate-spin" />
+          <span>Se incarca pontajul...</span>
+        </div>
+      </div>
+    }>
+      <ExpertDashboardContent />
+    </Suspense>
   );
 }
