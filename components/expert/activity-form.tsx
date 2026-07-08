@@ -1315,7 +1315,7 @@ export function ActivityForm({
         || monthlyDuplicate.existingDeliverable.originalFileName
         || monthlyDuplicate.existingDeliverable.fileName
         || 'Acest livrabil';
-      const message = `${duplicateName} este deja incarcat pentru luna selectata. Daca acest document este livrabilul comun pentru activitatea multi-day, confirma salvarea fara sa il incarci inca o data. Altfel, modifica activitatea existenta ca multi-day sau incarca un livrabil diferit.`;
+      const message = `${duplicateName} este deja incarcat pentru luna selectata. Daca acest document este livrabilul comun pentru activitatea multi-day, confirma ca vrei sa adaugi zilele selectate la activitatea existenta fara sa il incarci inca o data. Altfel, anuleaza si incarca un livrabil diferit.`;
 
       if (!confirmedMonthlyDeliverableDuplicate) {
         setMonthlyDeliverableDuplicateConfirmation({
@@ -1325,12 +1325,47 @@ export function ActivityForm({
         return;
       }
 
-      activities = activities.map((activity) => ({
+      const existingActivityWithDeliverable = allActivities.find((activity) => (
+        activity.id === monthlyDuplicate.existingActivity.id
+      )) ?? allActivities.find((activity) => (
+        activity.deliverables?.some((deliverable) => (
+          getDeliverableDocumentSignature(deliverable) === monthlyDuplicate.signature
+        ))
+      ));
+      const duplicatePeriodGroupId = existingActivityWithDeliverable?.periodGroupId
+        ?? (existingActivityWithDeliverable?.workingGroupId?.startsWith('activity-period:')
+          ? existingActivityWithDeliverable.workingGroupId
+          : undefined)
+        ?? createActivityPeriodGroupId(existingActivityWithDeliverable?.id ?? generateId());
+      const nextActivities = activities.map((activity) => ({
         ...activity,
+        periodGroupId: duplicatePeriodGroupId,
+        workingGroupId: duplicatePeriodGroupId,
         deliverables: activity.deliverables?.filter((deliverable) => (
           getDeliverableDocumentSignature(deliverable) !== monthlyDuplicate.signature
         )),
       }));
+
+      if (
+        existingActivityWithDeliverable
+        && !nextActivities.some((activity) => activity.id === existingActivityWithDeliverable.id)
+        && (
+          existingActivityWithDeliverable.periodGroupId !== duplicatePeriodGroupId
+          || !existingActivityWithDeliverable.workingGroupId
+        )
+      ) {
+        activities = [
+          {
+            ...existingActivityWithDeliverable,
+            periodGroupId: duplicatePeriodGroupId,
+            workingGroupId: existingActivityWithDeliverable.workingGroupId ?? duplicatePeriodGroupId,
+            updatedAt: new Date().toISOString(),
+          },
+          ...nextActivities,
+        ];
+      } else {
+        activities = nextActivities;
+      }
     }
 
     setMonthlyDeliverableDuplicateConfirmation(null);
@@ -2678,7 +2713,7 @@ export function ActivityForm({
                       true,
                     )}
                   >
-                    Salveaza fara duplicat
+                    Adauga la activitatea existenta
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>

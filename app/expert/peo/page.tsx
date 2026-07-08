@@ -581,6 +581,7 @@ function ExpertDashboardContent() {
             normalizePontajHoursValue,
           )
         : newActivities;
+      const submittedActivityIds = new Set(submittedActivities.map((activity) => activity.id));
 
       const toValidationDraft = (activity: Activity): ActivityDraftForValidation => ({
         id: activity.id,
@@ -599,6 +600,7 @@ function ExpertDashboardContent() {
         expert: selectedExpert,
         existingActivities: activities
           .filter((activity) => !editingActivity || !editingGroupMemberIds.has(activity.id))
+          .filter((activity) => !submittedActivityIds.has(activity.id))
           .map(toValidationDraft),
         newActivities: submittedActivities.map((activity) =>
           toValidationDraft({
@@ -627,23 +629,34 @@ function ExpertDashboardContent() {
         }
         await Promise.all(deleteActivityIds.map((activityId) => removeActivity(activityId)));
       } else {
-        // Add new activities
-        const createdActivities = await createBatch(newActivities.map(a => ({
-          ...a,
+        const existingActivityIds = new Set(activities.map((activity) => activity.id));
+        const activitiesToUpdate = submittedActivities.filter((activity) => existingActivityIds.has(activity.id));
+        const activitiesToCreate = submittedActivities.filter((activity) => !existingActivityIds.has(activity.id));
+
+        await Promise.all(activitiesToUpdate.map((activity) => updateActivity(activity.id, {
+          ...activity,
           expertId: selectedExpertId!,
         })));
 
-        const activityTargetId = createdActivities[0]?.id;
+        const createdActivities = activitiesToCreate.length > 0
+          ? await createBatch(activitiesToCreate.map(a => ({
+              ...a,
+              expertId: selectedExpertId!,
+            })))
+          : [];
+        const savedActivities = [...activitiesToUpdate, ...createdActivities];
+
+        const activityTargetId = savedActivities[0]?.id;
         const deliverableTargetId = pendingSharedActivityRelationId
           ? activityTargetId
-          : createdActivities[createdActivities.length - 1]?.id || activityTargetId;
+          : savedActivities[savedActivities.length - 1]?.id || activityTargetId;
         const deliverableRelationIdsToRegister = [...new Set([
           ...(sharedActivityRegistrationContext?.relatedDeliverableRelations.map((relation) => relation.id) ?? []),
           ...(pendingSharedDeliverableRelationId ? [pendingSharedDeliverableRelationId] : []),
         ])].filter((relationId) => relationId !== pendingSharedActivityRelationId);
 
-        if (pendingSharedActivityRelationId && createdActivities[0]?.id) {
-          await registerForActivity(pendingSharedActivityRelationId, createdActivities[0].id);
+        if (pendingSharedActivityRelationId && activityTargetId) {
+          await registerForActivity(pendingSharedActivityRelationId, activityTargetId);
         }
 
         if (deliverableTargetId) {
