@@ -142,10 +142,10 @@ test('editarea unui grup actualizeaza zilele pastrate, creeaza zilele noi si ste
 
 test('editarea multi-day regrupeaza activitati existente pe zilele selectate', () => {
   const existingActivities = [
-    activity('activity-4', { date: '2026-06-04', saCode: 'SA3.4', activityType: 'Analiza legislativa' }),
-    activity('activity-5', { date: '2026-06-05', saCode: 'SA3.4', activityType: 'Analiza legislativa' }),
-    activity('activity-12', { date: '2026-06-12', saCode: 'SA3.4', activityType: 'Analiza legislativa' }),
-    activity('activity-18', { date: '2026-06-18', saCode: 'SA3.4', activityType: 'Analiza legislativa' }),
+    activity('activity-4', { date: '2026-06-04', hours: 4, saCode: 'SA3.4', activityType: 'Analiza legislativa' }),
+    activity('activity-5', { date: '2026-06-05', hours: 4, saCode: 'SA3.4', activityType: 'Analiza legislativa' }),
+    activity('activity-12', { date: '2026-06-12', hours: 4, saCode: 'SA3.4', activityType: 'Analiza legislativa' }),
+    activity('activity-18', { date: '2026-06-18', hours: 2, saCode: 'SA3.4', activityType: 'Analiza legislativa', title: 'Titlu deja salvat' }),
   ];
   const editing = existingActivities[0];
   const selectedDates = existingActivities.map((item) => item.date);
@@ -171,6 +171,8 @@ test('editarea multi-day regrupeaza activitati existente pe zilele selectate', (
   assert.equal(plan.deleteActivityIds.length, 0);
   assert.equal(new Set(plan.updateActivities.map((item) => item.periodGroupId)).size, 1);
   assert.equal(new Set(plan.updateActivities.map((item) => item.workingGroupId)).size, 1);
+  assert.equal(plan.updateActivities.find((item) => item.id === 'activity-18')?.hours, 2);
+  assert.equal(plan.updateActivities.find((item) => item.id === 'activity-18')?.title, 'Titlu deja salvat');
 });
 
 test('grupurile de activitati expun livrabile deduplicate pentru raportare', () => {

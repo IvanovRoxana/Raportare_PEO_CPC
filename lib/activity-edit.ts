@@ -150,18 +150,23 @@ export function buildSubmittedActivitiesForEdit(
 
   return uniqueDates.map((date) => {
     const existingActivityForDate = existingByDate.get(date);
-    const sourceActivity = submittedByDate.get(date) ?? templateActivity;
+    const submittedActivityForDate = submittedByDate.get(date);
+    const sourceActivity = submittedActivityForDate ?? existingActivityForDate ?? templateActivity;
+    const preserveExistingActivity = Boolean(existingActivityForDate && !submittedActivityForDate);
     const activityId = existingActivityForDate?.id
       ?? (sourceActivity.id !== editingActivity.id ? sourceActivity.id : createGeneratedActivityId());
+    const hours = preserveExistingActivity && existingActivityForDate
+      ? existingActivityForDate.hours
+      : Number.isFinite(Number(sourceActivity.hours)) && Number(sourceActivity.hours) > 0
+        ? Number(sourceActivity.hours)
+        : Number(normalizeHours(selectedHours[date], editingActivity.hours.toString()));
 
     return {
       ...sourceActivity,
       id: activityId,
       date,
       expertId,
-      hours: Number.isFinite(Number(sourceActivity.hours)) && Number(sourceActivity.hours) > 0
-        ? Number(sourceActivity.hours)
-        : Number(normalizeHours(selectedHours[date], editingActivity.hours.toString())),
+      hours,
       workingGroupId: periodGroupId ?? sourceActivity.workingGroupId,
       periodGroupId,
     };
