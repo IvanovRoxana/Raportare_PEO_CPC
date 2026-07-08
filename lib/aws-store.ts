@@ -1530,7 +1530,7 @@ async function validateActivityBatchForWrite(
       year,
       excludedIds,
     );
-    const monthlyDuplicate = findMonthlyDeliverableDuplicate({
+    let monthlyDuplicate = findMonthlyDeliverableDuplicate({
       existingActivities: existingActivitiesWithDeliverables,
       nextActivities: groupActivities,
       expertId: sample.expertId,
@@ -1539,10 +1539,50 @@ async function validateActivityBatchForWrite(
       excludedActivityIds: excludedIds,
     });
 
-    if (monthlyDuplicate) {
-      const duplicateGroupId = getActivityPeriodGroupId(monthlyDuplicate.activity);
-      const existingGroupId = getActivityPeriodGroupId(monthlyDuplicate.existingActivity);
+    while (monthlyDuplicate) {
+      const duplicate = monthlyDuplicate;
+      const duplicateGroupId = getActivityPeriodGroupId(duplicate.activity);
+      const existingGroupId = getActivityPeriodGroupId(duplicate.existingActivity);
       if (duplicateGroupId && duplicateGroupId === existingGroupId) {
+        break;
+      }
+
+      const duplicateActivity = groupActivities.find((activity) => activity === duplicate.activity);
+      const periodGroupId = existingGroupId
+        ?? duplicateGroupId
+        ?? (duplicate.existingActivity.id ? `activity-period:${duplicate.existingActivity.id}` : undefined);
+
+      if (duplicateActivity && periodGroupId) {
+        if (
+          duplicate.existingActivity.id
+          && (
+            duplicate.existingActivity.periodGroupId !== periodGroupId
+            || !duplicate.existingActivity.workingGroupId
+          )
+        ) {
+          await client.models.Activity.update(withSupportedActivityShareFields({
+            id: duplicate.existingActivity.id,
+            workingGroupId: duplicate.existingActivity.workingGroupId ?? periodGroupId,
+          }, {
+            periodGroupId,
+          }));
+          duplicate.existingActivity.periodGroupId = periodGroupId;
+          duplicate.existingActivity.workingGroupId = duplicate.existingActivity.workingGroupId ?? periodGroupId;
+        }
+
+        duplicateActivity.periodGroupId = periodGroupId;
+        duplicateActivity.workingGroupId = periodGroupId;
+        duplicateActivity.deliverables = (duplicateActivity.deliverables ?? []).filter((deliverable) => (
+          getDeliverableDocumentSignature(deliverable) !== duplicate.signature
+        ));
+        monthlyDuplicate = findMonthlyDeliverableDuplicate({
+          existingActivities: existingActivitiesWithDeliverables,
+          nextActivities: groupActivities,
+          expertId: sample.expertId,
+          month,
+          year,
+          excludedActivityIds: excludedIds,
+        });
         continue;
       }
 
