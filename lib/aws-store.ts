@@ -1469,6 +1469,23 @@ type ActivityWithDeliverablesForValidation = Pick<
   deliverables?: Deliverable[];
 };
 
+function dedupeExistingDeliverablesForValidation(
+  activities: ActivityWithDeliverablesForValidation[],
+) {
+  const seenSignatures = new Set<string>();
+
+  return activities.map((activity) => ({
+    ...activity,
+    deliverables: (activity.deliverables ?? []).filter((deliverable) => {
+      const signature = getDeliverableDocumentSignature(deliverable);
+      if (!signature) return true;
+      if (seenSignatures.has(signature)) return false;
+      seenSignatures.add(signature);
+      return true;
+    }),
+  }));
+}
+
 async function assertReportMonthIsMutable(
   client: any,
   expertId: string,
@@ -1530,8 +1547,11 @@ async function validateActivityBatchForWrite(
       year,
       excludedIds,
     );
+    const existingActivitiesForDeliverableValidation = dedupeExistingDeliverablesForValidation(
+      existingActivitiesWithDeliverables,
+    );
     let monthlyDuplicate = findMonthlyDeliverableDuplicate({
-      existingActivities: existingActivitiesWithDeliverables,
+      existingActivities: existingActivitiesForDeliverableValidation,
       nextActivities: groupActivities,
       expertId: sample.expertId,
       month,
@@ -1544,7 +1564,20 @@ async function validateActivityBatchForWrite(
       const duplicateGroupId = getActivityPeriodGroupId(duplicate.activity);
       const existingGroupId = getActivityPeriodGroupId(duplicate.existingActivity);
       if (duplicateGroupId && duplicateGroupId === existingGroupId) {
-        break;
+        const duplicateActivity = groupActivities.find((activity) => activity === duplicate.activity);
+        if (!duplicateActivity) break;
+        duplicateActivity.deliverables = (duplicateActivity.deliverables ?? []).filter((deliverable) => (
+          getDeliverableDocumentSignature(deliverable) !== duplicate.signature
+        ));
+        monthlyDuplicate = findMonthlyDeliverableDuplicate({
+          existingActivities: existingActivitiesForDeliverableValidation,
+          nextActivities: groupActivities,
+          expertId: sample.expertId,
+          month,
+          year,
+          excludedActivityIds: excludedIds,
+        });
+        continue;
       }
 
       const duplicateActivity = groupActivities.find((activity) => activity === duplicate.activity);
@@ -1576,7 +1609,7 @@ async function validateActivityBatchForWrite(
           getDeliverableDocumentSignature(deliverable) !== duplicate.signature
         ));
         monthlyDuplicate = findMonthlyDeliverableDuplicate({
-          existingActivities: existingActivitiesWithDeliverables,
+          existingActivities: existingActivitiesForDeliverableValidation,
           nextActivities: groupActivities,
           expertId: sample.expertId,
           month,
@@ -1586,10 +1619,10 @@ async function validateActivityBatchForWrite(
         continue;
       }
 
-      const duplicateName = monthlyDuplicate.deliverable.originalFileName
-        || monthlyDuplicate.deliverable.fileName
-        || monthlyDuplicate.existingDeliverable.originalFileName
-        || monthlyDuplicate.existingDeliverable.fileName
+      const duplicateName = duplicate.deliverable.originalFileName
+        || duplicate.deliverable.fileName
+        || duplicate.existingDeliverable.originalFileName
+        || duplicate.existingDeliverable.fileName
         || 'Acest livrabil';
       throw new Error(`${duplicateName} este deja incarcat pentru luna selectata. Selecteaza livrabilul existent si confirma adaugarea la activitatea existenta sau incarca un livrabil diferit.`);
     }
