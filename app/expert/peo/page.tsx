@@ -398,9 +398,13 @@ function ExpertDashboardContent() {
     return false;
   };
   const calendarDraftActivities = useMemo(
-    () => editingActivity
-      ? activities.filter((activity) => activity.id !== editingActivity.id)
-      : activities,
+    () => {
+      if (!editingActivity) return activities;
+      const editingGroupMemberIds = new Set(
+        getActivityGroupMembers(editingActivity, activities).map((activity) => activity.id),
+      );
+      return activities.filter((activity) => !editingGroupMemberIds.has(activity.id));
+    },
     [activities, editingActivity],
   );
 

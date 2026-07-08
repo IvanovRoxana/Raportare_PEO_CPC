@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ALL_DELIVERABLE_TYPES, DOCUMENT_STADIU_OPTIONS, type DeliverableSlot } from '@/lib/deliverable-types';
-import { extractDocxFirstPageText, extractDocxTextWithSource, extractImageTextWithSource, extractPdfFirstPageTextWithSource, extractPdfTextWithSource, isImageFile } from '@/lib/document-utils';
+import { extractDocxFirstPageText, extractDocxTextWithSource, extractHtmlTextWithSource, extractImageTextWithSource, extractPdfFirstPageTextWithSource, extractPdfTextWithSource, extractXlsxTextWithSource, isImageFile } from '@/lib/document-utils';
 import { DELIVERABLE_ELIGIBILITY_UI_MESSAGE, isDeliverableEligibilityCheckEnabledClient } from '@/lib/feature-flags';
 import { applyAutomaticTitleSuggestion, suggestTitleFromFirstPage, validateDeclaredTitleOnFirstPage } from '@/lib/title-suggestion';
 import { getDocumentAuditTitle, hashFirstPageText, normalizeDocumentTextForFingerprint, sha256Hex, type DuplicateIssueType } from '@/lib/document-sharing';
@@ -26,6 +26,22 @@ export interface DeliverableDuplicateInfo {
 
 type EligibilitySuggestedSettings = NonNullable<NonNullable<DeliverableSlot['eligibilityCheck']>['suggestedSettings']>;
 type EligibilitySuggestedSettingsChange = 'activity' | 'deliverableType';
+const MIN_ELIGIBILITY_TEXT_LENGTH = 80;
+
+function hasEnoughExtractedTextForEligibility(deliverable: DeliverableSlot) {
+  return (deliverable.docText || deliverable.firstPageText || '').replace(/\s+/g, ' ').trim().length >= MIN_ELIGIBILITY_TEXT_LENGTH;
+}
+
+function getTextExtractionGateReason(deliverable: DeliverableSlot) {
+  if (hasEnoughExtractedTextForEligibility(deliverable)) return null;
+  if ((deliverable.filename || deliverable.name || '').toLowerCase().endsWith('.doc')) {
+    return 'Nu s-a putut extrage text din formatul .doc vechi. Salveaza documentul ca .docx sau PDF si reincarca-l.';
+  }
+  if (/\.(ppt|pptx)$/i.test(deliverable.filename || deliverable.name || '')) {
+    return 'Nu exista text extras suficient din prezentare. Exporta prezentarea in PDF pentru verificare AI.';
+  }
+  return 'Nu exista text extras suficient din livrabil. Reincarca documentul ca PDF/DOCX cu text selectabil sau cu imagini clare pentru OCR.';
+}
 
 interface DeliverableItemProps {
   deliverable: DeliverableSlot;
@@ -116,8 +132,13 @@ export function DeliverableItem({
 
     const raw = file.name.replace(/\.[^.]+$/, '');
     const isPhoto = isImageFile(file.name);
-    const isPdf = file.name.toLowerCase().endsWith('.pdf');
-    const isDocx = file.name.toLowerCase().endsWith('.docx') || file.name.toLowerCase().endsWith('.doc');
+    const lowerFileName = file.name.toLowerCase();
+    const isPdf = lowerFileName.endsWith('.pdf');
+    const isDocx = lowerFileName.endsWith('.docx');
+    const isLegacyDoc = lowerFileName.endsWith('.doc') && !isDocx;
+    const isSpreadsheet = lowerFileName.endsWith('.xlsx') || lowerFileName.endsWith('.xls');
+    const isHtml = lowerFileName.endsWith('.html') || lowerFileName.endsWith('.htm');
+    const isPresentation = lowerFileName.endsWith('.ppt') || lowerFileName.endsWith('.pptx');
 
     let docTitle: string | null = null;
     let docText: string | null = null;
@@ -152,6 +173,35 @@ export function DeliverableItem({
         docTitle = titleSuggestion.suggestedTitle;
         docText = fullPdfResult.text || firstPageText;
         textExtractionSource = fullPdfResult.source || pdfResult.source;
+      } else if (isSpreadsheet) {
+        const spreadsheetResult = await extractXlsxTextWithSource(file);
+        firstPageText = spreadsheetResult.text?.slice(0, 5000) || null;
+        docText = spreadsheetResult.text;
+        textExtractionSource = spreadsheetResult.source;
+      } else if (isHtml) {
+        const htmlResult = await extractHtmlTextWithSource(file);
+        firstPageText = htmlResult.text?.slice(0, 5000) || null;
+        docText = htmlResult.text;
+        textExtractionSource = htmlResult.source;
+      } else if (isLegacyDoc) {
+        titleSuggestion = {
+          suggestedTitle: null,
+          confidence: 'low',
+          alternatives: [],
+          reason: 'Formatul .doc vechi nu poate fi citit automat. Salveaza documentul ca .docx sau PDF pentru extragere text.',
+        };
+      } else if (isPresentation) {
+        titleSuggestion = {
+          suggestedTitle: null,
+          confidence: 'low',
+          alternatives: [],
+          reason: 'Prezentarile .ppt/.pptx pot fi incarcate ca livrabile, dar nu au inca extragere automata de text. Exporta in PDF pentru verificare AI si sugestie titlu.',
+        };
+      }
+
+      if (!titleSuggestion.suggestedTitle && docText) {
+        titleSuggestion = suggestTitleFromFirstPage(docText.slice(0, 8000));
+        docTitle = titleSuggestion.suggestedTitle;
       }
 
       const suggestion = applyAutomaticTitleSuggestion({
@@ -161,7 +211,7 @@ export function DeliverableItem({
       const validation = isPhoto || !suggestion.declaredTitle
         ? null
         : validateDeclaredTitleOnFirstPage({
-            firstPageText,
+            firstPageText: firstPageText || docText,
             declaredTitle: suggestion.declaredTitle,
             titleSource: suggestion.titleSource,
           });
@@ -398,11 +448,13 @@ export function DeliverableItem({
   const step2ok = deliverable.isPhoto || (deliverable.uploaded && deliverable.titleConfirmed);
   const step3ok = deliverable.isPhoto || (deliverable.uploaded && !!deliverable.stadiu);
   const step4ok = deliverable.isPhoto || !eligibilityCheckEnabled || (deliverable.uploaded && !!deliverable.aiCheck);
-  const eligibilityGateReason = !deliverable.titleConfirmed
-    ? 'Confirma titlul livrabilului inainte de verificarea eligibilitatii.'
-    : !deliverable.stadiu
-      ? 'Selecteaza stadiul documentului inainte de verificarea eligibilitatii.'
-      : eligibilityBlockedReason;
+  const textExtractionGateReason = getTextExtractionGateReason(deliverable);
+  const eligibilityGateReason = textExtractionGateReason
+    || (!deliverable.titleConfirmed
+      ? 'Confirma titlul livrabilului inainte de verificarea eligibilitatii.'
+      : !deliverable.stadiu
+        ? 'Selecteaza stadiul documentului inainte de verificarea eligibilitatii.'
+        : eligibilityBlockedReason);
   const canRunEligibilityCheck = canCheckEligibility && !eligibilityGateReason;
   const allOk = step1ok && step2ok && step3ok && step4ok;
   const auditTitle = getDocumentAuditTitle({
@@ -491,7 +543,7 @@ export function DeliverableItem({
         <input
           type="file"
           ref={fileRef}
-          accept=".pdf,.doc,.docx,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg,.gif"
+          accept=".pdf,.doc,.docx,.html,.htm,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg,.gif"
           onChange={handleFile}
           className="hidden"
         />
@@ -920,11 +972,13 @@ export function DeliverableEligibilityControl({
 
   if (!deliverable.uploaded || deliverable.isPhoto) return null;
 
-  const eligibilityGateReason = !deliverable.titleConfirmed
-    ? 'Confirma titlul livrabilului inainte de verificarea eligibilitatii.'
-    : !deliverable.stadiu
-      ? 'Selecteaza stadiul documentului inainte de verificarea eligibilitatii.'
-      : eligibilityBlockedReason;
+  const textExtractionGateReason = getTextExtractionGateReason(deliverable);
+  const eligibilityGateReason = textExtractionGateReason
+    || (!deliverable.titleConfirmed
+      ? 'Confirma titlul livrabilului inainte de verificarea eligibilitatii.'
+      : !deliverable.stadiu
+        ? 'Selecteaza stadiul documentului inainte de verificarea eligibilitatii.'
+        : eligibilityBlockedReason);
   const canRunEligibilityCheck = canCheckEligibility && !eligibilityGateReason;
 
   const handleAiCheck = async () => {

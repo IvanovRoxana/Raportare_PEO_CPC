@@ -214,6 +214,38 @@ export async function extractDocxText(file: File): Promise<string | null> {
   return (await extractDocxTextWithSource(file)).text;
 }
 
+export async function extractHtmlTextWithSource(file: File): Promise<DocumentTextExtractionResult> {
+  try {
+    const html = await file.text();
+    const parsed = new DOMParser().parseFromString(html, 'text/html');
+    parsed.querySelectorAll('script, style, noscript, svg').forEach((node) => node.remove());
+    const text = normalizeExtractedText(parsed.body?.textContent || parsed.documentElement.textContent || html);
+    return { text: text || null, source: text ? 'native' : undefined };
+  } catch (error) {
+    console.error('Error extracting HTML text:', error);
+    return { text: null };
+  }
+}
+
+export async function extractXlsxTextWithSource(file: File): Promise<DocumentTextExtractionResult> {
+  try {
+    const xlsx = await import('xlsx');
+    const arrayBuffer = await file.arrayBuffer();
+    const workbook = xlsx.read(arrayBuffer, { type: 'array' });
+    const sheetTexts = workbook.SheetNames.flatMap((sheetName) => {
+      const sheet = workbook.Sheets[sheetName];
+      if (!sheet) return [];
+      const csv = xlsx.utils.sheet_to_csv(sheet, { FS: ' ', RS: '\n', blankrows: false });
+      return csv.trim() ? [`[${sheetName}]\n${csv}`] : [];
+    });
+    const text = joinDistinctTextSegments(sheetTexts);
+    return { text: text || null, source: text ? 'native' : undefined };
+  } catch (error) {
+    console.error('Error extracting XLSX text:', error);
+    return { text: null };
+  }
+}
+
 type MammothImage = {
   contentType: string;
   read: (encoding: 'base64') => Promise<string>;
