@@ -29,7 +29,10 @@ type PdfJsModule = typeof import('pdfjs-dist');
 
 const MIN_USEFUL_TEXT_LENGTH = 40;
 const MAX_OCR_PDF_PAGES = 3;
+const MAX_DOCX_OCR_IMAGES = 60;
+const MAX_EMBEDDED_OCR_TEXT_CHARS = 20000;
 const PDF_OCR_SCALE = 2;
+const EMPTY_IMAGE_DATA_URL = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
 
 let pdfJsModulePromise: Promise<PdfJsModule> | null = null;
 
@@ -70,6 +73,21 @@ function hasUsefulText(text: string | null | undefined) {
   return normalizeExtractedText(text).length >= MIN_USEFUL_TEXT_LENGTH;
 }
 
+function joinDistinctTextSegments(segments: Array<string | null | undefined>) {
+  const seen = new Set<string>();
+  return segments
+    .map((segment) => (segment || '').trim())
+    .filter(Boolean)
+    .filter((segment) => {
+      const key = normalizeExtractedText(segment).toLowerCase();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .join('\n\n')
+    .trim();
+}
+
 async function createOcrWorker() {
   const Tesseract = await import('tesseract.js');
   const worker = await Tesseract.createWorker(['ron', 'eng']);
@@ -93,6 +111,19 @@ async function recognizeCanvasText(canvas: HTMLCanvasElement) {
   }
 }
 
+async function recognizeBlobText(blob: Blob) {
+  const worker = await createOcrWorker();
+  try {
+    const result = await worker.recognize(blob);
+    return normalizeExtractedText(result.data.text) || null;
+  } catch (error) {
+    console.error('Error running image OCR:', error);
+    return null;
+  } finally {
+    await worker.terminate();
+  }
+}
+
 async function renderPdfPageToCanvas(page: PdfPage) {
   if (typeof document === 'undefined') return null;
 
@@ -108,23 +139,30 @@ async function renderPdfPageToCanvas(page: PdfPage) {
   return canvas;
 }
 
-async function extractPdfPageTextWithOcrFallback(page: PdfPage) {
+async function extractPdfPageTextWithOcr(page: PdfPage, options: { forceOcr?: boolean } = {}) {
   const textContent = await page.getTextContent();
   const nativeText = pdfTextItemsToLines(textContent.items);
-  if (hasUsefulText(nativeText)) {
+  if (hasUsefulText(nativeText) && !options.forceOcr) {
     return { text: nativeText, source: 'native' as const };
   }
 
   const canvas = await renderPdfPageToCanvas(page);
   const ocrText = canvas ? await recognizeCanvasText(canvas) : null;
   if (ocrText) {
-    return { text: ocrText, source: 'ocr' as const };
+    return {
+      text: joinDistinctTextSegments([nativeText, `Text OCR din imagine/pagina scanata: ${ocrText}`]),
+      source: 'ocr' as const,
+    };
   }
 
   return {
     text: nativeText || null,
     source: nativeText ? 'native' as const : undefined,
   };
+}
+
+async function extractPdfPageTextWithOcrFallback(page: PdfPage) {
+  return extractPdfPageTextWithOcr(page);
 }
 
 export async function extractImageTextWithSource(file: File): Promise<DocumentTextExtractionResult> {
@@ -173,14 +211,81 @@ export async function extractDocxFirstPageText(file: File): Promise<string | nul
 
 // Extract full text from DOCX file
 export async function extractDocxText(file: File): Promise<string | null> {
+  return (await extractDocxTextWithSource(file)).text;
+}
+
+type MammothImage = {
+  contentType: string;
+  read: (encoding: 'base64') => Promise<string>;
+};
+
+type MammothWithImages = {
+  convertToHtml: (
+    input: { arrayBuffer: ArrayBuffer },
+    options?: { convertImage?: unknown },
+  ) => Promise<unknown>;
+  images?: {
+    imgElement: (
+      converter: (image: MammothImage) => Promise<{ src: string }>,
+    ) => unknown;
+  };
+};
+
+async function extractDocxEmbeddedImageText(file: File): Promise<DocumentTextExtractionResult> {
+  try {
+    const mammoth = await import('mammoth') as unknown as MammothWithImages;
+    if (!mammoth.images?.imgElement) return { text: null };
+
+    const arrayBuffer = await file.arrayBuffer();
+    const imageTexts: string[] = [];
+    let imageIndex = 0;
+    let processedImageCount = 0;
+
+    const convertImage = mammoth.images.imgElement(async (image) => {
+      imageIndex += 1;
+      if (imageIndex > MAX_DOCX_OCR_IMAGES) return { src: EMPTY_IMAGE_DATA_URL };
+
+      processedImageCount += 1;
+      const base64 = await image.read('base64');
+      const response = await fetch(`data:${image.contentType};base64,${base64}`);
+      const blob = await response.blob();
+      const ocrText = await recognizeBlobText(blob);
+      if (ocrText) {
+        imageTexts.push(`Text OCR imagine DOCX ${imageIndex}: ${ocrText}`);
+      }
+      return { src: `data:${image.contentType};base64,${base64}` };
+    });
+
+    await mammoth.convertToHtml({ arrayBuffer }, { convertImage });
+
+    const summary = imageIndex > 0
+      ? `Documentul DOCX contine ${imageIndex} imagine/imagini incorporate; OCR procesat pentru ${processedImageCount} imagine/imagini.`
+      : null;
+    const text = joinDistinctTextSegments([summary, ...imageTexts]).slice(0, MAX_EMBEDDED_OCR_TEXT_CHARS);
+    return { text: text || null, source: text ? 'ocr' : undefined };
+  } catch (error) {
+    console.error('Error extracting DOCX embedded image text:', error);
+    return { text: null };
+  }
+}
+
+export async function extractDocxTextWithSource(file: File): Promise<DocumentTextExtractionResult> {
   try {
     const mammoth = await import('mammoth');
     const arrayBuffer = await file.arrayBuffer();
     const result = await mammoth.extractRawText({ arrayBuffer });
-    return result.value;
+    const embeddedImageText = await extractDocxEmbeddedImageText(file);
+    const text = joinDistinctTextSegments([
+      result.value,
+      embeddedImageText.text ? `Text OCR din screenshot-uri/imagini incorporate:\n${embeddedImageText.text}` : null,
+    ]);
+    return {
+      text: text || null,
+      source: embeddedImageText.text ? 'ocr' : text ? 'native' : undefined,
+    };
   } catch (error) {
     console.error('Error extracting DOCX text:', error);
-    return null;
+    return { text: null };
   }
 }
 
@@ -222,34 +327,23 @@ export async function extractPdfTextWithSource(file: File): Promise<DocumentText
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
     
-    let fullText = '';
+    const pageTexts: string[] = [];
+    let usedOcr = false;
     for (let i = 1; i <= pdf.numPages; i++) {
       const page = await pdf.getPage(i);
-      const textContent = await page.getTextContent();
-      const pageText = pdfTextItemsToLines(textContent.items as PdfTextItem[]);
-      fullText += pageText + '\n';
-    }
-
-    if (hasUsefulText(fullText)) {
-      return { text: fullText.trim(), source: 'native' };
-    }
-
-    const ocrPageCount = Math.min(pdf.numPages, MAX_OCR_PDF_PAGES);
-    const ocrPages: string[] = [];
-    let usedOcr = false;
-    for (let i = 1; i <= ocrPageCount; i++) {
-      const page = await pdf.getPage(i);
-      const pageText = await extractPdfPageTextWithOcrFallback(page as unknown as PdfPage);
-      if (pageText.text) ocrPages.push(pageText.text);
+      const pageText = i <= MAX_OCR_PDF_PAGES
+        ? await extractPdfPageTextWithOcr(page as unknown as PdfPage, { forceOcr: true })
+        : await extractPdfPageTextWithOcrFallback(page as unknown as PdfPage);
+      if (pageText.text) pageTexts.push(pageText.text);
       if (pageText.source === 'ocr') usedOcr = true;
     }
 
-    if (ocrPages.length > 0) {
-      return { text: ocrPages.join('\n\n').trim(), source: usedOcr ? 'ocr' : 'native' };
+    const fullText = pageTexts.join('\n\n').trim();
+    if (hasUsefulText(fullText)) {
+      return { text: fullText, source: usedOcr ? 'ocr' : 'native' };
     }
     
-    const fallbackText = fullText.trim();
-    return { text: fallbackText || null, source: fallbackText ? 'native' : undefined };
+    return { text: fullText || null, source: fullText ? (usedOcr ? 'ocr' : 'native') : undefined };
   } catch (error) {
     console.error('Error extracting PDF text:', error);
     return { text: null };
