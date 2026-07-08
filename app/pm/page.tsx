@@ -59,6 +59,7 @@ import {
   useReportStatusByMonth,
   useActivitiesByMonth,
   useAuditLogs,
+  useAuditLogMutations,
   useDocuments,
   useGTEntities,
   useGTPersons,
@@ -86,6 +87,7 @@ import {
   resolveDataAccessScope,
 } from '@/lib/access-control';
 import { isEventActivity } from '@/lib/deliverable-types';
+import { findLatestClarificationAudit, PM_CLARIFICATION_AUDIT_ACTION } from '@/lib/pm-clarifications';
 import type {
   PontajRow,
   RaportRow,
@@ -175,6 +177,7 @@ export default function PMDashboard() {
   const { notes, isLoading: notesLoading } = useNotes(verification?.id || null);
   const { create: createNote, update: updateNote, remove: removeNote } = useNoteMutations();
   const { create: createActivity, update: updateActivity } = useActivityMutations();
+  const { create: createAuditLog } = useAuditLogMutations();
   const {
     status: reportStatus,
     updateStatus: updateReportStatus,
@@ -293,6 +296,42 @@ export default function PMDashboard() {
   const reviewExpert = useMemo(() => {
     return reviewExpertId ? visibleExperts.find((expert) => expert.id === reviewExpertId) || null : null;
   }, [visibleExperts, reviewExpertId]);
+  const selectedClarificationActivities = useMemo(
+    () => monthActivities.filter((activity) => activity.expertId === selectedExpertId && activity.pmNotes?.trim()),
+    [monthActivities, selectedExpertId],
+  );
+  const recordClarificationAudit = async ({
+    expert,
+    note,
+    activityIds,
+  }: {
+    expert: Pick<Expert, 'id' | 'name' | 'projectCode'>;
+    note: string;
+    activityIds?: string[];
+  }) => {
+    if (!currentUser || !canManagePmReview) return;
+
+    try {
+      await createAuditLog({
+        actionType: PM_CLARIFICATION_AUDIT_ACTION,
+        actorId: currentUser.id || currentUser.email || 'pm',
+        actorName: currentUser.displayName || currentUser.email || 'PM',
+        actorRole: currentUser.roles?.join(',') || 'pm',
+        affectedExpertId: expert.id,
+        affectedExpertName: expert.name,
+        projectCode: expert.projectCode,
+        month: selectedMonth,
+        year: selectedYear,
+        fieldName: activityIds?.length ? `activity:${activityIds.join(',')}` : 'reportStatus.pmNotes',
+        oldValue: '',
+        newValue: note,
+        justification: `Clarificări PM solicitate pentru ${expert.name}.`,
+        source: 'manual',
+      });
+    } catch (error) {
+      console.warn('Clarification audit log was not persisted:', error);
+    }
+  };
 
   const saveVerificationData = async () => {
     if (!selectedExpertId || !canManagePmReview) return;
@@ -403,7 +442,9 @@ export default function PMDashboard() {
   const requestClarifications = async () => {
     const note = window.prompt('Ce clarificări solicitați expertului?');
     if (note === null) return;
-    await setMonthlyStatus('clarifications', note.trim() || 'Clarificări solicitate de PM.');
+    const pmNote = note.trim() || 'Clarificări solicitate de PM.';
+    await setMonthlyStatus('clarifications', pmNote);
+    await recordClarificationAudit({ expert: selectedExpert, note: pmNote });
   };
 
   const rejectMonth = async () => {
@@ -432,7 +473,11 @@ export default function PMDashboard() {
   const requestReviewClarifications = async () => {
     const note = window.prompt('Ce clarificari soliciti expertului pentru aceasta raportare?');
     if (note === null) return;
-    await setReviewMonthlyStatus('clarifications', note.trim() || 'Clarificari solicitate de PM.');
+    const pmNote = note.trim() || 'Clarificari solicitate de PM.';
+    await setReviewMonthlyStatus('clarifications', pmNote);
+    if (reviewExpert) {
+      await recordClarificationAudit({ expert: reviewExpert, note: pmNote });
+    }
   };
 
   const approveReviewActivities = async (activities: Activity[]) => {
@@ -467,6 +512,13 @@ export default function PMDashboard() {
       }))
     );
     await setReviewMonthlyStatus('clarifications', activeReviewReportStatus?.pmNotes || 'Clarificari solicitate punctual pe activitati.');
+    if (reviewExpert) {
+      await recordClarificationAudit({
+        expert: reviewExpert,
+        note: pmNote,
+        activityIds: activities.map((activity) => activity.id),
+      });
+    }
     await refreshMonthActivities();
   };
 
@@ -850,6 +902,50 @@ export default function PMDashboard() {
                   {rule}
                 </div>
               ))}
+            </div>
+          </RightInfoCard>
+
+          <RightInfoCard title="Intervenții clarificări" icon={AlertTriangle}>
+            <div className="space-y-4 text-sm">
+              {selectedClarificationActivities.length > 0 ? (
+                selectedClarificationActivities.slice(0, 4).map((activity) => {
+                  const clarificationAudit = findLatestClarificationAudit(auditLogs, activity.id)
+                    || findLatestClarificationAudit(auditLogs);
+
+                  return (
+                    <div key={activity.id} className="rounded-lg border border-amber-100 bg-amber-50/60 p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="font-semibold text-slate-900">{activity.title || activity.activityType}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {activity.date} · {activity.hours}h{activity.saCode ? ` · ${activity.saCode}` : ''}
+                          </p>
+                        </div>
+                        <Badge variant="outline" className="border-amber-300 bg-white text-amber-800">
+                          Clarificare
+                        </Badge>
+                      </div>
+                      <p className="mt-2 line-clamp-3 text-amber-900">{activity.pmNotes}</p>
+                      <div className="mt-3 space-y-1 text-xs text-muted-foreground">
+                        <p>
+                          Cerere PM: {clarificationAudit?.createdAt
+                            ? new Date(clarificationAudit.createdAt).toLocaleString('ro-RO')
+                            : 'neînregistrată în audit'}
+                        </p>
+                        <p>
+                          Modificat de expert: {activity.updatedAt
+                            ? new Date(activity.updatedAt).toLocaleString('ro-RO')
+                            : 'fără actualizare recentă'}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <p className="text-muted-foreground">
+                  Nu sunt activități cu clarificări punctuale pentru expertul și luna selectate.
+                </p>
+              )}
             </div>
           </RightInfoCard>
 

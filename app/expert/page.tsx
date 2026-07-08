@@ -33,6 +33,7 @@ import { getMonthName } from '@/lib/backend-store';
 import { buildConsolidatedTimesheet, filterActiveConcurrentProjectsForMonth, getConcurrentProjectMonthlyTotal, getConsolidatedWarnings } from '@/lib/concurrent-projects';
 import { buildIgnoredSharedActivityAlerts, buildPendingSharedActivityAlerts, buildPendingSharedDeliverableAlerts, buildReturnedSharedActivityAlerts, filterSharedRelationsForMonths } from '@/lib/document-sharing';
 import { addMonthAccessRequestNote, hasMonthAccessRequest } from '@/lib/month-access-requests';
+import { getActivitiesWithPmClarifications } from '@/lib/pm-clarifications';
 import { canAccessPmDashboard } from '@/lib/pm-dashboard';
 import { buildPontajExportPayload } from '@/lib/pontaj-export-payload';
 import { calculateMonthlyNormInfo } from '@/lib/pontaj-rules';
@@ -576,6 +577,9 @@ export default function ExpertHomeDashboard() {
   );
   const workedDaysCount = Array.from(dayTotals.values()).filter((day) => day.total > 0).length;
   const openPeoActivitiesCount = peoActivities.filter((activity) => activity.status !== 'approved').length;
+  const clarificationActivities = useMemo(() => getActivitiesWithPmClarifications(peoActivities), [peoActivities]);
+  const hasPmClarifications = currentMonthStatus?.status === 'clarifications' || clarificationActivities.length > 0;
+  const clarificationHref = `/expert/clarificari?month=${currentMonth}&year=${currentYear}`;
   const peoActivitiesWithDeliverablesCount = peoActivities.filter((activity) => (activity.deliverables?.length ?? 0) > 0).length;
   const monthlyDocumentCount = useMemo(() => {
     if (!currentExpert || !selectedMonthHasAccess) return 0;
@@ -844,20 +848,43 @@ export default function ExpertHomeDashboard() {
               </Link>
             </RightInfoCard>
 
-            <RightInfoCard title="Reguli pontaj" icon={CheckCircle2}>
-              <div className="space-y-3 text-sm leading-6">
-                {[
-                  'Pontajul se raportează zilnic, până la ora 23:59.',
-                  'Orele trebuie alocate pe subactivități.',
-                  'Documentele justificative se atașează la activități.',
-                  'Minimum 8h / zi lucrată.',
-                ].map((rule) => (
-                  <div key={rule} className="flex items-start gap-2 text-muted-foreground">
-                    <CheckCircle2 className="mt-1 h-4 w-4 shrink-0 text-[#36c2a0]" />
-                    {rule}
+            <RightInfoCard title="Clarificări PM" icon={AlertTriangle}>
+              <div className="space-y-4 text-sm">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <span className="text-muted-foreground">Status</span>
+                  <Badge
+                    variant={hasPmClarifications ? 'destructive' : 'outline'}
+                    className={hasPmClarifications ? undefined : 'border-slate-200 bg-slate-50 text-slate-600'}
+                  >
+                    {hasPmClarifications ? 'Clarificări solicitate' : 'Fără clarificări'}
+                  </Badge>
+                </div>
+                {currentMonthStatus?.pmNotes ? (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-900">
+                    <p className="text-xs font-semibold uppercase tracking-wide">Observații PM</p>
+                    <p className="mt-1 leading-6">{currentMonthStatus.pmNotes}</p>
                   </div>
-                ))}
+                ) : (
+                  <p className="text-muted-foreground">
+                    Nu există observații lunare de la PM pentru luna selectată.
+                  </p>
+                )}
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Activități marcate</span>
+                  <span className="font-semibold text-slate-950">{clarificationActivities.length}</span>
+                </div>
+                {clarificationActivities[0] ? (
+                  <div className="rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
+                    Ultima clarificare: {clarificationActivities[0].title || clarificationActivities[0].activityType}
+                  </div>
+                ) : null}
               </div>
+              <Button asChild className="mt-5 w-full" variant={hasPmClarifications ? 'default' : 'outline'}>
+                <Link href={clarificationHref}>
+                  Vezi clarificări
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              </Button>
             </RightInfoCard>
 
             <RightInfoCard title="Status raportare" icon={ClipboardList}>
