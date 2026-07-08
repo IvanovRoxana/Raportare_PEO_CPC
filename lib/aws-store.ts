@@ -1559,6 +1559,7 @@ async function validateActivityBatchForWrite(
 async function attachActivitiesToExistingDeliverableGroups(
   client: any,
   activities: Omit<Activity, 'id' | 'createdAt' | 'updatedAt'>[],
+  excludedIds: string[] = [],
 ) {
   const sourceActivities = new Map<string, ActivityWithDeliverablesForValidation | null>();
   const existingActivitiesByMonth = new Map<string, ActivityWithDeliverablesForValidation[]>();
@@ -1588,6 +1589,7 @@ async function attachActivitiesToExistingDeliverableGroups(
       activity.expertId,
       month,
       year,
+      excludedIds,
     );
     existingActivitiesByMonth.set(key, existingActivities);
     return existingActivities;
@@ -2250,6 +2252,7 @@ export const activitiesService = {
     const client = getAwsDataClient() as any;
     const existing = await client.models.Activity.get({ id });
     assertNoErrors(existing, 'AWS get activity');
+    let preparedUpdates = updates;
 
     if (existing.data) {
       await assertCanAccessExpert(client, existing.data.expertId);
@@ -2267,51 +2270,58 @@ export const activitiesService = {
         title: updates.title ?? existing.data.title,
       } as Omit<Activity, 'id' | 'createdAt' | 'updatedAt'>;
 
-      await validateActivityBatchForWrite(client, [candidate], [id]);
+      const [preparedCandidate] = await attachActivitiesToExistingDeliverableGroups(client, [candidate], [id]);
+      await validateActivityBatchForWrite(client, [preparedCandidate], [id]);
+      preparedUpdates = {
+        ...updates,
+        periodGroupId: preparedCandidate.periodGroupId,
+        workingGroupId: preparedCandidate.workingGroupId,
+        deliverables: preparedCandidate.deliverables,
+      };
     }
 
     const result = await client.models.Activity.update(withSupportedActivityShareFields({
       id,
-      expertId: updates.expertId,
-      expertName: updates.expertName,
-      date: updates.date,
-      year: updates.date ? yearFromDate(updates.date) : undefined,
-      month: updates.date ? monthFromDate(updates.date) : undefined,
-      hours: updates.hours,
-      activityType: updates.activityType,
-      saCode: updates.saCode,
-      catalogActivityId: updates.catalogActivityId,
-      title: updates.title,
-      description: updates.description,
-      activityKeywords: updates.activityKeywords,
-      location: updates.location,
-      dayType: updates.dayType,
-      workingGroupId: updates.workingGroupId,
-      status: updates.status,
-      projectCode: updates.projectCode,
-      pmNotes: updates.pmNotes,
-      gdprTemplateCode: updates.gdprTemplateCode,
-      gdprMetaJson: updates.gdprMetaJson,
-      gdprGeneratedText: updates.gdprGeneratedText,
-      gdprConclusionCode: updates.gdprConclusionCode,
-      businessHubMetaJson: updates.businessHubMetaJson,
-      eventDurationHours: updates.eventDurationHours,
-      eventExtendedDescription: updates.eventExtendedDescription,
-    }, updates));
+      expertId: preparedUpdates.expertId,
+      expertName: preparedUpdates.expertName,
+      date: preparedUpdates.date,
+      year: preparedUpdates.date ? yearFromDate(preparedUpdates.date) : undefined,
+      month: preparedUpdates.date ? monthFromDate(preparedUpdates.date) : undefined,
+      hours: preparedUpdates.hours,
+      activityType: preparedUpdates.activityType,
+      saCode: preparedUpdates.saCode,
+      catalogActivityId: preparedUpdates.catalogActivityId,
+      title: preparedUpdates.title,
+      description: preparedUpdates.description,
+      activityKeywords: preparedUpdates.activityKeywords,
+      location: preparedUpdates.location,
+      dayType: preparedUpdates.dayType,
+      workingGroupId: preparedUpdates.workingGroupId,
+      status: preparedUpdates.status,
+      projectCode: preparedUpdates.projectCode,
+      pmNotes: preparedUpdates.pmNotes,
+      gdprTemplateCode: preparedUpdates.gdprTemplateCode,
+      gdprMetaJson: preparedUpdates.gdprMetaJson,
+      gdprGeneratedText: preparedUpdates.gdprGeneratedText,
+      gdprConclusionCode: preparedUpdates.gdprConclusionCode,
+      businessHubMetaJson: preparedUpdates.businessHubMetaJson,
+      eventDurationHours: preparedUpdates.eventDurationHours,
+      eventExtendedDescription: preparedUpdates.eventExtendedDescription,
+    }, preparedUpdates));
     assertNoErrors(result, 'AWS update activity');
 
     if (existing.data) {
       await syncSharedActivitySuggestions(client, {
-        expertId: updates.expertId ?? existing.data.expertId,
-        shareStatus: updates.shareStatus ?? existing.data.shareStatus,
-        takenByExperts: updates.takenByExperts ?? existing.data.takenByExperts ?? [],
-        projectCode: updates.projectCode ?? existing.data.projectCode ?? undefined,
+        expertId: preparedUpdates.expertId ?? existing.data.expertId,
+        shareStatus: preparedUpdates.shareStatus ?? existing.data.shareStatus,
+        takenByExperts: preparedUpdates.takenByExperts ?? existing.data.takenByExperts ?? [],
+        projectCode: preparedUpdates.projectCode ?? existing.data.projectCode ?? undefined,
       }, id);
     }
 
-    if (updates.deliverables) {
+    if (preparedUpdates.deliverables) {
       const existingDeliverables = await listModel<any>(client.models.Deliverable, { activityId: { eq: id } });
-      const deliverablePlan = planDeliverableSync(existingDeliverables.map(mapDeliverable), updates.deliverables);
+      const deliverablePlan = planDeliverableSync(existingDeliverables.map(mapDeliverable), preparedUpdates.deliverables);
 
       await Promise.all(
         deliverablePlan.toDelete.map((deliverable) => client.models.Deliverable.delete({ id: deliverable.id })),
