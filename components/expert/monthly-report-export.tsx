@@ -21,6 +21,7 @@ import { getNonWorkingDayInfo } from '@/lib/non-working-days';
 import { buildPontajExportPayload } from '@/lib/pontaj-export-payload';
 import { getWorkingHoursInfo } from '@/lib/working-hours';
 import { normalizePeoCategory } from '@/lib/peo-category';
+import { compileActivitiesByPeriodGroup } from '@/lib/activity-edit';
 import {
   buildBusinessHubAddressDocxBlob,
   buildBusinessHubAddressFilename,
@@ -89,16 +90,17 @@ export function MonthlyReportExport({ expert, activities, concurrentProjects = [
       }
       
       if (includeOPIS) {
-        docs.push(generateOPIS(expert, activities, month, year));
+        docs.push(generateOPIS(expert, compileActivitiesByPeriodGroup(activities), month, year));
       }
       
       if (includeRA) {
+        const reportActivities = compileActivitiesByPeriodGroup(activities);
         // Call AI to generate report
         const response = await fetch('/api/ai/generate-report', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            activities,
+            activities: reportActivities,
             month: getMonthName(month),
             year,
             expertName: expert.name,

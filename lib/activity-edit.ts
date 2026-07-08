@@ -1,4 +1,91 @@
-import type { Activity } from './types';
+import type { Activity, Deliverable } from './types';
+import { createActivityPeriodGroupId } from './submit-readiness.ts';
+
+function createGeneratedActivityId() {
+  return `activity-${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
+}
+
+export function getActivityEditGroupId(activity: Pick<Activity, 'periodGroupId' | 'workingGroupId'>) {
+  return activity.periodGroupId
+    || (activity.workingGroupId?.startsWith('activity-period:') ? activity.workingGroupId : undefined);
+}
+
+export function getActivityGroupMembers(activity: Activity, activities: Activity[]) {
+  const groupId = getActivityEditGroupId(activity);
+  const members = groupId
+    ? activities.filter((candidate) => getActivityEditGroupId(candidate) === groupId)
+    : [activity];
+
+  return members.length > 0
+    ? [...members].sort((first, second) => first.date.localeCompare(second.date))
+    : [activity];
+}
+
+function getDeliverableIdentity(deliverable: Deliverable) {
+  return deliverable.documentId
+    || deliverable.fileHash
+    || deliverable.s3Key
+    || deliverable.filePath
+    || deliverable.id;
+}
+
+export function dedupeDeliverables(deliverables: Deliverable[]) {
+  const seen = new Set<string>();
+  const deduped: Deliverable[] = [];
+
+  deliverables.forEach((deliverable) => {
+    const identity = getDeliverableIdentity(deliverable);
+    if (!identity || seen.has(identity)) return;
+    seen.add(identity);
+    deduped.push(deliverable);
+  });
+
+  return deduped;
+}
+
+export function mergeActivityGroupForEdit(activity: Activity, activities: Activity[]) {
+  const groupMembers = getActivityGroupMembers(activity, activities);
+  const groupId = getActivityEditGroupId(activity);
+
+  return {
+    activity: {
+      ...activity,
+      periodGroupId: activity.periodGroupId ?? groupId,
+      workingGroupId: activity.workingGroupId ?? groupId,
+      deliverables: dedupeDeliverables(groupMembers.flatMap((member) => member.deliverables ?? [])),
+    },
+    groupMembers,
+  };
+}
+
+export function compileActivitiesByPeriodGroup(activities: Activity[]) {
+  const grouped = new Map<string, Activity[]>();
+  const order: string[] = [];
+
+  activities.forEach((activity) => {
+    const key = getActivityEditGroupId(activity) ?? activity.id;
+    if (!grouped.has(key)) {
+      grouped.set(key, []);
+      order.push(key);
+    }
+    grouped.get(key)?.push(activity);
+  });
+
+  return order.map((key) => {
+    const members = [...(grouped.get(key) ?? [])].sort((first, second) => first.date.localeCompare(second.date));
+    const first = members[0];
+    if (!first || members.length === 1) {
+      return first;
+    }
+
+    return {
+      ...first,
+      date: members.map((activity) => activity.date).join(', '),
+      hours: members.reduce((sum, activity) => sum + (Number(activity.hours) || 0), 0),
+      deliverables: dedupeDeliverables(members.flatMap((activity) => activity.deliverables ?? [])),
+    };
+  }).filter((activity): activity is Activity => Boolean(activity));
+}
 
 export function splitActivityEditPayload(
   editingActivity: Pick<Activity, 'id'>,
@@ -22,6 +109,70 @@ export function splitActivityEditPayload(
         ...activity,
         expertId,
       })),
+  };
+}
+
+export function buildSubmittedActivitiesForEdit(
+  editingActivity: Activity,
+  submittedActivities: Activity[],
+  selectedDates: string[],
+  selectedHours: Record<string, string>,
+  existingGroupMembers: Activity[],
+  expertId: string,
+  normalizeHours: (value: string | number | undefined, fallback: string) => string,
+) {
+  const templateActivity = submittedActivities.find((activity) => activity.id === editingActivity.id)
+    ?? submittedActivities[0]
+    ?? editingActivity;
+  const submittedByDate = new Map(submittedActivities.map((activity) => [activity.date, activity]));
+  const existingByDate = new Map(existingGroupMembers.map((activity) => [activity.date, activity]));
+  const datesForSave = selectedDates.length > 0 ? selectedDates : submittedActivities.map((activity) => activity.date);
+  const uniqueDates = [...new Set(datesForSave)].sort();
+  const existingGroupId = getActivityEditGroupId(editingActivity);
+  const periodGroupId = existingGroupId
+    ?? (uniqueDates.length > 1 ? createActivityPeriodGroupId(`edit-${editingActivity.id}`) : undefined);
+
+  return uniqueDates.map((date) => {
+    const existingActivityForDate = existingByDate.get(date);
+    const sourceActivity = submittedByDate.get(date) ?? templateActivity;
+    const activityId = existingActivityForDate?.id
+      ?? (sourceActivity.id !== editingActivity.id ? sourceActivity.id : createGeneratedActivityId());
+
+    return {
+      ...sourceActivity,
+      id: activityId,
+      date,
+      expertId,
+      hours: Number(normalizeHours(selectedHours[date], sourceActivity.hours.toString())),
+      workingGroupId: sourceActivity.workingGroupId ?? periodGroupId,
+      periodGroupId,
+    };
+  });
+}
+
+export function planGroupedActivityEdit(
+  editingActivity: Pick<Activity, 'id'>,
+  submittedActivities: Activity[],
+  existingGroupMembers: Activity[],
+  expertId: string,
+): { updateActivities: Activity[]; newActivities: Activity[]; deleteActivityIds: string[] } {
+  const existingIds = new Set(existingGroupMembers.map((activity) => activity.id));
+  const submittedIds = new Set(submittedActivities.map((activity) => activity.id));
+
+  if (!submittedIds.has(editingActivity.id) && !submittedActivities.some((activity) => existingIds.has(activity.id))) {
+    throw new Error('Activitatea editata nu poate fi salvata fara identificatorul existent.');
+  }
+
+  return {
+    updateActivities: submittedActivities
+      .filter((activity) => existingIds.has(activity.id))
+      .map((activity) => ({ ...activity, expertId })),
+    newActivities: submittedActivities
+      .filter((activity) => !existingIds.has(activity.id))
+      .map((activity) => ({ ...activity, expertId })),
+    deleteActivityIds: existingGroupMembers
+      .filter((activity) => !submittedIds.has(activity.id))
+      .map((activity) => activity.id),
   };
 }
 

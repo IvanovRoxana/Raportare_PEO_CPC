@@ -1167,9 +1167,10 @@ export function ActivityForm({
       }
     }
 
-    const activityPeriodGroupId = !initialActivity && activityDatesForSave.length > 1
-      ? createActivityPeriodGroupId(generateId())
-      : initialActivity?.periodGroupId;
+    const existingActivityPeriodGroupId = initialActivity?.periodGroupId
+      ?? (initialActivity?.workingGroupId?.startsWith('activity-period:') ? initialActivity.workingGroupId : undefined);
+    const activityPeriodGroupId = existingActivityPeriodGroupId
+      ?? (activityDatesForSave.length > 1 ? createActivityPeriodGroupId(generateId()) : undefined);
 
     const activities: Activity[] = activityDatesForSave.map((date) => {
       // Get hours for this specific date, fallback to default

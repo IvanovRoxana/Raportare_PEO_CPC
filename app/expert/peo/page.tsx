@@ -60,7 +60,12 @@ import {
   validateActivitiesBeforeCreate,
   type ActivityDraftForValidation,
 } from '@/lib/pontaj-rules';
-import { splitActivityEditPayload } from '@/lib/activity-edit';
+import {
+  buildSubmittedActivitiesForEdit,
+  getActivityGroupMembers,
+  mergeActivityGroupForEdit,
+  planGroupedActivityEdit,
+} from '@/lib/activity-edit';
 import { filterPendingSharedDeliverablesNotCoveredByActivity, filterSharedRelationsForMonths } from '@/lib/document-sharing';
 import { buildExpertDeliverableRows } from '@/lib/expert-deliverables';
 
@@ -432,32 +437,20 @@ export default function ExpertDashboard() {
         throw new Error('Selecteaza un expert inainte de salvare.');
       }
 
+      const editingGroupMembers = editingActivity
+        ? getActivityGroupMembers(editingActivity, activities)
+        : [];
+      const editingGroupMemberIds = new Set(editingGroupMembers.map((activity) => activity.id));
       const submittedActivities = editingActivity
-        ? (() => {
-            const templateActivity = newActivities.find((activity) => activity.id === editingActivity.id)
-              ?? newActivities[0]
-              ?? editingActivity;
-            const submittedByDate = new Map(newActivities.map((activity) => [activity.date, activity]));
-            const datesForSave = selectedDates.length > 0 ? selectedDates : newActivities.map((activity) => activity.date);
-            const editedDate = datesForSave.includes(editingActivity.date)
-              ? editingActivity.date
-              : datesForSave[0] || editingActivity.date;
-
-            return [...new Set(datesForSave)].sort().map((date) => {
-              const sourceActivity = submittedByDate.get(date) ?? templateActivity;
-              return {
-                ...sourceActivity,
-                id: date === editedDate
-                  ? editingActivity.id
-                  : sourceActivity.id === editingActivity.id
-                    ? `activity-${crypto.randomUUID?.() ?? `${Date.now()}-${date}`}`
-                    : sourceActivity.id,
-                date,
-                expertId: selectedExpertId,
-                hours: Number(normalizePontajHoursValue(selectedHours[date], sourceActivity.hours.toString())),
-              };
-            });
-          })()
+        ? buildSubmittedActivitiesForEdit(
+            editingActivity,
+            newActivities,
+            selectedDates,
+            selectedHours,
+            editingGroupMembers,
+            selectedExpertId,
+            normalizePontajHoursValue,
+          )
         : newActivities;
 
       const toValidationDraft = (activity: Activity): ActivityDraftForValidation => ({
@@ -471,7 +464,7 @@ export default function ExpertDashboard() {
       const validation = validateActivitiesBeforeCreate({
         expert: selectedExpert,
         existingActivities: activities
-          .filter((activity) => !editingActivity || activity.id !== editingActivity.id)
+          .filter((activity) => !editingActivity || !editingGroupMemberIds.has(activity.id))
           .map(toValidationDraft),
         newActivities: submittedActivities.map((activity) =>
           toValidationDraft({
@@ -488,15 +481,17 @@ export default function ExpertDashboard() {
       }
 
       if (editingActivity) {
-        const { existingActivity, newActivities: activitiesToCreate } = splitActivityEditPayload(
+        const { updateActivities, newActivities: activitiesToCreate, deleteActivityIds } = planGroupedActivityEdit(
           editingActivity,
           submittedActivities,
+          editingGroupMembers,
           selectedExpertId,
         );
-        await updateActivity(editingActivity.id, existingActivity);
+        await Promise.all(updateActivities.map((activity) => updateActivity(activity.id, activity)));
         if (activitiesToCreate.length > 0) {
           await createBatch(activitiesToCreate);
         }
+        await Promise.all(deleteActivityIds.map((activityId) => removeActivity(activityId)));
       } else {
         // Add new activities
         const createdActivities = await createBatch(newActivities.map(a => ({
@@ -550,12 +545,18 @@ export default function ExpertDashboard() {
   const handleEditActivity = (activity: Activity, resolutionHint?: ActivityResolutionHint) => {
     if (reportStatus?.status === 'approved') return;
 
+    const { activity: activityForEdit, groupMembers } = mergeActivityGroupForEdit(activity, activities);
+    const datesForEdit = groupMembers.map((groupActivity) => groupActivity.date);
+    const hoursForEdit = Object.fromEntries(
+      groupMembers.map((groupActivity) => [groupActivity.date, groupActivity.hours.toString()]),
+    );
+
     setIsDeliverablesDialogOpen(false);
-    setEditingActivity(activity);
+    setEditingActivity(activityForEdit);
     setSharedActivityPrefill(null);
     setActivityResolutionHint(resolutionHint ?? null);
-    setSelectedDates([activity.date]);
-    setSelectedHours({ [activity.date]: activity.hours.toString() });
+    setSelectedDates(datesForEdit);
+    setSelectedHours(hoursForEdit);
     setShowForm(true);
     setActiveTab('activitati');
   };
@@ -921,8 +922,11 @@ export default function ExpertDashboard() {
 
   const getDefaultHours = () => Math.min(selectedExpert.norma || 8, 8).toString();
   const getDefaultHoursForDate = (date: string) => {
+    const editingGroupMemberIds = editingActivity
+      ? new Set(getActivityGroupMembers(editingActivity, activities).map((activity) => activity.id))
+      : new Set<string>();
     const existingHours = activities
-      .filter((activity) => activity.date === date && activity.id !== editingActivity?.id)
+      .filter((activity) => activity.date === date && !editingGroupMemberIds.has(activity.id))
       .reduce((sum, activity) => sum + (Number(activity.hours) || 0), 0);
     const remainingDailyHours = Math.max(0, 8 - existingHours);
     const preferredHours = Math.min(Number(getDefaultHours()) || 8, remainingDailyHours || 1);
