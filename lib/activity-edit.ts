@@ -151,8 +151,15 @@ export function buildSubmittedActivitiesForEdit(
   return uniqueDates.map((date) => {
     const existingActivityForDate = existingByDate.get(date);
     const submittedActivityForDate = submittedByDate.get(date);
-    const sourceActivity = submittedActivityForDate ?? existingActivityForDate ?? templateActivity;
-    const preserveExistingActivity = Boolean(existingActivityForDate && !submittedActivityForDate);
+    const submittedUpdatesExistingActivity = Boolean(
+      submittedActivityForDate
+      && existingActivityForDate
+      && submittedActivityForDate.id === existingActivityForDate.id,
+    );
+    const preserveExistingActivity = Boolean(existingActivityForDate && !submittedUpdatesExistingActivity);
+    const sourceActivity: Activity = preserveExistingActivity && existingActivityForDate
+      ? existingActivityForDate
+      : submittedActivityForDate ?? existingActivityForDate ?? templateActivity;
     const activityId = existingActivityForDate?.id
       ?? (sourceActivity.id !== editingActivity.id ? sourceActivity.id : createGeneratedActivityId());
     const hours = preserveExistingActivity && existingActivityForDate

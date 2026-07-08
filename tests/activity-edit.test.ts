@@ -152,12 +152,18 @@ test('editarea multi-day regrupeaza activitati existente pe zilele selectate', (
   const membersForEdit = getActivityGroupMembersForSelectedDates(editing, existingActivities, selectedDates);
   const submitted = buildSubmittedActivitiesForEdit(
     editing,
-    [activity('activity-4', {
-      date: '2026-06-04',
-      saCode: 'SA3.4',
-      activityType: 'Analiza legislativa',
-      deliverables: [deliverable('deliverable-1', { documentId: 'document-1' })],
-    })],
+    [
+      activity('activity-4', {
+        date: '2026-06-04',
+        hours: 6,
+        saCode: 'SA3.4',
+        activityType: 'Analiza legislativa',
+        deliverables: [deliverable('deliverable-1', { documentId: 'document-1' })],
+      }),
+      activity('generated-5', { date: '2026-06-05', hours: 6, saCode: 'SA3.4', activityType: 'Analiza legislativa' }),
+      activity('generated-12', { date: '2026-06-12', hours: 6, saCode: 'SA3.4', activityType: 'Analiza legislativa' }),
+      activity('generated-18', { date: '2026-06-18', hours: 6, saCode: 'SA3.4', activityType: 'Analiza legislativa' }),
+    ],
     selectedDates,
     Object.fromEntries(selectedDates.map((date) => [date, '6'])),
     membersForEdit,
