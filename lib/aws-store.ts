@@ -1455,10 +1455,19 @@ async function listActivitiesWithDeliverablesForValidation(
       id: activity.id,
       expertId: activity.expertId,
       date: activity.date,
+      periodGroupId: activity.periodGroupId,
+      workingGroupId: activity.workingGroupId,
       deliverables: deliverables.map(mapDeliverable),
     };
   }));
 }
+
+type ActivityWithDeliverablesForValidation = Pick<
+  Activity,
+  'id' | 'expertId' | 'date' | 'periodGroupId' | 'workingGroupId'
+> & {
+  deliverables?: Deliverable[];
+};
 
 async function assertReportMonthIsMutable(
   client: any,
@@ -1551,7 +1560,8 @@ async function attachActivitiesToExistingDeliverableGroups(
   client: any,
   activities: Omit<Activity, 'id' | 'createdAt' | 'updatedAt'>[],
 ) {
-  const sourceActivities = new Map<string, Activity | null>();
+  const sourceActivities = new Map<string, ActivityWithDeliverablesForValidation | null>();
+  const existingActivitiesByMonth = new Map<string, ActivityWithDeliverablesForValidation[]>();
 
   const getSourceActivity = async (sourceActivityId: string) => {
     if (sourceActivities.has(sourceActivityId)) {
@@ -1565,6 +1575,63 @@ async function attachActivitiesToExistingDeliverableGroups(
     return sourceActivity;
   };
 
+  const getExistingActivitiesForMonth = async (activity: Omit<Activity, 'id' | 'createdAt' | 'updatedAt'>) => {
+    const month = monthFromDate(activity.date);
+    const year = yearFromDate(activity.date);
+    const key = `${activity.expertId}:${year}:${month}`;
+    if (existingActivitiesByMonth.has(key)) {
+      return existingActivitiesByMonth.get(key) ?? [];
+    }
+
+    const existingActivities = await listActivitiesWithDeliverablesForValidation(
+      client,
+      activity.expertId,
+      month,
+      year,
+    );
+    existingActivitiesByMonth.set(key, existingActivities);
+    return existingActivities;
+  };
+
+  const findExistingActivityByDeliverableSignature = async (
+    activity: Omit<Activity, 'id' | 'createdAt' | 'updatedAt'>,
+    signature: string,
+  ) => {
+    const existingActivities = await getExistingActivitiesForMonth(activity);
+    return existingActivities.find((existingActivity) => (
+      existingActivity.deliverables?.some((deliverable) => (
+        getDeliverableDocumentSignature(deliverable) === signature
+      ))
+    )) ?? null;
+  };
+
+  const attachToSourceActivity = async (
+    activity: Omit<Activity, 'id' | 'createdAt' | 'updatedAt'>,
+    sourceActivity: ActivityWithDeliverablesForValidation,
+  ) => {
+    const periodGroupId = getActivityPeriodGroupId(sourceActivity)
+      ?? `activity-period:${sourceActivity.id}`;
+    if (
+      sourceActivity.periodGroupId !== periodGroupId
+      || !sourceActivity.workingGroupId
+    ) {
+      await client.models.Activity.update(withSupportedActivityShareFields({
+        id: sourceActivity.id,
+        workingGroupId: sourceActivity.workingGroupId ?? periodGroupId,
+      }, {
+        periodGroupId,
+      }));
+      sourceActivity.periodGroupId = periodGroupId;
+      sourceActivity.workingGroupId = sourceActivity.workingGroupId ?? periodGroupId;
+    }
+
+    return {
+      ...activity,
+      periodGroupId,
+      workingGroupId: periodGroupId,
+    };
+  };
+
   return Promise.all(activities.map(async (activity) => {
     const deliverables = activity.deliverables ?? [];
     if (deliverables.length === 0) return activity;
@@ -1573,38 +1640,18 @@ async function attachActivitiesToExistingDeliverableGroups(
     const signaturesToSkip = new Set<string>();
 
     for (const deliverable of deliverables) {
-      if (!deliverable.sourceActivityId) continue;
-
       const signature = getDeliverableDocumentSignature(deliverable);
       if (!signature) continue;
 
-      const sourceActivity = await getSourceActivity(deliverable.sourceActivityId);
+      const sourceActivity = deliverable.sourceActivityId
+        ? await getSourceActivity(deliverable.sourceActivityId)
+        : await findExistingActivityByDeliverableSignature(nextActivity, signature);
       const sourceHasDeliverable = sourceActivity?.deliverables?.some((sourceDeliverable) => (
         getDeliverableDocumentSignature(sourceDeliverable) === signature
       ));
       if (!sourceActivity || !sourceHasDeliverable) continue;
 
-      const periodGroupId = getActivityPeriodGroupId(sourceActivity)
-        ?? `activity-period:${sourceActivity.id}`;
-      if (
-        sourceActivity.periodGroupId !== periodGroupId
-        || !sourceActivity.workingGroupId
-      ) {
-        await client.models.Activity.update(withSupportedActivityShareFields({
-          id: sourceActivity.id,
-          workingGroupId: sourceActivity.workingGroupId ?? periodGroupId,
-        }, {
-          periodGroupId,
-        }));
-        sourceActivity.periodGroupId = periodGroupId;
-        sourceActivity.workingGroupId = sourceActivity.workingGroupId ?? periodGroupId;
-      }
-
-      nextActivity = {
-        ...nextActivity,
-        periodGroupId,
-        workingGroupId: periodGroupId,
-      };
+      nextActivity = await attachToSourceActivity(nextActivity, sourceActivity);
       signaturesToSkip.add(signature);
     }
 
