@@ -62,7 +62,7 @@ import { buildDefaultConcurrentProjects, mergeConcurrentProjectsWithDefaults } f
 import { normalizeTitleForMatch } from './title-suggestion';
 import { parseAwsJsonField, serializeAwsJsonField } from './aws-json';
 import { planDeliverableSync } from './activity-deliverable-sync';
-import { findMonthlyDeliverableDuplicate } from './deliverable-deduplication';
+import { findMonthlyDeliverableDuplicate, getDeliverableDocumentSignature } from './deliverable-deduplication';
 import {
   createProcurementStatusHistoryEntry,
   getContractedProcurementProjects,
@@ -1542,9 +1542,82 @@ async function validateActivityBatchForWrite(
         || monthlyDuplicate.existingDeliverable.originalFileName
         || monthlyDuplicate.existingDeliverable.fileName
         || 'Acest livrabil';
-      throw new Error(`${duplicateName} este deja incarcat pentru luna selectata. Modifica activitatea existenta ca multi-day sau incarca un livrabil diferit.`);
+      throw new Error(`${duplicateName} este deja incarcat pentru luna selectata. Selecteaza livrabilul existent si confirma adaugarea la activitatea existenta sau incarca un livrabil diferit.`);
     }
   }
+}
+
+async function attachActivitiesToExistingDeliverableGroups(
+  client: any,
+  activities: Omit<Activity, 'id' | 'createdAt' | 'updatedAt'>[],
+) {
+  const sourceActivities = new Map<string, Activity | null>();
+
+  const getSourceActivity = async (sourceActivityId: string) => {
+    if (sourceActivities.has(sourceActivityId)) {
+      return sourceActivities.get(sourceActivityId) ?? null;
+    }
+
+    const source = await client.models.Activity.get({ id: sourceActivityId });
+    assertNoErrors(source, 'AWS get source activity');
+    const sourceActivity = source.data ? await attachActivityChildren(source.data) : null;
+    sourceActivities.set(sourceActivityId, sourceActivity);
+    return sourceActivity;
+  };
+
+  return Promise.all(activities.map(async (activity) => {
+    const deliverables = activity.deliverables ?? [];
+    if (deliverables.length === 0) return activity;
+
+    let nextActivity = activity;
+    const signaturesToSkip = new Set<string>();
+
+    for (const deliverable of deliverables) {
+      if (!deliverable.sourceActivityId) continue;
+
+      const signature = getDeliverableDocumentSignature(deliverable);
+      if (!signature) continue;
+
+      const sourceActivity = await getSourceActivity(deliverable.sourceActivityId);
+      const sourceHasDeliverable = sourceActivity?.deliverables?.some((sourceDeliverable) => (
+        getDeliverableDocumentSignature(sourceDeliverable) === signature
+      ));
+      if (!sourceActivity || !sourceHasDeliverable) continue;
+
+      const periodGroupId = getActivityPeriodGroupId(sourceActivity)
+        ?? `activity-period:${sourceActivity.id}`;
+      if (
+        sourceActivity.periodGroupId !== periodGroupId
+        || !sourceActivity.workingGroupId
+      ) {
+        await client.models.Activity.update(withSupportedActivityShareFields({
+          id: sourceActivity.id,
+          workingGroupId: sourceActivity.workingGroupId ?? periodGroupId,
+        }, {
+          periodGroupId,
+        }));
+        sourceActivity.periodGroupId = periodGroupId;
+        sourceActivity.workingGroupId = sourceActivity.workingGroupId ?? periodGroupId;
+      }
+
+      nextActivity = {
+        ...nextActivity,
+        periodGroupId,
+        workingGroupId: periodGroupId,
+      };
+      signaturesToSkip.add(signature);
+    }
+
+    if (signaturesToSkip.size === 0) return nextActivity;
+
+    return {
+      ...nextActivity,
+      deliverables: deliverables.filter((deliverable) => {
+        const signature = getDeliverableDocumentSignature(deliverable);
+        return !signature || !signaturesToSkip.has(signature);
+      }),
+    };
+  }));
 }
 
 async function createActivityUnchecked(
@@ -2072,18 +2145,20 @@ export const activitiesService = {
   async create(activity: Omit<Activity, 'id' | 'createdAt' | 'updatedAt'>): Promise<Activity> {
     const client = getAwsDataClient() as any;
     await assertCanAccessExpert(client, activity.expertId);
-    await validateActivityBatchForWrite(client, [activity]);
-    return createActivityUnchecked(client, activity);
+    const [preparedActivity] = await attachActivitiesToExistingDeliverableGroups(client, [activity]);
+    await validateActivityBatchForWrite(client, [preparedActivity]);
+    return createActivityUnchecked(client, preparedActivity);
   },
 
   async createBatch(activities: Omit<Activity, 'id' | 'createdAt' | 'updatedAt'>[]): Promise<Activity[]> {
     if (activities.length === 0) return [];
     const client = getAwsDataClient() as any;
     await Promise.all(activities.map((activity) => assertCanAccessExpert(client, activity.expertId)));
-    await validateActivityBatchForWrite(client, activities);
+    const preparedActivities = await attachActivitiesToExistingDeliverableGroups(client, activities);
+    await validateActivityBatchForWrite(client, preparedActivities);
 
     const created: Activity[] = [];
-    for (const activity of activities) {
+    for (const activity of preparedActivities) {
       created.push(await createActivityUnchecked(client, activity));
     }
     return created;
