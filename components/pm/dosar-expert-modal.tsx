@@ -32,6 +32,7 @@ import type {
 import { generateOpisDocument, downloadOpis } from '@/lib/opis-generator';
 import { getSecureDocumentUrl } from '@/lib/document-retrieval';
 import { getDocumentAuditTitle } from '@/lib/document-sharing';
+import { dedupeDeliverablesBySignature } from '@/lib/deliverable-deduplication';
 import { GDPR_CONCLUSION_OPTIONS, getGdprDeliverableRequirementLabel, getGdprMinimumEvidenceLabels, getGdprTemplate, parseGdprMetaJson, validateGdprActivityDraft } from '@/lib/gdpr-reporting';
 
 interface DosarExpertModalProps {
@@ -280,14 +281,14 @@ export function DosarExpertModal({
 
   // All deliverables
   const allDeliverables = useMemo<DossierDeliverable[]>(() => {
-    return activities.flatMap(act => 
+    return dedupeDeliverablesBySignature(activities.flatMap(act => 
       (act.deliverables || []).map((d): DossierDeliverable => ({
         ...d,
         activityDate: act.date,
         activityTitle: act.title,
         activityType: act.activityType,
       }))
-    ).sort((a, b) => (a.activityDate || '').localeCompare(b.activityDate || ''));
+    )).sort((a, b) => (a.activityDate || '').localeCompare(b.activityDate || ''));
   }, [activities]);
 
   const handleDownloadOpis = async () => {

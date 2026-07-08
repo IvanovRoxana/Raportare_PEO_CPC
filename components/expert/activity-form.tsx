@@ -51,6 +51,7 @@ import fallbackActivityCatalog from '@/data/import/activity-catalog.json';
 import { isGtExpertCategory, normalizePeoCategory } from '@/lib/peo-category';
 import { normalizeActivityCatalogSaCode, resolveExpertActivityCatalog } from '@/lib/activity-catalog-merge';
 import { buildDocumentS3Key, findDuplicateCandidates, getDocumentAuditTitle, hashFirstPageText, normalizeDocumentTextForFingerprint, sha256Hex } from '@/lib/document-sharing';
+import { findMonthlyDeliverableDuplicate } from '@/lib/deliverable-deduplication';
 import { shouldAttachUploadedDeliverablesToDate } from '@/lib/activity-deliverables';
 import { createActivityPeriodGroupId } from '@/lib/submit-readiness';
 import {
@@ -1265,6 +1266,39 @@ export function ActivityForm({
         updatedAt: new Date().toISOString(),
       };
     });
+
+    const excludedActivityIds = new Set<string>();
+    if (initialActivity?.id) excludedActivityIds.add(initialActivity.id);
+    const initialPeriodGroupId = initialActivity?.periodGroupId
+      ?? (initialActivity?.workingGroupId?.startsWith('activity-period:') ? initialActivity.workingGroupId : undefined);
+    if (initialPeriodGroupId) {
+      allActivities.forEach((activity) => {
+        const activityPeriodGroup = activity.periodGroupId
+          ?? (activity.workingGroupId?.startsWith('activity-period:') ? activity.workingGroupId : undefined);
+        if (activityPeriodGroup === initialPeriodGroupId) excludedActivityIds.add(activity.id);
+      });
+    }
+
+    const monthlyDuplicate = findMonthlyDeliverableDuplicate({
+      existingActivities: allActivities,
+      nextActivities: activities,
+      expertId,
+      month,
+      year,
+      excludedActivityIds: [...excludedActivityIds],
+    });
+
+    if (monthlyDuplicate) {
+      const duplicateName = monthlyDuplicate.deliverable.originalFileName
+        || monthlyDuplicate.deliverable.fileName
+        || monthlyDuplicate.existingDeliverable.originalFileName
+        || monthlyDuplicate.existingDeliverable.fileName
+        || 'Acest livrabil';
+      setValidationError(
+        `${duplicateName} este deja incarcat pentru luna selectata. Modifica activitatea existenta ca multi-day sau incarca un livrabil diferit.`,
+      );
+      return;
+    }
 
     await onSave(activities);
   }, [

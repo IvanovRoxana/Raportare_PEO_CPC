@@ -10,6 +10,7 @@ import {
   splitActivityEditPayload,
 } from '../lib/activity-edit.ts';
 import { planDeliverableSync } from '../lib/activity-deliverable-sync.ts';
+import { findMonthlyDeliverableDuplicate } from '../lib/deliverable-deduplication.ts';
 import type { Activity, Deliverable } from '../lib/types.ts';
 
 function activity(id: string, overrides: Partial<Activity> = {}): Activity {
@@ -165,4 +166,83 @@ test('sincronizarea livrabilelor sterge doar livrabilul eliminat si creeaza doar
   assert.deepEqual(plan.toUpdate.map((item) => item.id), ['deliverable-1']);
   assert.deepEqual(plan.toCreate.map((item) => item.id), ['new-deliverable']);
   assert.deepEqual(plan.toDelete, [{ id: 'deliverable-2' }]);
+});
+
+test('sincronizarea livrabilelor uneste duplicatele din acelasi payload inainte de creare', () => {
+  const next = [
+    deliverable('new-deliverable', { documentId: 'document-1', declaredTitle: 'Titlu confirmat' }),
+    deliverable('duplicate-deliverable', { documentId: 'document-1', s3Key: 'docs/document-1.docx' }),
+  ];
+  const plan = planDeliverableSync([], next);
+
+  assert.equal(plan.toCreate.length, 1);
+  assert.equal(plan.toCreate[0].id, 'new-deliverable');
+  assert.equal(plan.toCreate[0].documentId, 'document-1');
+  assert.equal(plan.toCreate[0].s3Key, 'docs/document-1.docx');
+  assert.equal(plan.toCreate[0].declaredTitle, 'Titlu confirmat');
+});
+
+test('validarea lunara marcheaza acelasi document pe alta activitate ca duplicat', () => {
+  const duplicate = findMonthlyDeliverableDuplicate({
+    existingActivities: [
+      activity('activity-1', {
+        date: '2026-06-03',
+        deliverables: [deliverable('deliverable-1', { documentId: 'document-1' })],
+      }),
+    ],
+    nextActivities: [
+      activity('activity-2', {
+        date: '2026-06-10',
+        deliverables: [deliverable('deliverable-2', { documentId: 'document-1' })],
+      }),
+    ],
+    expertId: 'expert-1',
+    month: 5,
+    year: 2026,
+  });
+
+  assert.ok(duplicate);
+  assert.equal(duplicate.existingActivity.id, 'activity-1');
+  assert.equal(duplicate.activity.id, 'activity-2');
+});
+
+test('validarea lunara permite acelasi document in alta luna si fisiere cu hash diferit', () => {
+  const otherMonthDuplicate = findMonthlyDeliverableDuplicate({
+    existingActivities: [
+      activity('activity-1', {
+        date: '2026-05-31',
+        deliverables: [deliverable('deliverable-1', { documentId: 'document-1' })],
+      }),
+    ],
+    nextActivities: [
+      activity('activity-2', {
+        date: '2026-06-10',
+        deliverables: [deliverable('deliverable-2', { documentId: 'document-1' })],
+      }),
+    ],
+    expertId: 'expert-1',
+    month: 5,
+    year: 2026,
+  });
+
+  const differentHashDuplicate = findMonthlyDeliverableDuplicate({
+    existingActivities: [
+      activity('activity-1', {
+        date: '2026-06-03',
+        deliverables: [deliverable('deliverable-1', { fileName: 'raport.docx', fileHash: 'hash-1' })],
+      }),
+    ],
+    nextActivities: [
+      activity('activity-2', {
+        date: '2026-06-10',
+        deliverables: [deliverable('deliverable-2', { fileName: 'raport.docx', fileHash: 'hash-2' })],
+      }),
+    ],
+    expertId: 'expert-1',
+    month: 5,
+    year: 2026,
+  });
+
+  assert.equal(otherMonthDuplicate, null);
+  assert.equal(differentHashDuplicate, null);
 });

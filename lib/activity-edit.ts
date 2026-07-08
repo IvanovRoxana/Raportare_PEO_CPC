@@ -1,5 +1,6 @@
 import type { Activity, Deliverable } from './types';
 import { createActivityPeriodGroupId } from './submit-readiness.ts';
+import { dedupeDeliverablesBySignature } from './deliverable-deduplication.ts';
 
 function createGeneratedActivityId() {
   return `activity-${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
@@ -21,26 +22,8 @@ export function getActivityGroupMembers(activity: Activity, activities: Activity
     : [activity];
 }
 
-function getDeliverableIdentity(deliverable: Deliverable) {
-  return deliverable.documentId
-    || deliverable.fileHash
-    || deliverable.s3Key
-    || deliverable.filePath
-    || deliverable.id;
-}
-
 export function dedupeDeliverables(deliverables: Deliverable[]) {
-  const seen = new Set<string>();
-  const deduped: Deliverable[] = [];
-
-  deliverables.forEach((deliverable) => {
-    const identity = getDeliverableIdentity(deliverable);
-    if (!identity || seen.has(identity)) return;
-    seen.add(identity);
-    deduped.push(deliverable);
-  });
-
-  return deduped;
+  return dedupeDeliverablesBySignature(deliverables);
 }
 
 export function mergeActivityGroupForEdit(activity: Activity, activities: Activity[]) {

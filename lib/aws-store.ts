@@ -62,6 +62,7 @@ import { buildDefaultConcurrentProjects, mergeConcurrentProjectsWithDefaults } f
 import { normalizeTitleForMatch } from './title-suggestion';
 import { parseAwsJsonField, serializeAwsJsonField } from './aws-json';
 import { planDeliverableSync } from './activity-deliverable-sync';
+import { findMonthlyDeliverableDuplicate } from './deliverable-deduplication';
 import {
   createProcurementStatusHistoryEntry,
   getContractedProcurementProjects,
@@ -1427,6 +1428,33 @@ async function listActivitiesForValidation(
   return data.filter((activity) => !excluded.has(activity.id)).map(activityToValidationDraft);
 }
 
+async function listActivitiesWithDeliverablesForValidation(
+  client: any,
+  expertId: string,
+  month: number,
+  year: number,
+  excludedIds: string[] = [],
+) {
+  const data = await listModel<any>(client.models.Activity, {
+    expertId: { eq: expertId },
+    month: { eq: month },
+    year: { eq: year },
+  });
+  const excluded = new Set(excludedIds);
+  const activities = data.filter((activity) => !excluded.has(activity.id));
+
+  return Promise.all(activities.map(async (activity) => {
+    const deliverables = await listModel<any>(client.models.Deliverable, { activityId: { eq: activity.id } });
+
+    return {
+      id: activity.id,
+      expertId: activity.expertId,
+      date: activity.date,
+      deliverables: deliverables.map(mapDeliverable),
+    };
+  }));
+}
+
 async function assertReportMonthIsMutable(
   client: any,
   expertId: string,
@@ -1480,6 +1508,30 @@ async function validateActivityBatchForWrite(
 
     if (!validation.ok) {
       throw new Error(validation.message ?? 'Activitatea nu a fost creată: regula de pontaj ar fi depășită.');
+    }
+    const existingActivitiesWithDeliverables = await listActivitiesWithDeliverablesForValidation(
+      client,
+      sample.expertId,
+      month,
+      year,
+      excludedIds,
+    );
+    const monthlyDuplicate = findMonthlyDeliverableDuplicate({
+      existingActivities: existingActivitiesWithDeliverables,
+      nextActivities: groupActivities,
+      expertId: sample.expertId,
+      month,
+      year,
+      excludedActivityIds: excludedIds,
+    });
+
+    if (monthlyDuplicate) {
+      const duplicateName = monthlyDuplicate.deliverable.originalFileName
+        || monthlyDuplicate.deliverable.fileName
+        || monthlyDuplicate.existingDeliverable.originalFileName
+        || monthlyDuplicate.existingDeliverable.fileName
+        || 'Acest livrabil';
+      throw new Error(`${duplicateName} este deja incarcat pentru luna selectata. Modifica activitatea existenta ca multi-day sau incarca un livrabil diferit.`);
     }
   }
 }
