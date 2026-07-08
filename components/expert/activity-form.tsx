@@ -291,6 +291,7 @@ export function ActivityForm({
     });
   }, [defaultHours, onSelectedHoursChange]);
   const [activityTitle, setActivityTitle] = useState(activitySeed?.activityType || '');
+  const [selectedCatalogActivityId, setSelectedCatalogActivityId] = useState(activitySeed?.catalogActivityId || '');
   const [dayType, setDayType] = useState<'lucratoare' | 'CO' | 'CM'>(
     (activitySeed?.dayType as 'lucratoare' | 'CO' | 'CM') || 'lucratoare'
   );
@@ -563,12 +564,11 @@ export function ActivityForm({
     });
   }, [duplicateInfoByDeliverableId]);
   
-  // Get available activities for selected SA from catalog
-  const availableActivities = useMemo(() => {
+  // Get available catalog rows for selected SA. Keep IDs so descriptions stay tied to the PM-edited row.
+  const availableActivityItems = useMemo(() => {
     if (!saCode || filteredCatalog.length === 0) return [];
     return filteredCatalog
-      .filter(item => item.saCode === saCode)
-      .map(item => item.activityName);
+      .filter(item => item.saCode === saCode);
   }, [saCode, filteredCatalog]);
 
   const businessHubRegistryCatalogItem = useMemo(() => {
@@ -588,10 +588,19 @@ export function ActivityForm({
   // Get full activity catalog item for selected activity
   const selectedCatalogItem = useMemo(() => {
     if (!activityTitle || !saCode) return null;
-    return filteredCatalog.find(item => 
-      item.saCode === saCode && item.activityName === activityTitle
+    return availableActivityItems.find(item => item.id === selectedCatalogActivityId)
+      || availableActivityItems.find(item =>
+        item.activityName === activityTitle
     ) || null;
-  }, [activityTitle, saCode, filteredCatalog]);
+  }, [activityTitle, availableActivityItems, saCode, selectedCatalogActivityId]);
+
+  const selectedActivitySelectValue = selectedCatalogItem?.id || '';
+
+  const handleActivitySelectionChange = useCallback((catalogActivityId: string) => {
+    const catalogItem = availableActivityItems.find((item) => item.id === catalogActivityId);
+    setSelectedCatalogActivityId(catalogActivityId);
+    setActivityTitle(catalogItem?.activityName || '');
+  }, [availableActivityItems]);
 
   const lastAutoDescriptionRef = useRef('');
   const {
@@ -794,10 +803,11 @@ export function ActivityForm({
   // Update activity when SA changes
   useEffect(() => {
     if (isGdprExpert && gdprTemplateCode) return;
-    if (availableActivities.length > 0 && !availableActivities.includes(activityTitle)) {
+    if (availableActivityItems.length > 0 && !selectedCatalogItem) {
+      setSelectedCatalogActivityId('');
       setActivityTitle('');
     }
-  }, [saCode, availableActivities, activityTitle, isGdprExpert, gdprTemplateCode]);
+  }, [saCode, availableActivityItems, selectedCatalogItem, isGdprExpert, gdprTemplateCode]);
 
   const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -2424,16 +2434,16 @@ export function ActivityForm({
                   <div className="grid gap-4 lg:grid-cols-[minmax(0,0.72fr)_minmax(220px,0.28fr)]">
                     <Field>
                       <FieldLabel htmlFor="activity">Activitate</FieldLabel>
-                      <Select value={activityTitle} onValueChange={setActivityTitle} disabled={!saCode || availableActivities.length === 0}>
+                      <Select value={selectedActivitySelectValue} onValueChange={handleActivitySelectionChange} disabled={!saCode || availableActivityItems.length === 0}>
                         <SelectTrigger id="activity">
                           <SelectValue placeholder={!saCode ? "Selecteaza SA mai intai" : "Selecteaza activitatea"} />
                         </SelectTrigger>
                         <SelectContent>
-                          {availableActivities.length === 0 ? (
+                          {availableActivityItems.length === 0 ? (
                             <div className="px-2 py-1.5 text-sm text-muted-foreground">Nicio activitate pentru acest SA</div>
                           ) : (
-                            availableActivities.map((act) => (
-                              <SelectItem key={act} value={act}>{act}</SelectItem>
+                            availableActivityItems.map((item) => (
+                              <SelectItem key={item.id} value={item.id}>{item.activityName}</SelectItem>
                             ))
                           )}
                         </SelectContent>
