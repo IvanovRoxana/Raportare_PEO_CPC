@@ -12,7 +12,7 @@ export function createActivityPeriodGroupId(id: string) {
 }
 
 function getActivityPeriodGroupId(activity: Activity) {
-  if (activity.periodGroupId?.startsWith(ACTIVITY_PERIOD_GROUP_PREFIX)) {
+  if (activity.periodGroupId) {
     return activity.periodGroupId;
   }
 

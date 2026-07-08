@@ -37,6 +37,23 @@ test('validarea livrabilelor accepta un livrabil final pentru o activitate multi
   assert.deepEqual(missingDeliverables.map((activity) => activity.id), []);
 });
 
+test('validarea livrabilelor accepta un periodGroupId existent fara prefix de perioada', () => {
+  const periodGroupId = 'existing-period-group';
+  const activities: Activity[] = [
+    baseActivity({ id: 'day-1', date: '2026-05-06', periodGroupId, deliverables: [] }),
+    baseActivity({
+      id: 'day-2',
+      date: '2026-05-07',
+      periodGroupId,
+      deliverables: [{ id: 'deliverable-1', fileName: 'raport.pdf', fileType: 'application/pdf', fileSize: 1234 }],
+    }),
+  ];
+
+  const missingDeliverables = getActivitiesMissingDeliverables(activities);
+
+  assert.deepEqual(missingDeliverables.map((activity) => activity.id), []);
+});
+
 test('activitatile fara grup isi pastreaza validarea individuala de livrabil', () => {
   const activities: Activity[] = [baseActivity({ id: 'standalone', deliverables: [] })];
 
