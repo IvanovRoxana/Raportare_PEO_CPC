@@ -62,7 +62,7 @@ import { buildDefaultConcurrentProjects, mergeConcurrentProjectsWithDefaults } f
 import { normalizeTitleForMatch } from './title-suggestion';
 import { parseAwsJsonField, serializeAwsJsonField } from './aws-json';
 import { planDeliverableSync } from './activity-deliverable-sync';
-import { findMonthlyDeliverableDuplicate, getDeliverableDocumentSignature } from './deliverable-deduplication';
+import { dedupeDeliverablesBySignature, findMonthlyDeliverableDuplicate, getDeliverableDocumentSignature } from './deliverable-deduplication';
 import {
   createProcurementStatusHistoryEntry,
   getContractedProcurementProjects,
@@ -1635,10 +1635,13 @@ async function attachActivitiesToExistingDeliverableGroups(
   };
 
   return Promise.all(activities.map(async (activity) => {
-    const deliverables = activity.deliverables ?? [];
+    const deliverables = dedupeDeliverablesBySignature(activity.deliverables ?? []);
     if (deliverables.length === 0) return activity;
 
-    let nextActivity = activity;
+    let nextActivity: Omit<Activity, 'id' | 'createdAt' | 'updatedAt'> = {
+      ...activity,
+      deliverables,
+    };
     const signaturesToSkip = new Set<string>();
 
     for (const deliverable of deliverables) {

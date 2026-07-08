@@ -174,6 +174,27 @@ function normalizeActivityLabel(value: string) {
     .toLowerCase();
 }
 
+function dedupeDeliverableSlotsBySignature(deliverables: DeliverableSlot[]) {
+  const seen = new Set<string>();
+  return deliverables.filter((deliverable) => {
+    const signature = getDeliverableDocumentSignature({
+      documentId: deliverable.documentId,
+      fileHash: deliverable.fileHash,
+      firstPageTextHash: deliverable.firstPageTextHash,
+      contentFingerprint: deliverable.contentFingerprint,
+      fileName: deliverable.filename || deliverable.name || '',
+      originalFileName: deliverable.filename || deliverable.name || '',
+      fileSize: deliverable.fileSize || 0,
+      fileType: deliverable.fileType || '',
+      fileData: deliverable.fileData,
+    });
+    if (!signature) return true;
+    if (seen.has(signature)) return false;
+    seen.add(signature);
+    return true;
+  });
+}
+
 export function ActivityForm({
   selectedDates,
   selectedHours,
@@ -1189,6 +1210,8 @@ export function ActivityForm({
       }
     }
 
+    const deliverablesForSave = dedupeDeliverableSlotsBySignature(uploadedDeliverables);
+
     const existingActivityPeriodGroupId = initialActivity?.periodGroupId
       ?? (initialActivity?.workingGroupId?.startsWith('activity-period:') ? initialActivity.workingGroupId : undefined);
     const activityPeriodGroupId = existingActivityPeriodGroupId
@@ -1214,7 +1237,7 @@ export function ActivityForm({
         title: effectiveActivityTitle,
         description,
         activityKeywords: activityKeywords.trim() || undefined,
-        deliverables: shouldAttachDeliverables ? uploadedDeliverables
+        deliverables: shouldAttachDeliverables ? deliverablesForSave
           .map(d => ({
             id: d.id,
             activityId,
