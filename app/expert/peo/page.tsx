@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { ArrowLeft, CalendarDays, CheckCircle, ClipboardList, Clock3, FileText, Loader2, Plus, RotateCcw, Send, Lock, AlertTriangle, Upload, X } from 'lucide-react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { DashboardShell, expertNavItems } from '@/components/layout/dashboard-shell';
 import { ProgressBar, RightInfoCard } from '@/components/layout/dashboard-primitives';
 import { Button } from '@/components/ui/button';
@@ -68,6 +68,7 @@ import {
 } from '@/lib/activity-edit';
 import { filterPendingSharedDeliverablesNotCoveredByActivity, filterSharedRelationsForMonths } from '@/lib/document-sharing';
 import { buildExpertDeliverableRows } from '@/lib/expert-deliverables';
+import { isCurrentOrPreviousMonth } from '@/lib/pm-clarifications';
 
 type SubmitReadinessSeverity = 'ok' | 'warning' | 'blocking';
 type SubmitReadinessKey =
@@ -147,6 +148,16 @@ function getDeliverableDisplayName(deliverable: Deliverable) {
     || 'Livrabil fara titlu';
 }
 
+function readMonthParam(value: string | null, fallback: number) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 0 && parsed <= 11 ? parsed : fallback;
+}
+
+function readYearParam(value: string | null, fallback: number) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 2020 && parsed <= 2100 ? parsed : fallback;
+}
+
 function toRestoredActivityInput(activity: Activity): Omit<Activity, 'id' | 'createdAt' | 'updatedAt'> {
   const { id: _id, createdAt: _createdAt, updatedAt: _updatedAt, ...restoredActivity } = activity;
   return restoredActivity;
@@ -154,13 +165,18 @@ function toRestoredActivityInput(activity: Activity): Omit<Activity, 'id' | 'cre
 
 export default function ExpertDashboard() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const today = new Date();
   const baseMonth = today.getMonth();
   const baseYear = today.getFullYear();
+  const queryMonth = readMonthParam(searchParams.get('month'), baseMonth);
+  const queryYear = readYearParam(searchParams.get('year'), baseYear);
+  const clarificationMode = searchParams.get('mode') === 'clarificari';
+  const clarificationActivityId = searchParams.get('activityId');
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
   const [selectedHours, setSelectedHours] = useState<Record<string, string>>({});
-  const [currentMonth, setCurrentMonth] = useState(baseMonth);
-  const [currentYear, setCurrentYear] = useState(baseYear);
+  const [currentMonth, setCurrentMonth] = useState(queryMonth);
+  const [currentYear, setCurrentYear] = useState(queryYear);
   const [activeTab, setActiveTab] = useState('activitati');
   const [showForm, setShowForm] = useState(false);
   const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
@@ -179,6 +195,7 @@ export default function ExpertDashboard() {
   const [isDeliverablesDialogOpen, setIsDeliverablesDialogOpen] = useState(false);
   const [deletedActivityUndo, setDeletedActivityUndo] = useState<DeletedActivityUndo | null>(null);
   const [isUndoingDelete, setIsUndoingDelete] = useState(false);
+  const [clarificationAutoOpenedId, setClarificationAutoOpenedId] = useState<string | null>(null);
 
   // Data hooks
   const { experts, isLoading: expertsLoading } = useExperts();
@@ -282,6 +299,19 @@ export default function ExpertDashboard() {
     if (!selectedExpertId) return [];
     return allMonthActivities.filter((a) => a.expertId === selectedExpertId);
   }, [allMonthActivities, selectedExpertId]);
+  const clarificationTargetActivity = useMemo(
+    () => clarificationActivityId
+      ? activities.find((activity) => activity.id === clarificationActivityId) ?? null
+      : null,
+    [activities, clarificationActivityId],
+  );
+  const isClarificationScopedAccess = Boolean(
+    clarificationMode
+    && clarificationTargetActivity
+    && clarificationTargetActivity.pmNotes?.trim()
+    && reportStatus?.status === 'clarifications'
+    && isCurrentOrPreviousMonth(currentMonth, currentYear),
+  );
   const deliverableRows = useMemo(() => buildExpertDeliverableRows(activities), [activities]);
 
   useEffect(() => {
@@ -379,6 +409,11 @@ export default function ExpertDashboard() {
   };
 
   const handleMonthChange = (month: number, year: number) => {
+    if (isClarificationScopedAccess) {
+      setSaveError('În modul clarificări poți modifica doar activitatea marcată de PM.');
+      return;
+    }
+
     if (!canOpenMonth(month, year)) {
       handleBlockedMonthChange(month, year);
       return;
@@ -441,6 +476,80 @@ export default function ExpertDashboard() {
         ? getActivityGroupMembers(editingActivity, activities)
         : [];
       const editingGroupMemberIds = new Set(editingGroupMembers.map((activity) => activity.id));
+      if (isClarificationScopedAccess) {
+        if (!editingActivity || editingActivity.id !== clarificationActivityId || !editingActivity.pmNotes?.trim()) {
+          throw new Error('Poți salva doar activitatea marcată de PM pentru clarificări.');
+        }
+
+        const sourceActivity = newActivities.find((activity) => activity.id === editingActivity.id)
+          ?? newActivities[0]
+          ?? editingActivity;
+        const lockedDate = editingActivity.date;
+        const nextActivity: Activity = {
+          ...editingActivity,
+          hours: Number(normalizePontajHoursValue(selectedHours[lockedDate], sourceActivity.hours.toString())),
+          activityType: sourceActivity.activityType,
+          saCode: sourceActivity.saCode,
+          catalogActivityId: sourceActivity.catalogActivityId,
+          title: sourceActivity.title,
+          description: sourceActivity.description,
+          activityKeywords: sourceActivity.activityKeywords,
+          location: sourceActivity.location,
+          dayType: sourceActivity.dayType,
+          pmNotes: editingActivity.pmNotes,
+          status: editingActivity.status || 'sent',
+        };
+
+        const validation = validateActivitiesBeforeCreate({
+          expert: selectedExpert,
+          existingActivities: activities
+            .filter((activity) => activity.id !== editingActivity.id)
+            .map((activity): ActivityDraftForValidation => ({
+              id: activity.id,
+              expertId: activity.expertId,
+              date: activity.date,
+              hours: Number(activity.hours) || 0,
+              status: activity.status,
+              projectCode: activity.projectCode,
+            })),
+          newActivities: [{
+            id: nextActivity.id,
+            expertId: nextActivity.expertId,
+            date: nextActivity.date,
+            hours: Number(nextActivity.hours) || 0,
+            status: nextActivity.status,
+            projectCode: nextActivity.projectCode,
+          }],
+          month: currentMonth,
+          year: currentYear,
+        });
+
+        if (!validation.ok) {
+          throw new Error(validation.message || 'Activitatea nu respecta regulile de pontaj.');
+        }
+
+        await updateActivity(editingActivity.id, {
+          hours: nextActivity.hours,
+          activityType: nextActivity.activityType,
+          saCode: nextActivity.saCode,
+          catalogActivityId: nextActivity.catalogActivityId,
+          title: nextActivity.title,
+          description: nextActivity.description,
+          activityKeywords: nextActivity.activityKeywords,
+          location: nextActivity.location,
+          dayType: nextActivity.dayType,
+          status: nextActivity.status,
+          pmNotes: editingActivity.pmNotes,
+        });
+        await refreshActivities();
+        setShowForm(false);
+        setEditingActivity(null);
+        setActivityResolutionHint(null);
+        setSelectedDates([]);
+        setSelectedHours({});
+        return;
+      }
+
       const submittedActivities = editingActivity
         ? buildSubmittedActivitiesForEdit(
             editingActivity,
@@ -544,6 +653,10 @@ export default function ExpertDashboard() {
 
   const handleEditActivity = (activity: Activity, resolutionHint?: ActivityResolutionHint) => {
     if (reportStatus?.status === 'approved') return;
+    if (clarificationMode && activity.id !== clarificationActivityId) {
+      setSaveError('În modul clarificări poți modifica doar activitatea marcată de PM.');
+      return;
+    }
 
     const { activity: activityForEdit, groupMembers } = mergeActivityGroupForEdit(activity, activities);
     const datesForEdit = groupMembers.map((groupActivity) => groupActivity.date);
@@ -560,6 +673,45 @@ export default function ExpertDashboard() {
     setShowForm(true);
     setActiveTab('activitati');
   };
+
+  useEffect(() => {
+    if (!clarificationMode) return;
+    if (currentMonth !== queryMonth || currentYear !== queryYear) {
+      setCurrentMonth(queryMonth);
+      setCurrentYear(queryYear);
+      setClarificationAutoOpenedId(null);
+    }
+  }, [clarificationMode, currentMonth, currentYear, queryMonth, queryYear]);
+
+  useEffect(() => {
+    if (!clarificationMode || !clarificationActivityId || activitiesLoading || reportStatusLoading) return;
+    if (!isClarificationScopedAccess || !clarificationTargetActivity) {
+      setSaveError('Clarificarea nu poate fi deschisă: activitatea nu este marcată de PM sau luna nu este eligibilă.');
+      return;
+    }
+    if (clarificationAutoOpenedId === clarificationTargetActivity.id) return;
+
+    handleEditActivity(clarificationTargetActivity, {
+      id: `pm-clarification-${clarificationTargetActivity.id}`,
+      title: 'Clarificare solicitată de PM',
+      detail: clarificationTargetActivity.pmNotes || 'PM a solicitat clarificări pentru această activitate.',
+      meta: `${formatDisplayDate(clarificationTargetActivity.date)}${clarificationTargetActivity.saCode ? ` / ${clarificationTargetActivity.saCode}` : ''}`,
+      section: 'details',
+    });
+    setClarificationAutoOpenedId(clarificationTargetActivity.id);
+  }, [
+    activitiesLoading,
+    clarificationActivityId,
+    clarificationAutoOpenedId,
+    clarificationMode,
+    clarificationTargetActivity,
+    currentMonth,
+    currentYear,
+    isClarificationScopedAccess,
+    queryMonth,
+    queryYear,
+    reportStatusLoading,
+  ]);
 
   const handleEditDeliverableActivity = (activityId: string) => {
     const activity = activities.find((item) => item.id === activityId);
@@ -581,6 +733,10 @@ export default function ExpertDashboard() {
 
   const handleDeleteActivity = async (activityId: string) => {
     if (reportStatus?.status === 'approved') return;
+    if (isClarificationScopedAccess) {
+      setSaveError('În modul clarificări nu poți șterge activități.');
+      return;
+    }
 
     const activityToDelete = activities.find((activity) => activity.id === activityId);
 
@@ -1190,6 +1346,11 @@ export default function ExpertDashboard() {
   ]);
 
   const handleAddActivity = () => {
+    if (isClarificationScopedAccess) {
+      setSaveError('În modul clarificări nu poți adăuga activități noi.');
+      return;
+    }
+
     if (monthlyBlocking.isBlocked) {
       setSaveError(monthlyBlocking.reason);
       return;
@@ -1205,6 +1366,11 @@ export default function ExpertDashboard() {
 
   // Auto-open form when dates are selected
   const handleSelectDates = (dates: string[]) => {
+    if (isClarificationScopedAccess) {
+      setSaveError('În modul clarificări data activității rămâne blocată.');
+      return;
+    }
+
     if (monthlyBlocking.isBlocked && dates.length > 0) {
       setSaveError(monthlyBlocking.reason);
       return;
@@ -1306,7 +1472,7 @@ export default function ExpertDashboard() {
       month={currentMonth}
       year={currentYear}
       onSave={handleSaveActivities}
-      onCancel={closeActivityForm}
+      onCancel={isClarificationScopedAccess ? () => router.push(`/expert/clarificari?month=${currentMonth}&year=${currentYear}`) : closeActivityForm}
       initialActivity={editingActivity || undefined}
       prefillActivity={sharedActivityPrefill || undefined}
       resolutionHint={activityResolutionHint || undefined}
@@ -1325,9 +1491,11 @@ export default function ExpertDashboard() {
         navItems={expertNavItems}
         contentClassName={showForm ? 'max-w-none' : undefined}
         eyebrow="Modul Expert"
-        title={showForm ? 'Adaugă activitate' : 'Activitățile mele'}
+        title={isClarificationScopedAccess ? 'Clarificare PM' : showForm ? 'Adaugă activitate' : 'Activitățile mele'}
         description={
-          showForm
+          isClarificationScopedAccess
+            ? 'Modifică doar activitatea marcată de PM. Data, expertul și luna rămân blocate.'
+            : showForm
             ? 'Completează datele activității pentru pontaj și raportarea lunară.'
             : 'Vizualizează, filtrează și gestionează activitățile raportate.'
         }
@@ -1368,7 +1536,7 @@ export default function ExpertDashboard() {
               />
             )}
             {!showForm && (
-              <Button onClick={handleAddActivity} disabled={!selectedExpert.id || isApproved || monthlyBlocking.isBlocked}>
+              <Button onClick={handleAddActivity} disabled={!selectedExpert.id || isApproved || monthlyBlocking.isBlocked || isClarificationScopedAccess}>
                 <Plus className="h-4 w-4" />
                 Adaugă activitate
               </Button>
@@ -1726,7 +1894,7 @@ export default function ExpertDashboard() {
                 </p>
               </div>
               <div className="flex flex-col items-end gap-1">
-                <Button onClick={handleAddActivity} disabled={!selectedExpert.id || isApproved || monthlyBlocking.isBlocked || showForm}>
+                <Button onClick={handleAddActivity} disabled={!selectedExpert.id || isApproved || monthlyBlocking.isBlocked || showForm || isClarificationScopedAccess}>
                   <Plus className="h-4 w-4" />
                   {showForm ? 'Formular deschis' : 'Adaugă activitate'}
                 </Button>

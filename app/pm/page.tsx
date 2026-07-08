@@ -5,11 +5,9 @@ import { useRouter } from 'next/navigation';
 import {
   ArrowRight,
   CalendarDays,
-  CheckCircle2,
   ClipboardList,
   Download,
   FileText,
-  Save,
   Loader2,
   AlertCircle,
   AlertTriangle,
@@ -21,7 +19,6 @@ import Link from 'next/link';
 import { DashboardShell, pmNavItems } from '@/components/layout/dashboard-shell';
 import { RightInfoCard } from '@/components/layout/dashboard-primitives';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -49,7 +46,6 @@ import { getMonthName } from '@/lib/app-utils';
 import {
   useExperts,
   useVerification,
-  useVerificationMutations,
   useNeconformitati,
   useNeconformitateMutations,
   useNotes,
@@ -59,6 +55,7 @@ import {
   useReportStatusByMonth,
   useActivitiesByMonth,
   useAuditLogs,
+  useAuditLogMutations,
   useDocuments,
   useGTEntities,
   useGTPersons,
@@ -86,6 +83,7 @@ import {
   resolveDataAccessScope,
 } from '@/lib/access-control';
 import { isEventActivity } from '@/lib/deliverable-types';
+import { findLatestClarificationAudit, PM_CLARIFICATION_AUDIT_ACTION } from '@/lib/pm-clarifications';
 import type {
   PontajRow,
   RaportRow,
@@ -128,7 +126,6 @@ export default function PMDashboard() {
   const [selectedExpertId, setSelectedExpertId] = useState<string | null>(null);
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-  const [isSaving, setIsSaving] = useState(false);
   const [reviewExpertId, setReviewExpertId] = useState<string | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [pmExceptionOpen, setPmExceptionOpen] = useState(false);
@@ -157,7 +154,6 @@ export default function PMDashboard() {
   const { 
     verification, 
     isLoading: verificationLoading,
-    mutate: refreshVerification 
   } = useVerification(
     selectedExpertId,
     selectedMonth.toString().padStart(2, '0'),
@@ -168,13 +164,13 @@ export default function PMDashboard() {
     selectedMonth.toString().padStart(2, '0'),
     selectedYear.toString()
   );
-  const { create: createVerification, update: updateVerification } = useVerificationMutations();
   const { neconformitati, isLoading: neconformitatiLoading } = useNeconformitati(verification?.id || null);
   const { neconformitati: reviewNeconformitati } = useNeconformitati(reviewVerification?.id || null);
   const { create: createNeconformitate, resolve: resolveNeconformitate, remove: removeNeconformitate } = useNeconformitateMutations();
   const { notes, isLoading: notesLoading } = useNotes(verification?.id || null);
   const { create: createNote, update: updateNote, remove: removeNote } = useNoteMutations();
   const { create: createActivity, update: updateActivity } = useActivityMutations();
+  const { create: createAuditLog } = useAuditLogMutations();
   const {
     status: reportStatus,
     updateStatus: updateReportStatus,
@@ -293,33 +289,40 @@ export default function PMDashboard() {
   const reviewExpert = useMemo(() => {
     return reviewExpertId ? visibleExperts.find((expert) => expert.id === reviewExpertId) || null : null;
   }, [visibleExperts, reviewExpertId]);
+  const selectedClarificationActivities = useMemo(
+    () => monthActivities.filter((activity) => activity.expertId === selectedExpertId && activity.pmNotes?.trim()),
+    [monthActivities, selectedExpertId],
+  );
+  const recordClarificationAudit = async ({
+    expert,
+    note,
+    activityIds,
+  }: {
+    expert: Pick<Expert, 'id' | 'name' | 'projectCode'>;
+    note: string;
+    activityIds?: string[];
+  }) => {
+    if (!currentUser || !canManagePmReview) return;
 
-  const saveVerificationData = async () => {
-    if (!selectedExpertId || !canManagePmReview) return;
-    
-    setIsSaving(true);
     try {
-      if (verification?.id) {
-        await updateVerification(verification.id, {
-          status: 'in-progress',
-        });
-      } else {
-        await createVerification({
-          expertId: selectedExpertId,
-          month: selectedMonth.toString().padStart(2, '0'),
-          year: selectedYear.toString(),
-          status: 'in-progress',
-          pontajRows: pontajData,
-          raportRows: raportData,
-          livrabilRows: livrabileData,
-          crossExpertRows: crossExpertData,
-        });
-      }
-      await refreshVerification();
+      await createAuditLog({
+        actionType: PM_CLARIFICATION_AUDIT_ACTION,
+        actorId: currentUser.id || currentUser.email || 'pm',
+        actorName: currentUser.displayName || currentUser.email || 'PM',
+        actorRole: currentUser.roles?.join(',') || 'pm',
+        affectedExpertId: expert.id,
+        affectedExpertName: expert.name,
+        projectCode: expert.projectCode,
+        month: selectedMonth,
+        year: selectedYear,
+        fieldName: activityIds?.length ? `activity:${activityIds.join(',')}` : 'reportStatus.pmNotes',
+        oldValue: '',
+        newValue: note,
+        justification: `Clarificări PM solicitate pentru ${expert.name}.`,
+        source: 'manual',
+      });
     } catch (error) {
-      console.error('Error saving verification:', error);
-    } finally {
-      setIsSaving(false);
+      console.warn('Clarification audit log was not persisted:', error);
     }
   };
 
@@ -403,7 +406,9 @@ export default function PMDashboard() {
   const requestClarifications = async () => {
     const note = window.prompt('Ce clarificări solicitați expertului?');
     if (note === null) return;
-    await setMonthlyStatus('clarifications', note.trim() || 'Clarificări solicitate de PM.');
+    const pmNote = note.trim() || 'Clarificări solicitate de PM.';
+    await setMonthlyStatus('clarifications', pmNote);
+    await recordClarificationAudit({ expert: selectedExpert, note: pmNote });
   };
 
   const rejectMonth = async () => {
@@ -432,7 +437,11 @@ export default function PMDashboard() {
   const requestReviewClarifications = async () => {
     const note = window.prompt('Ce clarificari soliciti expertului pentru aceasta raportare?');
     if (note === null) return;
-    await setReviewMonthlyStatus('clarifications', note.trim() || 'Clarificari solicitate de PM.');
+    const pmNote = note.trim() || 'Clarificari solicitate de PM.';
+    await setReviewMonthlyStatus('clarifications', pmNote);
+    if (reviewExpert) {
+      await recordClarificationAudit({ expert: reviewExpert, note: pmNote });
+    }
   };
 
   const approveReviewActivities = async (activities: Activity[]) => {
@@ -467,6 +476,13 @@ export default function PMDashboard() {
       }))
     );
     await setReviewMonthlyStatus('clarifications', activeReviewReportStatus?.pmNotes || 'Clarificari solicitate punctual pe activitati.');
+    if (reviewExpert) {
+      await recordClarificationAudit({
+        expert: reviewExpert,
+        note: pmNote,
+        activityIds: activities.map((activity) => activity.id),
+      });
+    }
     await refreshMonthActivities();
   };
 
@@ -698,6 +714,7 @@ export default function PMDashboard() {
 
   const openReviewReport = (expert: Expert) => {
     if (!canAccessExpertId(dataAccessScope, expert.id)) return;
+    setSelectedExpertId(expert.id);
     setReviewExpertId(expert.id);
     setReviewOpen(true);
   };
@@ -705,11 +722,6 @@ export default function PMDashboard() {
   const months = Array.from({ length: 12 }, (_, i) => ({
     value: i,
     label: getMonthName(i),
-  }));
-
-  const years = Array.from({ length: 5 }, (_, i) => ({
-    value: new Date().getFullYear() - 2 + i,
-    label: (new Date().getFullYear() - 2 + i).toString(),
   }));
 
   const isAccessDenied = !isAuthLoading && !expertsLoading && !dataAccessScope.canUsePmDashboard;
@@ -771,6 +783,19 @@ export default function PMDashboard() {
       description="Revizuiește activitățile, livrabilele și rapoartele transmise de experți."
       actions={
         <>
+          <Select value={selectedMonth.toString()} onValueChange={(v) => setSelectedMonth(parseInt(v, 10))}>
+            <SelectTrigger className="h-10 w-[9.5rem] bg-white">
+              <CalendarDays className="h-4 w-4 text-primary" />
+              <SelectValue placeholder="Luna" />
+            </SelectTrigger>
+            <SelectContent>
+              {months.map((m) => (
+                <SelectItem key={m.value} value={m.value.toString()}>
+                  {m.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Button variant="outline">
             <Download className="h-4 w-4" />
             Export situație
@@ -833,23 +858,89 @@ export default function PMDashboard() {
             </Link>
           </RightInfoCard>
 
-          <RightInfoCard title="Reguli conformitate" icon={ShieldCheck}>
-            <div className="space-y-3 text-sm leading-6">
-              {[
-                'Verifică conformitatea cu cerințele proiectului.',
-                'Asigură-te că observațiile sunt clare și argumentate.',
-                'Solicită clarificări în termen de 3 zile lucrătoare.',
-                'Marchează ca neconform doar cu justificare.',
-              ].map((rule, index) => (
-                <div key={rule} className="flex items-start gap-2 text-muted-foreground">
-                  {index === 3 ? (
-                    <AlertTriangle className="mt-1 h-4 w-4 shrink-0 text-amber-500" />
-                  ) : (
-                    <CheckCircle2 className="mt-1 h-4 w-4 shrink-0 text-[#36c2a0]" />
-                  )}
-                  {rule}
+          <RightInfoCard title="Cereri acces lună" icon={AlertTriangle}>
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <p className="text-sm text-muted-foreground">
+                {getMonthName(selectedMonth)} {selectedYear}
+              </p>
+              <Badge variant={monthAccessRequests.length > 0 ? 'destructive' : 'secondary'}>
+                {monthAccessRequests.length}
+              </Badge>
+            </div>
+            <div className="space-y-2">
+              {monthAccessRequests.length === 0 ? (
+                <div className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
+                  Nu exista cereri de acces pentru luna selectata.
                 </div>
-              ))}
+              ) : (
+                monthAccessRequests.map(({ status, expert }) => (
+                  <div key={status.id} className="rounded-md border border-amber-200 bg-amber-50/80 p-3 text-sm">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <div className="font-semibold text-slate-950">{expert.name}</div>
+                        <div className="text-xs text-amber-800">
+                          Solicita acces pentru {getMonthName(status.month)} {status.year}
+                        </div>
+                      </div>
+                      <Badge variant="outline">{expert.category || expert.role || 'expert'}</Badge>
+                    </div>
+                    {canManagePmReview && (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <Button size="sm" onClick={() => approveMonthAccessRequest(status)}>
+                          Aproba acces
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => rejectMonthAccessRequest(status)}>
+                          Respinge
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </RightInfoCard>
+
+          <RightInfoCard title="Intervenții clarificări" icon={AlertTriangle}>
+            <div className="space-y-4 text-sm">
+              {selectedClarificationActivities.length > 0 ? (
+                selectedClarificationActivities.slice(0, 4).map((activity) => {
+                  const clarificationAudit = findLatestClarificationAudit(auditLogs, activity.id)
+                    || findLatestClarificationAudit(auditLogs);
+
+                  return (
+                    <div key={activity.id} className="rounded-lg border border-amber-100 bg-amber-50/60 p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="font-semibold text-slate-900">{activity.title || activity.activityType}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {activity.date} · {activity.hours}h{activity.saCode ? ` · ${activity.saCode}` : ''}
+                          </p>
+                        </div>
+                        <Badge variant="outline" className="border-amber-300 bg-white text-amber-800">
+                          Clarificare
+                        </Badge>
+                      </div>
+                      <p className="mt-2 line-clamp-3 text-amber-900">{activity.pmNotes}</p>
+                      <div className="mt-3 space-y-1 text-xs text-muted-foreground">
+                        <p>
+                          Cerere PM: {clarificationAudit?.createdAt
+                            ? new Date(clarificationAudit.createdAt).toLocaleString('ro-RO')
+                            : 'neînregistrată în audit'}
+                        </p>
+                        <p>
+                          Modificat de expert: {activity.updatedAt
+                            ? new Date(activity.updatedAt).toLocaleString('ro-RO')
+                            : 'fără actualizare recentă'}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <p className="text-muted-foreground">
+                  Nu sunt activități cu clarificări punctuale pentru expertul și luna selectate.
+                </p>
+              )}
             </div>
           </RightInfoCard>
 
@@ -877,160 +968,47 @@ export default function PMDashboard() {
               <ArrowRight className="h-4 w-4" />
             </Link>
           </RightInfoCard>
+
+          <RightInfoCard title="Atentionari luna" icon={AlertTriangle}>
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <p className="text-sm text-muted-foreground">
+                {getMonthName(selectedMonth)} {selectedYear}
+              </p>
+              <Badge variant="secondary">{attentionRows.length}</Badge>
+            </div>
+            <div className="space-y-2">
+              {attentionRows.length === 0 ? (
+                <div className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
+                  Nu exista atentionari majore pentru luna selectata.
+                </div>
+              ) : (
+                attentionRows.map((row) => (
+                  <div key={row.expertId} className="rounded-md border p-3 text-sm">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="font-semibold text-slate-950">{row.expertName}</div>
+                      <Badge variant="outline">{row.utilizationPercent}% completare</Badge>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                      {row.missingActivityDays.length > 0 && (
+                        <Badge variant="outline" className="border-amber-300 text-amber-800">
+                          {row.missingActivityDays.length} zile lipsa
+                        </Badge>
+                      )}
+                      {row.blockedDays.length > 0 && (
+                        <Badge variant="destructive">{row.blockedDays.length} zile blocate</Badge>
+                      )}
+                      {row.hasDailyLimitIssue && <Badge variant="destructive">limita zilnica</Badge>}
+                      {row.hasMonthlyNormIssue && <Badge variant="outline">norma lunara</Badge>}
+                      {row.hasProjectNormIssue && <Badge variant="outline">norma proiect</Badge>}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </RightInfoCard>
         </>
       }
     >
-      <Card className="rounded-[1.5rem] py-0">
-        <CardContent className="grid gap-3 p-5 lg:grid-cols-[1fr_1fr_1fr_auto]">
-          <Select
-            value={selectedExpertId || ''}
-            onValueChange={(id) => setSelectedExpertId(id)}
-            disabled={!hasExtendedExpertAccess}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Toți experții" />
-            </SelectTrigger>
-            <SelectContent>
-              {visibleExperts.map((expert) => (
-                <SelectItem key={expert.id} value={expert.id}>
-                  {expert.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select value={selectedMonth.toString()} onValueChange={(v) => setSelectedMonth(parseInt(v))}>
-            <SelectTrigger>
-              <SelectValue placeholder="Luna" />
-            </SelectTrigger>
-            <SelectContent>
-              {months.map((m) => (
-                <SelectItem key={m.value} value={m.value.toString()}>
-                  {m.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select value={selectedYear.toString()} onValueChange={(v) => setSelectedYear(parseInt(v))}>
-            <SelectTrigger>
-              <SelectValue placeholder="An" />
-            </SelectTrigger>
-            <SelectContent>
-              {years.map((y) => (
-                <SelectItem key={y.value} value={y.value.toString()}>
-                  {y.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          {canManagePmReview && (
-            <Button onClick={saveVerificationData} disabled={isSaving}>
-              {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              Salvează
-            </Button>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card className="rounded-[1.5rem] py-0">
-        <CardContent className="p-5">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-950">
-                <AlertTriangle className="h-5 w-5 text-amber-500" />
-                Atentionari si cereri experti
-              </h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Cereri de acces si semnale operationale pentru {getMonthName(selectedMonth)} {selectedYear}.
-              </p>
-            </div>
-            <Badge variant={monthAccessRequests.length > 0 ? 'destructive' : 'secondary'}>
-              {monthAccessRequests.length} cereri acces
-            </Badge>
-          </div>
-
-          <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-            <div className="rounded-lg border border-amber-300 bg-amber-50 p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div className="font-semibold text-amber-950">Cereri acces luna</div>
-                <Badge variant="outline" className="border-amber-300 bg-white text-amber-900">
-                  {monthAccessRequests.length}
-                </Badge>
-              </div>
-              <div className="mt-3 space-y-2">
-                {monthAccessRequests.length === 0 ? (
-                  <div className="rounded-md border border-amber-200 bg-white/70 p-3 text-sm text-amber-800">
-                    Nu exista cereri de acces pentru luna selectata.
-                  </div>
-                ) : (
-                  monthAccessRequests.map(({ status, expert }) => (
-                    <div key={status.id} className="rounded-md border border-amber-200 bg-white/80 p-3 text-sm">
-                      <div className="flex flex-wrap items-start justify-between gap-2">
-                        <div>
-                          <div className="font-semibold text-slate-950">{expert.name}</div>
-                          <div className="text-xs text-amber-800">
-                            Solicita acces pentru {getMonthName(status.month)} {status.year}
-                          </div>
-                        </div>
-                        <Badge variant="outline">{expert.category || expert.role || 'expert'}</Badge>
-                      </div>
-                      {canManagePmReview && (
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          <Button size="sm" onClick={() => approveMonthAccessRequest(status)}>
-                            Aproba acces
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => rejectMonthAccessRequest(status)}>
-                            Respinge
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-
-            <div className="rounded-lg border bg-card p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div className="font-semibold text-slate-950">Atentionari luna</div>
-                <Badge variant="secondary">{attentionRows.length}</Badge>
-              </div>
-              <div className="mt-3 space-y-2">
-                {attentionRows.length === 0 ? (
-                  <div className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
-                    Nu exista atentionari majore pentru luna selectata.
-                  </div>
-                ) : (
-                  attentionRows.map((row) => (
-                    <div key={row.expertId} className="rounded-md border p-3 text-sm">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="font-semibold text-slate-950">{row.expertName}</div>
-                        <Badge variant="outline">{row.utilizationPercent}% completare</Badge>
-                      </div>
-                      <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                        {row.missingActivityDays.length > 0 && (
-                          <Badge variant="outline" className="border-amber-300 text-amber-800">
-                            {row.missingActivityDays.length} zile lipsa
-                          </Badge>
-                        )}
-                        {row.blockedDays.length > 0 && (
-                          <Badge variant="destructive">{row.blockedDays.length} zile blocate</Badge>
-                        )}
-                        {row.hasDailyLimitIssue && <Badge variant="destructive">limita zilnica</Badge>}
-                        {row.hasMonthlyNormIssue && <Badge variant="outline">norma lunara</Badge>}
-                        {row.hasProjectNormIssue && <Badge variant="outline">norma proiect</Badge>}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
       <PmSubmittedReportsPanel
         rows={submittedReportRows}
         statusLabels={statusLabels}
