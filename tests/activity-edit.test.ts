@@ -97,6 +97,22 @@ test('editarea multi-day a unei activitati vechi creeaza identitate de grup fara
   assert.equal(new Set(submitted.map((item) => item.periodGroupId)).size, 1);
 });
 
+test('editarea pastreaza orele din formular cand selectedHours este invechit', () => {
+  const editing = activity('activity-1', { date: '2026-06-05', hours: 5 });
+  const submitted = buildSubmittedActivitiesForEdit(
+    editing,
+    [activity('activity-1', { date: '2026-06-05', hours: 5 })],
+    ['2026-06-05'],
+    { '2026-06-05': '8' },
+    [editing],
+    'expert-1',
+    (value, fallback) => String(value ?? fallback),
+  );
+
+  assert.equal(submitted.length, 1);
+  assert.equal(submitted[0].hours, 5);
+});
+
 test('editarea unui grup actualizeaza zilele pastrate, creeaza zilele noi si sterge doar ziua scoasa', () => {
   const periodGroupId = 'activity-period:period-1';
   const groupMembers = [

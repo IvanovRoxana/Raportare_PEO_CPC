@@ -126,7 +126,9 @@ export function buildSubmittedActivitiesForEdit(
       id: activityId,
       date,
       expertId,
-      hours: Number(normalizeHours(selectedHours[date], sourceActivity.hours.toString())),
+      hours: Number.isFinite(Number(sourceActivity.hours)) && Number(sourceActivity.hours) > 0
+        ? Number(sourceActivity.hours)
+        : Number(normalizeHours(selectedHours[date], editingActivity.hours.toString())),
       workingGroupId: sourceActivity.workingGroupId ?? periodGroupId,
       periodGroupId,
     };

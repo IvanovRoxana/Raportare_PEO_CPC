@@ -310,6 +310,7 @@ export function ActivityForm({
     message: string;
     confirmedActivityDuplicate: boolean;
   } | null>(null);
+  const saveInFlightRef = useRef(false);
   const [existingDeliverablePickerOpen, setExistingDeliverablePickerOpen] = useState(false);
 
   // Deliverables state with slots
@@ -1333,7 +1334,13 @@ export function ActivityForm({
     }
 
     setMonthlyDeliverableDuplicateConfirmation(null);
-    await onSave(activities);
+    if (saveInFlightRef.current || isSaving) return;
+    saveInFlightRef.current = true;
+    try {
+      await onSave(activities);
+    } finally {
+      saveInFlightRef.current = false;
+    }
   }, [
     activityCommon,
     activityKeywords,
@@ -1363,6 +1370,7 @@ export function ActivityForm({
     isBusinessHubTabActive,
     isEvent,
     isGdprExpert,
+    isSaving,
     isLeave,
     location,
     month,
@@ -3166,7 +3174,7 @@ export function ActivityForm({
             <Button
               type="button"
               onClick={() => handleSave()}
-              disabled={isSaveDisabled}
+              disabled={isSaveDisabled || isSaving}
               className={isWorkspaceLayout ? 'w-full sm:w-auto' : undefined}
             >
               {isSaving ? (

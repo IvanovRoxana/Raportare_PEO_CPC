@@ -488,9 +488,12 @@ function ExpertDashboardContent() {
           ?? newActivities[0]
           ?? editingActivity;
         const lockedDate = editingActivity.date;
+        const sourceHours = Number(sourceActivity.hours);
         const nextActivity: Activity = {
           ...editingActivity,
-          hours: Number(normalizePontajHoursValue(selectedHours[lockedDate], sourceActivity.hours.toString())),
+          hours: Number.isFinite(sourceHours) && sourceHours > 0
+            ? sourceHours
+            : Number(normalizePontajHoursValue(selectedHours[lockedDate], editingActivity.hours.toString())),
           activityType: sourceActivity.activityType,
           saCode: sourceActivity.saCode,
           catalogActivityId: sourceActivity.catalogActivityId,
