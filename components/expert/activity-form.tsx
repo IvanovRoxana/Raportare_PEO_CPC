@@ -51,7 +51,10 @@ import fallbackActivityCatalog from '@/data/import/activity-catalog.json';
 import { isGtExpertCategory, normalizePeoCategory } from '@/lib/peo-category';
 import { normalizeActivityCatalogSaCode, resolveExpertActivityCatalog } from '@/lib/activity-catalog-merge';
 import { buildDocumentS3Key, findDuplicateCandidates, getDocumentAuditTitle, hashFirstPageText, normalizeDocumentTextForFingerprint, sha256Hex } from '@/lib/document-sharing';
-import { findMonthlyDeliverableDuplicate } from '@/lib/deliverable-deduplication';
+import {
+  findMonthlyDeliverableDuplicate,
+  getDeliverableDocumentSignature,
+} from '@/lib/deliverable-deduplication';
 import { shouldAttachUploadedDeliverablesToDate } from '@/lib/activity-deliverables';
 import { createActivityPeriodGroupId } from '@/lib/submit-readiness';
 import {
@@ -302,6 +305,10 @@ export function ActivityForm({
   const [duplicateConfirmation, setDuplicateConfirmation] = useState<{
     identity: string;
     dates: string[];
+  } | null>(null);
+  const [monthlyDeliverableDuplicateConfirmation, setMonthlyDeliverableDuplicateConfirmation] = useState<{
+    message: string;
+    confirmedActivityDuplicate: boolean;
   } | null>(null);
   const [existingDeliverablePickerOpen, setExistingDeliverablePickerOpen] = useState(false);
 
@@ -1029,7 +1036,10 @@ export function ActivityForm({
     selectedDates,
   ]);
 
-  const handleSave = useCallback(async (confirmedDuplicate = false) => {
+  const handleSave = useCallback(async (
+    confirmedDuplicate = false,
+    confirmedMonthlyDeliverableDuplicate = false,
+  ) => {
     setValidationError(null);
     const reportingWarnings: string[] = [];
 
@@ -1183,7 +1193,7 @@ export function ActivityForm({
     const activityPeriodGroupId = existingActivityPeriodGroupId
       ?? (activityDatesForSave.length > 1 ? createActivityPeriodGroupId(generateId()) : undefined);
 
-    const activities: Activity[] = activityDatesForSave.map((date) => {
+    let activities: Activity[] = activityDatesForSave.map((date) => {
       // Get hours for this specific date, fallback to default
       const dateHours = isLeave ? 0 : Number(normalizePontajHoursValue(hoursPerDay[date] || initialActivity?.hours, defaultHours));
       const shouldAttachDeliverables = shouldAttachUploadedDeliverablesToDate(activityDatesForSave, date);
@@ -1304,12 +1314,25 @@ export function ActivityForm({
         || monthlyDuplicate.existingDeliverable.originalFileName
         || monthlyDuplicate.existingDeliverable.fileName
         || 'Acest livrabil';
-      setValidationError(
-        `${duplicateName} este deja incarcat pentru luna selectata. Modifica activitatea existenta ca multi-day sau incarca un livrabil diferit.`,
-      );
-      return;
+      const message = `${duplicateName} este deja incarcat pentru luna selectata. Daca acest document este livrabilul comun pentru activitatea multi-day, confirma salvarea fara sa il incarci inca o data. Altfel, modifica activitatea existenta ca multi-day sau incarca un livrabil diferit.`;
+
+      if (!confirmedMonthlyDeliverableDuplicate) {
+        setMonthlyDeliverableDuplicateConfirmation({
+          message,
+          confirmedActivityDuplicate: confirmedDuplicate,
+        });
+        return;
+      }
+
+      activities = activities.map((activity) => ({
+        ...activity,
+        deliverables: activity.deliverables?.filter((deliverable) => (
+          getDeliverableDocumentSignature(deliverable) !== monthlyDuplicate.signature
+        )),
+      }));
     }
 
+    setMonthlyDeliverableDuplicateConfirmation(null);
     await onSave(activities);
   }, [
     activityCommon,
@@ -2623,6 +2646,31 @@ export function ActivityForm({
                   <AlertDialogCancel>Anuleaza</AlertDialogCancel>
                   <AlertDialogAction onClick={() => handleSave(true)}>
                     Confirma salvarea
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+
+            <AlertDialog
+              open={Boolean(monthlyDeliverableDuplicateConfirmation)}
+              onOpenChange={(open) => !open && setMonthlyDeliverableDuplicateConfirmation(null)}
+            >
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Livrabil deja incarcat</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {monthlyDeliverableDuplicateConfirmation?.message}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Anuleaza</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => handleSave(
+                      monthlyDeliverableDuplicateConfirmation?.confirmedActivityDuplicate ?? false,
+                      true,
+                    )}
+                  >
+                    Salveaza fara duplicat
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>

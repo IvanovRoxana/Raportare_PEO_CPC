@@ -174,3 +174,44 @@ test('activitatile istorice similare create separat nu sunt grupate automat', ()
 
   assert.deepEqual(missingDeliverables.map((activity) => activity.id), ['legacy-day-1']);
 });
+
+test('activitatile SoMe lunare sunt acoperite de un singur livrabil chiar daca lipseste gruparea tehnica', () => {
+  const activities: Activity[] = [
+    baseActivity({
+      id: 'some-day-1',
+      date: '2026-06-04',
+      saCode: 'SA3.4',
+      catalogActivityId: 'content-digital-vizual-some',
+      activityType: 'Content digital si vizual SoMe',
+      title: 'Content digital si vizual SoMe',
+      deliverables: [],
+    }),
+    baseActivity({
+      id: 'some-day-2',
+      date: '2026-06-22',
+      saCode: 'SA3.4',
+      catalogActivityId: 'content-digital-vizual-some',
+      activityType: 'Content digital si vizual SoMe',
+      title: 'Content digital si vizual SoMe',
+      deliverables: [],
+    }),
+    baseActivity({
+      id: 'some-final-day',
+      date: '2026-06-30',
+      saCode: 'SA3.4',
+      catalogActivityId: 'content-digital-vizual-some',
+      activityType: 'Content digital si vizual SoMe',
+      title: 'Content digital si vizual SoMe',
+      deliverables: [{
+        id: 'deliverable-1',
+        fileName: 'screenshots.docx',
+        fileType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        fileSize: 1234,
+      }],
+    }),
+  ];
+
+  const missingDeliverables = getActivitiesMissingDeliverables(activities);
+
+  assert.deepEqual(missingDeliverables.map((activity) => activity.id), []);
+});

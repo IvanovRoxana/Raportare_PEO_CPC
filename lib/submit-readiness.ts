@@ -47,6 +47,46 @@ function getLegacyActivityPeriodSignature(activity: Activity) {
   ].join('|');
 }
 
+function normalizeTextForMatching(value?: string | number | null) {
+  return normalizeSignatureValue(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+function isMonthlySocialMediaVisualActivity(activity: Activity) {
+  const searchableText = [
+    activity.activityType,
+    activity.title,
+    activity.description,
+    activity.activityKeywords,
+  ].map(normalizeTextForMatching).join(' ');
+
+  const mentionsSocialMedia = searchableText.includes('some')
+    || searchableText.includes('social media')
+    || searchableText.includes('retele sociale')
+    || searchableText.includes('sociale');
+  const mentionsVisualContent = searchableText.includes('content')
+    || searchableText.includes('continut')
+    || searchableText.includes('vizual')
+    || searchableText.includes('visual');
+
+  return mentionsSocialMedia && mentionsVisualContent;
+}
+
+function getMonthlySocialMediaDeliverableSignature(activity: Activity) {
+  if (!isMonthlySocialMediaVisualActivity(activity)) return null;
+
+  return [
+    normalizeSignatureValue(activity.expertId),
+    activity.date.slice(0, 7),
+    normalizeSignatureValue(activity.projectCode),
+    normalizeSignatureValue(activity.saCode),
+    normalizeSignatureValue(activity.catalogActivityId),
+    normalizeSignatureValue(activity.activityType),
+    normalizeSignatureValue(activity.title),
+  ].join('|');
+}
+
 function inferLegacyActivityPeriodGroups(activities: Activity[]) {
   const groupedBySignature = new Map<string, Activity[]>();
 
@@ -133,23 +173,38 @@ function needsDeliverableValidation(activity: Activity, expertCategory?: string)
 
 export function createActivityDeliverableAvailabilityResolver(activities: Activity[]) {
   const periodDeliverableAvailability = new Map<string, boolean>();
+  const monthlySocialMediaDeliverableAvailability = new Map<string, boolean>();
   const inferredLegacyGroups = inferLegacyActivityPeriodGroups(activities);
 
   activities.forEach((activity) => {
     const groupId = getEffectiveActivityPeriodGroupId(activity, inferredLegacyGroups);
-    if (!groupId) return;
+    const monthlySocialMediaSignature = getMonthlySocialMediaDeliverableSignature(activity);
 
-    periodDeliverableAvailability.set(
-      groupId,
-      (periodDeliverableAvailability.get(groupId) ?? false) || hasUsableDeliverable(activity.deliverables),
-    );
+    if (groupId) {
+      periodDeliverableAvailability.set(
+        groupId,
+        (periodDeliverableAvailability.get(groupId) ?? false) || hasUsableDeliverable(activity.deliverables),
+      );
+    }
+
+    if (monthlySocialMediaSignature) {
+      monthlySocialMediaDeliverableAvailability.set(
+        monthlySocialMediaSignature,
+        (monthlySocialMediaDeliverableAvailability.get(monthlySocialMediaSignature) ?? false)
+          || hasUsableDeliverable(activity.deliverables),
+      );
+    }
   });
 
   return (activity: Activity) => {
     const groupId = getEffectiveActivityPeriodGroupId(activity, inferredLegacyGroups);
-    return groupId
-      ? periodDeliverableAvailability.get(groupId) === true
-      : hasUsableDeliverable(activity.deliverables);
+    const monthlySocialMediaSignature = getMonthlySocialMediaDeliverableSignature(activity);
+
+    return (groupId ? periodDeliverableAvailability.get(groupId) === true : false)
+      || (monthlySocialMediaSignature
+        ? monthlySocialMediaDeliverableAvailability.get(monthlySocialMediaSignature) === true
+        : false)
+      || hasUsableDeliverable(activity.deliverables);
   };
 }
 
@@ -161,6 +216,7 @@ export function getActivitiesMissingDeliverables(
   const groupedActivities = new Map<string, Activity[]>();
   const standaloneActivities: Activity[] = [];
   const inferredLegacyGroups = inferLegacyActivityPeriodGroups(activities);
+  const hasAvailableDeliverable = createActivityDeliverableAvailabilityResolver(activities);
 
   activities.forEach((activity) => {
     if (!needsDeliverableValidation(activity, expertCategory)) return;
@@ -176,9 +232,9 @@ export function getActivitiesMissingDeliverables(
     groupedActivities.set(groupId, group);
   });
 
-  const standaloneMissing = standaloneActivities.filter((activity) => !hasUsableDeliverable(activity.deliverables));
+  const standaloneMissing = standaloneActivities.filter((activity) => !hasAvailableDeliverable(activity));
   const groupedMissing = Array.from(groupedActivities.values()).flatMap((group) => {
-    const groupHasDeliverable = group.some((activity) => hasUsableDeliverable(activity.deliverables));
+    const groupHasDeliverable = group.some((activity) => hasAvailableDeliverable(activity));
     if (groupHasDeliverable) return [];
 
     return group;
