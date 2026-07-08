@@ -1294,7 +1294,7 @@ export function ActivityForm({
           })) : [],
         location,
         dayType,
-        workingGroupId: initialActivity?.workingGroupId ?? activityPeriodGroupId,
+        workingGroupId: activityPeriodGroupId ?? initialActivity?.workingGroupId,
         periodGroupId: activityPeriodGroupId,
         shareStatus: activityCommon ? 'shared' : 'private',
         takenByExperts: activityCommon ? collaborators : [],

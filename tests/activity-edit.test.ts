@@ -5,6 +5,7 @@ import {
   compileActivitiesByPeriodGroup,
   dedupeDeliverables,
   getActivityGroupMembers,
+  getActivityGroupMembersForSelectedDates,
   prepareExistingActivityUpdate,
   planGroupedActivityEdit,
   splitActivityEditPayload,
@@ -137,6 +138,39 @@ test('editarea unui grup actualizeaza zilele pastrate, creeaza zilele noi si ste
   assert.equal(plan.newActivities[0].date, '2026-06-20');
   assert.deepEqual(plan.deleteActivityIds, ['activity-4']);
   assert.ok([...plan.updateActivities, ...plan.newActivities].every((item) => item.periodGroupId === periodGroupId));
+});
+
+test('editarea multi-day regrupeaza activitati existente pe zilele selectate', () => {
+  const existingActivities = [
+    activity('activity-4', { date: '2026-06-04', saCode: 'SA3.4', activityType: 'Analiza legislativa' }),
+    activity('activity-5', { date: '2026-06-05', saCode: 'SA3.4', activityType: 'Analiza legislativa' }),
+    activity('activity-12', { date: '2026-06-12', saCode: 'SA3.4', activityType: 'Analiza legislativa' }),
+    activity('activity-18', { date: '2026-06-18', saCode: 'SA3.4', activityType: 'Analiza legislativa' }),
+  ];
+  const editing = existingActivities[0];
+  const selectedDates = existingActivities.map((item) => item.date);
+  const membersForEdit = getActivityGroupMembersForSelectedDates(editing, existingActivities, selectedDates);
+  const submitted = buildSubmittedActivitiesForEdit(
+    editing,
+    [activity('activity-4', {
+      date: '2026-06-04',
+      saCode: 'SA3.4',
+      activityType: 'Analiza legislativa',
+      deliverables: [deliverable('deliverable-1', { documentId: 'document-1' })],
+    })],
+    selectedDates,
+    Object.fromEntries(selectedDates.map((date) => [date, '6'])),
+    membersForEdit,
+    'expert-1',
+    (value, fallback) => String(value ?? fallback),
+  );
+  const plan = planGroupedActivityEdit(editing, submitted, membersForEdit, 'expert-1');
+
+  assert.deepEqual(plan.updateActivities.map((item) => item.id).sort(), ['activity-12', 'activity-18', 'activity-4', 'activity-5']);
+  assert.equal(plan.newActivities.length, 0);
+  assert.equal(plan.deleteActivityIds.length, 0);
+  assert.equal(new Set(plan.updateActivities.map((item) => item.periodGroupId)).size, 1);
+  assert.equal(new Set(plan.updateActivities.map((item) => item.workingGroupId)).size, 1);
 });
 
 test('grupurile de activitati expun livrabile deduplicate pentru raportare', () => {

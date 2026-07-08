@@ -22,6 +22,39 @@ export function getActivityGroupMembers(activity: Activity, activities: Activity
     : [activity];
 }
 
+function normalizeMatchValue(value?: string | null) {
+  return String(value ?? '').trim().toLowerCase();
+}
+
+function isSameEditableActivity(activity: Activity, candidate: Activity) {
+  if (activity.id === candidate.id) return true;
+  if (activity.expertId && candidate.expertId && activity.expertId !== candidate.expertId) return false;
+
+  if (activity.catalogActivityId || candidate.catalogActivityId) {
+    return Boolean(activity.catalogActivityId && activity.catalogActivityId === candidate.catalogActivityId);
+  }
+
+  return normalizeMatchValue(activity.saCode) === normalizeMatchValue(candidate.saCode)
+    && normalizeMatchValue(activity.activityType || activity.title) === normalizeMatchValue(candidate.activityType || candidate.title);
+}
+
+export function getActivityGroupMembersForSelectedDates(
+  activity: Activity,
+  activities: Activity[],
+  selectedDates: string[],
+) {
+  const groupMembers = getActivityGroupMembers(activity, activities);
+  const memberIds = new Set(groupMembers.map((member) => member.id));
+  const selectedDateSet = new Set(selectedDates);
+  const selectedDateMatches = activities.filter((candidate) => (
+    selectedDateSet.has(candidate.date)
+    && !memberIds.has(candidate.id)
+    && isSameEditableActivity(activity, candidate)
+  ));
+
+  return [...groupMembers, ...selectedDateMatches].sort((first, second) => first.date.localeCompare(second.date));
+}
+
 export function dedupeDeliverables(deliverables: Deliverable[]) {
   return dedupeDeliverablesBySignature(deliverables);
 }
@@ -129,7 +162,7 @@ export function buildSubmittedActivitiesForEdit(
       hours: Number.isFinite(Number(sourceActivity.hours)) && Number(sourceActivity.hours) > 0
         ? Number(sourceActivity.hours)
         : Number(normalizeHours(selectedHours[date], editingActivity.hours.toString())),
-      workingGroupId: sourceActivity.workingGroupId ?? periodGroupId,
+      workingGroupId: periodGroupId ?? sourceActivity.workingGroupId,
       periodGroupId,
     };
   });

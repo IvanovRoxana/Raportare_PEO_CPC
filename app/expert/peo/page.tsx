@@ -63,6 +63,7 @@ import {
 import {
   buildSubmittedActivitiesForEdit,
   getActivityGroupMembers,
+  getActivityGroupMembersForSelectedDates,
   mergeActivityGroupForEdit,
   planGroupedActivityEdit,
 } from '@/lib/activity-edit';
@@ -480,7 +481,7 @@ function ExpertDashboardContent() {
       }
 
       const editingGroupMembers = editingActivity
-        ? getActivityGroupMembers(editingActivity, activities)
+        ? getActivityGroupMembersForSelectedDates(editingActivity, activities, selectedDates)
         : [];
       const editingGroupMemberIds = new Set(editingGroupMembers.map((activity) => activity.id));
       if (isClarificationScopedAccess) {
