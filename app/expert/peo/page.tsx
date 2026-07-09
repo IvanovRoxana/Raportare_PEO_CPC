@@ -200,6 +200,8 @@ function ExpertDashboardContent() {
   const [deletedActivityUndo, setDeletedActivityUndo] = useState<DeletedActivityUndo | null>(null);
   const [isUndoingDelete, setIsUndoingDelete] = useState(false);
   const [clarificationAutoOpenedId, setClarificationAutoOpenedId] = useState<string | null>(null);
+  const [selectedExistingSharedActivityId, setSelectedExistingSharedActivityId] = useState<string>('');
+  const [isRegisteringExistingSharedActivity, setIsRegisteringExistingSharedActivity] = useState(false);
 
   // Data hooks
   const { experts, isLoading: expertsLoading } = useExperts();
@@ -303,6 +305,52 @@ function ExpertDashboardContent() {
     if (!selectedExpertId) return [];
     return allMonthActivities.filter((a) => a.expertId === selectedExpertId);
   }, [allMonthActivities, selectedExpertId]);
+  const existingSharedActivityCandidates = useMemo(() => {
+    const sourceActivity = sharedActivityRegistrationContext?.sourceActivity;
+    const sourceRelation = sharedActivityRegistrationContext?.activityRelation;
+    if (!sourceActivity && !sourceRelation) return [];
+
+    const sourceDate = sourceActivity?.date || sourceRelation?.sourceActivityDate;
+    const sourceSaCode = sourceActivity?.saCode || sourceRelation?.sourceActivitySaCode;
+    const sourceTitle = sourceActivity?.title || sourceRelation?.sourceActivityTitle;
+    const relatedDocumentKeys = new Set(
+      sharedActivityRegistrationContext?.relatedDocuments.flatMap((document) => [
+        document.id,
+        document.s3Key,
+        document.fileHash,
+        document.firstPageTextHash,
+        document.contentFingerprint,
+      ].filter((key): key is string => Boolean(key))) ?? [],
+    );
+
+    return activities
+      .map((activity) => {
+        const hasRelatedDeliverable = (activity.deliverables ?? []).some((deliverable) => [
+          deliverable.documentId,
+          deliverable.s3Key,
+          deliverable.filePath,
+          deliverable.fileHash,
+          deliverable.firstPageTextHash,
+          deliverable.contentFingerprint,
+        ].some((key) => key && relatedDocumentKeys.has(key)));
+        const score = [
+          sourceDate && activity.date === sourceDate,
+          sourceSaCode && activity.saCode === sourceSaCode,
+          sourceTitle && (activity.title === sourceTitle || activity.activityType === sourceTitle),
+          hasRelatedDeliverable,
+        ].filter(Boolean).length;
+
+        return { activity, hasRelatedDeliverable, score };
+      })
+      .filter(({ activity, score }) => {
+        if (!sourceDate && !sourceSaCode) return true;
+        return score > 0 || activity.date === sourceDate || activity.saCode === sourceSaCode;
+      })
+      .sort((first, second) => {
+        if (second.score !== first.score) return second.score - first.score;
+        return first.activity.date.localeCompare(second.activity.date);
+      });
+  }, [activities, sharedActivityRegistrationContext]);
   const clarificationTargetActivity = useMemo(
     () => clarificationActivityId
       ? activities.find((activity) => activity.id === clarificationActivityId) ?? null
@@ -317,6 +365,20 @@ function ExpertDashboardContent() {
     && isCurrentOrPreviousMonth(currentMonth, currentYear),
   );
   const deliverableRows = useMemo(() => buildExpertDeliverableRows(activities), [activities]);
+
+  useEffect(() => {
+    if (!pendingSharedActivityRelationId) {
+      setSelectedExistingSharedActivityId('');
+      return;
+    }
+    if (
+      selectedExistingSharedActivityId
+      && existingSharedActivityCandidates.some(({ activity }) => activity.id === selectedExistingSharedActivityId)
+    ) {
+      return;
+    }
+    setSelectedExistingSharedActivityId(existingSharedActivityCandidates[0]?.activity.id ?? '');
+  }, [existingSharedActivityCandidates, pendingSharedActivityRelationId, selectedExistingSharedActivityId]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -1160,7 +1222,38 @@ function ExpertDashboardContent() {
     setPendingSharedDeliverableRelationId(null);
     setSharedActivityPrefill(null);
     setActivityResolutionHint(null);
+    setSelectedExistingSharedActivityId('');
     clearSharedRelationQueryParams();
+  };
+
+  const handleRegisterSharedActivityOnExisting = async () => {
+    if (!pendingSharedActivityRelationId || !selectedExistingSharedActivityId) return;
+
+    setSaveError(null);
+    setIsRegisteringExistingSharedActivity(true);
+    try {
+      await registerForActivity(pendingSharedActivityRelationId, selectedExistingSharedActivityId);
+      const relatedRelationIds = sharedActivityRegistrationContext?.relatedDeliverableRelations.map((relation) => relation.id) ?? [];
+      for (const relationId of relatedRelationIds) {
+        await registerForActivity(relationId, selectedExistingSharedActivityId);
+      }
+      await Promise.all([refreshActivities(), refreshSharedDeliverables()]);
+      resetSharedRegistrationFlow();
+      setShowForm(false);
+      setEditingActivity(null);
+      setSharedActivityPrefill(null);
+      setSelectedDates([]);
+      setSelectedHours({});
+    } catch (error) {
+      console.error('Error registering shared activity on existing activity:', error);
+      setSaveError(
+        error instanceof Error
+          ? error.message
+          : 'Activitatea comuna nu a putut fi asociata la activitatea existenta.',
+      );
+    } finally {
+      setIsRegisteringExistingSharedActivity(false);
+    }
   };
 
   const closeActivityForm = () => {
@@ -1881,6 +1974,51 @@ function ExpertDashboardContent() {
                       </div>
                     ) : (
                       <p className="text-blue-800">Se incarca detaliile activitatii comune...</p>
+                    )}
+                    {sharedActivityRegistrationContext && (
+                      <div className="rounded-md border border-blue-200 bg-white/70 p-3">
+                        <p className="text-xs font-medium uppercase text-blue-600">Confirmare fara dublare pontaj</p>
+                        <p className="mt-1 text-blue-800">
+                          Daca ai deja activitatea in raportare, confirm-o aici ca existenta si asociaza livrabilul comun fara sa adaugi zile sau ore noi.
+                        </p>
+                        {existingSharedActivityCandidates.length > 0 ? (
+                          <div className="mt-3 flex flex-col gap-2 md:flex-row md:items-center">
+                            <Select
+                              value={selectedExistingSharedActivityId}
+                              onValueChange={setSelectedExistingSharedActivityId}
+                              disabled={isRegisteringExistingSharedActivity}
+                            >
+                              <SelectTrigger className="min-h-10 md:flex-1">
+                                <SelectValue placeholder="Alege activitatea existenta" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {existingSharedActivityCandidates.map(({ activity, hasRelatedDeliverable }) => (
+                                  <SelectItem key={activity.id} value={activity.id}>
+                                    {formatDisplayDate(activity.date)}
+                                    {Number(activity.hours) > 0 ? `, ${activity.hours}h` : ''}
+                                    {' - '}
+                                    {getActivityDisplayTitle(activity)}
+                                    {hasRelatedDeliverable ? ' - livrabil detectat' : ''}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <Button
+                              type="button"
+                              onClick={handleRegisterSharedActivityOnExisting}
+                              disabled={!selectedExistingSharedActivityId || isRegisteringExistingSharedActivity}
+                              className="md:w-auto"
+                            >
+                              {isRegisteringExistingSharedActivity && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                              Confirma existenta
+                            </Button>
+                          </div>
+                        ) : (
+                          <p className="mt-2 text-blue-800">
+                            Nu am gasit o activitate existenta compatibila in luna curenta. Poti salva formularul doar daca activitatea chiar lipseste din pontaj.
+                          </p>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>
