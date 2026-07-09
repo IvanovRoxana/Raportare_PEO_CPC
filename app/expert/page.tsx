@@ -729,6 +729,7 @@ export default function ExpertHomeDashboard() {
         navItems={expertNavItems}
         eyebrow="Modul Expert"
         title="Pontaj lunar"
+        reportingMonth={`${getMonthName(currentMonth)} ${currentYear}`}
         description={`Centralizeaza activitatile si orele raportate pentru ${getMonthName(currentMonth)} ${currentYear}.`}
         actions={
           <>

@@ -135,6 +135,7 @@ export function DashboardShell({
   title,
   eyebrow,
   description,
+  reportingMonth,
   quickTabs,
   actions,
   aside,
@@ -154,6 +155,12 @@ export function DashboardShell({
               <h1 className="max-w-4xl text-3xl font-bold tracking-tight text-slate-950 md:text-[2rem]">
                 {title}
               </h1>
+              {reportingMonth ? (
+                <div className="mt-3 inline-flex items-center gap-2 rounded-md border border-[#dce5ef] bg-slate-50 px-3 py-1.5 text-sm font-semibold text-slate-800">
+                  <CalendarDays className="h-4 w-4 text-primary" />
+                  {reportingMonth}
+                </div>
+              ) : null}
               {description ? (
                 <p className="mt-2 max-w-4xl text-sm leading-6 text-muted-foreground">{description}</p>
               ) : null}

@@ -1657,6 +1657,7 @@ function ExpertDashboardContent() {
         contentClassName={showForm ? 'max-w-none' : undefined}
         eyebrow="Modul Expert"
         title={isClarificationScopedAccess ? 'Clarificare PM' : showForm ? 'Adaugă activitate' : 'Activitățile mele'}
+        reportingMonth={`${getMonthName(currentMonth)} ${currentYear}`}
         description={
           isClarificationScopedAccess
             ? 'Modifică doar activitatea marcată de PM. Data, expertul și luna rămân blocate.'
