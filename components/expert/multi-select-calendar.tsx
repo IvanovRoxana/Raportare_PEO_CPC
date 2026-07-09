@@ -18,7 +18,7 @@ import type { Activity } from '@/lib/types';
 
 interface MultiSelectCalendarProps {
   selectedDates: string[];
-  onSelectDates: (dates: string[]) => void;
+  onSelectDates: (dates: string[], hours?: Record<string, string>) => void;
   selectedHours?: Record<string, string>;
   onSelectedHoursChange?: (hours: Record<string, string>) => void;
   activities: Activity[];
@@ -110,7 +110,7 @@ export function MultiSelectCalendar({
     const nextHours = buildSelectedHoursForDates(uniqueDates, baseHours, defaultHours);
 
     onSelectedHoursChange?.(nextHours);
-    onSelectDates(uniqueDates);
+    onSelectDates(uniqueDates, nextHours);
   };
 
   const updateSelectedHour = (date: string, value: string | number) => {

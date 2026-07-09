@@ -384,6 +384,18 @@ function ExpertDashboardContent() {
     if (typeof window === 'undefined') return;
 
     const openFromHash = () => {
+      if (window.location.hash === '#rapoarte') {
+        setActiveTab('export');
+        return;
+      }
+      if (window.location.hash === '#calendar') {
+        setActiveTab('calendar');
+        return;
+      }
+      if (window.location.hash === '#activitati') {
+        setActiveTab('activitati');
+        return;
+      }
       if (window.location.hash === '#livrabile') {
         setIsDeliverablesDialogOpen(true);
       }
@@ -540,6 +552,9 @@ function ExpertDashboardContent() {
     try {
       if (!selectedExpertId) {
         throw new Error('Selecteaza un expert inainte de salvare.');
+      }
+      if (selectedDates.length === 0) {
+        throw new Error('Selecteaza cel putin o zi din calendar inainte de salvare.');
       }
 
       const editingGroupMembers = editingActivity
@@ -1512,7 +1527,7 @@ function ExpertDashboardContent() {
   };
 
   // Auto-open form when dates are selected
-  const handleSelectDates = (dates: string[]) => {
+  const handleSelectDates = (dates: string[], nextHours?: Record<string, string>) => {
     if (isClarificationScopedAccess) {
       setSaveError('În modul clarificări data activității rămâne blocată.');
       return;
@@ -1534,11 +1549,14 @@ function ExpertDashboardContent() {
     }
 
     setSaveError(null);
-    syncSelectedDates(dates);
+    syncSelectedDates(dates, nextHours ?? selectedHours);
     if (dates.length > 0) {
       if (!editingActivity && !sharedActivityPrefill) {
         setActivityResolutionHint(null);
       }
+      setShowForm(true);
+      setActiveTab('activitati');
+    } else if (editingActivity || sharedActivityPrefill) {
       setShowForm(true);
       setActiveTab('activitati');
     } else {

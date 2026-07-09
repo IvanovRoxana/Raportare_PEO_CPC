@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback, type SetStateAction } from 'react';
 import { Upload, X, FileText, Loader2, Users, Plus, AlertTriangle, CheckCircle, Sparkles } from 'lucide-react';
 import { uploadData } from 'aws-amplify/storage';
 import { Button } from '@/components/ui/button';
@@ -265,15 +265,17 @@ export function ActivityForm({
   const defaultHours = Number(normalizePontajHoursValue(Math.min(expertNorma, MAX_PONTAJ_HOURS)));
   const hourOptions = useMemo(() => Array.from({ length: MAX_PONTAJ_HOURS }, (_, index) => index + 1), []);
   const activitySeed = initialActivity || prefillActivity;
-  const isEditingActivity = Boolean(initialActivity);
-  
-  // Per-day hours state - each day can have different hours
-  const [hoursPerDay, setHoursPerDay] = useState<Record<string, string>>(() => {
-    const seedHours = activitySeed?.hours !== undefined
-      ? Object.fromEntries(selectedDates.map((date) => [date, normalizePontajHoursValue(activitySeed.hours, defaultHours)]))
-      : selectedHours;
-    return buildSelectedHoursForDates(selectedDates, seedHours, defaultHours);
-  });
+  const normalizedSelectedHours = useMemo(
+    () => buildSelectedHoursForDates(selectedDates, selectedHours ?? {}, defaultHours),
+    [selectedDates, selectedHours, defaultHours],
+  );
+  const setHoursPerDay = useCallback((nextHoursOrUpdater: SetStateAction<Record<string, string>>) => {
+    const nextHours = typeof nextHoursOrUpdater === 'function'
+      ? nextHoursOrUpdater(normalizedSelectedHours)
+      : nextHoursOrUpdater;
+
+    onSelectedHoursChange?.(buildSelectedHoursForDates(selectedDates, nextHours, defaultHours));
+  }, [defaultHours, normalizedSelectedHours, onSelectedHoursChange, selectedDates]);
   
   // Legacy single hours for backward compatibility (used when saving)
   const [, setHours] = useState(normalizePontajHoursValue(activitySeed?.hours, defaultHours));
@@ -291,37 +293,14 @@ export function ActivityForm({
     }
   }, [saCode, availableSaCodes]);
   
-  // Update hoursPerDay when selectedDates change (add new dates with default hours)
-  useEffect(() => {
-    setHoursPerDay(prev => {
-      if (isEditingActivity && initialActivity) {
-        const savedHours = normalizePontajHoursValue(initialActivity.hours, defaultHours);
-        const explicitHours = selectedHours ?? {};
-        const baseHours = { ...prev, ...explicitHours };
-        const hasExplicitSelectedHours = selectedDates.some((date) => explicitHours[date] !== undefined);
-        if (hasExplicitSelectedHours) {
-          return buildSelectedHoursForDates(selectedDates, baseHours, savedHours);
-        }
-
-        const savedBaseHours = Object.fromEntries(
-          selectedDates.map((date) => [date, prev[date] || savedHours]),
-        );
-        return buildSelectedHoursForDates(selectedDates, savedBaseHours, savedHours);
-      }
-
-      const baseHours = { ...prev, ...selectedHours };
-      return buildSelectedHoursForDates(selectedDates, baseHours, defaultHours);
-    });
-  }, [selectedDates, defaultHours, selectedHours, isEditingActivity, initialActivity?.hours]);
-
   const updateHoursForDate = useCallback((date: string, value: string) => {
     if (!isValidPontajHours(value)) return;
-    setHoursPerDay(prev => {
-      const next = { ...prev, [date]: normalizePontajHoursValue(value, prev[date] || defaultHours) };
-      onSelectedHoursChange?.(next);
-      return next;
+    const baseHours = buildSelectedHoursForDates(selectedDates, selectedHours ?? {}, defaultHours);
+    onSelectedHoursChange?.({
+      ...baseHours,
+      [date]: normalizePontajHoursValue(value, baseHours[date] || defaultHours),
     });
-  }, [defaultHours, onSelectedHoursChange]);
+  }, [defaultHours, onSelectedHoursChange, selectedDates, selectedHours]);
   const [activityTitle, setActivityTitle] = useState(activitySeed?.activityType || '');
   const [selectedCatalogActivityId, setSelectedCatalogActivityId] = useState(activitySeed?.catalogActivityId || '');
   const [dayType, setDayType] = useState<'lucratoare' | 'CO' | 'CM'>(
@@ -815,7 +794,7 @@ export function ActivityForm({
   
   // Check if extended event description is needed
   const totalHours = selectedDates.reduce((sum, date) => (
-    sum + Number(normalizePontajHoursValue(hoursPerDay[date], defaultHours))
+    sum + Number(normalizePontajHoursValue(normalizedSelectedHours[date], defaultHours))
   ), 0);
   const eventDur = parseFloat(eventDuration) || 0;
   const needsExtendedDesc = isEvent && eventDur > 0 && totalHours > eventDur && (eventExtendedDesc || '').trim().length < 20;
@@ -1157,7 +1136,7 @@ export function ActivityForm({
       id: initialActivity && date === editedActivityDate ? initialActivity.id : undefined,
       expertId,
       date,
-      hours: isLeave ? 0 : Number(normalizePontajHoursValue(hoursPerDay[date] || initialActivity?.hours, defaultHours)),
+      hours: isLeave ? 0 : Number(normalizePontajHoursValue(normalizedSelectedHours[date], defaultHours)),
       status: initialActivity?.status,
       projectCode: expert?.projectCode,
     }));
@@ -1234,7 +1213,7 @@ export function ActivityForm({
 
     let activities: Activity[] = activityDatesForSave.map((date) => {
       // Get hours for this specific date, fallback to default
-      const dateHours = isLeave ? 0 : Number(normalizePontajHoursValue(hoursPerDay[date] || initialActivity?.hours, defaultHours));
+      const dateHours = isLeave ? 0 : Number(normalizePontajHoursValue(normalizedSelectedHours[date], defaultHours));
       const shouldAttachDeliverables = shouldAttachUploadedDeliverablesToDate(activityDatesForSave, date);
       const activityId = initialActivity && date === editedActivityDate ? initialActivity.id : generateId();
       
@@ -1439,7 +1418,7 @@ export function ActivityForm({
     gdprMeta,
     gdprTemplateCode,
     grupTinta,
-    hoursPerDay,
+    normalizedSelectedHours,
     initialActivity,
     businessHubRegistryCatalogItem?.id,
     businessHubMetaDraft,
@@ -2150,7 +2129,7 @@ export function ActivityForm({
             <Field>
               <FieldLabel htmlFor="hours">Ore lucrate (max 8h/zi, norma {expertNorma}h)</FieldLabel>
               <Select 
-                value={hoursPerDay[selectedDates[0]] || defaultHours.toString()} 
+                value={normalizedSelectedHours[selectedDates[0]] || defaultHours.toString()}
                 onValueChange={(v) => updateHoursForDate(selectedDates[0], v)}
               >
                 <SelectTrigger id="hours">
@@ -2181,7 +2160,7 @@ export function ActivityForm({
                     {formatDateRo(date)}
                   </span>
                   <Select 
-                    value={hoursPerDay[date] || defaultHours.toString()} 
+                    value={normalizedSelectedHours[date] || defaultHours.toString()}
                     onValueChange={(v) => updateHoursForDate(date, v)}
                   >
                     <SelectTrigger className="h-8 w-[70px]">
@@ -2201,7 +2180,7 @@ export function ActivityForm({
               ))}
             </div>
             <p className="text-xs text-muted-foreground">
-              Total: {selectedDates.reduce((sum, date) => sum + Number(normalizePontajHoursValue(hoursPerDay[date], defaultHours)), 0)}h pentru {selectedDates.length} zile
+              Total: {selectedDates.reduce((sum, date) => sum + Number(normalizePontajHoursValue(normalizedSelectedHours[date], defaultHours)), 0)}h pentru {selectedDates.length} zile
             </p>
           </div>
         )}
