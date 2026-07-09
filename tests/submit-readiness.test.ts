@@ -54,6 +54,66 @@ test('validarea livrabilelor accepta un periodGroupId existent fara prefix de pe
   assert.deepEqual(missingDeliverables.map((activity) => activity.id), []);
 });
 
+test('un periodGroupId contaminat nu acopera activitati diferite cu acelasi livrabil', () => {
+  const periodGroupId = 'existing-period-group';
+  const activities: Activity[] = [
+    baseActivity({
+      id: 'newsletter',
+      date: '2026-06-03',
+      periodGroupId,
+      saCode: 'SA3.4',
+      catalogActivityId: 'newsletter',
+      activityType: 'Redactare Newsletter lunar CPC',
+      title: 'Redactare Newsletter lunar CPC',
+      deliverables: [{ id: 'deliverable-1', fileName: 'newsletter.docx', fileType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', fileSize: 1234 }],
+    }),
+    baseActivity({
+      id: 'analiza',
+      date: '2026-06-18',
+      periodGroupId,
+      saCode: 'SA3.4',
+      catalogActivityId: 'analiza-legislativa',
+      activityType: 'Elaborare document de pozitie / analiza legislativa',
+      title: 'Elaborare document de pozitie / analiza legislativa',
+      deliverables: [],
+    }),
+  ];
+
+  const missingDeliverables = getActivitiesMissingDeliverables(activities);
+
+  assert.deepEqual(missingDeliverables.map((activity) => activity.id), ['analiza']);
+});
+
+test('un livrabil pe o zi acopera toate zilele compatibile din acelasi periodGroupId', () => {
+  const periodGroupId = 'existing-period-group';
+  const activities: Activity[] = [
+    baseActivity({
+      id: 'analiza-1',
+      date: '2026-06-03',
+      periodGroupId,
+      saCode: 'SA3.4',
+      catalogActivityId: 'analiza-legislativa',
+      activityType: 'Elaborare document de pozitie / analiza legislativa',
+      title: 'Elaborare document de pozitie / analiza legislativa',
+      deliverables: [],
+    }),
+    baseActivity({
+      id: 'analiza-2',
+      date: '2026-06-18',
+      periodGroupId,
+      saCode: 'SA3.4',
+      catalogActivityId: 'analiza-legislativa',
+      activityType: 'Elaborare document de pozitie / analiza legislativa',
+      title: 'Elaborare document de pozitie / analiza legislativa',
+      deliverables: [{ id: 'deliverable-1', fileName: 'analiza.docx', fileType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', fileSize: 1234 }],
+    }),
+  ];
+
+  const missingDeliverables = getActivitiesMissingDeliverables(activities);
+
+  assert.deepEqual(missingDeliverables.map((activity) => activity.id), []);
+});
+
 test('activitatile fara grup isi pastreaza validarea individuala de livrabil', () => {
   const activities: Activity[] = [baseActivity({ id: 'standalone', deliverables: [] })];
 

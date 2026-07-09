@@ -1457,6 +1457,10 @@ async function listActivitiesWithDeliverablesForValidation(
       date: activity.date,
       periodGroupId: activity.periodGroupId,
       workingGroupId: activity.workingGroupId,
+      saCode: activity.saCode,
+      catalogActivityId: activity.catalogActivityId,
+      activityType: activity.activityType,
+      title: activity.title,
       deliverables: deliverables.map(mapDeliverable),
     };
   }));
@@ -1464,10 +1468,29 @@ async function listActivitiesWithDeliverablesForValidation(
 
 type ActivityWithDeliverablesForValidation = Pick<
   Activity,
-  'id' | 'expertId' | 'date' | 'periodGroupId' | 'workingGroupId'
+  'id' | 'expertId' | 'date' | 'periodGroupId' | 'workingGroupId' | 'saCode' | 'catalogActivityId' | 'activityType' | 'title'
 > & {
   deliverables?: Deliverable[];
 };
+
+function normalizeActivityMatchValue(value?: string | null) {
+  return String(value ?? '').trim().toLowerCase();
+}
+
+function areActivitiesCompatibleForPeriodGroup(
+  activity: Pick<Activity, 'expertId' | 'saCode' | 'catalogActivityId' | 'activityType' | 'title'>,
+  candidate: Pick<Activity, 'expertId' | 'saCode' | 'catalogActivityId' | 'activityType' | 'title'>,
+) {
+  if (activity.expertId && candidate.expertId && activity.expertId !== candidate.expertId) return false;
+
+  if (activity.catalogActivityId || candidate.catalogActivityId) {
+    return Boolean(activity.catalogActivityId && activity.catalogActivityId === candidate.catalogActivityId);
+  }
+
+  return normalizeActivityMatchValue(activity.saCode) === normalizeActivityMatchValue(candidate.saCode)
+    && normalizeActivityMatchValue(activity.activityType || activity.title)
+      === normalizeActivityMatchValue(candidate.activityType || candidate.title);
+}
 
 function dedupeExistingDeliverablesForValidation(
   activities: ActivityWithDeliverablesForValidation[],
@@ -1563,7 +1586,11 @@ async function validateActivityBatchForWrite(
       const duplicate = monthlyDuplicate;
       const duplicateGroupId = getActivityPeriodGroupId(duplicate.activity);
       const existingGroupId = getActivityPeriodGroupId(duplicate.existingActivity);
-      if (duplicateGroupId && duplicateGroupId === existingGroupId) {
+      const duplicateMatchesExistingActivity = areActivitiesCompatibleForPeriodGroup(
+        duplicate.activity,
+        duplicate.existingActivity,
+      );
+      if (duplicateGroupId && duplicateGroupId === existingGroupId && duplicateMatchesExistingActivity) {
         const duplicateActivity = groupActivities.find((activity) => activity === duplicate.activity);
         if (!duplicateActivity) break;
         duplicateActivity.deliverables = (duplicateActivity.deliverables ?? []).filter((deliverable) => (
@@ -1585,7 +1612,7 @@ async function validateActivityBatchForWrite(
         ?? duplicateGroupId
         ?? (duplicate.existingActivity.id ? `activity-period:${duplicate.existingActivity.id}` : undefined);
 
-      if (duplicateActivity && periodGroupId) {
+      if (duplicateActivity && periodGroupId && duplicateMatchesExistingActivity) {
         if (
           duplicate.existingActivity.id
           && (
@@ -1724,10 +1751,17 @@ async function attachActivitiesToExistingDeliverableGroups(
       const sourceActivity = deliverable.sourceActivityId
         ? await getSourceActivity(deliverable.sourceActivityId)
         : await findExistingActivityByDeliverableSignature(nextActivity, signature);
+      const sourceWasExplicitlySelected = Boolean(deliverable.sourceActivityId);
       const sourceHasDeliverable = sourceActivity?.deliverables?.some((sourceDeliverable) => (
         getDeliverableDocumentSignature(sourceDeliverable) === signature
       ));
       if (!sourceActivity || !sourceHasDeliverable) continue;
+      if (
+        !sourceWasExplicitlySelected
+        && !areActivitiesCompatibleForPeriodGroup(nextActivity, sourceActivity)
+      ) {
+        continue;
+      }
 
       nextActivity = await attachToSourceActivity(nextActivity, sourceActivity);
       signaturesToSkip.add(signature);

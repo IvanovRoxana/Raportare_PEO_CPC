@@ -1,6 +1,10 @@
 import type { Activity, Deliverable } from './types';
 
-type ActivityWithDeliverables = Pick<Activity, 'date' | 'expertId' | 'deliverables' | 'periodGroupId' | 'workingGroupId'> & { id?: string };
+type ActivityWithDeliverables = Pick<
+  Activity,
+  'date' | 'expertId' | 'deliverables' | 'periodGroupId' | 'workingGroupId'
+  | 'saCode' | 'catalogActivityId' | 'activityType' | 'title'
+> & { id?: string };
 
 function normalizeSignaturePart(value?: string | null) {
   return value?.trim().toLowerCase().replace(/\s+/g, ' ') || '';

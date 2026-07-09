@@ -142,6 +142,22 @@ function getEffectiveActivityPeriodGroupId(activity: Activity, inferredLegacyGro
   return getActivityPeriodGroupId(activity) ?? inferredLegacyGroups.get(activity.id);
 }
 
+function getActivityPeriodGroupKey(activity: Activity, inferredLegacyGroups: Map<string, string>) {
+  const groupId = getEffectiveActivityPeriodGroupId(activity, inferredLegacyGroups);
+  if (!groupId) return null;
+
+  const catalogKey = normalizeSignatureValue(activity.catalogActivityId);
+  const activityKey = catalogKey
+    ? `catalog:${catalogKey}`
+    : `manual:${normalizeSignatureValue(activity.saCode)}:${normalizeSignatureValue(activity.activityType || activity.title)}`;
+
+  return [
+    groupId,
+    normalizeSignatureValue(activity.expertId),
+    activityKey,
+  ].join('|');
+}
+
 export function isActivityExceptionForSubmit(activity: Activity) {
   return activity.dayType === 'CO'
     || activity.dayType === 'CM'
@@ -177,7 +193,7 @@ export function createActivityDeliverableAvailabilityResolver(activities: Activi
   const inferredLegacyGroups = inferLegacyActivityPeriodGroups(activities);
 
   activities.forEach((activity) => {
-    const groupId = getEffectiveActivityPeriodGroupId(activity, inferredLegacyGroups);
+    const groupId = getActivityPeriodGroupKey(activity, inferredLegacyGroups);
     const monthlySocialMediaSignature = getMonthlySocialMediaDeliverableSignature(activity);
 
     if (groupId) {
@@ -197,7 +213,7 @@ export function createActivityDeliverableAvailabilityResolver(activities: Activi
   });
 
   return (activity: Activity) => {
-    const groupId = getEffectiveActivityPeriodGroupId(activity, inferredLegacyGroups);
+    const groupId = getActivityPeriodGroupKey(activity, inferredLegacyGroups);
     const monthlySocialMediaSignature = getMonthlySocialMediaDeliverableSignature(activity);
 
     return (groupId ? periodDeliverableAvailability.get(groupId) === true : false)
@@ -221,7 +237,7 @@ export function getActivitiesMissingDeliverables(
   activities.forEach((activity) => {
     if (!needsDeliverableValidation(activity, expertCategory)) return;
 
-    const groupId = getEffectiveActivityPeriodGroupId(activity, inferredLegacyGroups);
+    const groupId = getActivityPeriodGroupKey(activity, inferredLegacyGroups);
     if (!groupId) {
       standaloneActivities.push(activity);
       return;

@@ -207,6 +207,10 @@ export interface DeliverableEligibilityCheck {
   } | null;
   checkedAt?: string;
   checkedBy?: string;
+  checkedActivityId?: string;
+  checkedSaCode?: string;
+  checkedActivityName?: string;
+  checkedDeliverableType?: string;
   modelAuditId?: string;
 }
 

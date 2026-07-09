@@ -181,6 +181,48 @@ test('editarea multi-day regrupeaza activitati existente pe zilele selectate', (
   assert.equal(plan.updateActivities.find((item) => item.id === 'activity-18')?.title, 'Titlu deja salvat');
 });
 
+test('editarea multi-day pastreaza randul existent dar ataseaza livrabilul nou pe ziua existenta', () => {
+  const periodGroupId = 'activity-period:period-1';
+  const existingActivities = [
+    activity('activity-4', { date: '2026-06-04', hours: 4, periodGroupId, saCode: 'SA3.4', activityType: 'Analiza legislativa' }),
+    activity('activity-18', {
+      date: '2026-06-18',
+      hours: 2,
+      periodGroupId,
+      saCode: 'SA3.4',
+      activityType: 'Analiza legislativa',
+      title: 'Titlu deja salvat',
+      deliverables: [],
+    }),
+  ];
+  const selectedDates = existingActivities.map((item) => item.date);
+  const membersForEdit = getActivityGroupMembersForSelectedDates(existingActivities[0], existingActivities, selectedDates);
+  const submitted = buildSubmittedActivitiesForEdit(
+    existingActivities[0],
+    [
+      activity('activity-4', { date: '2026-06-04', hours: 8, periodGroupId, saCode: 'SA3.4', activityType: 'Analiza legislativa' }),
+      activity('generated-18', {
+        date: '2026-06-18',
+        hours: 8,
+        periodGroupId,
+        saCode: 'SA3.4',
+        activityType: 'Analiza legislativa',
+        deliverables: [deliverable('deliverable-1', { documentId: 'document-1' })],
+      }),
+    ],
+    selectedDates,
+    Object.fromEntries(selectedDates.map((date) => [date, '8'])),
+    membersForEdit,
+    'expert-1',
+    (value, fallback) => String(value ?? fallback),
+  );
+  const preservedDay = submitted.find((item) => item.id === 'activity-18');
+
+  assert.equal(preservedDay?.hours, 2);
+  assert.equal(preservedDay?.title, 'Titlu deja salvat');
+  assert.equal(preservedDay?.deliverables?.[0]?.documentId, 'document-1');
+});
+
 test('grupurile de activitati expun livrabile deduplicate pentru raportare', () => {
   const periodGroupId = 'activity-period:period-1';
   const sharedDeliverable = deliverable('deliverable-1', { documentId: 'document-1', s3Key: 'docs/document-1.docx' });

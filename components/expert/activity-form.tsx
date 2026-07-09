@@ -56,6 +56,7 @@ import {
   getDeliverableDocumentSignature,
 } from '@/lib/deliverable-deduplication';
 import { shouldAttachUploadedDeliverablesToDate } from '@/lib/activity-deliverables';
+import { getActivityEditGroupId, isSameEditableActivity } from '@/lib/activity-edit';
 import { createActivityPeriodGroupId } from '@/lib/submit-readiness';
 import {
   MAX_PONTAJ_HOURS,
@@ -295,10 +296,17 @@ export function ActivityForm({
     setHoursPerDay(prev => {
       if (isEditingActivity && initialActivity) {
         const savedHours = normalizePontajHoursValue(initialActivity.hours, defaultHours);
-        const baseHours = Object.fromEntries(
+        const explicitHours = selectedHours ?? {};
+        const baseHours = { ...prev, ...explicitHours };
+        const hasExplicitSelectedHours = selectedDates.some((date) => explicitHours[date] !== undefined);
+        if (hasExplicitSelectedHours) {
+          return buildSelectedHoursForDates(selectedDates, baseHours, savedHours);
+        }
+
+        const savedBaseHours = Object.fromEntries(
           selectedDates.map((date) => [date, prev[date] || savedHours]),
         );
-        return buildSelectedHoursForDates(selectedDates, baseHours, savedHours);
+        return buildSelectedHoursForDates(selectedDates, savedBaseHours, savedHours);
       }
 
       const baseHours = { ...prev, ...selectedHours };
@@ -1144,6 +1152,7 @@ export function ActivityForm({
     }
     setDuplicateConfirmation(null);
 
+    const initialPeriodGroupId = initialActivity ? getActivityEditGroupId(initialActivity) : undefined;
     const newActivityDrafts: ActivityDraftForValidation[] = activityDatesForSave.map((date) => ({
       id: initialActivity && date === editedActivityDate ? initialActivity.id : undefined,
       expertId,
@@ -1154,7 +1163,14 @@ export function ActivityForm({
     }));
     const existingActivityDrafts: ActivityDraftForValidation[] = allActivities
       .filter((activity) => activity.expertId === expertId)
-      .filter((activity) => !initialActivity || activity.id !== initialActivity.id)
+      .filter((activity) => {
+        if (!initialActivity) return true;
+        if (activity.id === initialActivity.id) return false;
+        if (!initialPeriodGroupId) return true;
+
+        return getActivityEditGroupId(activity) !== initialPeriodGroupId
+          || !isSameEditableActivity(initialActivity, activity);
+      })
       .map((activity) => ({
         id: activity.id,
         expertId: activity.expertId,
@@ -1212,8 +1228,7 @@ export function ActivityForm({
 
     const deliverablesForSave = dedupeDeliverableSlotsBySignature(uploadedDeliverables);
 
-    const existingActivityPeriodGroupId = initialActivity?.periodGroupId
-      ?? (initialActivity?.workingGroupId?.startsWith('activity-period:') ? initialActivity.workingGroupId : undefined);
+    const existingActivityPeriodGroupId = initialPeriodGroupId;
     const activityPeriodGroupId = existingActivityPeriodGroupId
       ?? (activityDatesForSave.length > 1 ? createActivityPeriodGroupId(generateId()) : undefined);
 
@@ -1313,13 +1328,16 @@ export function ActivityForm({
 
     const excludedActivityIds = new Set<string>();
     if (initialActivity?.id) excludedActivityIds.add(initialActivity.id);
-    const initialPeriodGroupId = initialActivity?.periodGroupId
-      ?? (initialActivity?.workingGroupId?.startsWith('activity-period:') ? initialActivity.workingGroupId : undefined);
     if (initialPeriodGroupId) {
       allActivities.forEach((activity) => {
         const activityPeriodGroup = activity.periodGroupId
           ?? (activity.workingGroupId?.startsWith('activity-period:') ? activity.workingGroupId : undefined);
-        if (activityPeriodGroup === initialPeriodGroupId) excludedActivityIds.add(activity.id);
+        if (
+          activityPeriodGroup === initialPeriodGroupId
+          && (!initialActivity || isSameEditableActivity(initialActivity, activity))
+        ) {
+          excludedActivityIds.add(activity.id);
+        }
       });
     }
 
@@ -2157,7 +2175,7 @@ export function ActivityForm({
           <div className="space-y-3">
             <FieldLabel>Ore pentru fiecare zi (max 8h/zi, norma {expertNorma}h)</FieldLabel>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {selectedDates.sort().map(date => (
+              {[...selectedDates].sort().map(date => (
                 <div key={date} className="flex items-center gap-2 p-2 bg-muted/50 rounded-md">
                   <span className="text-xs font-medium min-w-[70px]">
                     {formatDateRo(date)}

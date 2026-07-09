@@ -14,7 +14,10 @@ export function getActivityEditGroupId(activity: Pick<Activity, 'periodGroupId' 
 export function getActivityGroupMembers(activity: Activity, activities: Activity[]) {
   const groupId = getActivityEditGroupId(activity);
   const members = groupId
-    ? activities.filter((candidate) => getActivityEditGroupId(candidate) === groupId)
+    ? activities.filter((candidate) => (
+        getActivityEditGroupId(candidate) === groupId
+        && isSameEditableActivity(activity, candidate)
+      ))
     : [activity];
 
   return members.length > 0
@@ -26,7 +29,7 @@ function normalizeMatchValue(value?: string | null) {
   return String(value ?? '').trim().toLowerCase();
 }
 
-function isSameEditableActivity(activity: Activity, candidate: Activity) {
+export function isSameEditableActivity(activity: Activity, candidate: Activity) {
   if (activity.id === candidate.id) return true;
   if (activity.expertId && candidate.expertId && activity.expertId !== candidate.expertId) return false;
 
@@ -59,6 +62,17 @@ export function dedupeDeliverables(deliverables: Deliverable[]) {
   return dedupeDeliverablesBySignature(deliverables);
 }
 
+function getActivityEditGroupKey(activity: Activity) {
+  const groupId = getActivityEditGroupId(activity) ?? activity.id;
+  const expertKey = normalizeMatchValue(activity.expertId);
+  const catalogKey = normalizeMatchValue(activity.catalogActivityId);
+  const activityKey = catalogKey
+    ? `catalog:${catalogKey}`
+    : `manual:${normalizeMatchValue(activity.saCode)}:${normalizeMatchValue(activity.activityType || activity.title)}`;
+
+  return `${groupId}:${expertKey}:${activityKey}`;
+}
+
 export function mergeActivityGroupForEdit(activity: Activity, activities: Activity[]) {
   const groupMembers = getActivityGroupMembers(activity, activities);
   const groupId = getActivityEditGroupId(activity);
@@ -79,7 +93,7 @@ export function compileActivitiesByPeriodGroup(activities: Activity[]) {
   const order: string[] = [];
 
   activities.forEach((activity) => {
-    const key = getActivityEditGroupId(activity) ?? activity.id;
+    const key = getActivityEditGroupKey(activity);
     if (!grouped.has(key)) {
       grouped.set(key, []);
       order.push(key);
@@ -157,8 +171,14 @@ export function buildSubmittedActivitiesForEdit(
       && submittedActivityForDate.id === existingActivityForDate.id,
     );
     const preserveExistingActivity = Boolean(existingActivityForDate && !submittedUpdatesExistingActivity);
+    const incomingDeliverables = submittedActivityForDate?.deliverables ?? [];
     const sourceActivity: Activity = preserveExistingActivity && existingActivityForDate
-      ? existingActivityForDate
+      ? {
+          ...existingActivityForDate,
+          deliverables: incomingDeliverables.length > 0
+            ? dedupeDeliverables([...(existingActivityForDate.deliverables ?? []), ...incomingDeliverables])
+            : existingActivityForDate.deliverables,
+        }
       : submittedActivityForDate ?? existingActivityForDate ?? templateActivity;
     const activityId = existingActivityForDate?.id
       ?? (sourceActivity.id !== editingActivity.id ? sourceActivity.id : createGeneratedActivityId());

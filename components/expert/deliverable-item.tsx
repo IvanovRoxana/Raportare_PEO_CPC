@@ -43,6 +43,54 @@ function getTextExtractionGateReason(deliverable: DeliverableSlot) {
   return 'Nu exista text extras suficient din livrabil. Reincarca documentul ca PDF/DOCX cu text selectabil sau cu imagini clare pentru OCR.';
 }
 
+function normalizeEligibilityContextValue(value?: string | null) {
+  return String(value ?? '').trim().toLowerCase();
+}
+
+function isEligibilityCheckObsoleteForCurrentActivity(
+  check: DeliverableSlot['eligibilityCheck'] | undefined | null,
+  context: {
+    subActivity: string;
+    activityTitle: string;
+    selectedActivityId?: string;
+    deliverableType?: string;
+  },
+) {
+  if (check?.checkedActivityId || check?.checkedSaCode || check?.checkedActivityName || check?.checkedDeliverableType) {
+    const checkedActivityMatches = !check.checkedActivityId
+      || !context.selectedActivityId
+      || check.checkedActivityId === context.selectedActivityId;
+    const checkedSaMatches = !check.checkedSaCode
+      || normalizeEligibilityContextValue(check.checkedSaCode) === normalizeEligibilityContextValue(context.subActivity);
+    const checkedActivityNameMatches = !check.checkedActivityName
+      || normalizeEligibilityContextValue(check.checkedActivityName) === normalizeEligibilityContextValue(context.activityTitle);
+    const checkedDeliverableTypeMatches = !check.checkedDeliverableType
+      || !context.deliverableType
+      || normalizeEligibilityContextValue(check.checkedDeliverableType) === normalizeEligibilityContextValue(context.deliverableType);
+
+    return !checkedActivityMatches
+      || !checkedSaMatches
+      || !checkedActivityNameMatches
+      || !checkedDeliverableTypeMatches;
+  }
+
+  const suggestedSettings = check?.suggestedSettings;
+  if (!suggestedSettings?.changes.includes('activity')) return false;
+  if (check?.status !== 'neeligibil' && check?.status !== 'neconcludent') return false;
+
+  const suggestedIdMatches = Boolean(
+    suggestedSettings.selectedActivityId
+    && context.selectedActivityId
+    && suggestedSettings.selectedActivityId === context.selectedActivityId,
+  );
+  const suggestedActivityMatches = normalizeEligibilityContextValue(suggestedSettings.saCode)
+    === normalizeEligibilityContextValue(context.subActivity)
+    && normalizeEligibilityContextValue(suggestedSettings.activityName)
+      === normalizeEligibilityContextValue(context.activityTitle);
+
+  return suggestedIdMatches || suggestedActivityMatches;
+}
+
 interface DeliverableItemProps {
   deliverable: DeliverableSlot;
   subActivity: string;
@@ -117,6 +165,12 @@ export function DeliverableItem({
   const [extractingText, setExtractingText] = useState(false);
   const [isEditingConfirmedTitle, setIsEditingConfirmedTitle] = useState(false);
   const eligibilityCheckEnabled = isDeliverableEligibilityCheckEnabledClient();
+  const visibleEligibilityCheck = isEligibilityCheckObsoleteForCurrentActivity(deliverable.eligibilityCheck, {
+    subActivity,
+    activityTitle,
+    selectedActivityId,
+    deliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
+  }) ? null : deliverable.eligibilityCheck;
 
   const readFileAsDataUrl = (file: File) =>
     new Promise<string>((resolve, reject) => {
@@ -314,6 +368,10 @@ export function DeliverableItem({
           ...result,
           checkedAt: new Date().toISOString(),
           checkedBy: expertName,
+          checkedActivityId: selectedActivityId || subActivity,
+          checkedSaCode: subActivity,
+          checkedActivityName: activityTitle,
+          checkedDeliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
           modelAuditId: result.modelAuditId,
         },
         aiCheck: {
@@ -338,6 +396,10 @@ export function DeliverableItem({
           riskFlags: ['Verificarea API nu a putut fi finalizată.'],
           checkedAt: new Date().toISOString(),
           checkedBy: expertName,
+          checkedActivityId: selectedActivityId || subActivity,
+          checkedSaCode: subActivity,
+          checkedActivityName: activityTitle,
+          checkedDeliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
         },
       });
     } finally {
@@ -867,9 +929,9 @@ export function DeliverableItem({
             </div>
           )}
 
-          {deliverable.eligibilityCheck && (
+          {visibleEligibilityCheck && (
             <EligibilityResultCard
-              check={deliverable.eligibilityCheck}
+              check={visibleEligibilityCheck}
               onApplySuggestedSettings={handleApplyEligibilitySuggestion}
             />
           )}
@@ -917,9 +979,9 @@ export function DeliverableItem({
           </div>
         </div>
       )}
-      {showEligibilityControl && !renderInlineNotes && deliverable.uploaded && !deliverable.isPhoto && deliverable.eligibilityCheck && (
+      {showEligibilityControl && !renderInlineNotes && deliverable.uploaded && !deliverable.isPhoto && visibleEligibilityCheck && (
         <EligibilityResultCard
-          check={deliverable.eligibilityCheck}
+          check={visibleEligibilityCheck}
           onApplySuggestedSettings={handleApplyEligibilitySuggestion}
         />
       )}
@@ -983,6 +1045,12 @@ export function DeliverableEligibilityControl({
   const [aiLoading, setAiLoading] = useState(false);
   const eligibilityCheckEnabled = isDeliverableEligibilityCheckEnabledClient();
   const typeOptions = deliverableOptions || ALL_DELIVERABLE_TYPES;
+  const visibleEligibilityCheck = isEligibilityCheckObsoleteForCurrentActivity(deliverable.eligibilityCheck, {
+    subActivity,
+    activityTitle,
+    selectedActivityId,
+    deliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
+  }) ? null : deliverable.eligibilityCheck;
 
   if (!deliverable.uploaded || deliverable.isPhoto) return null;
 
@@ -1043,6 +1111,10 @@ export function DeliverableEligibilityControl({
           ...result,
           checkedAt: new Date().toISOString(),
           checkedBy: expertName,
+          checkedActivityId: selectedActivityId || subActivity,
+          checkedSaCode: subActivity,
+          checkedActivityName: activityTitle,
+          checkedDeliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
           modelAuditId: result.modelAuditId,
         },
         aiCheck: {
@@ -1067,6 +1139,10 @@ export function DeliverableEligibilityControl({
           riskFlags: ['Verificarea API nu a putut fi finalizata.'],
           checkedAt: new Date().toISOString(),
           checkedBy: expertName,
+          checkedActivityId: selectedActivityId || subActivity,
+          checkedSaCode: subActivity,
+          checkedActivityName: activityTitle,
+          checkedDeliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
         },
       });
     } finally {
@@ -1134,9 +1210,9 @@ export function DeliverableEligibilityControl({
         </div>
       )}
 
-      {deliverable.eligibilityCheck && (
+      {visibleEligibilityCheck && (
         <EligibilityResultCard
-          check={deliverable.eligibilityCheck}
+          check={visibleEligibilityCheck}
           onApplySuggestedSettings={handleApplyEligibilitySuggestion}
         />
       )}
