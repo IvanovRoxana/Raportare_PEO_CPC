@@ -402,6 +402,74 @@ test('filtreaza sugestiile comune dupa lunile explicit permise', () => {
   );
 });
 
+test('dashboardul afiseaza sugestii de activitate doar pentru luna selectata', () => {
+  const sharedDeliverables = [
+    {
+      id: 'june-pending',
+      documentId: 'activity:june-pending',
+      sourceExpertId: 'expert-1',
+      targetExpertId: 'expert-2',
+      sourceActivityDate: '2026-06-08',
+      status: 'pending_registration' as const,
+    },
+    {
+      id: 'july-pending',
+      documentId: 'activity:july-pending',
+      sourceExpertId: 'expert-1',
+      targetExpertId: 'expert-2',
+      sourceActivityDate: '2026-07-12',
+      status: 'pending_registration' as const,
+    },
+    {
+      id: 'june-ignored',
+      documentId: 'activity:june-ignored',
+      sourceExpertId: 'expert-1',
+      targetExpertId: 'expert-2',
+      sourceActivityDate: '2026-06-10',
+      status: 'ignored_by_target' as const,
+    },
+    {
+      id: 'july-ignored',
+      documentId: 'activity:july-ignored',
+      sourceExpertId: 'expert-1',
+      targetExpertId: 'expert-2',
+      sourceActivityDate: '2026-07-14',
+      status: 'ignored_by_target' as const,
+    },
+  ];
+  const julySuggestions = filterSharedRelationsForMonths({
+    sharedDeliverables,
+    allowedMonths: [{ month: 6, year: 2026 }],
+  });
+  const expert = { id: 'expert-2', name: 'Expert Doi', role: 'Expert', norma: 8 };
+  const sourceExpert = { id: 'expert-1', name: 'Expert Unu', role: 'Expert', norma: 8 };
+
+  assert.deepEqual(
+    buildPendingSharedActivityAlerts({
+      expert,
+      experts: [sourceExpert],
+      sharedDeliverables: julySuggestions,
+    }).map((alert) => alert.relationId),
+    ['july-pending'],
+  );
+  assert.deepEqual(
+    buildIgnoredSharedActivityAlerts({
+      expert,
+      experts: [sourceExpert],
+      sharedDeliverables: julySuggestions,
+    }).map((alert) => alert.relationId),
+    ['july-ignored'],
+  );
+  assert.deepEqual(
+    buildReturnedSharedActivityAlerts({
+      expert: sourceExpert,
+      experts: [expert],
+      sharedDeliverables: julySuggestions,
+    }).map((alert) => alert.relationId),
+    ['july-ignored'],
+  );
+});
+
 test('activitatea comuna ignorata apare in istoricul targetului, nu in alertele active', () => {
   const sharedDeliverables = [{
     id: 'shared-activity-1',

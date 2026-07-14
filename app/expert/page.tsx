@@ -487,6 +487,13 @@ export default function ExpertHomeDashboard() {
       allowedMonths,
     });
   }, [currentMonth, currentYear, documents, previousMonthDate, previousMonthStatus, selectedMonthHasAccess, sharedDeliverables]);
+  const visibleSharedActivitySuggestions = useMemo(() => {
+    if (!selectedMonthHasAccess) return [];
+    return filterSharedRelationsForMonths({
+      sharedDeliverables,
+      allowedMonths: [{ month: currentMonth, year: currentYear }],
+    });
+  }, [currentMonth, currentYear, selectedMonthHasAccess, sharedDeliverables]);
   const pendingSharedAlerts = useMemo(() => {
     if (!currentExpert) return [];
     return buildPendingSharedDeliverableAlerts({
@@ -500,28 +507,28 @@ export default function ExpertHomeDashboard() {
     return buildPendingSharedActivityAlerts({
       expert: currentExpert,
       experts,
-      sharedDeliverables: visibleSharedDeliverables,
+      sharedDeliverables: visibleSharedActivitySuggestions,
       sourceActivities: monthActivities,
     });
-  }, [currentExpert, experts, monthActivities, visibleSharedDeliverables]);
+  }, [currentExpert, experts, monthActivities, visibleSharedActivitySuggestions]);
   const returnedActivityAlerts = useMemo(() => {
     if (!currentExpert) return [];
     return buildReturnedSharedActivityAlerts({
       expert: currentExpert,
       experts,
-      sharedDeliverables: visibleSharedDeliverables,
+      sharedDeliverables: visibleSharedActivitySuggestions,
       sourceActivities: monthActivities,
     });
-  }, [currentExpert, experts, monthActivities, visibleSharedDeliverables]);
+  }, [currentExpert, experts, monthActivities, visibleSharedActivitySuggestions]);
   const ignoredActivityAlerts = useMemo(() => {
     if (!currentExpert) return [];
     return buildIgnoredSharedActivityAlerts({
       expert: currentExpert,
       experts,
-      sharedDeliverables: visibleSharedDeliverables,
+      sharedDeliverables: visibleSharedActivitySuggestions,
       sourceActivities: monthActivities,
     });
-  }, [currentExpert, experts, monthActivities, visibleSharedDeliverables]);
+  }, [currentExpert, experts, monthActivities, visibleSharedActivitySuggestions]);
 
   const handleIgnoreActivitySuggestion = async (relationId: string) => {
     await ignoreSharedSuggestion(relationId);
