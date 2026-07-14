@@ -1214,7 +1214,11 @@ export function ActivityForm({
     let activities: Activity[] = activityDatesForSave.map((date) => {
       // Get hours for this specific date, fallback to default
       const dateHours = isLeave ? 0 : Number(normalizePontajHoursValue(normalizedSelectedHours[date], defaultHours));
-      const shouldAttachDeliverables = shouldAttachUploadedDeliverablesToDate(activityDatesForSave, date);
+      const shouldAttachDeliverables = shouldAttachUploadedDeliverablesToDate(
+        activityDatesForSave,
+        date,
+        editedActivityDate,
+      );
       const activityId = initialActivity && date === editedActivityDate ? initialActivity.id : generateId();
       
       return {
