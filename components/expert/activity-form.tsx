@@ -49,7 +49,7 @@ import { useActivityCatalog, useBusinessHubEntityDirectory } from '@/hooks/use-b
 import type { Activity, Deliverable, DocumentMetadata, GrupTintaEntry, Expert, ActivityCatalog } from '@/lib/types';
 import fallbackActivityCatalog from '@/data/import/activity-catalog.json';
 import { isGtExpertCategory, normalizePeoCategory } from '@/lib/peo-category';
-import { normalizeActivityCatalogSaCode, resolveExpertActivityCatalog } from '@/lib/activity-catalog-merge';
+import { filterActivityCatalogForFormTab, normalizeActivityCatalogSaCode, resolveExpertActivityCatalog } from '@/lib/activity-catalog-merge';
 import { buildDocumentS3Key, findDuplicateCandidates, getDocumentAuditTitle, hashFirstPageText, normalizeDocumentTextForFingerprint, sha256Hex } from '@/lib/document-sharing';
 import {
   findMonthlyDeliverableDuplicate,
@@ -236,6 +236,11 @@ export function ActivityForm({
   const isGdprExpert = show.gdprAssistant;
   const isBusinessHubExpert = show.businessHubTab;
   const reportMonthName = ['ianuarie', 'februarie', 'martie', 'aprilie', 'mai', 'iunie', 'iulie', 'august', 'septembrie', 'octombrie', 'noiembrie', 'decembrie'][month] || 'luna de raportare';
+  const [activityFormTab, setActivityFormTab] = useState<'business_hub' | 'standard' | 'event'>(
+    () => isBusinessHubExpert && !initialActivity?.businessHubMetaJson ? 'business_hub' : 'standard',
+  );
+  const isBusinessHubTabActive = isWorkspaceLayout && isBusinessHubExpert && activityFormTab === 'business_hub';
+  const showStandardActivityWorkflow = !isBusinessHubTabActive;
 
   const effectiveCatalog = useMemo(
     () => resolveExpertActivityCatalog({ fallbackCatalog, backendCatalog: catalog, expertCategory }),
@@ -253,12 +258,17 @@ export function ActivityForm({
       return matchesCategory && matchesSaCode;
     });
   }, [effectiveCatalog, expertCategory, expertSaCodes]);
+
+  const activityTabCatalog = useMemo(
+    () => filterActivityCatalogForFormTab(filteredCatalog, activityFormTab),
+    [activityFormTab, filteredCatalog],
+  );
   
   // Get unique SA codes available for this expert from the catalog
   const availableSaCodes = useMemo(() => {
-    const saCodes = [...new Set(filteredCatalog.map(item => item.saCode))];
+    const saCodes = [...new Set(activityTabCatalog.map(item => item.saCode))];
     return saCodes.sort();
-  }, [filteredCatalog]);
+  }, [activityTabCatalog]);
   
   const expertNorma = expert?.norma || 8;
   // Default hours = min(norma, 8) - experts usually fill their daily norm
@@ -582,10 +592,10 @@ export function ActivityForm({
   
   // Get available catalog rows for selected SA. Keep IDs so descriptions stay tied to the PM-edited row.
   const availableActivityItems = useMemo(() => {
-    if (!saCode || filteredCatalog.length === 0) return [];
-    return filteredCatalog
+    if (!saCode || activityTabCatalog.length === 0) return [];
+    return activityTabCatalog
       .filter(item => item.saCode === saCode);
-  }, [saCode, filteredCatalog]);
+  }, [saCode, activityTabCatalog]);
 
   const businessHubRegistryCatalogItem = useMemo(() => {
     if (!isBusinessHubExpert) return null;
@@ -738,11 +748,6 @@ export function ActivityForm({
     businessHubStartTime,
   ]);
 
-  const [activityFormTab, setActivityFormTab] = useState<'business_hub' | 'standard' | 'event'>(
-    () => isBusinessHubExpert && !initialActivity?.businessHubMetaJson ? 'business_hub' : 'standard',
-  );
-  const isBusinessHubTabActive = isWorkspaceLayout && isBusinessHubExpert && activityFormTab === 'business_hub';
-  const showStandardActivityWorkflow = !isBusinessHubTabActive;
   const effectiveActivityTitle = isGdprExpert && selectedGdprTemplate
     ? selectedGdprTemplate.activityTitle
     : isBusinessHubTabActive
@@ -762,12 +767,10 @@ export function ActivityForm({
 
   useEffect(() => {
     if (activityFormTab === 'business_hub') return;
-    if (isEvent) {
+    if (isEvent && activityFormTab !== 'event') {
       setActivityFormTab('event');
-    } else if (effectiveActivityTitle.trim()) {
-      setActivityFormTab('standard');
     }
-  }, [activityFormTab, effectiveActivityTitle, isEvent]);
+  }, [activityFormTab, isEvent]);
 
   useEffect(() => {
     if (!isBusinessHubExpert || activityFormTab !== 'business_hub') return;

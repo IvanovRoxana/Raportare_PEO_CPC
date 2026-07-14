@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  filterActivityCatalogForFormTab,
+  isEventActivityCatalogItem,
   mergeActivityCatalogs,
   normalizeActivityCatalogSaCode,
   resolveExpertActivityCatalog,
@@ -184,6 +186,40 @@ test('filtrarea formularului nu amesteca activitati cu acelasi SA din categorii 
   );
 
   assert.deepEqual(filtered.map((item) => item.id), ['bh-sa32-corect']);
+});
+
+test('formularul separa activitatile standard de activitatile de eveniment dupa categoria serviciului', () => {
+  const catalog = [
+    {
+      id: 'ap-standard',
+      category: 'ap',
+      saCode: 'SA3.1',
+      activityNumber: 1,
+      serviceCategory: 'Analiza si politici publice',
+      activityName: 'Monitorizare legislativa',
+    },
+    {
+      id: 'ap-event',
+      category: 'ap',
+      saCode: 'SA3.4',
+      activityNumber: 2,
+      serviceCategory: 'Reprezentare și participare la evenimente',
+      activityName: 'Organizare eveniment / masa rotunda / dezbatere',
+    },
+  ] as ActivityCatalog[];
+
+  assert.deepEqual(filterActivityCatalogForFormTab(catalog, 'standard').map((item) => item.id), ['ap-standard']);
+  assert.deepEqual(filterActivityCatalogForFormTab(catalog, 'event').map((item) => item.id), ['ap-event']);
+  assert.deepEqual(filterActivityCatalogForFormTab(catalog, 'business_hub').map((item) => item.id), ['ap-standard', 'ap-event']);
+});
+
+test('categoria de eveniment este recunoscuta indiferent de diacritice', () => {
+  assert.equal(
+    isEventActivityCatalogItem({
+      serviceCategory: 'Reprezentare si participare la evenimente',
+    } as ActivityCatalog),
+    true,
+  );
 });
 
 test('formularul pastreaza fallback-ul cand Admin nu are catalog pentru categoria expertului', () => {
