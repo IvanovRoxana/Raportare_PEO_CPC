@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import {
   Select,
   SelectContent,
@@ -117,6 +118,34 @@ function resolveSavedSlotType(deliverableType?: string, category?: string): Deli
   return SAVED_SLOT_TYPES.has(savedType as DeliverableSlot['slotType'])
     ? (savedType as DeliverableSlot['slotType'])
     : 'livrabil';
+}
+
+type DuplicateDeliverableActivityChoice = {
+  id: string;
+  date: string;
+  title: string;
+  saCode?: string;
+  isCompatible: boolean;
+};
+
+function normalizeActivityMatchValue(value?: string | null) {
+  return String(value ?? '').trim().toLowerCase();
+}
+
+function areActivitiesCompatibleForDeliverableGroup(activity: Activity, candidate: Activity) {
+  if (activity.expertId && candidate.expertId && activity.expertId !== candidate.expertId) return false;
+
+  if (activity.catalogActivityId || candidate.catalogActivityId) {
+    return Boolean(activity.catalogActivityId && activity.catalogActivityId === candidate.catalogActivityId);
+  }
+
+  return normalizeActivityMatchValue(activity.saCode) === normalizeActivityMatchValue(candidate.saCode)
+    && normalizeActivityMatchValue(activity.activityType || activity.title)
+      === normalizeActivityMatchValue(candidate.activityType || candidate.title);
+}
+
+function getActivityDuplicateChoiceLabel(activity: Pick<Activity, 'activityType' | 'title'>) {
+  return activity.activityType || activity.title || 'Activitate fara titlu';
 }
 
 interface ActivityFormProps {
@@ -327,6 +356,8 @@ export function ActivityForm({
   const [monthlyDeliverableDuplicateConfirmation, setMonthlyDeliverableDuplicateConfirmation] = useState<{
     message: string;
     confirmedActivityDuplicate: boolean;
+    sourceActivityId?: string;
+    choices: DuplicateDeliverableActivityChoice[];
   } | null>(null);
   const saveInFlightRef = useRef(false);
   const [existingDeliverablePickerOpen, setExistingDeliverablePickerOpen] = useState(false);
@@ -1051,6 +1082,7 @@ export function ActivityForm({
   const handleSave = useCallback(async (
     confirmedDuplicate = false,
     confirmedMonthlyDeliverableDuplicate = false,
+    selectedDuplicateSourceActivityId?: string,
   ) => {
     setValidationError(null);
     const reportingWarnings: string[] = [];
@@ -1343,18 +1375,43 @@ export function ActivityForm({
         || monthlyDuplicate.existingDeliverable.fileName
         || 'Acest livrabil';
       const message = `${duplicateName} este deja incarcat pentru luna selectata. Daca acest document este livrabilul comun pentru activitatea multi-day, confirma ca vrei sa adaugi zilele selectate la activitatea existenta fara sa il incarci inca o data. Altfel, anuleaza si incarca un livrabil diferit.`;
+      const duplicateSourceActivities = allActivities
+        .filter((activity) => activity.expertId === expertId)
+        .filter((activity) => !excludedActivityIds.has(activity.id))
+        .filter((activity) => activity.date.slice(0, 7) === `${year}-${String(month + 1).padStart(2, '0')}`)
+        .filter((activity) => activity.deliverables?.some((deliverable) => (
+          getDeliverableDocumentSignature(deliverable) === monthlyDuplicate.signature
+        )));
+      const compatibleSourceActivity = duplicateSourceActivities.find((activity) => (
+        activities.some((nextActivity) => areActivitiesCompatibleForDeliverableGroup(nextActivity, activity))
+      ));
+      const defaultSourceActivityId = selectedDuplicateSourceActivityId
+        || compatibleSourceActivity?.id
+        || monthlyDuplicate.existingActivity.id
+        || duplicateSourceActivities[0]?.id;
+      const duplicateChoices = duplicateSourceActivities.map((activity) => ({
+        id: activity.id,
+        date: activity.date,
+        title: getActivityDuplicateChoiceLabel(activity),
+        saCode: activity.saCode,
+        isCompatible: activities.some((nextActivity) => areActivitiesCompatibleForDeliverableGroup(nextActivity, activity)),
+      }));
 
       if (!confirmedMonthlyDeliverableDuplicate) {
         setMonthlyDeliverableDuplicateConfirmation({
           message,
           confirmedActivityDuplicate: confirmedDuplicate,
+          sourceActivityId: defaultSourceActivityId,
+          choices: duplicateChoices,
         });
         return;
       }
 
       const existingActivityWithDeliverable = allActivities.find((activity) => (
-        activity.id === monthlyDuplicate.existingActivity.id
+        activity.id === defaultSourceActivityId
       )) ?? allActivities.find((activity) => (
+        activity.id === monthlyDuplicate.existingActivity.id
+      )) ?? duplicateSourceActivities[0] ?? allActivities.find((activity) => (
         activity.deliverables?.some((deliverable) => (
           getDeliverableDocumentSignature(deliverable) === monthlyDuplicate.signature
         ))
@@ -1386,6 +1443,7 @@ export function ActivityForm({
             ...existingActivityWithDeliverable,
             periodGroupId: duplicatePeriodGroupId,
             workingGroupId: existingActivityWithDeliverable.workingGroupId ?? duplicatePeriodGroupId,
+            deliverables: undefined,
             updatedAt: new Date().toISOString(),
           },
           ...nextActivities,
@@ -2725,19 +2783,65 @@ export function ActivityForm({
               open={Boolean(monthlyDeliverableDuplicateConfirmation)}
               onOpenChange={(open) => !open && setMonthlyDeliverableDuplicateConfirmation(null)}
             >
-              <AlertDialogContent>
+              <AlertDialogContent className="sm:max-w-lg">
                 <AlertDialogHeader>
                   <AlertDialogTitle>Livrabil deja incarcat</AlertDialogTitle>
                   <AlertDialogDescription>
                     {monthlyDeliverableDuplicateConfirmation?.message}
                   </AlertDialogDescription>
                 </AlertDialogHeader>
+                {monthlyDeliverableDuplicateConfirmation?.choices.length ? (
+                  <div className="space-y-3">
+                    <Label className="text-sm font-medium text-slate-900">
+                      Alege activitatea existenta care trebuie folosita pentru grup
+                    </Label>
+                    <RadioGroup
+                      value={monthlyDeliverableDuplicateConfirmation.sourceActivityId}
+                      onValueChange={(sourceActivityId) => setMonthlyDeliverableDuplicateConfirmation((current) => (
+                        current ? { ...current, sourceActivityId } : current
+                      ))}
+                      className="space-y-2"
+                    >
+                      {monthlyDeliverableDuplicateConfirmation.choices.map((choice) => (
+                        <Label
+                          key={choice.id}
+                          htmlFor={`duplicate-source-${choice.id}`}
+                          className="flex cursor-pointer items-start gap-3 rounded-md border border-slate-200 p-3 text-sm hover:bg-slate-50"
+                        >
+                          <RadioGroupItem
+                            id={`duplicate-source-${choice.id}`}
+                            value={choice.id}
+                            className="mt-0.5"
+                          />
+                          <span className="min-w-0 space-y-1">
+                            <span className="block font-medium text-slate-950">
+                              {choice.title}
+                            </span>
+                            <span className="block text-xs text-muted-foreground">
+                              {formatDateRo(choice.date)}{choice.saCode ? ` / ${choice.saCode}` : ''}
+                            </span>
+                            {choice.isCompatible ? (
+                              <span className="inline-flex text-xs font-medium text-emerald-700">
+                                Recomandata pentru activitatea curenta
+                              </span>
+                            ) : null}
+                          </span>
+                        </Label>
+                      ))}
+                    </RadioGroup>
+                  </div>
+                ) : null}
                 <AlertDialogFooter>
                   <AlertDialogCancel>Anuleaza</AlertDialogCancel>
                   <AlertDialogAction
+                    disabled={Boolean(
+                      monthlyDeliverableDuplicateConfirmation?.choices.length
+                      && !monthlyDeliverableDuplicateConfirmation?.sourceActivityId,
+                    )}
                     onClick={() => handleSave(
                       monthlyDeliverableDuplicateConfirmation?.confirmedActivityDuplicate ?? false,
                       true,
+                      monthlyDeliverableDuplicateConfirmation?.sourceActivityId,
                     )}
                   >
                     Adauga la activitatea existenta
