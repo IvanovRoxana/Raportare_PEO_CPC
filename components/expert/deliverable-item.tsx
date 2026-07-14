@@ -34,6 +34,10 @@ function hasEnoughExtractedTextForEligibility(deliverable: DeliverableSlot) {
 
 function getTextExtractionGateReason(deliverable: DeliverableSlot) {
   if (hasEnoughExtractedTextForEligibility(deliverable)) return null;
+  const hasConfirmedTitle = Boolean(deliverable.titleConfirmed || deliverable.declaredTitle || deliverable.suggestedTitle);
+  if (hasConfirmedTitle) {
+    return 'Titlul a fost identificat, dar textul extras din livrabil este prea scurt pentru verificarea AI. Reincarca documentul ca PDF/DOCX cu text selectabil sau exporta-l cu OCR.';
+  }
   if ((deliverable.filename || deliverable.name || '').toLowerCase().endsWith('.doc')) {
     return 'Nu s-a putut extrage text suficient din documentul .doc. Reincarca documentul ca .docx/PDF cu text selectabil sau verifica manual.';
   }

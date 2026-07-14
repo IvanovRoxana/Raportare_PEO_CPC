@@ -88,6 +88,17 @@ function joinDistinctTextSegments(segments: Array<string | null | undefined>) {
     .trim();
 }
 
+function htmlToText(html: string | null | undefined) {
+  if (!html) return null;
+
+  if (typeof DOMParser !== 'undefined') {
+    const parsed = new DOMParser().parseFromString(html, 'text/html');
+    return normalizeExtractedText(parsed.body?.textContent || '') || null;
+  }
+
+  return normalizeExtractedText(html.replace(/<[^>]+>/g, ' ')) || null;
+}
+
 async function createOcrWorker() {
   const Tesseract = await import('tesseract.js');
   const worker = await Tesseract.createWorker(['ron', 'eng']);
@@ -305,10 +316,14 @@ export async function extractDocxTextWithSource(file: File): Promise<DocumentTex
   try {
     const mammoth = await import('mammoth');
     const arrayBuffer = await file.arrayBuffer();
-    const result = await mammoth.extractRawText({ arrayBuffer });
+    const [rawResult, htmlResult] = await Promise.all([
+      mammoth.extractRawText({ arrayBuffer }),
+      mammoth.convertToHtml({ arrayBuffer }).catch(() => ({ value: '' })),
+    ]);
     const embeddedImageText = await extractDocxEmbeddedImageText(file);
     const text = joinDistinctTextSegments([
-      result.value,
+      rawResult.value,
+      htmlToText(htmlResult.value),
       embeddedImageText.text ? `Text OCR din screenshot-uri/imagini incorporate:\n${embeddedImageText.text}` : null,
     ]);
     return {
