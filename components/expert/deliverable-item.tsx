@@ -528,7 +528,7 @@ export function DeliverableItem({
   const step2ok = deliverable.isPhoto || (deliverable.uploaded && deliverable.titleConfirmed);
   const step3ok = deliverable.isPhoto || (deliverable.uploaded && !!deliverable.stadiu);
   const step4ok = deliverable.isPhoto || !eligibilityCheckEnabled || (deliverable.uploaded && !!deliverable.aiCheck);
-  const textExtractionGateReason = getTextExtractionGateReason(deliverable);
+  const textExtractionGateReason = visibleEligibilityCheck ? null : getTextExtractionGateReason(deliverable);
   const eligibilityGateReason = textExtractionGateReason
     || (!deliverable.titleConfirmed
       ? 'Confirma titlul livrabilului inainte de verificarea eligibilitatii.'
@@ -1058,7 +1058,7 @@ export function DeliverableEligibilityControl({
 
   if (!deliverable.uploaded || deliverable.isPhoto) return null;
 
-  const textExtractionGateReason = getTextExtractionGateReason(deliverable);
+  const textExtractionGateReason = visibleEligibilityCheck ? null : getTextExtractionGateReason(deliverable);
   const eligibilityGateReason = textExtractionGateReason
     || (!deliverable.titleConfirmed
       ? 'Confirma titlul livrabilului inainte de verificarea eligibilitatii.'
