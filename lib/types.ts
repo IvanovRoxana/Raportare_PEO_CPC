@@ -17,6 +17,10 @@ export interface Expert {
   positionInProject?: string;
   projectCode?: string;
   projectTitle?: string;
+  contractNumber?: string;
+  contractType?: string;
+  expertExperienceCategory?: string;
+  jobDescriptionText?: string;
   beneficiary?: string;
   saCodes?: string[]; // Assigned sub-activities (SA1.1, SA2.1, etc.)
   hasPmAccess?: boolean; // True if expert has access to PM module
@@ -230,8 +234,12 @@ export interface Deliverable {
   contentFingerprint?: string;
   uploadedByExpertId?: string;
   uploadedByExpertName?: string;
+  expertId?: string;
   projectId?: string;
+  projectCode?: string;
   projectName?: string;
+  month?: number;
+  year?: number;
   sourceActivityId?: string;
   activityDate?: string;
   saCode?: string;
@@ -260,7 +268,69 @@ export interface Deliverable {
   aiStatus?: string;
   aiReason?: string;
   eligibilityCheck?: DeliverableEligibilityCheck | null;
+  extractedSummary?: unknown;
+  confirmedReportingData?: unknown;
+  summaryStatus?: string;
+  summaryVersion?: number;
+  summaryGeneratedAt?: string;
   fileData?: string; // Base64 encoded for localStorage fallback
+}
+
+export interface PersistedReportingWorkBlock {
+  id: string;
+  owner?: string;
+  expertId: string;
+  projectCode: string;
+  month: number;
+  year: number;
+  title: string;
+  saCode: string;
+  activityCode?: string;
+  activityCategory?: string;
+  reportingFlowType: string;
+  expertContribution?: string;
+  beneficiaries?: string[];
+  indicatorContribution?: string;
+  generatedTableSummary?: string;
+  generatedNarrative?: string;
+  generationInputsHash?: string;
+  status?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface PersistedWorkBlockActivityLink {
+  id: string;
+  owner?: string;
+  workBlockId: string;
+  activityId: string;
+  allocatedHours: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface PersistedWorkBlockDeliverableLink {
+  id: string;
+  owner?: string;
+  workBlockId: string;
+  deliverableId: string;
+  isPrimary?: boolean;
+  contributionType?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ActivityMapping {
+  id: string;
+  projectCode: string;
+  saCode: string;
+  activityCode: string;
+  activityTitle: string;
+  saFullTitle?: string;
+  allowedExpertCategories?: string[];
+  isActive?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface DocumentMetadata {

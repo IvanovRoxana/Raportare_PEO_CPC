@@ -16,10 +16,16 @@ const schema = a.schema({
       positionInProject: a.string(),
       projectCode: a.string(),
       projectTitle: a.string(),
+      contractNumber: a.string(),
+      contractType: a.string(),
+      expertExperienceCategory: a.string(),
+      jobDescriptionText: a.string(),
+      beneficiary: a.string(),
       saCodes: a.string().array(),
       hasPmAccess: a.boolean().default(false),
       isActive: a.boolean().default(true),
       activities: a.hasMany("Activity", "expertId"),
+      reportingWorkBlocks: a.hasMany("ReportingWorkBlock", "expertId"),
       grupTintaEntries: a.hasMany("GrupTintaEntry", "expertId"),
       historicalReports: a.hasMany("MonthlyExpertReport", "expertId"),
     })
@@ -65,6 +71,7 @@ const schema = a.schema({
       eventDurationHours: a.float(),
       eventExtendedDescription: a.string(),
       deliverables: a.hasMany("Deliverable", "activityId"),
+      workBlockLinks: a.hasMany("WorkBlockActivityLink", "activityId"),
       grupTinta: a.hasMany("GrupTintaEntry", "activityId"),
     })
     .secondaryIndexes((index) => [
@@ -117,8 +124,12 @@ const schema = a.schema({
       contentFingerprint: a.string(),
       uploadedByExpertId: a.id(),
       uploadedByExpertName: a.string(),
+      expertId: a.id(),
       projectId: a.string(),
+      projectCode: a.string(),
       projectName: a.string(),
+      month: a.integer(),
+      year: a.integer(),
       sourceActivityId: a.id(),
       activityDate: a.date(),
       saCode: a.string(),
@@ -144,10 +155,109 @@ const schema = a.schema({
       aiStatus: a.string(),
       aiReason: a.string(),
       eligibilityCheck: a.json(),
+      extractedSummary: a.json(),
+      confirmedReportingData: a.json(),
+      summaryStatus: a.string(),
+      summaryVersion: a.integer(),
+      summaryGeneratedAt: a.datetime(),
+      workBlockLinks: a.hasMany("WorkBlockDeliverableLink", "deliverableId"),
     })
-    .secondaryIndexes((index) => [index("activityId")])
+    .secondaryIndexes((index) => [
+      index("activityId"),
+      index("expertId").sortKeys(["year", "month"]),
+      index("projectCode").sortKeys(["year", "month"]),
+    ])
     .authorization((allow) => [
       allow.ownerDefinedIn("owner"),
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
+  ReportingWorkBlock: a
+    .model({
+      owner: a.string(),
+      expertId: a.id().required(),
+      expert: a.belongsTo("Expert", "expertId"),
+      projectCode: a.string().required(),
+      month: a.integer().required(),
+      year: a.integer().required(),
+      title: a.string().required(),
+      saCode: a.string().required(),
+      activityCode: a.string(),
+      activityCategory: a.string(),
+      reportingFlowType: a.string().required(),
+      expertContribution: a.string(),
+      beneficiaries: a.string().array(),
+      indicatorContribution: a.string(),
+      generatedTableSummary: a.string(),
+      generatedNarrative: a.string(),
+      generationInputsHash: a.string(),
+      status: a.string().default("draft"),
+      activityLinks: a.hasMany("WorkBlockActivityLink", "workBlockId"),
+      deliverableLinks: a.hasMany("WorkBlockDeliverableLink", "workBlockId"),
+    })
+    .secondaryIndexes((index) => [
+      index("expertId").sortKeys(["year", "month"]),
+      index("projectCode").sortKeys(["year", "month"]),
+      index("status"),
+    ])
+    .authorization((allow) => [
+      allow.ownerDefinedIn("owner"),
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
+  WorkBlockActivityLink: a
+    .model({
+      owner: a.string(),
+      workBlockId: a.id().required(),
+      workBlock: a.belongsTo("ReportingWorkBlock", "workBlockId"),
+      activityId: a.id().required(),
+      activity: a.belongsTo("Activity", "activityId"),
+      allocatedHours: a.float().required(),
+    })
+    .secondaryIndexes((index) => [
+      index("workBlockId"),
+      index("activityId"),
+    ])
+    .authorization((allow) => [
+      allow.ownerDefinedIn("owner"),
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
+  WorkBlockDeliverableLink: a
+    .model({
+      owner: a.string(),
+      workBlockId: a.id().required(),
+      workBlock: a.belongsTo("ReportingWorkBlock", "workBlockId"),
+      deliverableId: a.id().required(),
+      deliverable: a.belongsTo("Deliverable", "deliverableId"),
+      isPrimary: a.boolean().default(false),
+      contributionType: a.string(),
+    })
+    .secondaryIndexes((index) => [
+      index("workBlockId"),
+      index("deliverableId"),
+    ])
+    .authorization((allow) => [
+      allow.ownerDefinedIn("owner"),
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
+  ActivityMapping: a
+    .model({
+      projectCode: a.string().required(),
+      saCode: a.string().required(),
+      activityCode: a.string().required(),
+      activityTitle: a.string().required(),
+      saFullTitle: a.string(),
+      allowedExpertCategories: a.string().array(),
+      isActive: a.boolean().default(true),
+    })
+    .secondaryIndexes((index) => [
+      index("projectCode").sortKeys(["saCode", "activityCode"]),
+      index("saCode"),
+    ])
+    .authorization((allow) => [
+      allow.authenticated().to(["read"]),
       allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
     ]),
 
