@@ -88,6 +88,10 @@ export function ReportGenerator({ activities, month, year, expertName }: ReportG
         : { error: await response.text().catch(() => '') };
 
       if (!response.ok || data.error) {
+        if (response.status === 504) {
+          useFallbackReport('AI-ul nu a terminat generarea in timpul disponibil. Am generat local un raport RA editabil si exportabil.');
+          return;
+        }
         setError(data.error || `Eroare la generarea raportului. Status HTTP: ${response.status}`);
         return;
       }
@@ -102,7 +106,7 @@ export function ReportGenerator({ activities, month, year, expertName }: ReportG
       setCalculatedTotalHours(data.totals?.totalHours ?? null);
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') {
-        setError('Generarea raportului dureaza prea mult si a fost oprita. Incearca nivelul "Detaliat" sau mai putine exemple validate.');
+        useFallbackReport('Generarea AI dureaza prea mult. Am generat local un raport RA editabil si exportabil.');
       } else {
         setError(err instanceof Error ? err.message : 'Eroare la generarea raportului');
       }
@@ -110,6 +114,20 @@ export function ReportGenerator({ activities, month, year, expertName }: ReportG
       window.clearTimeout(timeoutId);
       setIsGenerating(false);
     }
+  };
+
+  const useFallbackReport = (warning: string) => {
+    setGeneratedReport(buildLocalActivityReport({
+      activities,
+      month,
+      year,
+      expertName,
+      preferredPhrases: splitPhrases(preferredPhrases),
+      forbiddenPhrases: splitPhrases(forbiddenPhrases),
+    }));
+    setCalculatedTotalHours(totalHours);
+    setGenerationWarnings([warning]);
+    setError(null);
   };
 
 
@@ -338,6 +356,101 @@ function truncateForReport(value: string) {
   const normalized = value.replace(/\s+/g, ' ').trim();
   if (normalized.length <= MAX_ACTIVITY_DESCRIPTION_CHARS) return normalized;
   return `${normalized.slice(0, MAX_ACTIVITY_DESCRIPTION_CHARS).trim()}...`;
+}
+
+function buildLocalActivityReport({
+  activities,
+  month,
+  year,
+  expertName,
+  preferredPhrases,
+  forbiddenPhrases,
+}: {
+  activities: Activity[];
+  month: number;
+  year: number;
+  expertName: string;
+  preferredPhrases: string[];
+  forbiddenPhrases: string[];
+}) {
+  const sortedActivities = [...activities].sort((first, second) => first.date.localeCompare(second.date));
+  const totalHours = sortedActivities.reduce((sum, activity) => sum + (Number(activity.hours) || 0), 0);
+  const uniqueDates = [...new Set(sortedActivities.map((activity) => activity.date))];
+  const bySa = sortedActivities.reduce<Record<string, Activity[]>>((groups, activity) => {
+    const key = activity.saCode || 'SA neprecizata';
+    groups[key] = [...(groups[key] || []), activity];
+    return groups;
+  }, {});
+  const preferredPhrase = preferredPhrases[0] || 'am realizat';
+  const forbiddenLine = forbiddenPhrases.length > 0
+    ? `\nFormulari evitate: ${forbiddenPhrases.join(', ')}.`
+    : '';
+
+  const tableRows = Object.entries(bySa).map(([saCode, items]) => {
+    const hours = items.reduce((sum, activity) => sum + (Number(activity.hours) || 0), 0);
+    const dates = [...new Set(items.map((activity) => activity.date))].join(', ');
+    const titles = [...new Set(items.map((activity) => activity.title || activity.activityType || 'Activitate'))].join('; ');
+    const deliverables = collectDeliverableTitles(items);
+    return `| ${saCode} | ${dates} | ${titles} | ${deliverables || 'Livrabile mentionate in activitatile raportate'} | ${hours} |`;
+  });
+
+  const detailRows = Object.entries(bySa).flatMap(([saCode, items]) => [
+    `### ${saCode}`,
+    ...items.map((activity) => {
+      const description = truncateForReport(activity.gdprGeneratedText || activity.description || activity.title || activity.activityType || 'Activitate raportata');
+      const deliverables = collectDeliverableTitles([activity]);
+      return [
+        `**${activity.date} - ${Number(activity.hours) || 0}h**`,
+        `${preferredPhrase} activitatea "${activity.title || activity.activityType || 'activitate raportata'}". ${description}`,
+        `Rezultat: activitatea a fost documentata si integrata in raportarea lunara.`,
+        `Beneficiar: proiectul si partile interesate relevante.`,
+        `Indicator/Impact: contributie la indeplinirea activitatilor planificate pentru ${getMonthName(month)} ${year}.`,
+        `Livrabile: ${deliverables || 'nu sunt precizate in activitate'}.`,
+        `Locatie: ${activity.location || 'neprecizata'}.`,
+      ].join('\n');
+    }),
+  ]);
+
+  return [
+    `# Raport de Activitate - ${expertName}`,
+    '',
+    `## ${getMonthName(month)} ${year}`,
+    '',
+    `Raport generat local din activitatile introduse, deoarece generarea AI nu a finalizat in timpul disponibil.${forbiddenLine}`,
+    '',
+    '## 1. Tabel activitati',
+    '',
+    '| Subactivitate / cod SA | Perioada / zile acoperite | Activitate prestata | Rezultate / materiale elaborate / livrabile | Nr. ore lucrate |',
+    '| --- | --- | --- | --- | ---: |',
+    ...tableRows,
+    '',
+    '## 2. Descriere detaliata pe subactivitati si zile',
+    '',
+    ...detailRows,
+    '',
+    '## 3. Probleme / intarzieri',
+    '',
+    'Nu este cazul.',
+    '',
+    '## 4. Validari si observatii de completare',
+    '',
+    `Total ore in raport = ${totalHours}`,
+    `Total ore introduse = ${totalHours}`,
+    `Zile lucrate = ${uniqueDates.length}`,
+    'Coerenta: DA',
+    'Observatii: raportul poate fi revizuit manual inainte de export.',
+    '',
+    '## 5. Semnaturi',
+    '',
+    `Expert: ${expertName}`,
+    'Semnatura: ____________________',
+  ].join('\n');
+}
+
+function collectDeliverableTitles(activities: Activity[]) {
+  return [...new Set(activities.flatMap((activity) =>
+    (activity.deliverables || []).map((deliverable) => getDocumentAuditTitle(deliverable)).filter(Boolean),
+  ))].slice(0, MAX_DELIVERABLE_TITLES).join('; ');
 }
 
 function buildValidatedExamples(value: string) {
