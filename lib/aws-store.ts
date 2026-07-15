@@ -1757,6 +1757,15 @@ async function attachActivitiesToExistingDeliverableGroups(
       ));
       if (!sourceActivity || !sourceHasDeliverable) continue;
       if (
+        sourceWasExplicitlySelected
+        && (
+          sourceActivity.expertId !== nextActivity.expertId
+          || Boolean(getActivityPeriodGroupId(nextActivity))
+        )
+      ) {
+        continue;
+      }
+      if (
         !sourceWasExplicitlySelected
         && !areActivitiesCompatibleForPeriodGroup(nextActivity, sourceActivity)
       ) {

@@ -34,6 +34,10 @@ function hasEnoughExtractedTextForEligibility(deliverable: DeliverableSlot) {
 
 function getTextExtractionGateReason(deliverable: DeliverableSlot) {
   if (hasEnoughExtractedTextForEligibility(deliverable)) return null;
+  const hasConfirmedTitle = Boolean(deliverable.titleConfirmed || deliverable.declaredTitle || deliverable.suggestedTitle);
+  if (hasConfirmedTitle) {
+    return 'Titlul a fost identificat, dar textul extras din livrabil este prea scurt pentru verificarea AI. Reincarca documentul ca PDF/DOCX cu text selectabil sau exporta-l cu OCR.';
+  }
   if ((deliverable.filename || deliverable.name || '').toLowerCase().endsWith('.doc')) {
     return 'Nu s-a putut extrage text suficient din documentul .doc. Reincarca documentul ca .docx/PDF cu text selectabil sau verifica manual.';
   }
@@ -524,7 +528,7 @@ export function DeliverableItem({
   const step2ok = deliverable.isPhoto || (deliverable.uploaded && deliverable.titleConfirmed);
   const step3ok = deliverable.isPhoto || (deliverable.uploaded && !!deliverable.stadiu);
   const step4ok = deliverable.isPhoto || !eligibilityCheckEnabled || (deliverable.uploaded && !!deliverable.aiCheck);
-  const textExtractionGateReason = getTextExtractionGateReason(deliverable);
+  const textExtractionGateReason = visibleEligibilityCheck ? null : getTextExtractionGateReason(deliverable);
   const eligibilityGateReason = textExtractionGateReason
     || (!deliverable.titleConfirmed
       ? 'Confirma titlul livrabilului inainte de verificarea eligibilitatii.'
@@ -1054,7 +1058,7 @@ export function DeliverableEligibilityControl({
 
   if (!deliverable.uploaded || deliverable.isPhoto) return null;
 
-  const textExtractionGateReason = getTextExtractionGateReason(deliverable);
+  const textExtractionGateReason = visibleEligibilityCheck ? null : getTextExtractionGateReason(deliverable);
   const eligibilityGateReason = textExtractionGateReason
     || (!deliverable.titleConfirmed
       ? 'Confirma titlul livrabilului inainte de verificarea eligibilitatii.'

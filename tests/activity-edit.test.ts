@@ -12,6 +12,7 @@ import {
 } from '../lib/activity-edit.ts';
 import { planDeliverableSync } from '../lib/activity-deliverable-sync.ts';
 import { findMonthlyDeliverableDuplicate } from '../lib/deliverable-deduplication.ts';
+import { getActivitiesMissingDeliverables } from '../lib/submit-readiness.ts';
 import type { Activity, Deliverable } from '../lib/types.ts';
 
 function activity(id: string, overrides: Partial<Activity> = {}): Activity {
@@ -221,6 +222,21 @@ test('editarea multi-day pastreaza randul existent dar ataseaza livrabilul nou p
   assert.equal(preservedDay?.hours, 2);
   assert.equal(preservedDay?.title, 'Titlu deja salvat');
   assert.equal(preservedDay?.deliverables?.[0]?.documentId, 'document-1');
+});
+
+test('livrabilul atasat pe ultima zi deblocheaza toate activitatile din perioada editata', () => {
+  const periodGroupId = 'activity-period:edit-activity-4';
+  const sharedDeliverable = deliverable('deliverable-1', {
+    documentId: 'document-1',
+    sourceActivityId: 'andreea-activity-1',
+    uploadedByExpertId: 'expert-andreea',
+  });
+  const activities = [
+    activity('activity-4', { date: '2026-06-04', periodGroupId, deliverables: [] }),
+    activity('activity-18', { date: '2026-06-18', periodGroupId, deliverables: [sharedDeliverable] }),
+  ];
+
+  assert.deepEqual(getActivitiesMissingDeliverables(activities), []);
 });
 
 test('grupurile de activitati expun livrabile deduplicate pentru raportare', () => {
