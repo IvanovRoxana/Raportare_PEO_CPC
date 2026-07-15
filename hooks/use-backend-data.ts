@@ -39,10 +39,13 @@ import {
   procurementStatusHistoryService,
   procurementSuppliersService,
   sharedDeliverablesService,
+  reportingWorkBlocksService,
 } from '@/lib/backend-store';
 import type { Activity, Expert, VerificationData, Neconformitate, VerificationNote, AppSettings, ActivityCatalog, WorkingGroup, ConcurrentProject, ConcurrentProjectTimesheetEntry, ReportStatus, GrupTintaEntry, BusinessHubEntityDirectoryEntry, AuditLog, ActivityAutofillAudit, AdminInterventionRequest, HistoricalImportBatch, HistoricalTimesheetDayEntry, MonthlyActivityItem, MonthlyExpertReport, UploadedReportingFile } from '@/lib/types';
 import { getContractedProcurementProjects, type ProcurementChecklist, type ProcurementContract, type ProcurementDeliverable, type ProcurementDocument, type ProcurementEvaluation, type ProcurementInvoice, type ProcurementLaunch, type ProcurementOffer, type ProcurementProject, type ProcurementReception, type ProcurementStatusHistory, type ProcurementSupplier } from '@/lib/procurement';
 import type { GTDocument, GTEntity, GTImportBatch, GTMonitoringRecord, GTPerson, Organization } from '@/lib/grup-tinta/types';
+import type { ReportingWorkBlockBundle } from '@/lib/activity-report/work-blocks';
+import { isReportingWorkBlocksEnabledClient } from '@/lib/feature-flags';
 
 const EMPTY_LIST: readonly never[] = Object.freeze([]);
 
@@ -172,6 +175,21 @@ export function useActivitiesByDateRange(startDate: string, endDate: string) {
     isLoading,
     error,
     mutate: () => mutate(key),
+  };
+}
+
+export function useReportingWorkBlockBundles(expertId: string | null, month: number, year: number) {
+  const key = expertId ? `reporting-work-block-bundles-${expertId}-${month}-${year}` : null;
+  const { data, error, isLoading } = useSWR<ReportingWorkBlockBundle[] | null>(
+    isBackendAvailable() && isReportingWorkBlocksEnabledClient() && key ? key : null,
+    safeFetcher(() => reportingWorkBlocksService.getBundlesByExpertAndMonth(expertId!, month, year))
+  );
+
+  return {
+    bundles: stableList(data),
+    isLoading,
+    error,
+    mutate: () => key && mutate(key),
   };
 }
 
