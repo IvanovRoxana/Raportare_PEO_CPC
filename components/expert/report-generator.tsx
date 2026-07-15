@@ -57,7 +57,7 @@ type ReportSectionPlan = {
   activities: ReportActivityPayload[];
 };
 
-const REPORT_GENERATION_TIMEOUT_MS = 58_000;
+const REPORT_GENERATION_TIMEOUT_MS = 110_000;
 const MAX_ACTIVITY_DESCRIPTION_CHARS = 700;
 const MAX_DELIVERABLE_TITLES = 5;
 
