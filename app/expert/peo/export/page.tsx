@@ -6,12 +6,14 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { AdminViewAsBanner } from '@/components/admin/admin-view-as-banner';
 import { ReportGenerator } from '@/components/expert/report-generator';
+import { ReportingWorkBlocksPanel } from '@/components/expert/reporting-work-blocks-panel';
 import { MonthlyReportExport } from '@/components/expert/monthly-report-export';
 import { DashboardShell, expertNavItems } from '@/components/layout/dashboard-shell';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { getSignedInUser } from '@/lib/aws/auth';
 import { getMonthName } from '@/lib/backend-store';
+import { isReportingWorkBlocksEnabledClient } from '@/lib/feature-flags';
 import type { Expert } from '@/lib/types';
 import {
   useActivitiesByMonth,
@@ -122,6 +124,7 @@ function ExportRaContent() {
 
   const isLoading = isAuthLoading || expertsLoading || activitiesLoading;
   const backHref = buildPeoHref(selectedExpertId, currentMonth, currentYear);
+  const reportingWorkBlocksEnabled = isReportingWorkBlocksEnabledClient();
 
   if (isLoading && (experts.length === 0 || !selectedExpertId)) {
     return (
@@ -199,6 +202,13 @@ function ExportRaContent() {
               </div>
             </div>
           </div>
+          {reportingWorkBlocksEnabled && (
+            <ReportingWorkBlocksPanel
+              activities={activities}
+              month={currentMonth}
+              year={currentYear}
+            />
+          )}
           <ReportGenerator
             activities={activities}
             month={currentMonth}

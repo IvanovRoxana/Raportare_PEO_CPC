@@ -7,6 +7,7 @@ import {
   isActivityAutofillRagPaOnly,
   isDeliverableEligibilityCheckEnabled,
   isDeliverableEligibilityCheckEnabledClient,
+  isReportingWorkBlocksEnabledClient,
 } from '../lib/feature-flags.ts';
 
 function restoreEnv(key: string, value: string | undefined) {
@@ -83,6 +84,21 @@ test('activity autofill RAG flags are safe by default', () => {
   restoreEnv('ACTIVITY_AUTOFILL_RAG_PA_ONLY', previousPaOnly);
   restoreEnv('ACTIVITY_AUTOFILL_RAG_AUDIT_ENABLED', previousAudit);
   restoreEnv('OPENAI_EMBEDDING_MODEL', previousEmbedding);
+});
+
+test('reporting work blocks UI is disabled by default and enables only on explicit public flag', () => {
+  const previousClient = process.env.NEXT_PUBLIC_ENABLE_REPORTING_WORK_BLOCKS;
+
+  delete process.env.NEXT_PUBLIC_ENABLE_REPORTING_WORK_BLOCKS;
+  assert.equal(isReportingWorkBlocksEnabledClient(), false);
+
+  process.env.NEXT_PUBLIC_ENABLE_REPORTING_WORK_BLOCKS = 'false';
+  assert.equal(isReportingWorkBlocksEnabledClient(), false);
+
+  process.env.NEXT_PUBLIC_ENABLE_REPORTING_WORK_BLOCKS = 'true';
+  assert.equal(isReportingWorkBlocksEnabledClient(), true);
+
+  restoreEnv('NEXT_PUBLIC_ENABLE_REPORTING_WORK_BLOCKS', previousClient);
 });
 
 test('activity autofill RAG enables only on explicit true', () => {

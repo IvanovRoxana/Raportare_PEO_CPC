@@ -17,6 +17,10 @@ export function isDeliverableEligibilityCheckEnabledClient() {
   return process.env.NEXT_PUBLIC_ENABLE_DELIVERABLE_ELIGIBILITY_CHECK === 'true';
 }
 
+export function isReportingWorkBlocksEnabledClient() {
+  return process.env.NEXT_PUBLIC_ENABLE_REPORTING_WORK_BLOCKS === 'true';
+}
+
 export function isActivityAutofillRagEnabled() {
   return process.env.ACTIVITY_AUTOFILL_RAG_ENABLED === 'true';
 }
