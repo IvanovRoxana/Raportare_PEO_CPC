@@ -13,9 +13,14 @@ const reportingWorkBlocksServiceSource = awsStoreSource.match(
 const reportingWorkBlockBundlesHookSource = backendHooksSource.match(
   /export function useReportingWorkBlockBundles\([\s\S]*?\n\}/,
 )?.[0] ?? '';
+const reportingWorkBlockDraftHookSource = backendHooksSource.match(
+  /export function useReportingWorkBlockDraft\([\s\S]*?\n\}/,
+)?.[0] ?? '';
 
 test('reporting work blocks service is read-only and exported through backend store', () => {
   assert.match(reportingWorkBlocksServiceSource, /export const reportingWorkBlocksService = \{/);
+  assert.match(reportingWorkBlocksServiceSource, /prepareDraft\(input: DraftWorkBlockInput, activities: Activity\[\]\): PreparedDraftWorkBlock/);
+  assert.match(reportingWorkBlocksServiceSource, /prepareDraftWorkBlockBundle\(input, activities\)/);
   assert.match(reportingWorkBlocksServiceSource, /getBundlesByExpertAndMonth\(expertId: string, month: number, year: number\)/);
   assert.match(reportingWorkBlocksServiceSource, /buildPersistedWorkBlockBundles/);
   assert.doesNotMatch(reportingWorkBlocksServiceSource, /async (create|update|delete|upsert)\(/);
@@ -29,6 +34,14 @@ test('reporting work block bundles hook is opt-in and uses an isolated cache key
   assert.match(reportingWorkBlockBundlesHookSource, /reporting-work-block-bundles-\$\{expertId\}-\$\{month\}-\$\{year\}/);
   assert.match(reportingWorkBlockBundlesHookSource, /reportingWorkBlocksService\.getBundlesByExpertAndMonth\(expertId!, month, year\)/);
   assert.doesNotMatch(reportingWorkBlockBundlesHookSource, /activities-|shared-deliverables|concurrent-project-timesheet/);
+});
+
+test('reporting work block draft hook prepares local drafts without cache invalidation', () => {
+  assert.match(backendHooksSource, /import type \{ DraftWorkBlockInput \} from '@\/lib\/activity-report\/draft-work-blocks';/);
+  assert.match(reportingWorkBlockDraftHookSource, /export function useReportingWorkBlockDraft\(\)/);
+  assert.match(reportingWorkBlockDraftHookSource, /const prepareDraft = \(input: DraftWorkBlockInput, activities: Activity\[\]\)/);
+  assert.match(reportingWorkBlockDraftHookSource, /reportingWorkBlocksService\.prepareDraft\(input, activities\)/);
+  assert.doesNotMatch(reportingWorkBlockDraftHookSource, /mutate\(|useSWR|create|update|delete|upsert/);
 });
 
 test('export page wires persisted work block bundles as a read-only optional preview source', () => {

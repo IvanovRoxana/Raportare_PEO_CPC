@@ -45,6 +45,7 @@ import type { Activity, Expert, VerificationData, Neconformitate, VerificationNo
 import { getContractedProcurementProjects, type ProcurementChecklist, type ProcurementContract, type ProcurementDeliverable, type ProcurementDocument, type ProcurementEvaluation, type ProcurementInvoice, type ProcurementLaunch, type ProcurementOffer, type ProcurementProject, type ProcurementReception, type ProcurementStatusHistory, type ProcurementSupplier } from '@/lib/procurement';
 import type { GTDocument, GTEntity, GTImportBatch, GTMonitoringRecord, GTPerson, Organization } from '@/lib/grup-tinta/types';
 import type { ReportingWorkBlockBundle } from '@/lib/activity-report/work-blocks';
+import type { DraftWorkBlockInput } from '@/lib/activity-report/draft-work-blocks';
 import { isReportingWorkBlocksEnabledClient } from '@/lib/feature-flags';
 
 const EMPTY_LIST: readonly never[] = Object.freeze([]);
@@ -191,6 +192,14 @@ export function useReportingWorkBlockBundles(expertId: string | null, month: num
     error,
     mutate: () => key && mutate(key),
   };
+}
+
+export function useReportingWorkBlockDraft() {
+  const prepareDraft = (input: DraftWorkBlockInput, activities: Activity[]) => (
+    reportingWorkBlocksService.prepareDraft(input, activities)
+  );
+
+  return { prepareDraft };
 }
 
 export function useActivityMutations() {
