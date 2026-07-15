@@ -71,8 +71,11 @@ test('reporting work block deliverable options hook is pure and cache-safe', () 
 
 test('export page wires persisted work block bundles as a read-only optional preview source', () => {
   assert.match(exportPageSource, /useReportingWorkBlockBundles,/);
+  assert.match(exportPageSource, /ReportingWorkBlockDraftPanel/);
   assert.match(exportPageSource, /const \{ bundles: persistedWorkBlockBundles \} = useReportingWorkBlockBundles\(selectedExpertId, currentMonth, currentYear\);/);
   assert.match(exportPageSource, /persistedBundles=\{persistedWorkBlockBundles\}/);
+  assert.match(exportPageSource, /existingBundles=\{persistedWorkBlockBundles\}/);
+  assert.match(exportPageSource, /projectCode=\{selectedExpert\.projectCode \?\? '302141'\}/);
   assert.match(reportingWorkBlocksPanelSource, /persistedBundles\?: ReportingWorkBlockBundle\[\];/);
   assert.match(reportingWorkBlocksPanelSource, /persistedBundles = \[\]/);
   assert.match(reportingWorkBlocksPanelSource, /const activityBundles = useMemo\(\(\) => buildWorkBlocks\(activities\), \[activities\]\);/);

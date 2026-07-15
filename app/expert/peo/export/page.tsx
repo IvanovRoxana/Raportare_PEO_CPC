@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { AdminViewAsBanner } from '@/components/admin/admin-view-as-banner';
 import { ReportGenerator } from '@/components/expert/report-generator';
+import { ReportingWorkBlockDraftPanel } from '@/components/expert/reporting-work-block-draft-panel';
 import { ReportingWorkBlocksPanel } from '@/components/expert/reporting-work-blocks-panel';
 import { MonthlyReportExport } from '@/components/expert/monthly-report-export';
 import { DashboardShell, expertNavItems } from '@/components/layout/dashboard-shell';
@@ -206,12 +207,22 @@ function ExportRaContent() {
             </div>
           </div>
           {reportingWorkBlocksEnabled && (
-            <ReportingWorkBlocksPanel
-              activities={activities}
-              month={currentMonth}
-              year={currentYear}
-              persistedBundles={persistedWorkBlockBundles}
-            />
+            <>
+              <ReportingWorkBlocksPanel
+                activities={activities}
+                month={currentMonth}
+                year={currentYear}
+                persistedBundles={persistedWorkBlockBundles}
+              />
+              <ReportingWorkBlockDraftPanel
+                expertId={selectedExpertId}
+                projectCode={selectedExpert.projectCode ?? '302141'}
+                month={currentMonth}
+                year={currentYear}
+                activities={activities}
+                existingBundles={persistedWorkBlockBundles}
+              />
+            </>
           )}
           <ReportGenerator
             activities={activities}
