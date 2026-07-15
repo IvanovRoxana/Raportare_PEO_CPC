@@ -20,6 +20,43 @@ interface ReportGeneratorProps {
   expertName: string;
 }
 
+type ReportSectionKind = 'table' | 'sa-detail' | 'validation';
+
+type ReportActivityPayload = {
+  date: string;
+  hours: number;
+  saCode?: string;
+  activityType?: string;
+  title: string;
+  description: string;
+  location?: Activity['location'];
+  gdprTemplateCode?: string;
+  gdprConclusionCode?: string;
+  deliverables: string[];
+};
+
+type ReportRequestPayload = {
+  activities: ReportActivityPayload[];
+  month: string;
+  year: number;
+  expertName: string;
+  projectCode: string;
+  useFineTunedModel: boolean;
+  reportingRules: {
+    detailLevel: string;
+    preferredPhrases: string[];
+    forbiddenPhrases: string[];
+  };
+  validatedExamples: ReturnType<typeof buildValidatedExamples>;
+};
+
+type ReportSectionPlan = {
+  sectionKind: ReportSectionKind;
+  sectionTitle: string;
+  sectionSaCode?: string;
+  activities: ReportActivityPayload[];
+};
+
 const REPORT_GENERATION_TIMEOUT_MS = 45_000;
 const MAX_ACTIVITY_DESCRIPTION_CHARS = 700;
 const MAX_DELIVERABLE_TITLES = 5;
@@ -36,83 +73,68 @@ export function ReportGenerator({ activities, month, year, expertName }: ReportG
   const [validatedExamples, setValidatedExamples] = useState('');
   const [generationWarnings, setGenerationWarnings] = useState<string[]>([]);
   const [calculatedTotalHours, setCalculatedTotalHours] = useState<number | null>(null);
+  const [generationStatus, setGenerationStatus] = useState('');
 
   const generateWithAI = async () => {
     setIsGenerating(true);
     setError(null);
-
-    const controller = new AbortController();
-    const timeoutId = window.setTimeout(() => controller.abort(), REPORT_GENERATION_TIMEOUT_MS);
+    setGeneratedReport('');
+    setGenerationWarnings([]);
+    setGenerationStatus('Pregatesc sectiunile RA...');
 
     try {
-      const response = await fetch('/api/ai/generate-activity-report', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: controller.signal,
-        body: JSON.stringify({
-          activities: activities.map((activity) => ({
-            date: activity.date,
-            hours: activity.hours,
-            saCode: activity.saCode,
-            activityType: activity.activityType,
-            title: activity.title,
-            description: truncateForReport(activity.gdprGeneratedText || activity.description || activity.title),
-            location: activity.location,
-            gdprTemplateCode: activity.gdprTemplateCode,
-            gdprConclusionCode: activity.gdprConclusionCode,
-            deliverables: (activity.deliverables?.map((deliverable) => getDocumentAuditTitle(deliverable)).filter(Boolean) || [])
-              .slice(0, MAX_DELIVERABLE_TITLES),
-          })),
-          month: getMonthName(month),
-          year,
-          expertName,
-          projectCode: activities.find((activity) => activity.projectCode)?.projectCode || '302141',
-          useFineTunedModel,
-          reportingRules: {
-            detailLevel,
-            preferredPhrases: splitPhrases(preferredPhrases),
-            forbiddenPhrases: splitPhrases(forbiddenPhrases),
-          },
-          validatedExamples: buildValidatedExamples(validatedExamples),
-        }),
+      const payload = buildReportRequestPayload({
+        activities,
+        month,
+        year,
+        expertName,
+        useFineTunedModel,
+        detailLevel,
+        preferredPhrases,
+        forbiddenPhrases,
+        validatedExamples,
       });
+      const sections = buildReportSectionPlan(payload.activities);
+      const generatedSections: string[] = [];
+      const warnings = new Set<string>();
 
-      const contentType = response.headers.get('Content-Type') || '';
-      const data = contentType.includes('application/json')
-        ? ((await response.json().catch(() => ({}))) as {
-            error?: string;
-            report?: string;
-            warnings?: string[];
-            totals?: { totalHours?: number };
-          })
-        : { error: await response.text().catch(() => '') };
+      for (const [index, section] of sections.entries()) {
+        setGenerationStatus(`Generez ${index + 1}/${sections.length}: ${section.sectionTitle}`);
+        const data = await generateReportSection({
+          payload,
+          section,
+          sectionIndex: index + 1,
+          totalSections: sections.length,
+        });
 
-      if (!response.ok || data.error) {
-        if (response.status === 504) {
-          useFallbackReport('AI-ul nu a terminat generarea in timpul disponibil. Am generat local un raport RA editabil si exportabil.');
-          return;
+        if (!data.report?.trim()) {
+          throw new Error(`Sectiunea "${section.sectionTitle}" nu a generat continut.`);
         }
-        setError(data.error || `Eroare la generarea raportului. Status HTTP: ${response.status}`);
-        return;
+
+        generatedSections.push(data.report.trim());
+        for (const warning of data.warnings || []) warnings.add(warning);
       }
 
-      if (!data.report?.trim()) {
-        setError('Raportul nu a generat continut. Incearca din nou sau contacteaza administratorul.');
-        return;
-      }
-
-      setGeneratedReport(data.report);
-      setGenerationWarnings(data.warnings || []);
-      setCalculatedTotalHours(data.totals?.totalHours ?? null);
+      setGeneratedReport(generatedSections.join('\n\n'));
+      setGenerationWarnings([
+        `Raportul a fost generat cu AI in ${sections.length} sectiuni pentru a evita timeout-ul AWS.`,
+        ...Array.from(warnings),
+      ]);
+      setCalculatedTotalHours(totalHours);
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') {
-        useFallbackReport('Generarea AI dureaza prea mult. Am generat local un raport RA editabil si exportabil.');
+        useFallbackReport('O sectiune AI a durat prea mult. Am generat local un raport RA editabil si exportabil.');
       } else {
-        setError(err instanceof Error ? err.message : 'Eroare la generarea raportului');
+        const message = err instanceof Error ? err.message : 'Eroare la generarea raportului';
+        if (/504|timeout|expir/i.test(message)) {
+          useFallbackReport('AI-ul nu a terminat una dintre sectiuni in timpul disponibil. Am generat local un raport RA editabil si exportabil.');
+        } else {
+          setError(message);
+        }
       }
     } finally {
-      window.clearTimeout(timeoutId);
       setIsGenerating(false);
+      setGenerationStatus('');
     }
   };
 
@@ -294,7 +316,7 @@ export function ReportGenerator({ activities, month, year, expertName }: ReportG
             {isGenerating ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Se generează...
+                {generationStatus || 'Se generează...'}
               </>
             ) : (
               <>
@@ -356,6 +378,132 @@ function truncateForReport(value: string) {
   const normalized = value.replace(/\s+/g, ' ').trim();
   if (normalized.length <= MAX_ACTIVITY_DESCRIPTION_CHARS) return normalized;
   return `${normalized.slice(0, MAX_ACTIVITY_DESCRIPTION_CHARS).trim()}...`;
+}
+
+function buildReportRequestPayload({
+  activities,
+  month,
+  year,
+  expertName,
+  useFineTunedModel,
+  detailLevel,
+  preferredPhrases,
+  forbiddenPhrases,
+  validatedExamples,
+}: {
+  activities: Activity[];
+  month: number;
+  year: number;
+  expertName: string;
+  useFineTunedModel: boolean;
+  detailLevel: string;
+  preferredPhrases: string;
+  forbiddenPhrases: string;
+  validatedExamples: string;
+}): ReportRequestPayload {
+  return {
+    activities: activities.map((activity) => ({
+      date: activity.date,
+      hours: activity.hours,
+      saCode: activity.saCode,
+      activityType: activity.activityType,
+      title: activity.title,
+      description: truncateForReport(activity.gdprGeneratedText || activity.description || activity.title),
+      location: activity.location,
+      gdprTemplateCode: activity.gdprTemplateCode,
+      gdprConclusionCode: activity.gdprConclusionCode,
+      deliverables: (activity.deliverables?.map((deliverable) => getDocumentAuditTitle(deliverable)).filter(Boolean) || [])
+        .slice(0, MAX_DELIVERABLE_TITLES),
+    })),
+    month: getMonthName(month),
+    year,
+    expertName,
+    projectCode: activities.find((activity) => activity.projectCode)?.projectCode || '302141',
+    useFineTunedModel,
+    reportingRules: {
+      detailLevel,
+      preferredPhrases: splitPhrases(preferredPhrases),
+      forbiddenPhrases: splitPhrases(forbiddenPhrases),
+    },
+    validatedExamples: buildValidatedExamples(validatedExamples),
+  };
+}
+
+function buildReportSectionPlan(activities: ReportActivityPayload[]): ReportSectionPlan[] {
+  const groupedBySa = activities.reduce<Record<string, ReportActivityPayload[]>>((groups, activity) => {
+    const key = activity.saCode || 'SA neprecizata';
+    groups[key] = [...(groups[key] || []), activity];
+    return groups;
+  }, {});
+
+  return [
+    {
+      sectionKind: 'table',
+      sectionTitle: 'Tabel activitati',
+      activities,
+    },
+    ...Object.entries(groupedBySa).map(([saCode, items]) => ({
+      sectionKind: 'sa-detail' as const,
+      sectionTitle: `Descriere detaliata ${saCode}`,
+      sectionSaCode: saCode,
+      activities: items,
+    })),
+    {
+      sectionKind: 'validation',
+      sectionTitle: 'Validari si semnaturi',
+      activities,
+    },
+  ];
+}
+
+async function generateReportSection({
+  payload,
+  section,
+  sectionIndex,
+  totalSections,
+}: {
+  payload: ReportRequestPayload;
+  section: ReportSectionPlan;
+  sectionIndex: number;
+  totalSections: number;
+}) {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), REPORT_GENERATION_TIMEOUT_MS);
+
+  try {
+    const response = await fetch('/api/ai/generate-activity-report-section', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
+      body: JSON.stringify({
+        ...payload,
+        activities: section.activities,
+        sectionKind: section.sectionKind,
+        sectionTitle: section.sectionTitle,
+        sectionSaCode: section.sectionSaCode,
+        sectionIndex,
+        totalSections,
+      }),
+    });
+
+    const contentType = response.headers.get('Content-Type') || '';
+    const data = contentType.includes('application/json')
+      ? ((await response.json().catch(() => ({}))) as {
+          error?: string;
+          report?: string;
+          warnings?: string[];
+          totals?: { totalHours?: number };
+        })
+      : { error: await response.text().catch(() => '') };
+
+    if (!response.ok || data.error) {
+      throw new Error(data.error || `Eroare la generarea sectiunii "${section.sectionTitle}". Status HTTP: ${response.status}`);
+    }
+
+    return data;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
 }
 
 function buildLocalActivityReport({

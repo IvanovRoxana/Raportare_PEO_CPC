@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { mergeActivityReportRules } from '../lib/activity-report/default-rules.ts';
 import { normalizeAndGroupActivities, selectReportModel } from '../lib/activity-report/normalize.ts';
-import { buildActivityReportPrompt, buildActivityReportPromptInput } from '../lib/activity-report/prompt.ts';
+import { buildActivityReportPrompt, buildActivityReportPromptInput, buildActivityReportSectionPrompt } from '../lib/activity-report/prompt.ts';
 import { buildTrainingExample, exportTrainingExamplesAsJsonl } from '../lib/activity-report/training.ts';
 
 const activities = [
@@ -137,6 +137,33 @@ test('promptul Anexa 10 conține persoana I, interdicții, structură, totaluri 
   assert.match(prompt, /Total ore în raport = 9/);
   assert.match(prompt, /Validări\/warnings/);
   assert.match(prompt, /Exemplu bun/);
+});
+
+test('promptul pe sectiuni pastreaza detalierea RA pentru descrierea pe SA', () => {
+  const { normalizedActivities, groupedActivities, totals } = normalizeAndGroupActivities(activities);
+  const promptInput = buildActivityReportPromptInput({
+    expertName: 'Expert Test',
+    expertRole: 'Expert raportare',
+    month: 'Martie',
+    year: 2026,
+    projectCode: '302141',
+    activities: activities.filter((activity) => activity.saCode === 'SA1.1'),
+    reportingRules: mergeActivityReportRules({ detailLevel: 'foarte_detaliat' }),
+  }, normalizedActivities, groupedActivities, totals);
+
+  const prompt = buildActivityReportSectionPrompt(promptInput, {
+    kind: 'sa-detail',
+    title: 'Descriere detaliata SA1.1',
+    saCode: 'SA1.1',
+    index: 2,
+    total: 4,
+  });
+
+  assert.match(prompt, /Context si obiectiv/);
+  assert.match(prompt, /Rezultat/);
+  assert.match(prompt, /Beneficiar/);
+  assert.match(prompt, /Indicator\/Impact/);
+  assert.match(prompt, /Nu scurta continutul final/);
 });
 
 test('exportă exemple validate în JSONL compatibil pentru fine-tuning', () => {

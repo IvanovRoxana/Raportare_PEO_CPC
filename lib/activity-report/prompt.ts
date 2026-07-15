@@ -2,6 +2,7 @@ import { mergeActivityReportRules } from './default-rules.ts';
 import type {
   ActivityReportPromptInput,
   ActivityReportRequest,
+  ActivityReportSectionKind,
   ActivityTotals,
   NormalizedActivity,
   ReportingRules,
@@ -109,6 +110,114 @@ Exemple validate de stil, dacă există:
 ${validatedExamples}
 
 Returnează exclusiv raportul final, fără explicații despre cum a fost generat.`;
+}
+
+export function buildActivityReportSectionPrompt(
+  data: ActivityReportPromptInput,
+  section: {
+    kind: ActivityReportSectionKind;
+    title?: string;
+    saCode?: string;
+    index?: number;
+    total?: number;
+  },
+) {
+  const groupedActivitiesSummary = formatGroupedActivities(data.groupedActivities);
+  const totalsSummary = formatTotals(data.totals);
+  const validatedExamples = formatValidatedExamples(data.validatedExamples);
+  const sectionLabel = section.index && section.total ? `Fragment ${section.index}/${section.total}` : 'Fragment RA';
+
+  const sharedContext = `Context raport:
+Expert: ${data.expertName}
+Rol expert: ${data.expertRole || 'neprecizat'}
+Luna: ${data.month} ${data.year}
+Cod proiect: ${data.projectCode || '302141'}
+${sectionLabel}: ${section.title || section.kind}
+
+Activitati incluse in acest fragment:
+${groupedActivitiesSummary}
+
+Totaluri pentru activitatile incluse:
+${totalsSummary}
+
+Reguli obligatorii:
+- Scrie exclusiv in romana, la persoana I singular.
+- Pastreaza tonul ${data.rules.tone}.
+- Nivel de detaliere solicitat: ${data.rules.detailLevel}.
+- Nu mentiona surse, fisiere, documente incarcate, inputuri sau faptul ca textul a fost generat pe fragmente.
+- Foloseste formulari de tipul: ${data.rules.preferredPhrases.join(', ') || 'am analizat, am elaborat, am consolidat'}.
+- Evita formularile: ${data.rules.forbiddenPhrases.join(', ') || 'conform documentului, in fisierul atasat, din datele primite'}.
+- Include explicit Rezultat, Beneficiar si Indicator/Impact cand sectiunea cere detalii.
+
+Exemple validate de stil:
+${validatedExamples}`;
+
+  if (section.kind === 'table') {
+    return `${sharedContext}
+
+Genereaza doar urmatoarele parti din Raportul de Activitate - Anexa 10:
+
+# Raport de Activitate - ${data.expertName}
+
+## ${data.month} ${data.year}
+
+## 1. Tabel activitati
+
+Include un tabel Markdown complet, cu toate activitatile din fragment, grupate coerent pe SA si tipuri similare.
+Coloane obligatorii:
+- Subactivitate / cod SA
+- Perioada / zile acoperite
+- Activitate prestata
+- Rezultate / materiale elaborate / livrabile
+- Nr. ore lucrate
+- Livrabil comun: Da/Nu si colaboratori, daca exista
+
+Pentru fiecare rand, descrie activitatea in 3-6 propozitii concise, dar suficient de detaliate pentru audit.
+Returneaza exclusiv fragmentul cerut, fara explicatii.`;
+  }
+
+  if (section.kind === 'sa-detail') {
+    return `${sharedContext}
+
+Genereaza doar sectiunea detaliata pentru ${section.saCode || section.title || 'subactivitatea curenta'}.
+
+Titlul trebuie sa fie:
+## 2. ${section.title || section.saCode || 'Descriere detaliata'}
+
+Organizeaza cronologic pe zile. Pentru fiecare zi sau grup coerent de zile, include obligatoriu:
+1. Context si obiectiv;
+2. Pasii realizati;
+3. Livrabile;
+4. Rezultat;
+5. Beneficiar;
+6. Indicator/Impact;
+7. Pontaj: ore, locatie, colaborari.
+
+Scrie detaliat, copy-paste-ready pentru Anexa 10. Nu scurta continutul final.
+Returneaza exclusiv fragmentul cerut, fara introduceri si fara concluzii generale.`;
+  }
+
+  return `${sharedContext}
+
+Genereaza doar sectiunile finale ale Raportului de Activitate - Anexa 10:
+
+## 3. Probleme / intarzieri
+Daca nu exista probleme sau intarzieri evidente, scrie exact: Nu este cazul.
+
+## 4. Validari si observatii de completare
+Include obligatoriu:
+- Total ore in raport = ${data.totals.totalHours};
+- Total ore introduse = ${data.totals.totalHours};
+- Coerenta: DA / NU;
+- Observatii privind campurile lipsa, daca exista.
+
+Warnings/validari disponibile:
+${data.totals.warnings.length > 0 ? data.totals.warnings.join('\n') : 'Nu exista warnings.'}
+
+## 5. Semnaturi
+Include linii pentru expert si semnatura.
+
+Returneaza exclusiv fragmentul cerut, fara explicatii.`;
 }
 
 export function buildActivityReportPromptInput(

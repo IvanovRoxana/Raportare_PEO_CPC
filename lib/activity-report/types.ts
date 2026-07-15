@@ -69,6 +69,16 @@ export type ActivityReportRequest = {
   validatedExamples?: ValidatedActivityReportExample[];
 };
 
+export type ActivityReportSectionKind = 'table' | 'sa-detail' | 'validation';
+
+export type ActivityReportSectionRequest = ActivityReportRequest & {
+  sectionKind: ActivityReportSectionKind;
+  sectionTitle?: string;
+  sectionSaCode?: string;
+  sectionIndex?: number;
+  totalSections?: number;
+};
+
 export type ActivityReportPromptInput = ActivityReportRequest & {
   normalizedActivities: NormalizedActivity[];
   groupedActivities: Record<string, NormalizedActivity[]>;
