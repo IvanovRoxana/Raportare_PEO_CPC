@@ -176,15 +176,16 @@ Pentru fiecare rand, descrie activitatea in 3-6 propozitii concise, dar suficien
 Returneaza exclusiv fragmentul cerut, fara explicatii.`;
   }
 
-  if (section.kind === 'sa-detail') {
+  if (section.kind === 'narrative') {
     return `${sharedContext}
 
-Genereaza doar sectiunea detaliata pentru ${section.saCode || section.title || 'subactivitatea curenta'}.
+Genereaza doar Sectiunea 2 - narativul detaliat al Raportului de Activitate.
 
 Titlul trebuie sa fie:
-## 2. ${section.title || section.saCode || 'Descriere detaliata'}
+## 2. Descriere detaliata a activitatilor desfasurate
 
-Organizeaza cronologic pe zile. Pentru fiecare zi sau grup coerent de zile, include obligatoriu:
+Organizeaza pe subactivitati/coduri SA in ordine crescatoare, iar in fiecare SA organizeaza cronologic pe zile.
+Pentru fiecare zi sau grup coerent de zile, include obligatoriu:
 1. Context si obiectiv;
 2. Pasii realizati;
 3. Livrabile;
@@ -194,30 +195,11 @@ Organizeaza cronologic pe zile. Pentru fiecare zi sau grup coerent de zile, incl
 7. Pontaj: ore, locatie, colaborari.
 
 Scrie detaliat, copy-paste-ready pentru Anexa 10. Nu scurta continutul final.
-Returneaza exclusiv fragmentul cerut, fara introduceri si fara concluzii generale.`;
+La finalul sectiunii narative include un scurt paragraf de sinteza privind rezultatele lunii, fara sa creezi sectiuni suplimentare.
+Returneaza exclusiv fragmentul cerut, fara tabel si fara sectiuni 3/4/5.`;
   }
 
-  return `${sharedContext}
-
-Genereaza doar sectiunile finale ale Raportului de Activitate - Anexa 10:
-
-## 3. Probleme / intarzieri
-Daca nu exista probleme sau intarzieri evidente, scrie exact: Nu este cazul.
-
-## 4. Validari si observatii de completare
-Include obligatoriu:
-- Total ore in raport = ${data.totals.totalHours};
-- Total ore introduse = ${data.totals.totalHours};
-- Coerenta: DA / NU;
-- Observatii privind campurile lipsa, daca exista.
-
-Warnings/validari disponibile:
-${data.totals.warnings.length > 0 ? data.totals.warnings.join('\n') : 'Nu exista warnings.'}
-
-## 5. Semnaturi
-Include linii pentru expert si semnatura.
-
-Returneaza exclusiv fragmentul cerut, fara explicatii.`;
+  return sharedContext;
 }
 
 export function buildActivityReportPromptInput(

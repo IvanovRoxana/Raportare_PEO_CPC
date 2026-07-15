@@ -69,7 +69,7 @@ export type ActivityReportRequest = {
   validatedExamples?: ValidatedActivityReportExample[];
 };
 
-export type ActivityReportSectionKind = 'table' | 'sa-detail' | 'validation';
+export type ActivityReportSectionKind = 'table' | 'narrative';
 
 export type ActivityReportSectionRequest = ActivityReportRequest & {
   sectionKind: ActivityReportSectionKind;

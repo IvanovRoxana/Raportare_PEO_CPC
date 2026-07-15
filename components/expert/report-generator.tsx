@@ -20,7 +20,7 @@ interface ReportGeneratorProps {
   expertName: string;
 }
 
-type ReportSectionKind = 'table' | 'sa-detail' | 'validation';
+type ReportSectionKind = 'table' | 'narrative';
 
 type ReportActivityPayload = {
   date: string;
@@ -57,7 +57,7 @@ type ReportSectionPlan = {
   activities: ReportActivityPayload[];
 };
 
-const REPORT_GENERATION_TIMEOUT_MS = 45_000;
+const REPORT_GENERATION_TIMEOUT_MS = 58_000;
 const MAX_ACTIVITY_DESCRIPTION_CHARS = 700;
 const MAX_DELIVERABLE_TITLES = 5;
 
@@ -117,17 +117,17 @@ export function ReportGenerator({ activities, month, year, expertName }: ReportG
 
       setGeneratedReport(generatedSections.join('\n\n'));
       setGenerationWarnings([
-        `Raportul a fost generat cu AI in ${sections.length} sectiuni pentru a evita timeout-ul AWS.`,
+        'Raportul a fost generat cu AI in doua parti: Sectiunea 1 tabel si Sectiunea 2 narativ.',
         ...Array.from(warnings),
       ]);
       setCalculatedTotalHours(totalHours);
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') {
-        useFallbackReport('O sectiune AI a durat prea mult. Am generat local un raport RA editabil si exportabil.');
+        useFallbackReport('Generarea AI a depasit timpul disponibil. Am generat local un raport RA editabil si exportabil.');
       } else {
         const message = err instanceof Error ? err.message : 'Eroare la generarea raportului';
         if (/504|timeout|expir/i.test(message)) {
-          useFallbackReport('AI-ul nu a terminat una dintre sectiuni in timpul disponibil. Am generat local un raport RA editabil si exportabil.');
+          useFallbackReport('AI-ul nu a finalizat in timpul disponibil. Am generat local un raport RA editabil si exportabil.');
         } else {
           setError(message);
         }
@@ -195,36 +195,46 @@ export function ReportGenerator({ activities, month, year, expertName }: ReportG
 
     setIsExporting(true);
     try {
-      const { Document, Packer, Paragraph, TextRun, HeadingLevel } = await import('docx');
+      const {
+        AlignmentType,
+        BorderStyle,
+        Document,
+        HeadingLevel,
+        Packer,
+        Paragraph,
+        Table,
+        TableCell,
+        TableRow,
+        TextRun,
+        WidthType,
+      } = await import('docx');
 
-      const paragraphs = generatedReport.split('\n').map((line) => {
-        if (line.startsWith('# ')) {
-          return new Paragraph({
-            text: line.replace('# ', ''),
-            heading: HeadingLevel.HEADING_1,
-          });
-        }
-        if (line.startsWith('## ')) {
-          return new Paragraph({
-            text: line.replace('## ', ''),
-            heading: HeadingLevel.HEADING_2,
-          });
-        }
-        if (line.startsWith('### ')) {
-          return new Paragraph({
-            text: line.replace('### ', ''),
-            heading: HeadingLevel.HEADING_3,
-          });
-        }
-        return new Paragraph({
-          children: [new TextRun(line)],
-        });
+      const children = buildWordReportChildren(generatedReport, {
+        AlignmentType,
+        BorderStyle,
+        HeadingLevel,
+        Paragraph,
+        Table,
+        TableCell,
+        TableRow,
+        TextRun,
+        WidthType,
       });
 
       const doc = new Document({
         sections: [
           {
-            children: paragraphs,
+            properties: {
+              page: {
+                margin: {
+                  top: 720,
+                  right: 720,
+                  bottom: 720,
+                  left: 720,
+                },
+              },
+            },
+            children,
           },
         ],
       });
@@ -391,6 +401,134 @@ function downloadBlob(blob: Blob, fileName: string) {
   URL.revokeObjectURL(url);
 }
 
+function buildWordReportChildren(report: string, docx: Record<string, any>) {
+  const {
+    AlignmentType,
+    BorderStyle,
+    HeadingLevel,
+    Paragraph,
+    Table,
+    TableCell,
+    TableRow,
+    TextRun,
+    WidthType,
+  } = docx;
+  const children: any[] = [];
+  const lines = report.split('\n');
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index].trim();
+
+    if (isMarkdownTableRow(line) && isMarkdownTableSeparator(lines[index + 1] || '')) {
+      const tableLines: string[] = [line];
+      index += 2;
+      while (index < lines.length && isMarkdownTableRow(lines[index].trim())) {
+        tableLines.push(lines[index].trim());
+        index += 1;
+      }
+      index -= 1;
+      children.push(buildWordTable(tableLines, { BorderStyle, Paragraph, Table, TableCell, TableRow, TextRun, WidthType }));
+      children.push(new Paragraph({ text: '', spacing: { after: 160 } }));
+      continue;
+    }
+
+    if (!line) {
+      children.push(new Paragraph({ text: '', spacing: { after: 80 } }));
+      continue;
+    }
+
+    if (line.startsWith('# ')) {
+      children.push(new Paragraph({
+        alignment: AlignmentType.CENTER,
+        heading: HeadingLevel.TITLE,
+        spacing: { after: 240 },
+        text: stripMarkdown(line.replace(/^#\s+/, '')),
+      }));
+      continue;
+    }
+
+    if (line.startsWith('## ')) {
+      children.push(new Paragraph({
+        heading: HeadingLevel.HEADING_1,
+        spacing: { before: 240, after: 120 },
+        text: stripMarkdown(line.replace(/^##\s+/, '')),
+      }));
+      continue;
+    }
+
+    if (line.startsWith('### ')) {
+      children.push(new Paragraph({
+        heading: HeadingLevel.HEADING_2,
+        spacing: { before: 160, after: 80 },
+        text: stripMarkdown(line.replace(/^###\s+/, '')),
+      }));
+      continue;
+    }
+
+    children.push(new Paragraph({
+      children: [new TextRun(stripMarkdown(line.replace(/^[-*]\s+/, '')))],
+      spacing: { after: 90 },
+    }));
+  }
+
+  return children;
+}
+
+function buildWordTable(lines: string[], docx: Record<string, any>) {
+  const { BorderStyle, Paragraph, Table, TableCell, TableRow, TextRun, WidthType } = docx;
+  const rows = lines.map((line, rowIndex) => new TableRow({
+    children: splitMarkdownTableRow(line).map((cell) => new TableCell({
+      borders: {
+        top: { style: BorderStyle.SINGLE, size: 1, color: 'B7C4D6' },
+        bottom: { style: BorderStyle.SINGLE, size: 1, color: 'B7C4D6' },
+        left: { style: BorderStyle.SINGLE, size: 1, color: 'B7C4D6' },
+        right: { style: BorderStyle.SINGLE, size: 1, color: 'B7C4D6' },
+      },
+      children: [
+        new Paragraph({
+          children: [new TextRun({ bold: rowIndex === 0, text: stripMarkdown(cell) })],
+          spacing: { after: 60 },
+        }),
+      ],
+      margins: {
+        top: 100,
+        bottom: 100,
+        left: 100,
+        right: 100,
+      },
+      shading: rowIndex === 0 ? { fill: 'EAF1F8' } : undefined,
+    })),
+  }));
+
+  return new Table({
+    rows,
+    width: {
+      size: 100,
+      type: WidthType.PERCENTAGE,
+    },
+  });
+}
+
+function isMarkdownTableRow(line: string) {
+  return line.startsWith('|') && line.endsWith('|') && line.split('|').length > 2;
+}
+
+function isMarkdownTableSeparator(line: string) {
+  return /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(line);
+}
+
+function splitMarkdownTableRow(line: string) {
+  return line.replace(/^\|/, '').replace(/\|$/, '').split('|').map((cell) => cell.trim());
+}
+
+function stripMarkdown(value: string) {
+  return value
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    .replace(/__(.*?)__/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .trim();
+}
+
 function buildReportRequestPayload({
   activities,
   month,
@@ -441,33 +579,46 @@ function buildReportRequestPayload({
 }
 
 function buildReportSectionPlan(activities: ReportActivityPayload[]): ReportSectionPlan[] {
-  const groupedBySa = activities.reduce<Record<string, ReportActivityPayload[]>>((groups, activity) => {
-    const key = activity.saCode || 'SA neprecizata';
-    groups[key] = [...(groups[key] || []), activity];
-    return groups;
-  }, {});
-
   return [
     {
       sectionKind: 'table',
-      sectionTitle: 'Tabel activitati',
+      sectionTitle: 'Sectiunea 1 - Tabel activitati',
       activities,
     },
-    ...Object.entries(groupedBySa).map(([saCode, items]) => ({
-      sectionKind: 'sa-detail' as const,
-      sectionTitle: `Descriere detaliata ${saCode}`,
-      sectionSaCode: saCode,
-      activities: items,
-    })),
     {
-      sectionKind: 'validation',
-      sectionTitle: 'Validari si semnaturi',
+      sectionKind: 'narrative',
+      sectionTitle: 'Sectiunea 2 - Narativ detaliat',
       activities,
     },
   ];
 }
 
 async function generateReportSection({
+  payload,
+  section,
+  sectionIndex,
+  totalSections,
+}: {
+  payload: ReportRequestPayload;
+  section: ReportSectionPlan;
+  sectionIndex: number;
+  totalSections: number;
+}) {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    try {
+      return await fetchReportSection({ payload, section, sectionIndex, totalSections });
+    } catch (error) {
+      lastError = error;
+      const message = error instanceof Error ? error.message : '';
+      if (!/504|timeout|expir|AbortError/i.test(message) || attempt === 2) break;
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error(`Eroare la generarea sectiunii "${section.sectionTitle}".`);
+}
+
+async function fetchReportSection({
   payload,
   section,
   sectionIndex,

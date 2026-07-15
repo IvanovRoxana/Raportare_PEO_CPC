@@ -15,8 +15,7 @@ export const maxDuration = 55;
 
 const SECTION_TOKEN_LIMITS: Record<ActivityReportSectionKind, number> = {
   table: 1700,
-  'sa-detail': 2200,
-  validation: 1100,
+  narrative: 3600,
 };
 
 export async function POST(req: Request) {
@@ -88,8 +87,8 @@ function normalizeSectionRequest(body: Record<string, unknown>): ActivityReportS
 }
 
 function normalizeSectionKind(value: unknown): ActivityReportSectionKind {
-  if (value === 'table' || value === 'sa-detail' || value === 'validation') return value;
-  return 'sa-detail';
+  if (value === 'table' || value === 'narrative') return value;
+  return 'narrative';
 }
 
 function stringOrDefault(value: unknown, fallback: string) {

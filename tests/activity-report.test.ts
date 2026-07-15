@@ -139,7 +139,7 @@ test('promptul Anexa 10 conține persoana I, interdicții, structură, totaluri 
   assert.match(prompt, /Exemplu bun/);
 });
 
-test('promptul pe sectiuni pastreaza detalierea RA pentru descrierea pe SA', () => {
+test('promptul pe sectiuni pastreaza detalierea RA pentru narativ', () => {
   const { normalizedActivities, groupedActivities, totals } = normalizeAndGroupActivities(activities);
   const promptInput = buildActivityReportPromptInput({
     expertName: 'Expert Test',
@@ -152,11 +152,10 @@ test('promptul pe sectiuni pastreaza detalierea RA pentru descrierea pe SA', () 
   }, normalizedActivities, groupedActivities, totals);
 
   const prompt = buildActivityReportSectionPrompt(promptInput, {
-    kind: 'sa-detail',
-    title: 'Descriere detaliata SA1.1',
-    saCode: 'SA1.1',
+    kind: 'narrative',
+    title: 'Sectiunea 2 - Narativ detaliat',
     index: 2,
-    total: 4,
+    total: 2,
   });
 
   assert.match(prompt, /Context si obiectiv/);
@@ -164,6 +163,7 @@ test('promptul pe sectiuni pastreaza detalierea RA pentru descrierea pe SA', () 
   assert.match(prompt, /Beneficiar/);
   assert.match(prompt, /Indicator\/Impact/);
   assert.match(prompt, /Nu scurta continutul final/);
+  assert.match(prompt, /fara sectiuni 3\/4\/5/);
 });
 
 test('exportă exemple validate în JSONL compatibil pentru fine-tuning', () => {
