@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { FileText, Download, Loader2, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -19,6 +19,7 @@ import {
 } from '@/lib/activity-report/local-fallback';
 import { buildAnexa10ReportModel } from '@/lib/activity-report/build-report-model';
 import { buildAnexa10DocxBlob, buildAnexa10DocxFilename } from '@/lib/activity-report/docx-export';
+import { getAnexa10ExportReadiness } from '@/lib/activity-report/export-readiness';
 import { combineActivityReportSections, splitActivityReportSections } from '@/lib/activity-report/sections';
 import { getDocumentAuditTitle } from '@/lib/document-sharing';
 import type { Activity, Expert } from '@/lib/types';
@@ -98,6 +99,25 @@ export function ReportGenerator({
   const [generatedNarrativeSection, setGeneratedNarrativeSection] = useState('');
   const [activeGeneratedTab, setActiveGeneratedTab] = useState<GeneratedReportTab>('full');
   const [isLocalFallbackDraft, setIsLocalFallbackDraft] = useState(false);
+  const deterministicAnexa10Model = useMemo(() => {
+    if (!enableDeterministicAnexa10Docx || activities.length === 0) return null;
+
+    const reportExpert = expert ?? {
+      id: activities[0]?.expertId || 'expert',
+      name: expertName,
+      role: '',
+      projectCode: activities.find((activity) => activity.projectCode)?.projectCode || '302141',
+    };
+    return buildAnexa10ReportModel({
+      expert: reportExpert,
+      activities,
+      month,
+      year,
+    });
+  }, [activities, enableDeterministicAnexa10Docx, expert, expertName, month, year]);
+  const deterministicExportReadiness = deterministicAnexa10Model
+    ? getAnexa10ExportReadiness(deterministicAnexa10Model)
+    : null;
 
   const generateWithAI = async () => {
     setIsGenerating(true);
@@ -309,25 +329,13 @@ export function ReportGenerator({
   };
 
   const exportDeterministicAnexa10Docx = async () => {
-    if (activities.length === 0) return;
+    if (!deterministicAnexa10Model || !deterministicExportReadiness?.canExport) return;
 
     setIsExportingDeterministicDocx(true);
     setError(null);
     try {
-      const reportExpert = expert ?? {
-        id: activities[0]?.expertId || 'expert',
-        name: expertName,
-        role: '',
-        projectCode: activities.find((activity) => activity.projectCode)?.projectCode || '302141',
-      };
-      const model = buildAnexa10ReportModel({
-        expert: reportExpert,
-        activities,
-        month,
-        year,
-      });
-      const blob = await buildAnexa10DocxBlob(model);
-      downloadBlob(blob, buildAnexa10DocxFilename(model));
+      const blob = await buildAnexa10DocxBlob(deterministicAnexa10Model);
+      downloadBlob(blob, buildAnexa10DocxFilename(deterministicAnexa10Model));
     } catch (err) {
       console.error('Error exporting deterministic Anexa 10 DOCX:', err);
       setError('Eroare la exportul determinist Anexa 10');
@@ -410,6 +418,24 @@ export function ReportGenerator({
           </div>
         )}
 
+        {enableDeterministicAnexa10Docx && deterministicExportReadiness && (
+          <div className="rounded-lg border p-3 text-sm">
+            <p className="font-medium">
+              Export Anexa 10 determinist: {deterministicExportReadiness.canExport ? 'pregatit' : 'blocat pentru verificare'}
+            </p>
+            {deterministicExportReadiness.blockingMessages.length > 0 && (
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-destructive">
+                {deterministicExportReadiness.blockingMessages.map((message) => <li key={message}>{message}</li>)}
+              </ul>
+            )}
+            {deterministicExportReadiness.warningMessages.length > 0 && (
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-muted-foreground">
+                {deterministicExportReadiness.warningMessages.map((message) => <li key={message}>{message}</li>)}
+              </ul>
+            )}
+          </div>
+        )}
+
         <div className="flex flex-wrap gap-2">
           <Button onClick={generateWithAI} disabled={isGenerating || activities.length === 0}>
             {isGenerating ? (
@@ -445,7 +471,11 @@ export function ReportGenerator({
             <Button
               variant="outline"
               onClick={exportDeterministicAnexa10Docx}
-              disabled={activities.length === 0 || isExportingDeterministicDocx}
+              disabled={
+                activities.length === 0
+                || isExportingDeterministicDocx
+                || !deterministicExportReadiness?.canExport
+              }
             >
               {isExportingDeterministicDocx ? (
                 <>
