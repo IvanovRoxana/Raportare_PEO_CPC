@@ -29,6 +29,12 @@ function matchesCatalogSearch(item: ActivityCatalog, query: string) {
     item.category,
     item.serviceCategory,
     item.description,
+    item.objectives,
+    item.serviceComponent,
+    item.beneficiaries,
+    item.expectedResults,
+    item.deliverables,
+    item.indicators,
   ]
     .filter(Boolean)
     .some((value) => String(value).toLowerCase().includes(normalizedQuery));
@@ -433,6 +439,86 @@ export function ActivityDescriptionEditor({ fallbackCatalog = [] }: ActivityDesc
                   rows={10}
                   placeholder="Text standard pentru formular..."
                 />
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="space-y-2">
+                  <label htmlFor="catalog-objectives" className="text-sm font-semibold text-slate-900">
+                    Obiective
+                  </label>
+                  <Textarea
+                    id="catalog-objectives"
+                    value={draft.objectives ?? ''}
+                    onChange={(event) => updateDraft('objectives', event.target.value)}
+                    rows={5}
+                    placeholder="Obiectivele activitatii..."
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label htmlFor="catalog-service-component" className="text-sm font-semibold text-slate-900">
+                    Componenta serviciului
+                  </label>
+                  <Textarea
+                    id="catalog-service-component"
+                    value={draft.serviceComponent ?? ''}
+                    onChange={(event) => updateDraft('serviceComponent', event.target.value)}
+                    rows={5}
+                    placeholder="Componenta serviciului..."
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label htmlFor="catalog-beneficiaries" className="text-sm font-semibold text-slate-900">
+                    Beneficiari
+                  </label>
+                  <Textarea
+                    id="catalog-beneficiaries"
+                    value={draft.beneficiaries ?? ''}
+                    onChange={(event) => updateDraft('beneficiaries', event.target.value)}
+                    rows={4}
+                    placeholder="Beneficiarii activitatii..."
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label htmlFor="catalog-expected-results" className="text-sm font-semibold text-slate-900">
+                    Rezultate asteptate
+                  </label>
+                  <Textarea
+                    id="catalog-expected-results"
+                    value={draft.expectedResults ?? ''}
+                    onChange={(event) => updateDraft('expectedResults', event.target.value)}
+                    rows={4}
+                    placeholder="Rezultatele asteptate..."
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label htmlFor="catalog-deliverables" className="text-sm font-semibold text-slate-900">
+                    Livrabile
+                  </label>
+                  <Textarea
+                    id="catalog-deliverables"
+                    value={draft.deliverables ?? ''}
+                    onChange={(event) => updateDraft('deliverables', event.target.value)}
+                    rows={4}
+                    placeholder="Livrabile asociate..."
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label htmlFor="catalog-indicators" className="text-sm font-semibold text-slate-900">
+                    Indicatori
+                  </label>
+                  <Textarea
+                    id="catalog-indicators"
+                    value={draft.indicators ?? ''}
+                    onChange={(event) => updateDraft('indicators', event.target.value)}
+                    rows={4}
+                    placeholder="Indicatori de realizare..."
+                  />
+                </div>
               </div>
 
               <div className="flex flex-wrap items-center justify-between gap-3">
