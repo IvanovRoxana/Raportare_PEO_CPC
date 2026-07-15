@@ -348,6 +348,11 @@ export function ReportGenerator({
   const uniqueDates = new Set(activities.map((a) => a.date)).size;
   const hasLocalFallbackReport = isLocalFallbackDraft || isLocalFallbackReport(generatedReport);
   const isExportBlocked = hasLocalFallbackReport || isBlockedActivityReportExport(generatedReport);
+  const deterministicReadinessClassName = deterministicExportReadiness?.severity === 'blocked'
+    ? 'border-destructive/40 bg-destructive/10'
+    : deterministicExportReadiness?.severity === 'warning'
+      ? 'border-amber-300 bg-amber-50'
+      : 'border-emerald-200 bg-emerald-50';
 
   return (
     <Card>
@@ -419,10 +424,11 @@ export function ReportGenerator({
         )}
 
         {enableDeterministicAnexa10Docx && deterministicExportReadiness && (
-          <div className="rounded-lg border p-3 text-sm">
+          <div className={`rounded-lg border p-3 text-sm ${deterministicReadinessClassName}`}>
             <p className="font-medium">
-              Export Anexa 10 determinist: {deterministicExportReadiness.canExport ? 'pregatit' : 'blocat pentru verificare'}
+              Export Anexa 10 determinist: {deterministicExportReadiness.statusLabel}
             </p>
+            <p className="mt-1 text-muted-foreground">{deterministicExportReadiness.summary}</p>
             {deterministicExportReadiness.blockingMessages.length > 0 && (
               <ul className="mt-2 list-disc space-y-1 pl-5 text-destructive">
                 {deterministicExportReadiness.blockingMessages.map((message) => <li key={message}>{message}</li>)}
