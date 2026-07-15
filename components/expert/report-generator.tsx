@@ -834,22 +834,7 @@ function buildLocalActivityReport({
     '',
     ...detailRows,
     '',
-    '## 3. Probleme / intarzieri',
-    '',
-    'Nu este cazul.',
-    '',
-    '## 4. Validari si observatii de completare',
-    '',
-    `Total ore in raport = ${totalHours}`,
-    `Total ore introduse = ${totalHours}`,
-    `Zile lucrate = ${uniqueDates.length}`,
-    'Coerenta: DA',
-    'Observatii: raportul poate fi revizuit manual inainte de export.',
-    '',
-    '## 5. Semnaturi',
-    '',
-    `Expert: ${expertName}`,
-    'Semnatura: ____________________',
+    `Sinteza lunara: totalul activitatilor raportate este de ${totalHours} ore, distribuite pe ${uniqueDates.length} zile lucrate. Activitatile descrise sunt coerente cu pontajul lunar si pot fi revizuite manual inainte de exportul final.`,
   ].join('\n');
 }
 
