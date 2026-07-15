@@ -48,6 +48,9 @@ import type {
   MonthlyActivityItem,
   MonthlyExpertReport,
   Neconformitate,
+  PersistedReportingWorkBlock,
+  PersistedWorkBlockActivityLink,
+  PersistedWorkBlockDeliverableLink,
   ReportStatus,
   SharedActivityRegistrationContext,
   SharedDeliverable,
@@ -63,6 +66,8 @@ import { normalizeTitleForMatch } from './title-suggestion';
 import { parseAwsJsonField, serializeAwsJsonField } from './aws-json';
 import { planDeliverableSync } from './activity-deliverable-sync';
 import { dedupeDeliverablesBySignature, findMonthlyDeliverableDuplicate, getDeliverableDocumentSignature } from './deliverable-deduplication';
+import { buildPersistedWorkBlockBundles } from './activity-report/persisted-work-blocks';
+import type { ReportingWorkBlockBundle } from './activity-report/work-blocks';
 import {
   createProcurementStatusHistoryEntry,
   getContractedProcurementProjects,
@@ -2505,6 +2510,46 @@ export const activitiesService = {
   async deleteByDates(expertId: string, dates: string[]): Promise<void> {
     const entries = await activitiesService.getByExpert(expertId);
     await Promise.all(entries.filter((entry) => dates.includes(entry.date)).map((entry) => activitiesService.delete(entry.id)));
+  },
+};
+
+export const reportingWorkBlocksService = {
+  async getBundlesByExpertAndMonth(expertId: string, month: number, year: number): Promise<ReportingWorkBlockBundle[]> {
+    const client = getAwsDataClient() as any;
+    await assertCanAccessExpert(client, expertId);
+
+    if (
+      !client.models.ReportingWorkBlock
+      || !client.models.WorkBlockActivityLink
+      || !client.models.WorkBlockDeliverableLink
+    ) {
+      return [];
+    }
+
+    const workBlocks = await listModel<PersistedReportingWorkBlock>(client.models.ReportingWorkBlock, {
+      expertId: { eq: expertId },
+      month: { eq: month },
+      year: { eq: year },
+    });
+    if (workBlocks.length === 0) return [];
+
+    const workBlockIds = new Set(workBlocks.map((workBlock) => workBlock.id));
+    const [activities, activityLinks, deliverableLinks] = await Promise.all([
+      activitiesService.getByExpert(expertId),
+      Promise.all([...workBlockIds].map((workBlockId) => (
+        listModel<PersistedWorkBlockActivityLink>(client.models.WorkBlockActivityLink, { workBlockId: { eq: workBlockId } })
+      ))).then((items) => items.flat()),
+      Promise.all([...workBlockIds].map((workBlockId) => (
+        listModel<PersistedWorkBlockDeliverableLink>(client.models.WorkBlockDeliverableLink, { workBlockId: { eq: workBlockId } })
+      ))).then((items) => items.flat()),
+    ]);
+
+    return buildPersistedWorkBlockBundles({
+      workBlocks,
+      activityLinks,
+      deliverableLinks,
+      activities: activities.filter((activity) => monthFromDate(activity.date) === month && yearFromDate(activity.date) === year),
+    });
   },
 };
 
