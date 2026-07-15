@@ -23,7 +23,6 @@ import { ActivityForm, type ActivityResolutionHint, type ActivityResolutionSecti
 import { ActivitiesTable } from '@/components/expert/activities-table';
 import { ExpertDeliverablesDialog } from '@/components/expert/expert-deliverables-dialog';
 import { MonthlyEvidencePanel } from '@/components/expert/monthly-evidence-panel';
-import { ReportGenerator } from '@/components/expert/report-generator';
 import { MonthlyReportExport } from '@/components/expert/monthly-report-export';
 import { getMonthName } from '@/lib/backend-store';
 import {
@@ -385,7 +384,7 @@ function ExpertDashboardContent() {
 
     const openFromHash = () => {
       if (window.location.hash === '#rapoarte') {
-        setActiveTab('export');
+        window.location.assign(`/expert/peo/export${window.location.search}`);
         return;
       }
       if (window.location.hash === '#calendar') {
@@ -1566,6 +1565,11 @@ function ExpertDashboardContent() {
   };
 
   const isLoading = isAuthLoading || expertsLoading || activitiesLoading;
+  const exportRaHref = `/expert/peo/export?${new URLSearchParams({
+    month: String(currentMonth),
+    year: String(currentYear),
+    ...(selectedExpertId ? { expertId: selectedExpertId } : {}),
+  }).toString()}`;
 
   if (isLoading && (experts.length === 0 || !selectedExpertId)) {
     return (
@@ -1714,7 +1718,7 @@ function ExpertDashboardContent() {
           { label: 'Activități', href: '#activitati', icon: ClipboardList, active: true },
           { label: 'Calendar', href: '#calendar', icon: CalendarDays },
           { label: 'Livrabile', href: '#livrabile', icon: Upload },
-          { label: 'Rapoarte', href: '#rapoarte', icon: FileText },
+          { label: 'Rapoarte', href: exportRaHref, icon: FileText },
         ]}
         aside={showForm ? undefined : (
           <>
@@ -1794,29 +1798,19 @@ function ExpertDashboardContent() {
               </p>
             )}
           </div>
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <MonthlyReportExport
-              expert={selectedExpert as Expert}
-              activities={activities}
-              concurrentProjects={concurrentProjects}
-              concurrentTimesheetEntries={concurrentTimesheetEntries.filter((entry) => entry.expertId === selectedExpertId)}
-              month={currentMonth}
-              year={currentYear}
-            />
-            <span title={submitButtonTitle}>
-              <Button
-                onClick={handleSubmitMonth}
-                disabled={
-                  isApproved
-                  || isSent
-                  || isInReview
-                }
-              >
-              {submitButtonIcon}
-              {submitButtonLabel}
-              </Button>
-            </span>
-          </div>
+          <span title={submitButtonTitle}>
+            <Button
+              onClick={handleSubmitMonth}
+              disabled={
+                isApproved
+                || isSent
+                || isInReview
+              }
+            >
+            {submitButtonIcon}
+            {submitButtonLabel}
+            </Button>
+          </span>
         </div>
 
         <Card className="mb-6">
@@ -1936,12 +1930,11 @@ function ExpertDashboardContent() {
 
         <div id="livrabile" className="scroll-mt-24" />
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className={`grid w-full ${isGtExpert && isComExpert ? 'grid-cols-5' : isGtExpert || isComExpert ? 'grid-cols-4' : 'grid-cols-3'}`}>
+          <TabsList className={`grid w-full ${isGtExpert && isComExpert ? 'grid-cols-4' : isGtExpert || isComExpert ? 'grid-cols-3' : 'grid-cols-2'}`}>
             <TabsTrigger value="activitati">Activitati</TabsTrigger>
             <TabsTrigger value="calendar">Calendar</TabsTrigger>
             {isGtExpert && <TabsTrigger value="gt">Grup Tinta</TabsTrigger>}
             {isComExpert && <TabsTrigger value="dovezi-com">Dovezi COM</TabsTrigger>}
-            <TabsTrigger value="export">Export RA</TabsTrigger>
           </TabsList>
 
           {/* Tab: Activitati - pentru adaugare/editare activitati */}
@@ -2275,27 +2268,6 @@ function ExpertDashboardContent() {
             </TabsContent>
           )}
 
-          {/* Tab: Export RA - generare raport si export */}
-          <TabsContent id="rapoarte" value="export" className="scroll-mt-24">
-            <div className="space-y-4">
-              <div className="flex justify-end">
-                <MonthlyReportExport
-                  expert={selectedExpert as Expert}
-                  activities={activities}
-                  concurrentProjects={concurrentProjects}
-                  concurrentTimesheetEntries={concurrentTimesheetEntries.filter((entry) => entry.expertId === selectedExpertId)}
-                  month={currentMonth}
-                  year={currentYear}
-                />
-              </div>
-              <ReportGenerator
-                activities={activities}
-                month={currentMonth}
-                year={currentYear}
-                expertName={selectedExpert.name}
-              />
-            </div>
-          </TabsContent>
         </Tabs>
         {showPopoutForm && (
           <div className="fixed bottom-4 right-4 z-40 max-h-[calc(100vh-2rem)] w-[min(760px,calc(100vw-2rem))] overflow-y-auto rounded-lg border bg-background shadow-2xl">
