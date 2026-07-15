@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { getMonthName } from '@/lib/app-utils';
+import { combineActivityReportSections, splitActivityReportSections } from '@/lib/activity-report/sections';
 import { getDocumentAuditTitle } from '@/lib/document-sharing';
 import type { Activity } from '@/lib/types';
 
@@ -127,7 +128,7 @@ export function ReportGenerator({ activities, month, year, expertName }: ReportG
       const narrativeSection = generatedSections.narrative || '';
       setGeneratedTableSection(tableSection);
       setGeneratedNarrativeSection(narrativeSection);
-      setGeneratedReport(combineGeneratedSections(tableSection, narrativeSection));
+      setGeneratedReport(combineActivityReportSections({ table: tableSection, narrative: narrativeSection }));
       setActiveGeneratedTab('full');
       setGenerationWarnings([
         'Raportul a fost generat cu AI in doua parti: Sectiunea 1 tabel si Sectiunea 2 narativ.',
@@ -160,7 +161,7 @@ export function ReportGenerator({ activities, month, year, expertName }: ReportG
       preferredPhrases: splitPhrases(preferredPhrases),
       forbiddenPhrases: splitPhrases(forbiddenPhrases),
     });
-    const { table, narrative } = splitGeneratedReportSections(fallbackReport);
+    const { table, narrative } = splitActivityReportSections(fallbackReport);
     setGeneratedReport(fallbackReport);
     setGeneratedTableSection(table);
     setGeneratedNarrativeSection(narrative);
@@ -175,11 +176,11 @@ export function ReportGenerator({ activities, month, year, expertName }: ReportG
     const nextNarrative = section === 'narrative' ? value : generatedNarrativeSection;
     setGeneratedTableSection(nextTable);
     setGeneratedNarrativeSection(nextNarrative);
-    setGeneratedReport(combineGeneratedSections(nextTable, nextNarrative));
+    setGeneratedReport(combineActivityReportSections({ table: nextTable, narrative: nextNarrative }));
   };
 
   const updateGeneratedReport = (value: string) => {
-    const { table, narrative } = splitGeneratedReportSections(value);
+    const { table, narrative } = splitActivityReportSections(value);
     setGeneratedReport(value);
     setGeneratedTableSection(table);
     setGeneratedNarrativeSection(narrative);
@@ -465,25 +466,6 @@ function truncateForReport(value: string) {
   const normalized = value.replace(/\s+/g, ' ').trim();
   if (normalized.length <= MAX_ACTIVITY_DESCRIPTION_CHARS) return normalized;
   return `${normalized.slice(0, MAX_ACTIVITY_DESCRIPTION_CHARS).trim()}...`;
-}
-
-function combineGeneratedSections(table: string, narrative: string) {
-  return [table.trim(), narrative.trim()].filter(Boolean).join('\n\n');
-}
-
-function splitGeneratedReportSections(report: string) {
-  const narrativeStart = report.search(/^##\s+2[.\s-]/m);
-  if (narrativeStart < 0) {
-    return {
-      table: report,
-      narrative: '',
-    };
-  }
-
-  return {
-    table: report.slice(0, narrativeStart).trim(),
-    narrative: report.slice(narrativeStart).trim(),
-  };
 }
 
 function downloadBlob(blob: Blob, fileName: string) {

@@ -3,6 +3,7 @@ import test from 'node:test';
 import { mergeActivityReportRules } from '../lib/activity-report/default-rules.ts';
 import { normalizeAndGroupActivities, selectReportModel } from '../lib/activity-report/normalize.ts';
 import { buildActivityReportPrompt, buildActivityReportPromptInput, buildActivityReportSectionPrompt } from '../lib/activity-report/prompt.ts';
+import { combineActivityReportSections, splitActivityReportSections } from '../lib/activity-report/sections.ts';
 import { buildTrainingExample, exportTrainingExamplesAsJsonl } from '../lib/activity-report/training.ts';
 
 const activities = [
@@ -164,6 +165,28 @@ test('promptul pe sectiuni pastreaza detalierea RA pentru narativ', () => {
   assert.match(prompt, /Indicator\/Impact/);
   assert.match(prompt, /Nu scurta continutul final/);
   assert.match(prompt, /fara sectiuni 3\/4\/5/);
+});
+
+test('raportul generat se separa strict in sectiunea 1 tabel si sectiunea 2 narativ', () => {
+  const table = [
+    '# Raport de Activitate - Expert Test',
+    '',
+    '## 1. Tabel activitati',
+    '| SA | Perioada | Activitate | Ore |',
+    '| --- | --- | --- | ---: |',
+    '| SA1.1 | 01.06.2026 | Activitate prestata | 6 |',
+  ].join('\n');
+  const narrative = [
+    '## 2. Descriere detaliata a activitatilor desfasurate',
+    'Am elaborat activitatile raportate si am documentat rezultatele obtinute.',
+  ].join('\n');
+
+  const report = combineActivityReportSections({ table, narrative });
+  const sections = splitActivityReportSections(report);
+
+  assert.equal(sections.table, table);
+  assert.equal(sections.narrative, narrative);
+  assert.doesNotMatch(report, /## 3|## 4|## 5/);
 });
 
 test('exportă exemple validate în JSONL compatibil pentru fine-tuning', () => {
