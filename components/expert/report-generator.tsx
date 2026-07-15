@@ -68,16 +68,31 @@ export function ReportGenerator({ activities, month, year, expertName }: ReportG
         }),
       });
 
-      const data = await response.json();
-      if (data.error) {
-        setError(data.error);
-      } else {
-        setGeneratedReport(data.report);
-        setGenerationWarnings(data.warnings || []);
-        setCalculatedTotalHours(data.totals?.totalHours ?? null);
+      const contentType = response.headers.get('Content-Type') || '';
+      const data = contentType.includes('application/json')
+        ? ((await response.json().catch(() => ({}))) as {
+            error?: string;
+            report?: string;
+            warnings?: string[];
+            totals?: { totalHours?: number };
+          })
+        : { error: await response.text().catch(() => '') };
+
+      if (!response.ok || data.error) {
+        setError(data.error || `Eroare la generarea raportului. Status HTTP: ${response.status}`);
+        return;
       }
+
+      if (!data.report?.trim()) {
+        setError('Raportul nu a generat continut. Incearca din nou sau contacteaza administratorul.');
+        return;
+      }
+
+      setGeneratedReport(data.report);
+      setGenerationWarnings(data.warnings || []);
+      setCalculatedTotalHours(data.totals?.totalHours ?? null);
     } catch (err) {
-      setError('Eroare la generarea raportului');
+      setError(err instanceof Error ? err.message : 'Eroare la generarea raportului');
     } finally {
       setIsGenerating(false);
     }
