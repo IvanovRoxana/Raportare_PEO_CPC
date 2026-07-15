@@ -79,7 +79,7 @@ export function MonthlyReportExport({ expert, activities, concurrentProjects = [
     setExportError(null);
     try {
       // Generate the selected documents
-      const docs = [];
+      const docs: { name: string; content: string }[] = [];
       
       if (includeTimesheet) {
         await downloadPontajExcel('peo');
@@ -107,13 +107,23 @@ export function MonthlyReportExport({ expert, activities, concurrentProjects = [
           }),
         });
         
-        if (response.ok) {
-          const data = await response.json();
-          docs.push({
-            name: `Raport_Activitate_${expert.name}_${getMonthName(month)}_${year}.md`,
-            content: data.report,
-          });
+        if (!response.ok) {
+          const contentType = response.headers.get('Content-Type') || '';
+          const message = contentType.includes('application/json')
+            ? ((await response.json().catch(() => ({}))) as { error?: string }).error
+            : await response.text().catch(() => '');
+          throw new Error(message || `Exportul RA a esuat. Status HTTP: ${response.status}`);
         }
+
+        const data = (await response.json()) as { report?: string };
+        if (!data.report?.trim()) {
+          throw new Error('Exportul RA nu a generat continut. Incearca din nou sau contacteaza administratorul.');
+        }
+
+        docs.push({
+          name: `Raport_Activitate_${expert.name}_${getMonthName(month)}_${year}.md`,
+          content: data.report,
+        });
       }
 
       if (isBusinessHubExportAvailable && (includeBusinessHubPv || includeBusinessHubAddresses)) {

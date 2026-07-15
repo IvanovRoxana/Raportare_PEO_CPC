@@ -1794,19 +1794,29 @@ function ExpertDashboardContent() {
               </p>
             )}
           </div>
-          <span title={submitButtonTitle}>
-            <Button
-              onClick={handleSubmitMonth}
-              disabled={
-                isApproved
-                || isSent
-                || isInReview
-              }
-            >
-            {submitButtonIcon}
-            {submitButtonLabel}
-            </Button>
-          </span>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <MonthlyReportExport
+              expert={selectedExpert as Expert}
+              activities={activities}
+              concurrentProjects={concurrentProjects}
+              concurrentTimesheetEntries={concurrentTimesheetEntries.filter((entry) => entry.expertId === selectedExpertId)}
+              month={currentMonth}
+              year={currentYear}
+            />
+            <span title={submitButtonTitle}>
+              <Button
+                onClick={handleSubmitMonth}
+                disabled={
+                  isApproved
+                  || isSent
+                  || isInReview
+                }
+              >
+              {submitButtonIcon}
+              {submitButtonLabel}
+              </Button>
+            </span>
+          </div>
         </div>
 
         <Card className="mb-6">
