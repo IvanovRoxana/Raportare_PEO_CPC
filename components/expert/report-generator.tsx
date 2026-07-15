@@ -196,7 +196,6 @@ export function ReportGenerator({ activities, month, year, expertName }: ReportG
     setIsExporting(true);
     try {
       const { Document, Packer, Paragraph, TextRun, HeadingLevel } = await import('docx');
-      const { saveAs } = await import('file-saver');
 
       const paragraphs = generatedReport.split('\n').map((line) => {
         if (line.startsWith('# ')) {
@@ -231,8 +230,9 @@ export function ReportGenerator({ activities, month, year, expertName }: ReportG
       });
 
       const blob = await Packer.toBlob(doc);
-      saveAs(blob, `Raport_${expertName}_${getMonthName(month)}_${year}.docx`);
+      downloadBlob(blob, `Raport_${expertName}_${getMonthName(month)}_${year}.docx`);
     } catch (err) {
+      console.error('Error exporting activity report:', err);
       setError('Eroare la exportul documentului');
     } finally {
       setIsExporting(false);
@@ -378,6 +378,17 @@ function truncateForReport(value: string) {
   const normalized = value.replace(/\s+/g, ' ').trim();
   if (normalized.length <= MAX_ACTIVITY_DESCRIPTION_CHARS) return normalized;
   return `${normalized.slice(0, MAX_ACTIVITY_DESCRIPTION_CHARS).trim()}...`;
+}
+
+function downloadBlob(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 function buildReportRequestPayload({
