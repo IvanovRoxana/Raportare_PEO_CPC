@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   getActivityAutofillEmbeddingModel,
+  isAnexa10DeterministicDocxEnabledClient,
   isActivityAutofillRagAuditEnabled,
   isActivityAutofillRagEnabled,
   isActivityAutofillRagPaOnly,
@@ -99,6 +100,21 @@ test('reporting work blocks UI is disabled by default and enables only on explic
   assert.equal(isReportingWorkBlocksEnabledClient(), true);
 
   restoreEnv('NEXT_PUBLIC_ENABLE_REPORTING_WORK_BLOCKS', previousClient);
+});
+
+test('deterministic Anexa 10 DOCX export is disabled by default and enables only on explicit public flag', () => {
+  const previousClient = process.env.NEXT_PUBLIC_ENABLE_ANEXA10_DETERMINISTIC_DOCX;
+
+  delete process.env.NEXT_PUBLIC_ENABLE_ANEXA10_DETERMINISTIC_DOCX;
+  assert.equal(isAnexa10DeterministicDocxEnabledClient(), false);
+
+  process.env.NEXT_PUBLIC_ENABLE_ANEXA10_DETERMINISTIC_DOCX = 'false';
+  assert.equal(isAnexa10DeterministicDocxEnabledClient(), false);
+
+  process.env.NEXT_PUBLIC_ENABLE_ANEXA10_DETERMINISTIC_DOCX = 'true';
+  assert.equal(isAnexa10DeterministicDocxEnabledClient(), true);
+
+  restoreEnv('NEXT_PUBLIC_ENABLE_ANEXA10_DETERMINISTIC_DOCX', previousClient);
 });
 
 test('activity autofill RAG enables only on explicit true', () => {

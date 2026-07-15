@@ -21,6 +21,10 @@ export function isReportingWorkBlocksEnabledClient() {
   return process.env.NEXT_PUBLIC_ENABLE_REPORTING_WORK_BLOCKS === 'true';
 }
 
+export function isAnexa10DeterministicDocxEnabledClient() {
+  return process.env.NEXT_PUBLIC_ENABLE_ANEXA10_DETERMINISTIC_DOCX === 'true';
+}
+
 export function isActivityAutofillRagEnabled() {
   return process.env.ACTIVITY_AUTOFILL_RAG_ENABLED === 'true';
 }

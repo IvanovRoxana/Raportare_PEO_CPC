@@ -17,15 +17,19 @@ import {
   MAX_DELIVERABLE_TITLES,
   truncateActivityReportText,
 } from '@/lib/activity-report/local-fallback';
+import { buildAnexa10ReportModel } from '@/lib/activity-report/build-report-model';
+import { buildAnexa10DocxBlob, buildAnexa10DocxFilename } from '@/lib/activity-report/docx-export';
 import { combineActivityReportSections, splitActivityReportSections } from '@/lib/activity-report/sections';
 import { getDocumentAuditTitle } from '@/lib/document-sharing';
-import type { Activity } from '@/lib/types';
+import type { Activity, Expert } from '@/lib/types';
 
 interface ReportGeneratorProps {
   activities: Activity[];
   month: number;
   year: number;
   expertName: string;
+  expert?: Pick<Expert, 'id' | 'name' | 'positionInProject' | 'role' | 'contractNumber' | 'contractType' | 'category' | 'projectCode' | 'projectTitle' | 'beneficiary'>;
+  enableDeterministicAnexa10Docx?: boolean;
 }
 
 type ReportSectionKind = 'table' | 'narrative';
@@ -69,9 +73,17 @@ type GeneratedReportTab = 'full' | 'table' | 'narrative';
 
 const REPORT_GENERATION_TIMEOUT_MS = 110_000;
 
-export function ReportGenerator({ activities, month, year, expertName }: ReportGeneratorProps) {
+export function ReportGenerator({
+  activities,
+  month,
+  year,
+  expertName,
+  expert,
+  enableDeterministicAnexa10Docx = false,
+}: ReportGeneratorProps) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [isExportingDeterministicDocx, setIsExportingDeterministicDocx] = useState(false);
   const [generatedReport, setGeneratedReport] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [detailLevel, setDetailLevel] = useState('foarte_detaliat');
@@ -296,6 +308,34 @@ export function ReportGenerator({ activities, month, year, expertName }: ReportG
     }
   };
 
+  const exportDeterministicAnexa10Docx = async () => {
+    if (activities.length === 0) return;
+
+    setIsExportingDeterministicDocx(true);
+    setError(null);
+    try {
+      const reportExpert = expert ?? {
+        id: activities[0]?.expertId || 'expert',
+        name: expertName,
+        role: '',
+        projectCode: activities.find((activity) => activity.projectCode)?.projectCode || '302141',
+      };
+      const model = buildAnexa10ReportModel({
+        expert: reportExpert,
+        activities,
+        month,
+        year,
+      });
+      const blob = await buildAnexa10DocxBlob(model);
+      downloadBlob(blob, buildAnexa10DocxFilename(model));
+    } catch (err) {
+      console.error('Error exporting deterministic Anexa 10 DOCX:', err);
+      setError('Eroare la exportul determinist Anexa 10');
+    } finally {
+      setIsExportingDeterministicDocx(false);
+    }
+  };
+
   const totalHours = activities.reduce((sum, a) => sum + a.hours, 0);
   const uniqueDates = new Set(activities.map((a) => a.date)).size;
   const hasLocalFallbackReport = isLocalFallbackDraft || isLocalFallbackReport(generatedReport);
@@ -401,6 +441,25 @@ export function ReportGenerator({ activities, month, year, expertName }: ReportG
               </>
             )}
           </Button>
+          {enableDeterministicAnexa10Docx && (
+            <Button
+              variant="outline"
+              onClick={exportDeterministicAnexa10Docx}
+              disabled={activities.length === 0 || isExportingDeterministicDocx}
+            >
+              {isExportingDeterministicDocx ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Export Anexa 10...
+                </>
+              ) : (
+                <>
+                  <Download className="h-4 w-4 mr-2" />
+                  Export Anexa 10 DOCX
+                </>
+              )}
+            </Button>
+          )}
           <Button variant="secondary" onClick={markAsValidatedExample} disabled={!generatedReport || isExportBlocked}>
             Marchează acest raport ca exemplu validat
           </Button>
