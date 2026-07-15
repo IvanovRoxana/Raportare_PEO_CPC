@@ -16,6 +16,9 @@ const reportingWorkBlockBundlesHookSource = backendHooksSource.match(
 const reportingWorkBlockDraftHookSource = backendHooksSource.match(
   /export function useReportingWorkBlockDraft\([\s\S]*?\n\}/,
 )?.[0] ?? '';
+const reportingWorkBlockActivityOptionsHookSource = backendHooksSource.match(
+  /export function useReportingWorkBlockActivityOptions\([\s\S]*?\n\}/,
+)?.[0] ?? '';
 
 test('reporting work blocks service is read-only and exported through backend store', () => {
   assert.match(reportingWorkBlocksServiceSource, /export const reportingWorkBlocksService = \{/);
@@ -42,6 +45,16 @@ test('reporting work block draft hook prepares local drafts without cache invali
   assert.match(reportingWorkBlockDraftHookSource, /const prepareDraft = \(input: DraftWorkBlockInput, activities: Activity\[\]\)/);
   assert.match(reportingWorkBlockDraftHookSource, /reportingWorkBlocksService\.prepareDraft\(input, activities\)/);
   assert.doesNotMatch(reportingWorkBlockDraftHookSource, /mutate\(|useSWR|create|update|delete|upsert/);
+});
+
+test('reporting work block activity options hook is pure and cache-safe', () => {
+  assert.match(backendHooksSource, /buildDraftWorkBlockActivityOptions/);
+  assert.match(reportingWorkBlockActivityOptionsHookSource, /export function useReportingWorkBlockActivityOptions\(/);
+  assert.match(reportingWorkBlockActivityOptionsHookSource, /existingBundles: ReportingWorkBlockBundle\[\] = \[\]/);
+  assert.match(reportingWorkBlockActivityOptionsHookSource, /buildDraftWorkBlockActivityOptions\(\{ activities, existingBundles, editingWorkBlockId \}\)/);
+  assert.match(reportingWorkBlockActivityOptionsHookSource, /getUnallocatedActivityCount\(options\)/);
+  assert.match(reportingWorkBlockActivityOptionsHookSource, /getUnallocatedHoursTotal\(options\)/);
+  assert.doesNotMatch(reportingWorkBlockActivityOptionsHookSource, /mutate\(|useSWR|create|update|delete|upsert/);
 });
 
 test('export page wires persisted work block bundles as a read-only optional preview source', () => {

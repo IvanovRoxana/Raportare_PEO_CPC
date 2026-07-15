@@ -46,6 +46,11 @@ import { getContractedProcurementProjects, type ProcurementChecklist, type Procu
 import type { GTDocument, GTEntity, GTImportBatch, GTMonitoringRecord, GTPerson, Organization } from '@/lib/grup-tinta/types';
 import type { ReportingWorkBlockBundle } from '@/lib/activity-report/work-blocks';
 import type { DraftWorkBlockInput } from '@/lib/activity-report/draft-work-blocks';
+import {
+  buildDraftWorkBlockActivityOptions,
+  getUnallocatedActivityCount,
+  getUnallocatedHoursTotal,
+} from '@/lib/activity-report/draft-work-block-options';
 import { isReportingWorkBlocksEnabledClient } from '@/lib/feature-flags';
 
 const EMPTY_LIST: readonly never[] = Object.freeze([]);
@@ -200,6 +205,20 @@ export function useReportingWorkBlockDraft() {
   );
 
   return { prepareDraft };
+}
+
+export function useReportingWorkBlockActivityOptions(
+  activities: Activity[],
+  existingBundles: ReportingWorkBlockBundle[] = [],
+  editingWorkBlockId?: string,
+) {
+  const options = buildDraftWorkBlockActivityOptions({ activities, existingBundles, editingWorkBlockId });
+
+  return {
+    options,
+    unallocatedActivityCount: getUnallocatedActivityCount(options),
+    unallocatedHoursTotal: getUnallocatedHoursTotal(options),
+  };
 }
 
 export function useActivityMutations() {
