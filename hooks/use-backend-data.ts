@@ -51,6 +51,10 @@ import {
   getUnallocatedActivityCount,
   getUnallocatedHoursTotal,
 } from '@/lib/activity-report/draft-work-block-options';
+import {
+  buildDraftWorkBlockDeliverableOptions,
+  getUnassociatedDeliverableCount,
+} from '@/lib/activity-report/draft-work-block-deliverable-options';
 import { isReportingWorkBlocksEnabledClient } from '@/lib/feature-flags';
 
 const EMPTY_LIST: readonly never[] = Object.freeze([]);
@@ -218,6 +222,19 @@ export function useReportingWorkBlockActivityOptions(
     options,
     unallocatedActivityCount: getUnallocatedActivityCount(options),
     unallocatedHoursTotal: getUnallocatedHoursTotal(options),
+  };
+}
+
+export function useReportingWorkBlockDeliverableOptions(
+  activities: Activity[],
+  existingBundles: ReportingWorkBlockBundle[] = [],
+  editingWorkBlockId?: string,
+) {
+  const options = buildDraftWorkBlockDeliverableOptions({ activities, existingBundles, editingWorkBlockId });
+
+  return {
+    options,
+    unassociatedDeliverableCount: getUnassociatedDeliverableCount(options),
   };
 }
 
