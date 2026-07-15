@@ -10,6 +10,13 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { getMonthName } from '@/lib/app-utils';
+import {
+  buildLocalActivityReport,
+  isBlockedActivityReportExport,
+  isLocalFallbackReport,
+  MAX_DELIVERABLE_TITLES,
+  truncateActivityReportText,
+} from '@/lib/activity-report/local-fallback';
 import { combineActivityReportSections, splitActivityReportSections } from '@/lib/activity-report/sections';
 import { getDocumentAuditTitle } from '@/lib/document-sharing';
 import type { Activity } from '@/lib/types';
@@ -61,8 +68,6 @@ type ReportSectionPlan = {
 type GeneratedReportTab = 'full' | 'table' | 'narrative';
 
 const REPORT_GENERATION_TIMEOUT_MS = 110_000;
-const MAX_ACTIVITY_DESCRIPTION_CHARS = 700;
-const MAX_DELIVERABLE_TITLES = 5;
 
 export function ReportGenerator({ activities, month, year, expertName }: ReportGeneratorProps) {
   const [isGenerating, setIsGenerating] = useState(false);
@@ -80,6 +85,7 @@ export function ReportGenerator({ activities, month, year, expertName }: ReportG
   const [generatedTableSection, setGeneratedTableSection] = useState('');
   const [generatedNarrativeSection, setGeneratedNarrativeSection] = useState('');
   const [activeGeneratedTab, setActiveGeneratedTab] = useState<GeneratedReportTab>('full');
+  const [isLocalFallbackDraft, setIsLocalFallbackDraft] = useState(false);
 
   const generateWithAI = async () => {
     setIsGenerating(true);
@@ -88,6 +94,7 @@ export function ReportGenerator({ activities, month, year, expertName }: ReportG
     setGeneratedTableSection('');
     setGeneratedNarrativeSection('');
     setActiveGeneratedTab('table');
+    setIsLocalFallbackDraft(false);
     setGenerationWarnings([]);
     setGenerationStatus('Pregatesc sectiunile RA...');
 
@@ -130,6 +137,7 @@ export function ReportGenerator({ activities, month, year, expertName }: ReportG
       setGeneratedNarrativeSection(narrativeSection);
       setGeneratedReport(combineActivityReportSections({ table: tableSection, narrative: narrativeSection }));
       setActiveGeneratedTab('full');
+      setIsLocalFallbackDraft(false);
       setGenerationWarnings([
         'Raportul a fost generat cu AI in doua parti: Sectiunea 1 tabel si Sectiunea 2 narativ.',
         ...Array.from(warnings),
@@ -137,11 +145,11 @@ export function ReportGenerator({ activities, month, year, expertName }: ReportG
       setCalculatedTotalHours(totalHours);
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') {
-        useFallbackReport('Generarea AI a depasit timpul disponibil. Am generat local un raport RA editabil si exportabil.');
+        useFallbackReport('Generarea AI a depasit timpul disponibil. Am generat local doar un draft RA pentru verificare.');
       } else {
         const message = err instanceof Error ? err.message : 'Eroare la generarea raportului';
         if (/504|timeout|expir/i.test(message)) {
-          useFallbackReport('AI-ul nu a finalizat in timpul disponibil. Am generat local un raport RA editabil si exportabil.');
+          useFallbackReport('AI-ul nu a finalizat in timpul disponibil. Am generat local doar un draft RA pentru verificare.');
         } else {
           setError(message);
         }
@@ -166,6 +174,7 @@ export function ReportGenerator({ activities, month, year, expertName }: ReportG
     setGeneratedTableSection(table);
     setGeneratedNarrativeSection(narrative);
     setActiveGeneratedTab('full');
+    setIsLocalFallbackDraft(true);
     setCalculatedTotalHours(totalHours);
     setGenerationWarnings([warning]);
     setError(null);
@@ -226,6 +235,10 @@ export function ReportGenerator({ activities, month, year, expertName }: ReportG
 
   const exportToWord = async () => {
     if (!generatedReport) return;
+    if (isLocalFallbackDraft || isBlockedActivityReportExport(generatedReport)) {
+      setError('Draftul local sau textul trunchiat nu poate fi exportat ca Anexa 10. Regenerati raportul inainte de export.');
+      return;
+    }
 
     setIsExporting(true);
     try {
@@ -285,6 +298,8 @@ export function ReportGenerator({ activities, month, year, expertName }: ReportG
 
   const totalHours = activities.reduce((sum, a) => sum + a.hours, 0);
   const uniqueDates = new Set(activities.map((a) => a.date)).size;
+  const hasLocalFallbackReport = isLocalFallbackDraft || isLocalFallbackReport(generatedReport);
+  const isExportBlocked = hasLocalFallbackReport || isBlockedActivityReportExport(generatedReport);
 
   return (
     <Card>
@@ -372,7 +387,7 @@ export function ReportGenerator({ activities, month, year, expertName }: ReportG
           <Button
             variant="outline"
             onClick={exportToWord}
-            disabled={!generatedReport || isExporting}
+            disabled={!generatedReport || isExporting || isExportBlocked}
           >
             {isExporting ? (
               <>
@@ -386,7 +401,7 @@ export function ReportGenerator({ activities, month, year, expertName }: ReportG
               </>
             )}
           </Button>
-          <Button variant="secondary" onClick={markAsValidatedExample} disabled={!generatedReport}>
+          <Button variant="secondary" onClick={markAsValidatedExample} disabled={!generatedReport || isExportBlocked}>
             Marchează acest raport ca exemplu validat
           </Button>
           <Button variant="outline" onClick={exportTrainingExamples}>
@@ -396,6 +411,12 @@ export function ReportGenerator({ activities, month, year, expertName }: ReportG
 
         {error && (
           <div className="p-3 bg-destructive/10 text-destructive rounded-md text-sm">{error}</div>
+        )}
+
+        {hasLocalFallbackReport && (
+          <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm font-medium text-destructive">
+            Draft local generat dupa esecul AI. Documentul nu poate fi exportat ca Anexa 10.
+          </div>
         )}
 
         {generatedReport && (
@@ -463,9 +484,7 @@ function splitPhrases(value: string) {
 }
 
 function truncateForReport(value: string) {
-  const normalized = value.replace(/\s+/g, ' ').trim();
-  if (normalized.length <= MAX_ACTIVITY_DESCRIPTION_CHARS) return normalized;
-  return `${normalized.slice(0, MAX_ACTIVITY_DESCRIPTION_CHARS).trim()}...`;
+  return truncateActivityReportText(value);
 }
 
 function downloadBlob(blob: Blob, fileName: string) {
@@ -744,86 +763,6 @@ async function fetchReportSection({
   } finally {
     window.clearTimeout(timeoutId);
   }
-}
-
-function buildLocalActivityReport({
-  activities,
-  month,
-  year,
-  expertName,
-  preferredPhrases,
-  forbiddenPhrases,
-}: {
-  activities: Activity[];
-  month: number;
-  year: number;
-  expertName: string;
-  preferredPhrases: string[];
-  forbiddenPhrases: string[];
-}) {
-  const sortedActivities = [...activities].sort((first, second) => first.date.localeCompare(second.date));
-  const totalHours = sortedActivities.reduce((sum, activity) => sum + (Number(activity.hours) || 0), 0);
-  const uniqueDates = [...new Set(sortedActivities.map((activity) => activity.date))];
-  const bySa = sortedActivities.reduce<Record<string, Activity[]>>((groups, activity) => {
-    const key = activity.saCode || 'SA neprecizata';
-    groups[key] = [...(groups[key] || []), activity];
-    return groups;
-  }, {});
-  const preferredPhrase = preferredPhrases[0] || 'am realizat';
-  const forbiddenLine = forbiddenPhrases.length > 0
-    ? `\nFormulari evitate: ${forbiddenPhrases.join(', ')}.`
-    : '';
-
-  const tableRows = Object.entries(bySa).map(([saCode, items]) => {
-    const hours = items.reduce((sum, activity) => sum + (Number(activity.hours) || 0), 0);
-    const dates = [...new Set(items.map((activity) => activity.date))].join(', ');
-    const titles = [...new Set(items.map((activity) => activity.title || activity.activityType || 'Activitate'))].join('; ');
-    const deliverables = collectDeliverableTitles(items);
-    return `| ${saCode} | ${dates} | ${titles} | ${deliverables || 'Livrabile mentionate in activitatile raportate'} | ${hours} |`;
-  });
-
-  const detailRows = Object.entries(bySa).flatMap(([saCode, items]) => [
-    `### ${saCode}`,
-    ...items.map((activity) => {
-      const description = truncateForReport(activity.gdprGeneratedText || activity.description || activity.title || activity.activityType || 'Activitate raportata');
-      const deliverables = collectDeliverableTitles([activity]);
-      return [
-        `**${activity.date} - ${Number(activity.hours) || 0}h**`,
-        `${preferredPhrase} activitatea "${activity.title || activity.activityType || 'activitate raportata'}". ${description}`,
-        `Rezultat: activitatea a fost documentata si integrata in raportarea lunara.`,
-        `Beneficiar: proiectul si partile interesate relevante.`,
-        `Indicator/Impact: contributie la indeplinirea activitatilor planificate pentru ${getMonthName(month)} ${year}.`,
-        `Livrabile: ${deliverables || 'nu sunt precizate in activitate'}.`,
-        `Locatie: ${activity.location || 'neprecizata'}.`,
-      ].join('\n');
-    }),
-  ]);
-
-  return [
-    `# Raport de Activitate - ${expertName}`,
-    '',
-    `## ${getMonthName(month)} ${year}`,
-    '',
-    `Raport generat local din activitatile introduse, deoarece generarea AI nu a finalizat in timpul disponibil.${forbiddenLine}`,
-    '',
-    '## 1. Tabel activitati',
-    '',
-    '| Subactivitate / cod SA | Perioada / zile acoperite | Activitate prestata | Rezultate / materiale elaborate / livrabile | Nr. ore lucrate |',
-    '| --- | --- | --- | --- | ---: |',
-    ...tableRows,
-    '',
-    '## 2. Descriere detaliata pe subactivitati si zile',
-    '',
-    ...detailRows,
-    '',
-    `Sinteza lunara: totalul activitatilor raportate este de ${totalHours} ore, distribuite pe ${uniqueDates.length} zile lucrate. Activitatile descrise sunt coerente cu pontajul lunar si pot fi revizuite manual inainte de exportul final.`,
-  ].join('\n');
-}
-
-function collectDeliverableTitles(activities: Activity[]) {
-  return [...new Set(activities.flatMap((activity) =>
-    (activity.deliverables || []).map((deliverable) => getDocumentAuditTitle(deliverable)).filter(Boolean),
-  ))].slice(0, MAX_DELIVERABLE_TITLES).join('; ');
 }
 
 function buildValidatedExamples(value: string) {
