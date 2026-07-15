@@ -5,6 +5,8 @@ import test from 'node:test';
 const awsStoreSource = readFileSync(new URL('../lib/aws-store.ts', import.meta.url), 'utf8');
 const backendStoreSource = readFileSync(new URL('../lib/backend-store.ts', import.meta.url), 'utf8');
 const backendHooksSource = readFileSync(new URL('../hooks/use-backend-data.ts', import.meta.url), 'utf8');
+const exportPageSource = readFileSync(new URL('../app/expert/peo/export/page.tsx', import.meta.url), 'utf8');
+const reportingWorkBlocksPanelSource = readFileSync(new URL('../components/expert/reporting-work-blocks-panel.tsx', import.meta.url), 'utf8');
 const reportingWorkBlocksServiceSource = awsStoreSource.match(
   /export const reportingWorkBlocksService = \{[\s\S]*?\n\};/,
 )?.[0] ?? '';
@@ -27,4 +29,14 @@ test('reporting work block bundles hook is opt-in and uses an isolated cache key
   assert.match(reportingWorkBlockBundlesHookSource, /reporting-work-block-bundles-\$\{expertId\}-\$\{month\}-\$\{year\}/);
   assert.match(reportingWorkBlockBundlesHookSource, /reportingWorkBlocksService\.getBundlesByExpertAndMonth\(expertId!, month, year\)/);
   assert.doesNotMatch(reportingWorkBlockBundlesHookSource, /activities-|shared-deliverables|concurrent-project-timesheet/);
+});
+
+test('export page wires persisted work block bundles as a read-only optional preview source', () => {
+  assert.match(exportPageSource, /useReportingWorkBlockBundles,/);
+  assert.match(exportPageSource, /const \{ bundles: persistedWorkBlockBundles \} = useReportingWorkBlockBundles\(selectedExpertId, currentMonth, currentYear\);/);
+  assert.match(exportPageSource, /persistedBundles=\{persistedWorkBlockBundles\}/);
+  assert.match(reportingWorkBlocksPanelSource, /persistedBundles\?: ReportingWorkBlockBundle\[\];/);
+  assert.match(reportingWorkBlocksPanelSource, /persistedBundles = \[\]/);
+  assert.match(reportingWorkBlocksPanelSource, /const activityBundles = useMemo\(\(\) => buildWorkBlocks\(activities\), \[activities\]\);/);
+  assert.match(reportingWorkBlocksPanelSource, /const bundles = persistedBundles\.length > 0 \? persistedBundles : activityBundles;/);
 });

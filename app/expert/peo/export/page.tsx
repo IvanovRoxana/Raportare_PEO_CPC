@@ -20,6 +20,7 @@ import {
   useConcurrentProjects,
   useConcurrentProjectTimesheetByMonth,
   useExperts,
+  useReportingWorkBlockBundles,
 } from '@/hooks/use-backend-data';
 
 function readMonthParam(value: string | null, fallback: number) {
@@ -58,6 +59,7 @@ function ExportRaContent() {
   const { activities: allMonthActivities, isLoading: activitiesLoading } = useActivitiesByMonth(currentMonth, currentYear);
   const { projects: concurrentProjects } = useConcurrentProjects(selectedExpertId);
   const { entries: concurrentTimesheetEntries } = useConcurrentProjectTimesheetByMonth(currentMonth, currentYear);
+  const { bundles: persistedWorkBlockBundles } = useReportingWorkBlockBundles(selectedExpertId, currentMonth, currentYear);
 
   useEffect(() => {
     let isMounted = true;
@@ -208,6 +210,7 @@ function ExportRaContent() {
               activities={activities}
               month={currentMonth}
               year={currentYear}
+              persistedBundles={persistedWorkBlockBundles}
             />
           )}
           <ReportGenerator

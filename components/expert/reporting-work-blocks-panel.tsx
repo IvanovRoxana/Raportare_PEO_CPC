@@ -12,7 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { buildWorkBlocks, calculateWorkBlockHours, validateWorkBlockAllocation } from '@/lib/activity-report/work-blocks';
+import { buildWorkBlocks, calculateWorkBlockHours, validateWorkBlockAllocation, type ReportingWorkBlockBundle } from '@/lib/activity-report/work-blocks';
 import { formatDayCluster } from '@/lib/activity-report/day-cluster';
 import { getMonthName } from '@/lib/app-utils';
 import { getDocumentAuditTitle } from '@/lib/document-sharing';
@@ -22,11 +22,13 @@ interface ReportingWorkBlocksPanelProps {
   activities: Activity[];
   month: number;
   year: number;
+  persistedBundles?: ReportingWorkBlockBundle[];
 }
 
-export function ReportingWorkBlocksPanel({ activities, month, year }: ReportingWorkBlocksPanelProps) {
+export function ReportingWorkBlocksPanel({ activities, month, year, persistedBundles = [] }: ReportingWorkBlocksPanelProps) {
   const monthName = getMonthName(month);
-  const bundles = useMemo(() => buildWorkBlocks(activities), [activities]);
+  const activityBundles = useMemo(() => buildWorkBlocks(activities), [activities]);
+  const bundles = persistedBundles.length > 0 ? persistedBundles : activityBundles;
   const problems = useMemo(() => validateWorkBlockAllocation(activities, bundles), [activities, bundles]);
   const totalHours = bundles.reduce((sum, bundle) => sum + calculateWorkBlockHours(bundle.activityLinks), 0);
   const unassociatedDeliverableCount = activities.reduce((count, activity) => (
