@@ -20,6 +20,10 @@ interface ReportGeneratorProps {
   expertName: string;
 }
 
+const REPORT_GENERATION_TIMEOUT_MS = 45_000;
+const MAX_ACTIVITY_DESCRIPTION_CHARS = 700;
+const MAX_DELIVERABLE_TITLES = 5;
+
 export function ReportGenerator({ activities, month, year, expertName }: ReportGeneratorProps) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
@@ -37,10 +41,14 @@ export function ReportGenerator({ activities, month, year, expertName }: ReportG
     setIsGenerating(true);
     setError(null);
 
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), REPORT_GENERATION_TIMEOUT_MS);
+
     try {
       const response = await fetch('/api/ai/generate-activity-report', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           activities: activities.map((activity) => ({
             date: activity.date,
@@ -48,11 +56,12 @@ export function ReportGenerator({ activities, month, year, expertName }: ReportG
             saCode: activity.saCode,
             activityType: activity.activityType,
             title: activity.title,
-            description: activity.gdprGeneratedText || activity.description || activity.title,
+            description: truncateForReport(activity.gdprGeneratedText || activity.description || activity.title),
             location: activity.location,
             gdprTemplateCode: activity.gdprTemplateCode,
             gdprConclusionCode: activity.gdprConclusionCode,
-            deliverables: activity.deliverables?.map((deliverable) => getDocumentAuditTitle(deliverable)).filter(Boolean) || [],
+            deliverables: (activity.deliverables?.map((deliverable) => getDocumentAuditTitle(deliverable)).filter(Boolean) || [])
+              .slice(0, MAX_DELIVERABLE_TITLES),
           })),
           month: getMonthName(month),
           year,
@@ -92,8 +101,13 @@ export function ReportGenerator({ activities, month, year, expertName }: ReportG
       setGenerationWarnings(data.warnings || []);
       setCalculatedTotalHours(data.totals?.totalHours ?? null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Eroare la generarea raportului');
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        setError('Generarea raportului dureaza prea mult si a fost oprita. Incearca nivelul "Detaliat" sau mai putine exemple validate.');
+      } else {
+        setError(err instanceof Error ? err.message : 'Eroare la generarea raportului');
+      }
     } finally {
+      window.clearTimeout(timeoutId);
       setIsGenerating(false);
     }
   };
@@ -318,6 +332,12 @@ export function ReportGenerator({ activities, month, year, expertName }: ReportG
 
 function splitPhrases(value: string) {
   return value.split(',').map((phrase) => phrase.trim()).filter(Boolean);
+}
+
+function truncateForReport(value: string) {
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  if (normalized.length <= MAX_ACTIVITY_DESCRIPTION_CHARS) return normalized;
+  return `${normalized.slice(0, MAX_ACTIVITY_DESCRIPTION_CHARS).trim()}...`;
 }
 
 function buildValidatedExamples(value: string) {

@@ -11,6 +11,7 @@ import { NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+export const maxDuration = 55;
 
 export async function POST(req: Request) {
   try {
@@ -33,6 +34,7 @@ export async function POST(req: Request) {
       model: openaiModel(modelSelection.model.replace(/^openai\//, '')),
       system: ACTIVITY_REPORT_SYSTEM_PROMPT,
       prompt,
+      maxOutputTokens: 2400,
     });
 
     return NextResponse.json({

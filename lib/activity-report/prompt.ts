@@ -8,6 +8,9 @@ import type {
   ValidatedActivityReportExample,
 } from './types.ts';
 
+const MAX_PROMPT_DESCRIPTION_CHARS = 500;
+const MAX_PROMPT_LIST_ITEMS = 5;
+
 export const ACTIVITY_REPORT_SYSTEM_PROMPT = `Ești un asistent specializat în redactarea Rapoartelor de Activitate PEO / Anexa 10 pentru proiecte cu finanțare europeană.
 Scrii exclusiv în limba română, la persoana I singular.
 Textul trebuie să fie tehnic-administrativ, clar, coerent, orientat pe activități, livrabile, rezultate, beneficiari și impact.
@@ -152,19 +155,32 @@ function formatGroupedActivities(groups: Record<string, NormalizedActivity[]>) {
         `Ore: ${activity.hours}`,
         `Tip: ${activity.activityType || 'tip neprecizat'}`,
         `Titlu: ${activity.title}`,
-        `Descriere: ${activity.description}`,
+        `Descriere: ${truncatePromptText(activity.description, MAX_PROMPT_DESCRIPTION_CHARS)}`,
         activity.gdprTemplateCode ? `Cod GDPR: ${activity.gdprTemplateCode}` : null,
         activity.gdprConclusionCode ? `Concluzie GDPR: ${activity.gdprConclusionCode}` : null,
         `Locație: ${activity.location}`,
-        `Colaboratori: ${activity.collaborators.join(', ') || 'nu sunt precizați'}`,
-        `Livrabile: ${activity.deliverables.join(', ') || 'nu sunt precizate'}`,
-        `Beneficiari: ${activity.beneficiaries.join(', ') || 'nu sunt precizați'}`,
+        `Colaboratori: ${formatPromptList(activity.collaborators)}`,
+        `Livrabile: ${formatPromptList(activity.deliverables)}`,
+        `Beneficiari: ${formatPromptList(activity.beneficiaries)}`,
         `Indicator/Impact: ${activity.indicatorImpact || 'neprecizat'}`,
       ].filter(Boolean).join('; '));
 
       return `${saCode}\n${rows.join('\n')}`;
     })
     .join('\n\n');
+}
+
+function truncatePromptText(value: string, maxChars: number) {
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  if (normalized.length <= maxChars) return normalized;
+  return `${normalized.slice(0, maxChars).trim()}...`;
+}
+
+function formatPromptList(values: string[]) {
+  if (values.length === 0) return 'nu sunt precizate';
+  const visibleValues = values.slice(0, MAX_PROMPT_LIST_ITEMS);
+  const suffix = values.length > visibleValues.length ? `, +${values.length - visibleValues.length} suplimentare` : '';
+  return `${visibleValues.join(', ')}${suffix}`;
 }
 
 function formatTotals(totals: ActivityTotals) {
