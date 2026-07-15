@@ -57,6 +57,8 @@ type ReportSectionPlan = {
   activities: ReportActivityPayload[];
 };
 
+type GeneratedReportTab = 'full' | 'table' | 'narrative';
+
 const REPORT_GENERATION_TIMEOUT_MS = 110_000;
 const MAX_ACTIVITY_DESCRIPTION_CHARS = 700;
 const MAX_DELIVERABLE_TITLES = 5;
@@ -74,11 +76,17 @@ export function ReportGenerator({ activities, month, year, expertName }: ReportG
   const [generationWarnings, setGenerationWarnings] = useState<string[]>([]);
   const [calculatedTotalHours, setCalculatedTotalHours] = useState<number | null>(null);
   const [generationStatus, setGenerationStatus] = useState('');
+  const [generatedTableSection, setGeneratedTableSection] = useState('');
+  const [generatedNarrativeSection, setGeneratedNarrativeSection] = useState('');
+  const [activeGeneratedTab, setActiveGeneratedTab] = useState<GeneratedReportTab>('full');
 
   const generateWithAI = async () => {
     setIsGenerating(true);
     setError(null);
     setGeneratedReport('');
+    setGeneratedTableSection('');
+    setGeneratedNarrativeSection('');
+    setActiveGeneratedTab('table');
     setGenerationWarnings([]);
     setGenerationStatus('Pregatesc sectiunile RA...');
 
@@ -95,7 +103,7 @@ export function ReportGenerator({ activities, month, year, expertName }: ReportG
         validatedExamples,
       });
       const sections = buildReportSectionPlan(payload.activities);
-      const generatedSections: string[] = [];
+      const generatedSections: Partial<Record<ReportSectionKind, string>> = {};
       const warnings = new Set<string>();
 
       for (const [index, section] of sections.entries()) {
@@ -111,11 +119,16 @@ export function ReportGenerator({ activities, month, year, expertName }: ReportG
           throw new Error(`Sectiunea "${section.sectionTitle}" nu a generat continut.`);
         }
 
-        generatedSections.push(data.report.trim());
+        generatedSections[section.sectionKind] = data.report.trim();
         for (const warning of data.warnings || []) warnings.add(warning);
       }
 
-      setGeneratedReport(generatedSections.join('\n\n'));
+      const tableSection = generatedSections.table || '';
+      const narrativeSection = generatedSections.narrative || '';
+      setGeneratedTableSection(tableSection);
+      setGeneratedNarrativeSection(narrativeSection);
+      setGeneratedReport(combineGeneratedSections(tableSection, narrativeSection));
+      setActiveGeneratedTab('full');
       setGenerationWarnings([
         'Raportul a fost generat cu AI in doua parti: Sectiunea 1 tabel si Sectiunea 2 narativ.',
         ...Array.from(warnings),
@@ -139,17 +152,37 @@ export function ReportGenerator({ activities, month, year, expertName }: ReportG
   };
 
   const useFallbackReport = (warning: string) => {
-    setGeneratedReport(buildLocalActivityReport({
+    const fallbackReport = buildLocalActivityReport({
       activities,
       month,
       year,
       expertName,
       preferredPhrases: splitPhrases(preferredPhrases),
       forbiddenPhrases: splitPhrases(forbiddenPhrases),
-    }));
+    });
+    const { table, narrative } = splitGeneratedReportSections(fallbackReport);
+    setGeneratedReport(fallbackReport);
+    setGeneratedTableSection(table);
+    setGeneratedNarrativeSection(narrative);
+    setActiveGeneratedTab('full');
     setCalculatedTotalHours(totalHours);
     setGenerationWarnings([warning]);
     setError(null);
+  };
+
+  const updateGeneratedSection = (section: ReportSectionKind, value: string) => {
+    const nextTable = section === 'table' ? value : generatedTableSection;
+    const nextNarrative = section === 'narrative' ? value : generatedNarrativeSection;
+    setGeneratedTableSection(nextTable);
+    setGeneratedNarrativeSection(nextNarrative);
+    setGeneratedReport(combineGeneratedSections(nextTable, nextNarrative));
+  };
+
+  const updateGeneratedReport = (value: string) => {
+    const { table, narrative } = splitGeneratedReportSections(value);
+    setGeneratedReport(value);
+    setGeneratedTableSection(table);
+    setGeneratedNarrativeSection(narrative);
   };
 
 
@@ -366,10 +399,54 @@ export function ReportGenerator({ activities, month, year, expertName }: ReportG
 
         {generatedReport && (
           <div className="space-y-2">
-            <Label>Raport generat:</Label>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <Label>Raport generat:</Label>
+              <div className="flex rounded-lg border bg-muted/40 p-1">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={activeGeneratedTab === 'full' ? 'secondary' : 'ghost'}
+                  onClick={() => setActiveGeneratedTab('full')}
+                >
+                  Complet
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={activeGeneratedTab === 'table' ? 'secondary' : 'ghost'}
+                  onClick={() => setActiveGeneratedTab('table')}
+                >
+                  Sectiunea 1
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={activeGeneratedTab === 'narrative' ? 'secondary' : 'ghost'}
+                  onClick={() => setActiveGeneratedTab('narrative')}
+                >
+                  Sectiunea 2
+                </Button>
+              </div>
+            </div>
             <Textarea
-              value={generatedReport}
-              onChange={(e) => setGeneratedReport(e.target.value)}
+              value={
+                activeGeneratedTab === 'table'
+                  ? generatedTableSection
+                  : activeGeneratedTab === 'narrative'
+                    ? generatedNarrativeSection
+                    : generatedReport
+              }
+              onChange={(e) => {
+                if (activeGeneratedTab === 'table') {
+                  updateGeneratedSection('table', e.target.value);
+                  return;
+                }
+                if (activeGeneratedTab === 'narrative') {
+                  updateGeneratedSection('narrative', e.target.value);
+                  return;
+                }
+                updateGeneratedReport(e.target.value);
+              }}
               rows={15}
               className="font-mono text-sm"
             />
@@ -388,6 +465,25 @@ function truncateForReport(value: string) {
   const normalized = value.replace(/\s+/g, ' ').trim();
   if (normalized.length <= MAX_ACTIVITY_DESCRIPTION_CHARS) return normalized;
   return `${normalized.slice(0, MAX_ACTIVITY_DESCRIPTION_CHARS).trim()}...`;
+}
+
+function combineGeneratedSections(table: string, narrative: string) {
+  return [table.trim(), narrative.trim()].filter(Boolean).join('\n\n');
+}
+
+function splitGeneratedReportSections(report: string) {
+  const narrativeStart = report.search(/^##\s+2[.\s-]/m);
+  if (narrativeStart < 0) {
+    return {
+      table: report,
+      narrative: '',
+    };
+  }
+
+  return {
+    table: report.slice(0, narrativeStart).trim(),
+    narrative: report.slice(narrativeStart).trim(),
+  };
 }
 
 function downloadBlob(blob: Blob, fileName: string) {
