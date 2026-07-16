@@ -603,6 +603,7 @@ function ExpertDashboardContent() {
               activityType: activity.activityType,
               title: activity.title,
               description: activity.description,
+              businessHubMetaJson: activity.businessHubMetaJson,
             })),
           newActivities: [{
             id: nextActivity.id,
@@ -616,6 +617,7 @@ function ExpertDashboardContent() {
             activityType: nextActivity.activityType,
             title: nextActivity.title,
             description: nextActivity.description,
+            businessHubMetaJson: nextActivity.businessHubMetaJson,
           }],
           month: currentMonth,
           year: currentYear,
@@ -672,6 +674,7 @@ function ExpertDashboardContent() {
         activityType: activity.activityType,
         title: activity.title,
         description: activity.description,
+        businessHubMetaJson: activity.businessHubMetaJson,
       });
       const validation = validateActivitiesBeforeCreate({
         expert: selectedExpert,

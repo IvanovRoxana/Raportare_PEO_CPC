@@ -21,6 +21,7 @@ export interface ActivityDraftForValidation {
   activityType?: string;
   title?: string;
   description?: string;
+  businessHubMetaJson?: string;
 }
 
 export interface MonthlyNormInfo {
@@ -151,9 +152,10 @@ function getActivityDuplicateSignature(activity: ActivityDraftForValidation) {
   const activityLabel = normalizeActivityText(activity.title || activity.activityType);
   const activityDescription = normalizeActivityText(activity.description);
   const activityCode = normalizeActivityText(activity.catalogActivityId || activity.saCode);
+  const businessHubMeta = normalizeActivityText(activity.businessHubMetaJson);
   const projectCode = normalizeActivityText(activity.projectCode);
 
-  if (!activityLabel && !activityDescription && !activityCode) return null;
+  if (!activityLabel && !activityDescription && !activityCode && !businessHubMeta) return null;
 
   return [
     activity.expertId,
@@ -162,6 +164,7 @@ function getActivityDuplicateSignature(activity: ActivityDraftForValidation) {
     activityCode,
     activityLabel,
     activityDescription,
+    businessHubMeta,
   ].join('|');
 }
 

@@ -157,6 +157,49 @@ test('blocheaza duplicatele create in acelasi batch multi-day', () => {
   assert.equal(result.code, 'DUPLICATE_ACTIVITY');
 });
 
+
+test('permite doua activitati Business Hub in aceeasi zi cand metadatele evenimentului difera', () => {
+  const result = validateActivitiesBeforeCreate({
+    expert,
+    month: testMonth,
+    year: testYear,
+    existingActivities: [{
+      id: 'activity-existing',
+      expertId: expert.id,
+      date: '2026-02-02',
+      hours: 4,
+      projectCode: 'PEO',
+      saCode: 'SA3.2',
+      title: 'Registru evenimente Business Hub',
+      businessHubMetaJson: JSON.stringify({
+        entityName: 'FPBR',
+        eventTitle: 'Meeting FPBR',
+        date: '2026-02-02',
+        startTime: '09:00',
+        endTime: '13:00',
+      }),
+    }],
+    newActivities: [{
+      id: 'activity-new',
+      expertId: expert.id,
+      date: '2026-02-02',
+      hours: 4,
+      projectCode: 'PEO',
+      saCode: 'SA3.2',
+      title: 'Registru evenimente Business Hub',
+      businessHubMetaJson: JSON.stringify({
+        entityName: 'FPBR',
+        eventTitle: 'Meeting FPBR follow-up',
+        date: '2026-02-02',
+        startTime: '14:00',
+        endTime: '18:00',
+      }),
+    }],
+  });
+
+  assert.equal(result.ok, true);
+});
+
 test('accepta doar ore intregi intre 1 si 8 pentru pontaj nou', () => {
   assert.equal(isValidPontajHours(1), true);
   assert.equal(isValidPontajHours(8), true);
