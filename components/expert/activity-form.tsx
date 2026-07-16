@@ -1174,6 +1174,14 @@ export function ActivityForm({
       hours: isLeave ? 0 : Number(normalizePontajHoursValue(normalizedSelectedHours[date], defaultHours)),
       status: initialActivity?.status,
       projectCode: expert?.projectCode,
+      saCode: effectiveSaCode,
+      catalogActivityId: isBusinessHubTabActive
+        ? businessHubRegistryCatalogItem?.id
+        : selectedCatalogItem?.id,
+      activityType: effectiveActivityTitle,
+      title: effectiveActivityTitle,
+      description,
+      businessHubMetaJson: isBusinessHubTabActive ? serializeBusinessHubMeta({ ...businessHubMetaDraft, date }) : undefined,
     }));
     const existingActivityDrafts: ActivityDraftForValidation[] = allActivities
       .filter((activity) => activity.expertId === expertId)
