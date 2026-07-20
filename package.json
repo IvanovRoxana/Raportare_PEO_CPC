@@ -13,7 +13,8 @@
     "aws:sso": "powershell -ExecutionPolicy Bypass -File scripts/aws-sso-login.ps1",
     "prepare:reference-data": "node scripts/prepare-reference-data.mjs",
     "import:reference-data": "powershell -ExecutionPolicy Bypass -File scripts/import-reference-data-to-dynamodb.ps1",
-    "import:legal-holidays": "powershell -ExecutionPolicy Bypass -File scripts/import-legal-holidays-to-dynamodb.ps1"
+    "import:legal-holidays": "powershell -ExecutionPolicy Bypass -File scripts/import-legal-holidays-to-dynamodb.ps1",
+    "migrate:activity-status": "node scripts/migrate-activity-catalog-status.mjs"
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.65",

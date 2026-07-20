@@ -500,6 +500,7 @@ export interface ActivityCatalog {
   serviceCategory: string;
   activityNumber: number;
   activityName: string;
+  isActive?: boolean;
   description?: string;
   objectives?: string;
   serviceComponent?: string;
