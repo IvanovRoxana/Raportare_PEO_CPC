@@ -182,6 +182,7 @@ function ExpertDashboardContent() {
   const [currentYear, setCurrentYear] = useState(queryYear);
   const [activeTab, setActiveTab] = useState('activitati');
   const [showForm, setShowForm] = useState(false);
+  const [draftSessionId, setDraftSessionId] = useState(0);
   const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
   const [selectedExpertId, setSelectedExpertId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -1318,6 +1319,7 @@ function ExpertDashboardContent() {
       syncSelectedDates([issue.action.date]);
       setEditingActivity(null);
       setSharedActivityPrefill(null);
+      setDraftSessionId((current) => current + 1);
       setActivityResolutionHint({
         id: `${issue.id}-${Date.now()}`,
         title: issue.title,
@@ -1524,6 +1526,7 @@ function ExpertDashboardContent() {
     setEditingActivity(null);
     setSharedActivityPrefill(null);
     setActivityResolutionHint(null);
+    setDraftSessionId((current) => current + 1);
     setShowForm(true);
     setActiveTab('activitati');
   };
@@ -1553,6 +1556,9 @@ function ExpertDashboardContent() {
     setSaveError(null);
     syncSelectedDates(dates, nextHours ?? selectedHours);
     if (dates.length > 0) {
+      if (!showForm) {
+        setDraftSessionId((current) => current + 1);
+      }
       if (!editingActivity && !sharedActivityPrefill) {
         setActivityResolutionHint(null);
       }
@@ -1626,8 +1632,8 @@ function ExpertDashboardContent() {
   const formKey = editingActivity
     ? `edit-${editingActivity.id}-${activityResolutionHint?.id || 'manual'}`
     : sharedActivityPrefill
-      ? `prefill-${pendingSharedActivityRelationId || pendingSharedDeliverableRelationId || selectedDates.join('-')}`
-      : `new-${selectedDates.join('-')}-${activityResolutionHint?.id || 'manual'}`;
+      ? `prefill-${pendingSharedActivityRelationId || pendingSharedDeliverableRelationId || draftSessionId}`
+      : `new-${draftSessionId}-${activityResolutionHint?.id || 'manual'}`;
   const activityFormElement = (
     <ActivityForm
       key={formKey}
@@ -2230,6 +2236,7 @@ function ExpertDashboardContent() {
                 syncSelectedDates([date]);
                 setSharedActivityPrefill(null);
                 setActivityResolutionHint(null);
+                setDraftSessionId((current) => current + 1);
                 setShowForm(true);
                 setActiveTab('activitati');
               }}
