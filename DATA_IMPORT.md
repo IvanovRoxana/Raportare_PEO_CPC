@@ -30,3 +30,13 @@ Datele operationale sunt pregatite, dar nu sunt importate automat:
 Acestea contin emailul expertului din fisierele sursa si trebuie legate de `Expert.id` inainte de importul final, ca sa nu cream activitati fara utilizator real in aplicatie.
 
 Scriptul de pregatire repara automat textele romanesti citite gresit din fisierele sursa, astfel incat in JSON si in baza de date sa ajunga diacritice corecte.
+
+## Statusul activitatilor din catalog
+
+Activitatile generate in `data/import/activity-catalog.json` sunt active implicit. Dupa publicarea schemei `ActivityCatalog` prin fluxul backend utilizat de proiect, randurile existente care nu au atributul `isActive` pot fi actualizate cu:
+
+```powershell
+npm run migrate:activity-status
+```
+
+Comanda foloseste profilul `raportarepeo` si regiunea `eu-north-1` implicit. Acestea pot fi suprascrise prin variabilele `AWS_PROFILE` si `AWS_REGION`. Migrarea completeaza numai statusurile absente; activitatile marcate deja ca inactive nu sunt reactivate.
