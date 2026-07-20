@@ -11,6 +11,8 @@ import type { ActivityCatalog } from '@/lib/types';
 import { activityCatalogMergeKey, mergeActivityCatalogs } from '@/lib/activity-catalog-merge';
 
 const ALL = 'all';
+const ACTIVE = 'active';
+const INACTIVE = 'inactive';
 const FALLBACK_CATEGORIES = ['ap', 'com', 'gdpr', 'gt', 'pm'];
 
 type ActivityCatalogDraft = Omit<ActivityCatalog, 'id' | 'createdAt'>;
@@ -47,6 +49,7 @@ function draftFromActivity(activity?: ActivityCatalog | null): ActivityCatalogDr
     serviceCategory: activity?.serviceCategory ?? '',
     activityNumber: activity?.activityNumber ?? 0,
     activityName: activity?.activityName ?? '',
+    isActive: activity?.isActive ?? true,
     description: activity?.description ?? '',
     objectives: activity?.objectives ?? '',
     serviceComponent: activity?.serviceComponent ?? '',
@@ -86,6 +89,7 @@ export function ActivityDescriptionEditor({ fallbackCatalog = [] }: ActivityDesc
   const [query, setQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState(ALL);
   const [saFilter, setSaFilter] = useState(ALL);
+  const [statusFilter, setStatusFilter] = useState(ALL);
   const [selectedId, setSelectedId] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [draft, setDraft] = useState<ActivityCatalogDraft>(() => draftFromActivity(null));
@@ -122,9 +126,11 @@ export function ActivityDescriptionEditor({ fallbackCatalog = [] }: ActivityDesc
     return catalog.filter((item) => {
       const matchesCategory = categoryFilter === ALL || item.category === categoryFilter;
       const matchesSa = saFilter === ALL || item.saCode === saFilter;
-      return matchesCategory && matchesSa && matchesCatalogSearch(item, query);
+      const matchesStatus = statusFilter === ALL
+        || (statusFilter === ACTIVE ? item.isActive !== false : item.isActive === false);
+      return matchesCategory && matchesSa && matchesStatus && matchesCatalogSearch(item, query);
     });
-  }, [catalog, categoryFilter, query, saFilter]);
+  }, [catalog, categoryFilter, query, saFilter, statusFilter]);
 
   const selectedActivity = useMemo(() => {
     if (isCreating) return null;
@@ -247,7 +253,7 @@ export function ActivityDescriptionEditor({ fallbackCatalog = [] }: ActivityDesc
 
   return (
     <div className="space-y-5">
-      <div className="grid gap-3 border-b border-slate-100 pb-5 lg:grid-cols-[1.2fr_0.55fr_0.55fr_auto]">
+      <div className="grid gap-3 border-b border-slate-100 pb-5 lg:grid-cols-[1.2fr_0.55fr_0.55fr_0.55fr_auto]">
         <div className="relative">
           <SearchIcon className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
           <Input
@@ -280,6 +286,16 @@ export function ActivityDescriptionEditor({ fallbackCatalog = [] }: ActivityDesc
             {saOptions.map((saCode) => (
               <SelectItem key={saCode} value={saCode}>{saCode}</SelectItem>
             ))}
+          </SelectContent>
+        </Select>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger>
+            <SelectValue placeholder="Status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>Toate statusurile</SelectItem>
+            <SelectItem value={ACTIVE}>Active</SelectItem>
+            <SelectItem value={INACTIVE}>Inactive</SelectItem>
           </SelectContent>
         </Select>
         <Button type="button" onClick={startCreate}>
@@ -331,6 +347,7 @@ export function ActivityDescriptionEditor({ fallbackCatalog = [] }: ActivityDesc
                     <FileText className="h-3.5 w-3.5" />
                     {item.saCode} · {item.category?.toUpperCase() || 'N/A'}
                     {item.description ? ' · descriere setata' : ''}
+                    {' · '}{item.isActive === false ? 'Inactiva' : 'Activa'}
                   </span>
                 </button>
               ))
@@ -400,6 +417,24 @@ export function ActivityDescriptionEditor({ fallbackCatalog = [] }: ActivityDesc
                     onChange={(event) => updateDraft('activityName', event.target.value)}
                     placeholder="Numele activitatii"
                   />
+                </div>
+
+                <div className="space-y-2">
+                  <label htmlFor="catalog-status" className="text-sm font-semibold text-slate-900">
+                    Status
+                  </label>
+                  <Select
+                    value={draft.isActive === false ? INACTIVE : ACTIVE}
+                    onValueChange={(value) => updateDraft('isActive', value === ACTIVE)}
+                  >
+                    <SelectTrigger id="catalog-status">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={ACTIVE}>Activ</SelectItem>
+                      <SelectItem value={INACTIVE}>Inactiv</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="space-y-2">
