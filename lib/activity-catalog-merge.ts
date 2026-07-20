@@ -23,6 +23,10 @@ export function isEventActivityCatalogItem(item: Pick<ActivityCatalog, 'serviceC
   return normalizeActivityCatalogLabel(item.serviceCategory) === normalizeActivityCatalogLabel(EVENT_ACTIVITY_SERVICE_CATEGORY);
 }
 
+export function isActiveActivityCatalogItem(item: Pick<ActivityCatalog, 'isActive'>) {
+  return item.isActive !== false;
+}
+
 export function filterActivityCatalogForFormTab(catalog: ActivityCatalog[], tab: ActivityCatalogFormTab) {
   if (tab === 'event') {
     return catalog.filter(isEventActivityCatalogItem);
