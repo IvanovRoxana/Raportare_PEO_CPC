@@ -563,6 +563,7 @@ const schema = a.schema({
       serviceCategory: a.string(),
       activityNumber: a.integer(),
       activityName: a.string().required(),
+      isActive: a.boolean().default(true),
       description: a.string(),
       objectives: a.string(),
       serviceComponent: a.string(),
