@@ -50,6 +50,17 @@ function areSameStringList(first: string[], second: string[]) {
   return first.length === second.length && first.every((value, index) => value === second[index]);
 }
 
+function createEmptyDraftSessionState(): WorkBlockDraftSessionState {
+  return {
+    title: '',
+    saCode: '',
+    reportingFlowType: 'deliverable',
+    selectedActivityIds: [],
+    allocatedHoursByActivityId: {},
+    selectedDeliverableIds: [],
+  };
+}
+
 function serializeDraftSessionState(state: WorkBlockDraftSessionState) {
   return JSON.stringify(state);
 }
@@ -168,20 +179,14 @@ export function ReportingWorkBlockDraftPanel({
 
     const rawDraft = window.sessionStorage.getItem(storageKey);
     if (!rawDraft) {
-      setTitle('');
-      setSaCode('');
-      setReportingFlowType('deliverable');
-      setSelectedActivityIds([]);
-      setAllocatedHoursByActivityId({});
-      setSelectedDeliverableIds([]);
-      setLastSavedSessionDraft(serializeDraftSessionState({
-        title: '',
-        saCode: '',
-        reportingFlowType: 'deliverable',
-        selectedActivityIds: [],
-        allocatedHoursByActivityId: {},
-        selectedDeliverableIds: [],
-      }));
+      const emptyDraft = createEmptyDraftSessionState();
+      setTitle(emptyDraft.title);
+      setSaCode(emptyDraft.saCode);
+      setReportingFlowType(emptyDraft.reportingFlowType);
+      setSelectedActivityIds(emptyDraft.selectedActivityIds);
+      setAllocatedHoursByActivityId(emptyDraft.allocatedHoursByActivityId);
+      setSelectedDeliverableIds(emptyDraft.selectedDeliverableIds);
+      setLastSavedSessionDraft(serializeDraftSessionState(emptyDraft));
       setHydratedStorageKey(storageKey);
       return;
     }
@@ -275,21 +280,15 @@ export function ReportingWorkBlockDraftPanel({
   };
 
   const resetDraft = () => {
+    const emptyDraft = createEmptyDraftSessionState();
     window.sessionStorage.removeItem(storageKey);
-    setTitle('');
-    setSaCode('');
-    setReportingFlowType('deliverable');
-    setSelectedActivityIds([]);
-    setAllocatedHoursByActivityId({});
-    setSelectedDeliverableIds([]);
-    setLastSavedSessionDraft(serializeDraftSessionState({
-      title: '',
-      saCode: '',
-      reportingFlowType: 'deliverable',
-      selectedActivityIds: [],
-      allocatedHoursByActivityId: {},
-      selectedDeliverableIds: [],
-    }));
+    setTitle(emptyDraft.title);
+    setSaCode(emptyDraft.saCode);
+    setReportingFlowType(emptyDraft.reportingFlowType);
+    setSelectedActivityIds(emptyDraft.selectedActivityIds);
+    setAllocatedHoursByActivityId(emptyDraft.allocatedHoursByActivityId);
+    setSelectedDeliverableIds(emptyDraft.selectedDeliverableIds);
+    setLastSavedSessionDraft(serializeDraftSessionState(emptyDraft));
   };
 
   return (
