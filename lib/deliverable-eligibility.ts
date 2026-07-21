@@ -59,6 +59,142 @@ export const deliverableEligibilityActivityCandidateSchema = z.object({
   indicators: z.string().optional(),
 });
 
+export const CONCORDIA_PUBLICATION_ELIGIBILITY_PROMPT_RULES = `- Pentru tipurile de livrabil "Material publicat + link", "Articole pe concordia.ro" sau "articol publicat pe site", trateaza separat: (1) dovada publicarii/republicarii pe site-ul Concordia si (2) relevanta continutului pentru activitatea selectata.
+- Un PDF salvat, tiparit sau exportat dintr-o pagina web constituie dovada de publicare pe concordia.ro chiar daca URL-ul nu este vizibil, atunci cand contine minimum doua indicii concordante precum: sigla/denumirea Confederația Patronală Concordia, meniul site-ului, categoria articolului, titlul, autorul, data, navigatia, footerul Concordia sau mentiuni institutionale specifice site-ului.
+- Sigla, navigatia si footerul Concordia impreuna cu titlul si data sunt dovezi suficiente ca documentul reprezinta o pagina de pe site-ul Concordia. In acest caz nu include "dovada publicarii pe concordia.ro" in missingElements.
+- Mentionarea faptului ca opinia sau articolul a fost publicat initial pe profit.ro, intr-un ziar sau pe o alta platforma NU infirma republicarea pe concordia.ro. Nu confunda sursa initiala a continutului cu pagina pe care este prezentat documentul incarcat.
+- Lipsa unui URL vizibil poate conduce cel mult la "eligibil_cu_observatii", nu la "neeligibil", daca identitatea paginii Concordia este clara.
+- Nu respinge un document pentru lipsa unui link separat daca documentul incarcat este chiar printul/exportul paginii publicate. Recomanda atasarea linkului numai ca masura suplimentara de trasabilitate.
+- "neeligibil" trebuie folosit numai daca documentul nu este corelat cu activitatea, nu exista indicii credibile ca a fost publicat pe Concordia sau tipul de livrabil este in mod clar gresit.
+- In summary, precizeaza separat: "Dovada publicarii pe Concordia: confirmata/neconfirmata" si "Relevanta pentru activitate: confirmata/neconfirmata".
+- Exemplu: Un PDF cu sigla Concordia, meniul site-ului, categoria OPINII, data, titlul articolului si footerul Concordia este dovada de publicare pe concordia.ro, chiar daca introducerea spune ca opinia a fost publicata initial pe profit.ro.`;
+
+function normalizeEligibilityText(value: unknown) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+}
+
+export function isConcordiaPublishedDeliverableType(deliverableType: unknown) {
+  const normalized = normalizeEligibilityText(deliverableType);
+  return (
+    normalized.includes('material publicat + link')
+    || normalized.includes('articole pe concordia.ro')
+    || normalized.includes('articol publicat pe site')
+  );
+}
+
+export function getConcordiaPublicationEvidence(input: {
+  documentTitle?: unknown;
+  fileName?: unknown;
+  extractedText?: unknown;
+}) {
+  const title = normalizeEligibilityText(input.documentTitle);
+  const text = normalizeEligibilityText([
+    input.documentTitle,
+    input.fileName,
+    input.extractedText,
+  ].filter(Boolean).join('\n'));
+  const navMatches = ['despre', 'dialog social', 'programe', 'activitate', 'aderare']
+    .filter((item) => text.includes(item));
+  const evidence: string[] = [];
+
+  if (text.includes('concordia.ro')) evidence.push('URL/domeniu concordia.ro');
+  if (
+    text.includes('confederatia patronala concordia')
+    || text.includes('patronala concordia')
+    || /\bconcordia\b/.test(text)
+  ) {
+    evidence.push('sigla/denumirea Concordia');
+  }
+  if (navMatches.length >= 2) evidence.push('navigatia site-ului Concordia');
+  if (/\bopinii\b|\barticole\b|\bcomunicate\b|\bnews\b/.test(text)) evidence.push('categoria articolului');
+  if (title.length >= 12 && text.includes(title)) evidence.push('titlul articolului');
+  if (/\b\d{1,2}[./-]\d{1,2}[./-]\d{4}\b|\b\d{1,2}\s+(ianuarie|februarie|martie|aprilie|mai|iunie|iulie|august|septembrie|octombrie|noiembrie|decembrie)\s+\d{4}\b/.test(text)) {
+    evidence.push('data publicarii');
+  }
+  if (/\bautor\b|\bde\s+[a-z]+(?:\s+[a-z]+){1,3}\b|\bdaniel apostol\b/.test(text)) evidence.push('autorul');
+  if (/\bfooter\b|\bproiect\b|\buniunea europeana\b|\bfinantat\b|\bcontact\b|\bprivacy\b/.test(text)) {
+    evidence.push('footerul sau mentiuni institutionale Concordia');
+  }
+
+  return Array.from(new Set(evidence));
+}
+
+function textMentionsMissingConcordiaPublication(value: unknown) {
+  const normalized = normalizeEligibilityText(value);
+  return (
+    /dovad[aă]?\s+(de\s+)?public/.test(normalized)
+    || normalized.includes('publicarii pe concordia')
+    || normalized.includes('publicare pe concordia')
+    || normalized.includes('concordia.ro')
+    || normalized.includes('url')
+    || normalized.includes('link')
+  );
+}
+
+function textMentionsActivityMismatch(value: unknown) {
+  const normalized = normalizeEligibilityText(value);
+  return (
+    normalized.includes('nu este corelat')
+    || normalized.includes('nu se potriveste cu activitatea')
+    || normalized.includes('nu este relevant')
+    || normalized.includes('nerelevant')
+    || normalized.includes('activitate gresita')
+    || normalized.includes('tip de livrabil gresit')
+  );
+}
+
+export function protectConcordiaPublicationEligibility(input: {
+  result: z.infer<typeof deliverableEligibilitySchema>;
+  deliverableType?: unknown;
+  documentTitle?: unknown;
+  fileName?: unknown;
+  extractedText?: unknown;
+}) {
+  if (!isConcordiaPublishedDeliverableType(input.deliverableType)) return input.result;
+
+  const evidence = getConcordiaPublicationEvidence(input);
+  if (evidence.length < 2) return input.result;
+
+  const missingElements = input.result.missingElements.filter((item) => !textMentionsMissingConcordiaPublication(item));
+  const publicationWasMissing = missingElements.length !== input.result.missingElements.length;
+  const combinedReasons = [
+    input.result.summary,
+    ...input.result.missingElements,
+    ...input.result.riskFlags,
+  ].join('\n');
+  const onlyPublicationGap = textMentionsMissingConcordiaPublication(combinedReasons)
+    && !textMentionsActivityMismatch(combinedReasons);
+
+  if (!publicationWasMissing && !(input.result.status === 'neeligibil' && onlyPublicationGap)) {
+    return input.result;
+  }
+
+  const status = input.result.status === 'neeligibil' && onlyPublicationGap
+    ? 'eligibil_cu_observatii' as const
+    : input.result.status;
+  const recommendations = input.result.recommendations.length > 0
+    ? input.result.recommendations
+    : ['Ataseaza linkul exact doar ca masura suplimentara de trasabilitate, daca este disponibil.'];
+
+  return {
+    ...input.result,
+    status,
+    score: status === 'eligibil_cu_observatii' ? Math.max(input.result.score, 70) : input.result.score,
+    summary: [
+      'Dovada publicarii pe Concordia: confirmata.',
+      status === 'eligibil_cu_observatii'
+        ? 'Relevanta pentru activitate: confirmata conform analizei AI.'
+        : null,
+      input.result.summary,
+    ].filter(Boolean).join(' '),
+    missingElements,
+    recommendations,
+  };
+}
+
 export function normalizeDeliverableEligibilityStringList(value: unknown, maxItems = 80) {
   const parsed = z.array(z.string()).safeParse(value);
   if (!parsed.success) return [];
