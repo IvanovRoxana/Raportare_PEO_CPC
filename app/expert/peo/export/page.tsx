@@ -231,6 +231,7 @@ function ExportRaContent() {
             expertName={selectedExpert.name}
             expert={selectedExpert as Expert}
             enableDeterministicAnexa10Docx={deterministicAnexa10DocxEnabled}
+            workBlockBundles={reportingWorkBlocksEnabled ? persistedWorkBlockBundles : []}
           />
         </div>
       </DashboardShell>

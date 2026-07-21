@@ -21,6 +21,7 @@ import { buildAnexa10ReportModel } from '@/lib/activity-report/build-report-mode
 import { buildAnexa10DocxBlob, buildAnexa10DocxFilename } from '@/lib/activity-report/docx-export';
 import { getAnexa10ExportReadiness } from '@/lib/activity-report/export-readiness';
 import { combineActivityReportSections, splitActivityReportSections } from '@/lib/activity-report/sections';
+import type { ReportingWorkBlockBundle } from '@/lib/activity-report/work-blocks';
 import { getDocumentAuditTitle } from '@/lib/document-sharing';
 import type { Activity, Expert } from '@/lib/types';
 
@@ -31,6 +32,7 @@ interface ReportGeneratorProps {
   expertName: string;
   expert?: Pick<Expert, 'id' | 'name' | 'positionInProject' | 'role' | 'contractNumber' | 'contractType' | 'category' | 'projectCode' | 'projectTitle' | 'beneficiary'>;
   enableDeterministicAnexa10Docx?: boolean;
+  workBlockBundles?: ReportingWorkBlockBundle[];
 }
 
 type ReportSectionKind = 'table' | 'narrative';
@@ -81,6 +83,7 @@ export function ReportGenerator({
   expertName,
   expert,
   enableDeterministicAnexa10Docx = false,
+  workBlockBundles,
 }: ReportGeneratorProps) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
@@ -113,8 +116,9 @@ export function ReportGenerator({
       activities,
       month,
       year,
+      workBlockBundles: workBlockBundles && workBlockBundles.length > 0 ? workBlockBundles : undefined,
     });
-  }, [activities, enableDeterministicAnexa10Docx, expert, expertName, month, year]);
+  }, [activities, enableDeterministicAnexa10Docx, expert, expertName, month, workBlockBundles, year]);
   const deterministicExportReadiness = deterministicAnexa10Model
     ? getAnexa10ExportReadiness(deterministicAnexa10Model)
     : null;

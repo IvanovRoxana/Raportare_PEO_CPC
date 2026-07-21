@@ -8,6 +8,7 @@ const backendHooksSource = readFileSync(new URL('../hooks/use-backend-data.ts', 
 const exportPageSource = readFileSync(new URL('../app/expert/peo/export/page.tsx', import.meta.url), 'utf8');
 const reportingWorkBlocksPanelSource = readFileSync(new URL('../components/expert/reporting-work-blocks-panel.tsx', import.meta.url), 'utf8');
 const reportingWorkBlockDraftPanelSource = readFileSync(new URL('../components/expert/reporting-work-block-draft-panel.tsx', import.meta.url), 'utf8');
+const reportGeneratorSource = readFileSync(new URL('../components/expert/report-generator.tsx', import.meta.url), 'utf8');
 const reportingWorkBlocksServiceSource = awsStoreSource.match(
   /export const reportingWorkBlocksService = \{[\s\S]*?\n\};/,
 )?.[0] ?? '';
@@ -127,9 +128,13 @@ test('export page wires persisted work block bundles as a read-only optional pre
   assert.match(exportPageSource, /const \{ bundles: persistedWorkBlockBundles \} = useReportingWorkBlockBundles\(selectedExpertId, currentMonth, currentYear\);/);
   assert.match(exportPageSource, /persistedBundles=\{persistedWorkBlockBundles\}/);
   assert.match(exportPageSource, /existingBundles=\{persistedWorkBlockBundles\}/);
+  assert.match(exportPageSource, /workBlockBundles=\{reportingWorkBlocksEnabled \? persistedWorkBlockBundles : \[\]\}/);
   assert.match(exportPageSource, /projectCode=\{selectedExpert\.projectCode \?\? '302141'\}/);
   assert.match(reportingWorkBlocksPanelSource, /persistedBundles\?: ReportingWorkBlockBundle\[\];/);
   assert.match(reportingWorkBlocksPanelSource, /persistedBundles = \[\]/);
   assert.match(reportingWorkBlocksPanelSource, /const activityBundles = useMemo\(\(\) => buildWorkBlocks\(activities\), \[activities\]\);/);
   assert.match(reportingWorkBlocksPanelSource, /const bundles = persistedBundles\.length > 0 \? persistedBundles : activityBundles;/);
+  assert.match(reportGeneratorSource, /workBlockBundles\?: ReportingWorkBlockBundle\[\];/);
+  assert.match(reportGeneratorSource, /workBlockBundles: workBlockBundles && workBlockBundles\.length > 0 \? workBlockBundles : undefined/);
+  assert.match(reportGeneratorSource, /\[activities, enableDeterministicAnexa10Docx, expert, expertName, month, workBlockBundles, year\]/);
 });
