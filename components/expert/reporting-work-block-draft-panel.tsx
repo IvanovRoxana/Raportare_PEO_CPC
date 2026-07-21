@@ -154,6 +154,14 @@ export function ReportingWorkBlockDraftPanel({
   const hasUnsavedSessionChanges = hydratedStorageKey === storageKey
     && lastSavedSessionDraft !== ''
     && serializedSessionDraft !== lastSavedSessionDraft;
+  const isReadyForControlledSave = draftPreview.bundle !== null
+    && draftPreview.issues.length === 0
+    && !hasUnsavedSessionChanges;
+  const controlledSaveLabel = draftPreview.issues.length > 0
+    ? 'Finalizeaza validarile'
+    : hasUnsavedSessionChanges
+      ? 'Sincronizare sesiune'
+      : 'Pregatit pentru salvare';
 
   useEffect(() => {
     setHydratedStorageKey(null);
@@ -425,7 +433,9 @@ export function ReportingWorkBlockDraftPanel({
             readOnly
             value={draftPreview.issues.length > 0
               ? draftPreview.issues.map((issue) => issue.message).join('\n')
-              : 'Draft valid local. Urmatorul pas va permite salvarea controlata.'}
+              : isReadyForControlledSave
+                ? 'Draft valid local si pregatit pentru salvarea controlata.'
+                : 'Draft valid local. Se actualizeaza starea de sesiune.'}
             className="min-h-24"
           />
         </div>
@@ -449,9 +459,9 @@ export function ReportingWorkBlockDraftPanel({
               <RotateCcw className="h-4 w-4" />
               Reset draft
             </Button>
-            <Button type="button" disabled>
+            <Button type="button" disabled aria-disabled={!isReadyForControlledSave}>
               <Save className="h-4 w-4" />
-              Salvat in sesiune
+              {controlledSaveLabel}
             </Button>
           </div>
         </div>

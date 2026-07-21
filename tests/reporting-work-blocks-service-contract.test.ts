@@ -61,6 +61,10 @@ test('reporting work block draft panel persists only session-scoped UI state', (
   assert.match(reportingWorkBlockDraftPanelSource, /lastSavedSessionDraft/);
   assert.match(reportingWorkBlockDraftPanelSource, /serializedSessionDraft === lastSavedSessionDraft/);
   assert.match(reportingWorkBlockDraftPanelSource, /hasUnsavedSessionChanges/);
+  assert.match(reportingWorkBlockDraftPanelSource, /isReadyForControlledSave/);
+  assert.match(reportingWorkBlockDraftPanelSource, /controlledSaveLabel/);
+  assert.match(reportingWorkBlockDraftPanelSource, /draftPreview\.issues\.length === 0/);
+  assert.match(reportingWorkBlockDraftPanelSource, /!hasUnsavedSessionChanges/);
   assert.match(reportingWorkBlockDraftPanelSource, /availableActivityIds/);
   assert.match(reportingWorkBlockDraftPanelSource, /availableDeliverableIds/);
   assert.match(reportingWorkBlockDraftPanelSource, /current\.filter\(\(activityId\) => availableActivityIds\.has\(activityId\)\)/);
