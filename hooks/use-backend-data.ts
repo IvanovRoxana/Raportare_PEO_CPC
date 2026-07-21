@@ -210,8 +210,13 @@ export function useReportingWorkBlockDraft() {
   const prepareSaveDraft = (input: DraftWorkBlockInput, activities: Activity[]) => (
     reportingWorkBlocksService.prepareSaveDraft(input, activities)
   );
+  const saveDraft = async (input: DraftWorkBlockInput, activities: Activity[]) => {
+    const bundle = await reportingWorkBlocksService.saveDraft(input, activities);
+    mutate(`reporting-work-block-bundles-${input.expertId}-${input.month}-${input.year}`);
+    return bundle;
+  };
 
-  return { prepareDraft, prepareSaveDraft };
+  return { prepareDraft, prepareSaveDraft, saveDraft };
 }
 
 export function useReportingWorkBlockActivityOptions(

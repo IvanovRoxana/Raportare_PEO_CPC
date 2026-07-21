@@ -52,14 +52,17 @@ test('reporting work block bundles hook is opt-in and uses an isolated cache key
   assert.doesNotMatch(reportingWorkBlockBundlesHookSource, /activities-|shared-deliverables|concurrent-project-timesheet/);
 });
 
-test('reporting work block draft hook prepares local drafts without cache invalidation', () => {
+test('reporting work block draft hook saves drafts with isolated cache invalidation', () => {
   assert.match(backendHooksSource, /import type \{ DraftWorkBlockInput \} from '@\/lib\/activity-report\/draft-work-blocks';/);
   assert.match(reportingWorkBlockDraftHookSource, /export function useReportingWorkBlockDraft\(\)/);
   assert.match(reportingWorkBlockDraftHookSource, /const prepareDraft = \(input: DraftWorkBlockInput, activities: Activity\[\]\)/);
   assert.match(reportingWorkBlockDraftHookSource, /reportingWorkBlocksService\.prepareDraft\(input, activities\)/);
   assert.match(reportingWorkBlockDraftHookSource, /const prepareSaveDraft = \(input: DraftWorkBlockInput, activities: Activity\[\]\)/);
   assert.match(reportingWorkBlockDraftHookSource, /reportingWorkBlocksService\.prepareSaveDraft\(input, activities\)/);
-  assert.doesNotMatch(reportingWorkBlockDraftHookSource, /mutate\(|useSWR|create|update|delete|upsert/);
+  assert.match(reportingWorkBlockDraftHookSource, /const saveDraft = async \(input: DraftWorkBlockInput, activities: Activity\[\]\)/);
+  assert.match(reportingWorkBlockDraftHookSource, /reportingWorkBlocksService\.saveDraft\(input, activities\)/);
+  assert.match(reportingWorkBlockDraftHookSource, /mutate\(`reporting-work-block-bundles-\$\{input\.expertId\}-\$\{input\.month\}-\$\{input\.year\}`\)/);
+  assert.doesNotMatch(reportingWorkBlockDraftHookSource, /useSWR|activities-|shared-deliverables|concurrent-project-timesheet/);
 });
 
 test('reporting work block draft panel persists only session-scoped UI state', () => {
