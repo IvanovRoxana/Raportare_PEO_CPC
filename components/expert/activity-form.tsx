@@ -225,6 +225,16 @@ function dedupeDeliverableSlotsBySignature(deliverables: DeliverableSlot[]) {
   });
 }
 
+function isStaleMultipartUploadError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error || '');
+  return (
+    message.includes('specified upload does not exist')
+    || message.includes('upload ID may be invalid')
+    || message.includes('upload may have been aborted or completed')
+    || message.includes('NoSuchUpload')
+  );
+}
+
 export function ActivityForm({
   selectedDates,
   selectedHours,
@@ -1026,7 +1036,7 @@ export function ActivityForm({
       return deliverable;
     }
 
-    const documentId = deliverable.documentId || `doc_${deliverable.id}`;
+    let documentId = deliverable.documentId || `doc_${deliverable.id}`;
     const fileName = deliverable.filename || deliverable.name || `livrabil-${deliverable.id}`;
     const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
     const blob = dataUrlToBlob(deliverable.fileData, deliverable.fileType || 'application/octet-stream');
@@ -1035,18 +1045,35 @@ export function ActivityForm({
     const contentFingerprint = normalizeDocumentTextForFingerprint(deliverable.firstPageText || deliverable.docText).slice(0, 500);
     const projectId = expert?.projectCode || '302141';
     const projectName = expert?.projectTitle || 'Consolidarea capacitatii Concordia pentru dialog social';
-    const s3Key = buildDocumentS3Key({
+    let s3Key = buildDocumentS3Key({
       projectId,
       documentId,
       originalFileName: safeName,
     });
-    const result = await uploadData({
-      path: s3Key,
+    const uploadBlob = (path: string) => uploadData({
+      path,
       data: blob,
       options: {
         contentType: deliverable.fileType || blob.type || 'application/octet-stream',
       },
     }).result;
+    let result;
+
+    try {
+      result = await uploadBlob(s3Key);
+    } catch (error) {
+      if (!isStaleMultipartUploadError(error)) {
+        throw error;
+      }
+
+      documentId = `doc_${deliverable.id}_${Date.now()}`;
+      s3Key = buildDocumentS3Key({
+        projectId,
+        documentId,
+        originalFileName: safeName,
+      });
+      result = await uploadBlob(s3Key);
+    }
 
     return {
       ...deliverable,
