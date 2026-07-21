@@ -67,7 +67,13 @@ import { parseAwsJsonField, serializeAwsJsonField } from './aws-json';
 import { planDeliverableSync } from './activity-deliverable-sync';
 import { dedupeDeliverablesBySignature, findMonthlyDeliverableDuplicate, getDeliverableDocumentSignature } from './deliverable-deduplication';
 import { buildPersistedWorkBlockBundles } from './activity-report/persisted-work-blocks';
-import { prepareDraftWorkBlockBundle, type DraftWorkBlockInput, type PreparedDraftWorkBlock } from './activity-report/draft-work-blocks';
+import {
+  prepareDraftWorkBlockBundle,
+  prepareDraftWorkBlockSave,
+  type DraftWorkBlockInput,
+  type PreparedDraftWorkBlock,
+  type PreparedDraftWorkBlockSave,
+} from './activity-report/draft-work-blocks';
 import type { ReportingWorkBlockBundle } from './activity-report/work-blocks';
 import {
   createProcurementStatusHistoryEntry,
@@ -2517,6 +2523,10 @@ export const activitiesService = {
 export const reportingWorkBlocksService = {
   prepareDraft(input: DraftWorkBlockInput, activities: Activity[]): PreparedDraftWorkBlock {
     return prepareDraftWorkBlockBundle(input, activities);
+  },
+
+  prepareSaveDraft(input: DraftWorkBlockInput, activities: Activity[]): PreparedDraftWorkBlockSave {
+    return prepareDraftWorkBlockSave(input, activities);
   },
 
   async getBundlesByExpertAndMonth(expertId: string, month: number, year: number): Promise<ReportingWorkBlockBundle[]> {

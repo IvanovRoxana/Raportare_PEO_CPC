@@ -95,7 +95,7 @@ export function ReportingWorkBlockDraftPanel({
     `reporting-work-block-draft:${expertId}:${projectCode}:${year}:${month}:${editingWorkBlockId ?? 'new'}`
   ), [editingWorkBlockId, expertId, month, projectCode, year]);
   const [hydratedStorageKey, setHydratedStorageKey] = useState<string | null>(null);
-  const { prepareDraft } = useReportingWorkBlockDraft();
+  const { prepareDraft, prepareSaveDraft } = useReportingWorkBlockDraft();
   const {
     options: activityOptions,
     unallocatedActivityCount,
@@ -140,6 +140,35 @@ export function ReportingWorkBlockDraftPanel({
     title,
     year,
   ]);
+  const saveDraftPreview = useMemo(() => prepareSaveDraft({
+    id: editingWorkBlockId,
+    expertId,
+    projectCode,
+    month,
+    year,
+    title,
+    saCode,
+    reportingFlowType,
+    activityIds: selectedActivityIds,
+    allocatedHoursByActivityId,
+    deliverableIds: selectedDeliverableIds,
+    existingBundles,
+  }, activities), [
+    activities,
+    allocatedHoursByActivityId,
+    editingWorkBlockId,
+    existingBundles,
+    expertId,
+    month,
+    prepareSaveDraft,
+    projectCode,
+    reportingFlowType,
+    saCode,
+    selectedActivityIds,
+    selectedDeliverableIds,
+    title,
+    year,
+  ]);
 
   const selectedHours = draftPreview.bundle
     ? draftPreview.bundle.activityLinks.reduce((sum, link) => sum + link.allocatedHours, 0)
@@ -165,8 +194,7 @@ export function ReportingWorkBlockDraftPanel({
   const hasUnsavedSessionChanges = hydratedStorageKey === storageKey
     && lastSavedSessionDraft !== ''
     && serializedSessionDraft !== lastSavedSessionDraft;
-  const isReadyForControlledSave = draftPreview.bundle !== null
-    && draftPreview.issues.length === 0
+  const isReadyForControlledSave = saveDraftPreview.canSave
     && !hasUnsavedSessionChanges;
   const controlledSaveLabel = draftPreview.issues.length > 0
     ? 'Finalizeaza validarile'

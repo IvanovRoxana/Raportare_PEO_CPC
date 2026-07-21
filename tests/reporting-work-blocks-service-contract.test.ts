@@ -28,6 +28,8 @@ test('reporting work blocks service is read-only and exported through backend st
   assert.match(reportingWorkBlocksServiceSource, /export const reportingWorkBlocksService = \{/);
   assert.match(reportingWorkBlocksServiceSource, /prepareDraft\(input: DraftWorkBlockInput, activities: Activity\[\]\): PreparedDraftWorkBlock/);
   assert.match(reportingWorkBlocksServiceSource, /prepareDraftWorkBlockBundle\(input, activities\)/);
+  assert.match(reportingWorkBlocksServiceSource, /prepareSaveDraft\(input: DraftWorkBlockInput, activities: Activity\[\]\): PreparedDraftWorkBlockSave/);
+  assert.match(reportingWorkBlocksServiceSource, /prepareDraftWorkBlockSave\(input, activities\)/);
   assert.match(reportingWorkBlocksServiceSource, /getBundlesByExpertAndMonth\(expertId: string, month: number, year: number\)/);
   assert.match(reportingWorkBlocksServiceSource, /buildPersistedWorkBlockBundles/);
   assert.doesNotMatch(reportingWorkBlocksServiceSource, /async (create|update|delete|upsert)\(/);
@@ -48,6 +50,8 @@ test('reporting work block draft hook prepares local drafts without cache invali
   assert.match(reportingWorkBlockDraftHookSource, /export function useReportingWorkBlockDraft\(\)/);
   assert.match(reportingWorkBlockDraftHookSource, /const prepareDraft = \(input: DraftWorkBlockInput, activities: Activity\[\]\)/);
   assert.match(reportingWorkBlockDraftHookSource, /reportingWorkBlocksService\.prepareDraft\(input, activities\)/);
+  assert.match(reportingWorkBlockDraftHookSource, /const prepareSaveDraft = \(input: DraftWorkBlockInput, activities: Activity\[\]\)/);
+  assert.match(reportingWorkBlockDraftHookSource, /reportingWorkBlocksService\.prepareSaveDraft\(input, activities\)/);
   assert.doesNotMatch(reportingWorkBlockDraftHookSource, /mutate\(|useSWR|create|update|delete|upsert/);
 });
 
@@ -63,8 +67,8 @@ test('reporting work block draft panel persists only session-scoped UI state', (
   assert.match(reportingWorkBlockDraftPanelSource, /serializedSessionDraft === lastSavedSessionDraft/);
   assert.match(reportingWorkBlockDraftPanelSource, /hasUnsavedSessionChanges/);
   assert.match(reportingWorkBlockDraftPanelSource, /isReadyForControlledSave/);
+  assert.match(reportingWorkBlockDraftPanelSource, /saveDraftPreview\.canSave/);
   assert.match(reportingWorkBlockDraftPanelSource, /controlledSaveLabel/);
-  assert.match(reportingWorkBlockDraftPanelSource, /draftPreview\.issues\.length === 0/);
   assert.match(reportingWorkBlockDraftPanelSource, /!hasUnsavedSessionChanges/);
   assert.match(reportingWorkBlockDraftPanelSource, /availableActivityIds/);
   assert.match(reportingWorkBlockDraftPanelSource, /availableDeliverableIds/);

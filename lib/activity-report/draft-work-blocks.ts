@@ -39,6 +39,10 @@ export interface PreparedDraftWorkBlock {
   issues: DraftWorkBlockValidationIssue[];
 }
 
+export interface PreparedDraftWorkBlockSave extends PreparedDraftWorkBlock {
+  canSave: boolean;
+}
+
 export function prepareDraftWorkBlockBundle(
   input: DraftWorkBlockInput,
   activities: Activity[],
@@ -50,6 +54,18 @@ export function prepareDraftWorkBlockBundle(
   return {
     bundle: issues.length === 0 ? bundle : null,
     issues,
+  };
+}
+
+export function prepareDraftWorkBlockSave(
+  input: DraftWorkBlockInput,
+  activities: Activity[],
+): PreparedDraftWorkBlockSave {
+  const preparedDraft = prepareDraftWorkBlockBundle(input, activities);
+
+  return {
+    ...preparedDraft,
+    canSave: preparedDraft.bundle !== null && preparedDraft.issues.length === 0,
   };
 }
 

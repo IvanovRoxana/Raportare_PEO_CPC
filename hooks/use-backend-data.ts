@@ -207,8 +207,11 @@ export function useReportingWorkBlockDraft() {
   const prepareDraft = (input: DraftWorkBlockInput, activities: Activity[]) => (
     reportingWorkBlocksService.prepareDraft(input, activities)
   );
+  const prepareSaveDraft = (input: DraftWorkBlockInput, activities: Activity[]) => (
+    reportingWorkBlocksService.prepareSaveDraft(input, activities)
+  );
 
-  return { prepareDraft };
+  return { prepareDraft, prepareSaveDraft };
 }
 
 export function useReportingWorkBlockActivityOptions(
