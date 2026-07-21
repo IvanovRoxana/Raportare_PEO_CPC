@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { generatePontajExcel, type ExportPayload } from '@/lib/pontaj-excel-export';
+import { markTestFilename } from '@/lib/runtime-environment';
 
 export const runtime = 'nodejs';
 
@@ -31,7 +32,8 @@ export async function POST(request: Request) {
     return new NextResponse(new Uint8Array(workbook.buffer), {
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(workbook.filename)}`,
+        'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(markTestFilename(workbook.filename))}`,
+        'X-App-Environment': process.env.APP_ENV?.trim() || 'production',
         'Cache-Control': 'no-store',
       },
     });
