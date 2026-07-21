@@ -55,8 +55,12 @@ test('reporting work block draft panel persists only session-scoped UI state', (
   assert.match(reportingWorkBlockDraftPanelSource, /WorkBlockDraftSessionState/);
   assert.match(reportingWorkBlockDraftPanelSource, /reporting-work-block-draft:\$\{expertId\}:\$\{projectCode\}:\$\{year\}:\$\{month\}/);
   assert.match(reportingWorkBlockDraftPanelSource, /window\.sessionStorage\.getItem\(storageKey\)/);
-  assert.match(reportingWorkBlockDraftPanelSource, /window\.sessionStorage\.setItem\(storageKey, JSON\.stringify\(sessionDraft\)\)/);
+  assert.match(reportingWorkBlockDraftPanelSource, /window\.sessionStorage\.setItem\(storageKey, serializedSessionDraft\)/);
   assert.match(reportingWorkBlockDraftPanelSource, /window\.sessionStorage\.removeItem\(storageKey\)/);
+  assert.match(reportingWorkBlockDraftPanelSource, /serializeDraftSessionState/);
+  assert.match(reportingWorkBlockDraftPanelSource, /lastSavedSessionDraft/);
+  assert.match(reportingWorkBlockDraftPanelSource, /serializedSessionDraft === lastSavedSessionDraft/);
+  assert.match(reportingWorkBlockDraftPanelSource, /hasUnsavedSessionChanges/);
   assert.match(reportingWorkBlockDraftPanelSource, /availableActivityIds/);
   assert.match(reportingWorkBlockDraftPanelSource, /availableDeliverableIds/);
   assert.match(reportingWorkBlockDraftPanelSource, /current\.filter\(\(activityId\) => availableActivityIds\.has\(activityId\)\)/);

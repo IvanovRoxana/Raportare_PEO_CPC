@@ -50,6 +50,10 @@ function areSameStringList(first: string[], second: string[]) {
   return first.length === second.length && first.every((value, index) => value === second[index]);
 }
 
+function serializeDraftSessionState(state: WorkBlockDraftSessionState) {
+  return JSON.stringify(state);
+}
+
 interface ReportingWorkBlockDraftPanelProps {
   expertId: string;
   projectCode: string;
@@ -75,6 +79,7 @@ export function ReportingWorkBlockDraftPanel({
   const [selectedActivityIds, setSelectedActivityIds] = useState<string[]>([]);
   const [allocatedHoursByActivityId, setAllocatedHoursByActivityId] = useState<Record<string, number>>({});
   const [selectedDeliverableIds, setSelectedDeliverableIds] = useState<string[]>([]);
+  const [lastSavedSessionDraft, setLastSavedSessionDraft] = useState('');
   const storageKey = useMemo(() => (
     `reporting-work-block-draft:${expertId}:${projectCode}:${year}:${month}:${editingWorkBlockId ?? 'new'}`
   ), [editingWorkBlockId, expertId, month, projectCode, year]);
@@ -128,6 +133,27 @@ export function ReportingWorkBlockDraftPanel({
   const selectedHours = draftPreview.bundle
     ? draftPreview.bundle.activityLinks.reduce((sum, link) => sum + link.allocatedHours, 0)
     : 0;
+  const sessionDraft = useMemo<WorkBlockDraftSessionState>(() => ({
+    title,
+    saCode,
+    reportingFlowType,
+    selectedActivityIds,
+    allocatedHoursByActivityId,
+    selectedDeliverableIds,
+  }), [
+    allocatedHoursByActivityId,
+    reportingFlowType,
+    saCode,
+    selectedActivityIds,
+    selectedDeliverableIds,
+    title,
+  ]);
+  const serializedSessionDraft = useMemo(() => (
+    serializeDraftSessionState(sessionDraft)
+  ), [sessionDraft]);
+  const hasUnsavedSessionChanges = hydratedStorageKey === storageKey
+    && lastSavedSessionDraft !== ''
+    && serializedSessionDraft !== lastSavedSessionDraft;
 
   useEffect(() => {
     setHydratedStorageKey(null);
@@ -140,28 +166,42 @@ export function ReportingWorkBlockDraftPanel({
       setSelectedActivityIds([]);
       setAllocatedHoursByActivityId({});
       setSelectedDeliverableIds([]);
+      setLastSavedSessionDraft(serializeDraftSessionState({
+        title: '',
+        saCode: '',
+        reportingFlowType: 'deliverable',
+        selectedActivityIds: [],
+        allocatedHoursByActivityId: {},
+        selectedDeliverableIds: [],
+      }));
       setHydratedStorageKey(storageKey);
       return;
     }
 
     try {
       const parsedDraft = JSON.parse(rawDraft) as Partial<WorkBlockDraftSessionState>;
-      setTitle(typeof parsedDraft.title === 'string' ? parsedDraft.title : '');
-      setSaCode(typeof parsedDraft.saCode === 'string' ? parsedDraft.saCode : '');
-      setReportingFlowType(REPORTING_FLOW_TYPES.some((item) => item.value === parsedDraft.reportingFlowType)
+      const hydratedDraft: WorkBlockDraftSessionState = {
+        title: typeof parsedDraft.title === 'string' ? parsedDraft.title : '',
+        saCode: typeof parsedDraft.saCode === 'string' ? parsedDraft.saCode : '',
+        reportingFlowType: REPORTING_FLOW_TYPES.some((item) => item.value === parsedDraft.reportingFlowType)
         ? parsedDraft.reportingFlowType as ReportingFlowType
-        : 'deliverable');
-      setSelectedActivityIds(Array.isArray(parsedDraft.selectedActivityIds) ? parsedDraft.selectedActivityIds : []);
-      setAllocatedHoursByActivityId(
-        parsedDraft.allocatedHoursByActivityId && typeof parsedDraft.allocatedHoursByActivityId === 'object'
+        : 'deliverable',
+        selectedActivityIds: Array.isArray(parsedDraft.selectedActivityIds) ? parsedDraft.selectedActivityIds : [],
+        allocatedHoursByActivityId: parsedDraft.allocatedHoursByActivityId && typeof parsedDraft.allocatedHoursByActivityId === 'object'
           ? parsedDraft.allocatedHoursByActivityId
-          : {}
-      );
-      setSelectedDeliverableIds(
-        Array.isArray(parsedDraft.selectedDeliverableIds) ? parsedDraft.selectedDeliverableIds : []
-      );
+          : {},
+        selectedDeliverableIds: Array.isArray(parsedDraft.selectedDeliverableIds) ? parsedDraft.selectedDeliverableIds : [],
+      };
+      setTitle(hydratedDraft.title);
+      setSaCode(hydratedDraft.saCode);
+      setReportingFlowType(hydratedDraft.reportingFlowType);
+      setSelectedActivityIds(hydratedDraft.selectedActivityIds);
+      setAllocatedHoursByActivityId(hydratedDraft.allocatedHoursByActivityId);
+      setSelectedDeliverableIds(hydratedDraft.selectedDeliverableIds);
+      setLastSavedSessionDraft(serializeDraftSessionState(hydratedDraft));
     } catch {
       window.sessionStorage.removeItem(storageKey);
+      setLastSavedSessionDraft('');
     } finally {
       setHydratedStorageKey(storageKey);
     }
@@ -193,24 +233,17 @@ export function ReportingWorkBlockDraftPanel({
       return;
     }
 
-    const sessionDraft: WorkBlockDraftSessionState = {
-      title,
-      saCode,
-      reportingFlowType,
-      selectedActivityIds,
-      allocatedHoursByActivityId,
-      selectedDeliverableIds,
-    };
-    window.sessionStorage.setItem(storageKey, JSON.stringify(sessionDraft));
+    if (serializedSessionDraft === lastSavedSessionDraft) {
+      return;
+    }
+
+    window.sessionStorage.setItem(storageKey, serializedSessionDraft);
+    setLastSavedSessionDraft(serializedSessionDraft);
   }, [
-    allocatedHoursByActivityId,
     hydratedStorageKey,
-    reportingFlowType,
-    saCode,
-    selectedActivityIds,
-    selectedDeliverableIds,
+    lastSavedSessionDraft,
+    serializedSessionDraft,
     storageKey,
-    title,
   ]);
 
   const toggleActivity = (activityId: string, checked: boolean, defaultHours: number) => {
@@ -241,6 +274,14 @@ export function ReportingWorkBlockDraftPanel({
     setSelectedActivityIds([]);
     setAllocatedHoursByActivityId({});
     setSelectedDeliverableIds([]);
+    setLastSavedSessionDraft(serializeDraftSessionState({
+      title: '',
+      saCode: '',
+      reportingFlowType: 'deliverable',
+      selectedActivityIds: [],
+      allocatedHoursByActivityId: {},
+      selectedDeliverableIds: [],
+    }));
   };
 
   return (
@@ -399,7 +440,7 @@ export function ReportingWorkBlockDraftPanel({
             ) : (
               <>
                 <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                Draft pregatit local
+                {hasUnsavedSessionChanges ? 'Draft local modificat' : 'Draft salvat in sesiune'}
               </>
             )}
           </div>
