@@ -208,8 +208,6 @@ export function ActivityDescriptionEditor({ fallbackCatalog = [] }: ActivityDesc
       });
       setIsCreating(false);
       setSelectedId(saved.id);
-      setCategoryFilter(ALL);
-      setSaFilter(ALL);
       setDraft(draftFromActivity(saved));
       setSaveMessage(isCreating ? 'Activitate adaugata.' : 'Activitate salvata.');
     } catch (saveError) {

@@ -60,11 +60,15 @@ export function activityCatalogMergeKey(item: ActivityCatalogMergeKeyInput) {
 }
 
 export function sortActivityCatalog(catalog: ActivityCatalog[]) {
-  return [...catalog].sort((a, b) =>
-    `${a.category}-${a.saCode}-${a.activityNumber}-${a.activityName}`.localeCompare(
-      `${b.category}-${b.saCode}-${b.activityNumber}-${b.activityName}`,
-    ),
-  );
+  return [...catalog].sort((a, b) => {
+    const categoryComparison = a.category.toLowerCase().localeCompare(b.category.toLowerCase());
+    if (categoryComparison !== 0) return categoryComparison;
+    const saCodeComparison = a.saCode.localeCompare(b.saCode, undefined, { numeric: true });
+    if (saCodeComparison !== 0) return saCodeComparison;
+    const activityNumberComparison = (a.activityNumber ?? 0) - (b.activityNumber ?? 0);
+    if (activityNumberComparison !== 0) return activityNumberComparison;
+    return a.activityName.localeCompare(b.activityName);
+  });
 }
 
 export function mergeActivityCatalogs(...catalogs: ActivityCatalog[][]) {

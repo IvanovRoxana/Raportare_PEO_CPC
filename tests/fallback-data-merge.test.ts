@@ -7,6 +7,7 @@ import {
   mergeActivityCatalogs,
   normalizeActivityCatalogSaCode,
   resolveExpertActivityCatalog,
+  sortActivityCatalog,
 } from '../lib/activity-catalog-merge.ts';
 import { mergeExpertLists } from '../lib/expert-merge.ts';
 import type { ActivityCatalog, Expert } from '../lib/types.ts';
@@ -33,6 +34,16 @@ test('catalogul backend gol pastreaza catalogul fallback complet', () => {
   const merged = mergeActivityCatalogs(fallbackCatalog, []);
 
   assert.deepEqual(merged.map((item) => item.id), ['fallback-gt-sa11-1', 'fallback-gt-sa11-2']);
+});
+
+test('catalogul sorteaza numeric activitatile din acelasi SA', () => {
+  const sorted = sortActivityCatalog([
+    { ...fallbackCatalog[0], id: 'activity-10', activityNumber: 10, activityName: 'Activitatea 10' },
+    { ...fallbackCatalog[0], id: 'activity-2', activityNumber: 2, activityName: 'Activitatea 2' },
+    { ...fallbackCatalog[0], id: 'activity-1', activityNumber: 1, activityName: 'Activitatea 1' },
+  ]);
+
+  assert.deepEqual(sorted.map((item) => item.activityNumber), [1, 2, 10]);
 });
 
 test('catalogul backend partial completeaza fallback-ul si suprascrie aceeasi activitate', () => {
