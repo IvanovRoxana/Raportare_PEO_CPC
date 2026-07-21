@@ -1,7 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle2, FileText, GitBranch, Save } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { AlertTriangle, CheckCircle2, FileText, GitBranch, RotateCcw, Save } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -37,6 +37,15 @@ const REPORTING_FLOW_TYPES: { value: ReportingFlowType; label: string }[] = [
   { value: 'other', label: 'Alt flux' },
 ];
 
+type WorkBlockDraftSessionState = {
+  title: string;
+  saCode: string;
+  reportingFlowType: ReportingFlowType;
+  selectedActivityIds: string[];
+  allocatedHoursByActivityId: Record<string, number>;
+  selectedDeliverableIds: string[];
+};
+
 interface ReportingWorkBlockDraftPanelProps {
   expertId: string;
   projectCode: string;
@@ -62,6 +71,10 @@ export function ReportingWorkBlockDraftPanel({
   const [selectedActivityIds, setSelectedActivityIds] = useState<string[]>([]);
   const [allocatedHoursByActivityId, setAllocatedHoursByActivityId] = useState<Record<string, number>>({});
   const [selectedDeliverableIds, setSelectedDeliverableIds] = useState<string[]>([]);
+  const storageKey = useMemo(() => (
+    `reporting-work-block-draft:${expertId}:${projectCode}:${year}:${month}:${editingWorkBlockId ?? 'new'}`
+  ), [editingWorkBlockId, expertId, month, projectCode, year]);
+  const [hydratedStorageKey, setHydratedStorageKey] = useState<string | null>(null);
   const { prepareDraft } = useReportingWorkBlockDraft();
   const {
     options: activityOptions,
@@ -106,6 +119,69 @@ export function ReportingWorkBlockDraftPanel({
     ? draftPreview.bundle.activityLinks.reduce((sum, link) => sum + link.allocatedHours, 0)
     : 0;
 
+  useEffect(() => {
+    setHydratedStorageKey(null);
+
+    const rawDraft = window.sessionStorage.getItem(storageKey);
+    if (!rawDraft) {
+      setTitle('');
+      setSaCode('');
+      setReportingFlowType('deliverable');
+      setSelectedActivityIds([]);
+      setAllocatedHoursByActivityId({});
+      setSelectedDeliverableIds([]);
+      setHydratedStorageKey(storageKey);
+      return;
+    }
+
+    try {
+      const parsedDraft = JSON.parse(rawDraft) as Partial<WorkBlockDraftSessionState>;
+      setTitle(typeof parsedDraft.title === 'string' ? parsedDraft.title : '');
+      setSaCode(typeof parsedDraft.saCode === 'string' ? parsedDraft.saCode : '');
+      setReportingFlowType(REPORTING_FLOW_TYPES.some((item) => item.value === parsedDraft.reportingFlowType)
+        ? parsedDraft.reportingFlowType as ReportingFlowType
+        : 'deliverable');
+      setSelectedActivityIds(Array.isArray(parsedDraft.selectedActivityIds) ? parsedDraft.selectedActivityIds : []);
+      setAllocatedHoursByActivityId(
+        parsedDraft.allocatedHoursByActivityId && typeof parsedDraft.allocatedHoursByActivityId === 'object'
+          ? parsedDraft.allocatedHoursByActivityId
+          : {}
+      );
+      setSelectedDeliverableIds(
+        Array.isArray(parsedDraft.selectedDeliverableIds) ? parsedDraft.selectedDeliverableIds : []
+      );
+    } catch {
+      window.sessionStorage.removeItem(storageKey);
+    } finally {
+      setHydratedStorageKey(storageKey);
+    }
+  }, [storageKey]);
+
+  useEffect(() => {
+    if (hydratedStorageKey !== storageKey) {
+      return;
+    }
+
+    const sessionDraft: WorkBlockDraftSessionState = {
+      title,
+      saCode,
+      reportingFlowType,
+      selectedActivityIds,
+      allocatedHoursByActivityId,
+      selectedDeliverableIds,
+    };
+    window.sessionStorage.setItem(storageKey, JSON.stringify(sessionDraft));
+  }, [
+    allocatedHoursByActivityId,
+    hydratedStorageKey,
+    reportingFlowType,
+    saCode,
+    selectedActivityIds,
+    selectedDeliverableIds,
+    storageKey,
+    title,
+  ]);
+
   const toggleActivity = (activityId: string, checked: boolean, defaultHours: number) => {
     setSelectedActivityIds((current) => (
       checked ? [...new Set([...current, activityId])] : current.filter((id) => id !== activityId)
@@ -126,6 +202,16 @@ export function ReportingWorkBlockDraftPanel({
     ));
   };
 
+  const resetDraft = () => {
+    window.sessionStorage.removeItem(storageKey);
+    setTitle('');
+    setSaCode('');
+    setReportingFlowType('deliverable');
+    setSelectedActivityIds([]);
+    setAllocatedHoursByActivityId({});
+    setSelectedDeliverableIds([]);
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -134,7 +220,7 @@ export function ReportingWorkBlockDraftPanel({
           Draft work block
         </CardTitle>
         <CardDescription>
-          Pregateste local un flux raportabil. Salvarea in backend va fi activata separat.
+          Pregateste local un flux raportabil. Draftul ramane doar in sesiunea browserului.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
@@ -286,10 +372,16 @@ export function ReportingWorkBlockDraftPanel({
               </>
             )}
           </div>
-          <Button type="button" disabled>
-            <Save className="h-4 w-4" />
-            Salvare in curand
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="button" variant="outline" onClick={resetDraft}>
+              <RotateCcw className="h-4 w-4" />
+              Reset draft
+            </Button>
+            <Button type="button" disabled>
+              <Save className="h-4 w-4" />
+              Salvat in sesiune
+            </Button>
+          </div>
         </div>
       </CardContent>
     </Card>

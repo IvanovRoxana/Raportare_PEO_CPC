@@ -7,6 +7,7 @@ const backendStoreSource = readFileSync(new URL('../lib/backend-store.ts', impor
 const backendHooksSource = readFileSync(new URL('../hooks/use-backend-data.ts', import.meta.url), 'utf8');
 const exportPageSource = readFileSync(new URL('../app/expert/peo/export/page.tsx', import.meta.url), 'utf8');
 const reportingWorkBlocksPanelSource = readFileSync(new URL('../components/expert/reporting-work-blocks-panel.tsx', import.meta.url), 'utf8');
+const reportingWorkBlockDraftPanelSource = readFileSync(new URL('../components/expert/reporting-work-block-draft-panel.tsx', import.meta.url), 'utf8');
 const reportingWorkBlocksServiceSource = awsStoreSource.match(
   /export const reportingWorkBlocksService = \{[\s\S]*?\n\};/,
 )?.[0] ?? '';
@@ -48,6 +49,16 @@ test('reporting work block draft hook prepares local drafts without cache invali
   assert.match(reportingWorkBlockDraftHookSource, /const prepareDraft = \(input: DraftWorkBlockInput, activities: Activity\[\]\)/);
   assert.match(reportingWorkBlockDraftHookSource, /reportingWorkBlocksService\.prepareDraft\(input, activities\)/);
   assert.doesNotMatch(reportingWorkBlockDraftHookSource, /mutate\(|useSWR|create|update|delete|upsert/);
+});
+
+test('reporting work block draft panel persists only session-scoped UI state', () => {
+  assert.match(reportingWorkBlockDraftPanelSource, /WorkBlockDraftSessionState/);
+  assert.match(reportingWorkBlockDraftPanelSource, /reporting-work-block-draft:\$\{expertId\}:\$\{projectCode\}:\$\{year\}:\$\{month\}/);
+  assert.match(reportingWorkBlockDraftPanelSource, /window\.sessionStorage\.getItem\(storageKey\)/);
+  assert.match(reportingWorkBlockDraftPanelSource, /window\.sessionStorage\.setItem\(storageKey, JSON\.stringify\(sessionDraft\)\)/);
+  assert.match(reportingWorkBlockDraftPanelSource, /window\.sessionStorage\.removeItem\(storageKey\)/);
+  assert.doesNotMatch(reportingWorkBlockDraftPanelSource, /localStorage/);
+  assert.doesNotMatch(reportingWorkBlockDraftPanelSource, /reportingWorkBlocksService\.(create|update|delete|upsert)/);
 });
 
 test('reporting work block activity options hook is pure and cache-safe', () => {
