@@ -50,7 +50,7 @@ import { useActivityCatalog, useBusinessHubEntityDirectory } from '@/hooks/use-b
 import type { Activity, Deliverable, DocumentMetadata, GrupTintaEntry, Expert, ActivityCatalog } from '@/lib/types';
 import fallbackActivityCatalog from '@/data/import/activity-catalog.json';
 import { isGtExpertCategory, normalizePeoCategory } from '@/lib/peo-category';
-import { filterActivityCatalogForFormTab, isActiveActivityCatalogItem, normalizeActivityCatalogSaCode, resolveExpertActivityCatalog } from '@/lib/activity-catalog-merge';
+import { filterActivityCatalogForFormTab, isActivityCatalogItemAvailableForForm, normalizeActivityCatalogSaCode, resolveExpertActivityCatalog } from '@/lib/activity-catalog-merge';
 import { buildDocumentS3Key, findDuplicateCandidates, getDocumentAuditTitle, hashFirstPageText, normalizeDocumentTextForFingerprint, sha256Hex } from '@/lib/document-sharing';
 import {
   findMonthlyDeliverableDuplicate,
@@ -294,9 +294,10 @@ export function ActivityForm({
       const itemCategory = normalizePeoCategory(item.category);
       const matchesCategory = !expertCategory || itemCategory === expertCategory;
       const matchesSaCode = allowedSaCodes.size === 0 || allowedSaCodes.has(normalizeActivityCatalogSaCode(item.saCode));
-      return isActiveActivityCatalogItem(item) && matchesCategory && matchesSaCode;
+      const isAvailable = isActivityCatalogItemAvailableForForm(item, initialActivity?.catalogActivityId);
+      return isAvailable && matchesCategory && matchesSaCode;
     });
-  }, [effectiveCatalog, expertCategory, expertSaCodes]);
+  }, [effectiveCatalog, expertCategory, expertSaCodes, initialActivity?.catalogActivityId]);
 
   const activityTabCatalog = useMemo(
     () => filterActivityCatalogForFormTab(filteredCatalog, activityFormTab),

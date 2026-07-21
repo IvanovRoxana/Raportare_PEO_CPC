@@ -27,6 +27,13 @@ export function isActiveActivityCatalogItem(item: Pick<ActivityCatalog, 'isActiv
   return item.isActive !== false;
 }
 
+export function isActivityCatalogItemAvailableForForm(
+  item: Pick<ActivityCatalog, 'id' | 'isActive'>,
+  currentCatalogActivityId?: string,
+) {
+  return isActiveActivityCatalogItem(item) || item.id === currentCatalogActivityId;
+}
+
 export function filterActivityCatalogForFormTab(catalog: ActivityCatalog[], tab: ActivityCatalogFormTab) {
   if (tab === 'event') {
     return catalog.filter(isEventActivityCatalogItem);
