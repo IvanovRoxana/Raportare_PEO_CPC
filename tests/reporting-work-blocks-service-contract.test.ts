@@ -30,6 +30,13 @@ test('reporting work blocks service is read-only and exported through backend st
   assert.match(reportingWorkBlocksServiceSource, /prepareDraftWorkBlockBundle\(input, activities\)/);
   assert.match(reportingWorkBlocksServiceSource, /prepareSaveDraft\(input: DraftWorkBlockInput, activities: Activity\[\]\): PreparedDraftWorkBlockSave/);
   assert.match(reportingWorkBlocksServiceSource, /prepareDraftWorkBlockSave\(input, activities\)/);
+  assert.match(reportingWorkBlocksServiceSource, /async saveDraft\(input: DraftWorkBlockInput, activities: Activity\[\]\): Promise<ReportingWorkBlockBundle>/);
+  assert.match(reportingWorkBlocksServiceSource, /await assertCanAccessExpert\(client, input\.expertId\)/);
+  assert.match(reportingWorkBlocksServiceSource, /await assertReportMonthIsMutable\(client, input\.expertId, input\.month, input\.year\)/);
+  assert.match(reportingWorkBlocksServiceSource, /preparedDraft\.canSave/);
+  assert.match(reportingWorkBlocksServiceSource, /client\.models\.ReportingWorkBlock\.(update|create)/);
+  assert.match(reportingWorkBlocksServiceSource, /client\.models\.WorkBlockActivityLink\.create/);
+  assert.match(reportingWorkBlocksServiceSource, /client\.models\.WorkBlockDeliverableLink\.create/);
   assert.match(reportingWorkBlocksServiceSource, /getBundlesByExpertAndMonth\(expertId: string, month: number, year: number\)/);
   assert.match(reportingWorkBlocksServiceSource, /buildPersistedWorkBlockBundles/);
   assert.doesNotMatch(reportingWorkBlocksServiceSource, /async (create|update|delete|upsert)\(/);

@@ -2529,6 +2529,93 @@ export const reportingWorkBlocksService = {
     return prepareDraftWorkBlockSave(input, activities);
   },
 
+  async saveDraft(input: DraftWorkBlockInput, activities: Activity[]): Promise<ReportingWorkBlockBundle> {
+    const client = getAwsDataClient() as any;
+    await assertCanAccessExpert(client, input.expertId);
+    await assertReportMonthIsMutable(client, input.expertId, input.month, input.year);
+
+    if (
+      !client.models.ReportingWorkBlock
+      || !client.models.WorkBlockActivityLink
+      || !client.models.WorkBlockDeliverableLink
+    ) {
+      throw new Error('Work block persistence is not available in the configured backend.');
+    }
+
+    const preparedDraft = prepareDraftWorkBlockSave(input, activities);
+    if (!preparedDraft.canSave || !preparedDraft.bundle) {
+      throw new Error('Draftul work block nu este pregatit pentru salvare.');
+    }
+
+    const { bundle } = preparedDraft;
+    const existing = await client.models.ReportingWorkBlock.get({ id: bundle.workBlock.id });
+    assertNoErrors(existing, 'AWS get reporting work block before save');
+    const workBlockPayload = {
+      id: bundle.workBlock.id,
+      expertId: bundle.workBlock.expertId,
+      projectCode: bundle.workBlock.projectCode,
+      month: bundle.workBlock.month,
+      year: bundle.workBlock.year,
+      title: bundle.workBlock.title,
+      saCode: bundle.workBlock.saCode,
+      activityCode: bundle.workBlock.activityCode,
+      activityCategory: bundle.workBlock.activityCategory,
+      reportingFlowType: bundle.workBlock.reportingFlowType,
+      expertContribution: bundle.workBlock.expertContribution,
+      beneficiaries: bundle.workBlock.beneficiaries,
+      indicatorContribution: bundle.workBlock.indicatorContribution,
+      status: bundle.workBlock.status,
+    };
+    const savedWorkBlock = existing.data
+      ? await client.models.ReportingWorkBlock.update(workBlockPayload)
+      : await client.models.ReportingWorkBlock.create(workBlockPayload);
+    assertNoErrors(savedWorkBlock, 'AWS save reporting work block');
+
+    const existingActivityLinks = await listModel<PersistedWorkBlockActivityLink>(
+      client.models.WorkBlockActivityLink,
+      { workBlockId: { eq: bundle.workBlock.id } },
+    );
+    const existingDeliverableLinks = await listModel<PersistedWorkBlockDeliverableLink>(
+      client.models.WorkBlockDeliverableLink,
+      { workBlockId: { eq: bundle.workBlock.id } },
+    );
+
+    await Promise.all([
+      ...existingActivityLinks.map(async (link) => {
+        const result = await client.models.WorkBlockActivityLink.delete({ id: link.id });
+        assertNoErrors(result, 'AWS delete work block activity link');
+      }),
+      ...existingDeliverableLinks.map(async (link) => {
+        const result = await client.models.WorkBlockDeliverableLink.delete({ id: link.id });
+        assertNoErrors(result, 'AWS delete work block deliverable link');
+      }),
+    ]);
+
+    await Promise.all([
+      ...bundle.activityLinks.map(async (link) => {
+        const result = await client.models.WorkBlockActivityLink.create({
+          id: link.id,
+          workBlockId: link.workBlockId,
+          activityId: link.activityId,
+          allocatedHours: link.allocatedHours,
+        });
+        assertNoErrors(result, 'AWS create work block activity link');
+      }),
+      ...bundle.deliverableLinks.map(async (link) => {
+        const result = await client.models.WorkBlockDeliverableLink.create({
+          id: link.id,
+          workBlockId: link.workBlockId,
+          deliverableId: link.deliverableId,
+          isPrimary: link.isPrimary,
+          contributionType: link.contributionType,
+        });
+        assertNoErrors(result, 'AWS create work block deliverable link');
+      }),
+    ]);
+
+    return bundle;
+  },
+
   async getBundlesByExpertAndMonth(expertId: string, month: number, year: number): Promise<ReportingWorkBlockBundle[]> {
     const client = getAwsDataClient() as any;
     await assertCanAccessExpert(client, expertId);
