@@ -312,18 +312,21 @@ export function ReportingWorkBlockDraftPanel({
     ));
   };
 
-  const resetDraft = () => {
-    const emptyDraft = createEmptyDraftSessionState();
-    window.sessionStorage.removeItem(storageKey);
-    setTitle(emptyDraft.title);
-    setSaCode(emptyDraft.saCode);
-    setReportingFlowType(emptyDraft.reportingFlowType);
-    setSelectedActivityIds(emptyDraft.selectedActivityIds);
-    setAllocatedHoursByActivityId(emptyDraft.allocatedHoursByActivityId);
-    setSelectedDeliverableIds(emptyDraft.selectedDeliverableIds);
-    setLastSavedSessionDraft(serializeDraftSessionState(emptyDraft));
+  const applyDraftSessionState = (draft: WorkBlockDraftSessionState) => {
+    setTitle(draft.title);
+    setSaCode(draft.saCode);
+    setReportingFlowType(draft.reportingFlowType);
+    setSelectedActivityIds(draft.selectedActivityIds);
+    setAllocatedHoursByActivityId(draft.allocatedHoursByActivityId);
+    setSelectedDeliverableIds(draft.selectedDeliverableIds);
+    setLastSavedSessionDraft(serializeDraftSessionState(draft));
     setSaveDraftError(null);
     setSaveDraftSuccess(false);
+  };
+
+  const resetDraft = () => {
+    window.sessionStorage.removeItem(storageKey);
+    applyDraftSessionState(createEmptyDraftSessionState());
   };
 
   const handleSaveDraft = async () => {
@@ -351,6 +354,7 @@ export function ReportingWorkBlockDraftPanel({
         existingBundles,
       }, activities);
       window.sessionStorage.removeItem(storageKey);
+      applyDraftSessionState(createEmptyDraftSessionState());
       setSaveDraftSuccess(true);
     } catch (error) {
       setSaveDraftError(error instanceof Error ? error.message : 'Nu am putut salva draftul work block.');

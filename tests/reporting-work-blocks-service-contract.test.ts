@@ -71,6 +71,7 @@ test('reporting work block draft panel persists only session-scoped UI state', (
   assert.match(reportingWorkBlockDraftPanelSource, /window\.sessionStorage\.getItem\(storageKey\)/);
   assert.match(reportingWorkBlockDraftPanelSource, /window\.sessionStorage\.setItem\(storageKey, serializedSessionDraft\)/);
   assert.match(reportingWorkBlockDraftPanelSource, /window\.sessionStorage\.removeItem\(storageKey\)/);
+  assert.match(reportingWorkBlockDraftPanelSource, /applyDraftSessionState/);
   assert.match(reportingWorkBlockDraftPanelSource, /createEmptyDraftSessionState/);
   assert.match(reportingWorkBlockDraftPanelSource, /serializeDraftSessionState/);
   assert.match(reportingWorkBlockDraftPanelSource, /lastSavedSessionDraft/);
