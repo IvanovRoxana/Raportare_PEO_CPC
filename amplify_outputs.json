@@ -152,6 +152,41 @@
               "isRequired": false,
               "attributes": []
             },
+            "contractNumber": {
+              "name": "contractNumber",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "contractType": {
+              "name": "contractType",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "expertExperienceCategory": {
+              "name": "expertExperienceCategory",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "jobDescriptionText": {
+              "name": "jobDescriptionText",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "beneficiary": {
+              "name": "beneficiary",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
             "saCodes": {
               "name": "saCodes",
               "isArray": true,
@@ -179,6 +214,22 @@
               "isArray": true,
               "type": {
                 "model": "Activity"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "expertId"
+                ]
+              }
+            },
+            "reportingWorkBlocks": {
+              "name": "reportingWorkBlocks",
+              "isArray": true,
+              "type": {
+                "model": "ReportingWorkBlock"
               },
               "isRequired": false,
               "attributes": [],
@@ -390,6 +441,13 @@
               "isRequired": false,
               "attributes": []
             },
+            "activityKeywords": {
+              "name": "activityKeywords",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
             "location": {
               "name": "location",
               "isArray": false,
@@ -408,6 +466,13 @@
               "name": "workingGroupId",
               "isArray": false,
               "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "periodGroupId": {
+              "name": "periodGroupId",
+              "isArray": false,
+              "type": "String",
               "isRequired": false,
               "attributes": []
             },
@@ -510,11 +575,41 @@
               "isRequired": false,
               "attributes": []
             },
+            "eventDurationHours": {
+              "name": "eventDurationHours",
+              "isArray": false,
+              "type": "Float",
+              "isRequired": false,
+              "attributes": []
+            },
+            "eventExtendedDescription": {
+              "name": "eventExtendedDescription",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
             "deliverables": {
               "name": "deliverables",
               "isArray": true,
               "type": {
                 "model": "Deliverable"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "activityId"
+                ]
+              }
+            },
+            "workBlockLinks": {
+              "name": "workBlockLinks",
+              "isArray": true,
+              "type": {
+                "model": "WorkBlockActivityLink"
               },
               "isRequired": false,
               "attributes": [],
@@ -933,8 +1028,22 @@
               "isRequired": false,
               "attributes": []
             },
+            "expertId": {
+              "name": "expertId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
             "projectId": {
               "name": "projectId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "projectCode": {
+              "name": "projectCode",
               "isArray": false,
               "type": "String",
               "isRequired": false,
@@ -944,6 +1053,20 @@
               "name": "projectName",
               "isArray": false,
               "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "month": {
+              "name": "month",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "year": {
+              "name": "year",
+              "isArray": false,
+              "type": "Int",
               "isRequired": false,
               "attributes": []
             },
@@ -1124,6 +1247,57 @@
               "isRequired": false,
               "attributes": []
             },
+            "extractedSummary": {
+              "name": "extractedSummary",
+              "isArray": false,
+              "type": "AWSJSON",
+              "isRequired": false,
+              "attributes": []
+            },
+            "confirmedReportingData": {
+              "name": "confirmedReportingData",
+              "isArray": false,
+              "type": "AWSJSON",
+              "isRequired": false,
+              "attributes": []
+            },
+            "summaryStatus": {
+              "name": "summaryStatus",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "summaryVersion": {
+              "name": "summaryVersion",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "summaryGeneratedAt": {
+              "name": "summaryGeneratedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": []
+            },
+            "workBlockLinks": {
+              "name": "workBlockLinks",
+              "isArray": true,
+              "type": {
+                "model": "WorkBlockDeliverableLink"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "deliverableId"
+                ]
+              }
+            },
             "createdAt": {
               "name": "createdAt",
               "isArray": false,
@@ -1159,6 +1333,30 @@
               }
             },
             {
+              "type": "key",
+              "properties": {
+                "name": "deliverablesByExpertIdAndYearAndMonth",
+                "queryField": "listDeliverableByExpertIdAndYearAndMonth",
+                "fields": [
+                  "expertId",
+                  "year",
+                  "month"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "deliverablesByProjectCodeAndYearAndMonth",
+                "queryField": "listDeliverableByProjectCodeAndYearAndMonth",
+                "fields": [
+                  "projectCode",
+                  "year",
+                  "month"
+                ]
+              }
+            },
+            {
               "type": "auth",
               "properties": {
                 "rules": [
@@ -1171,6 +1369,736 @@
                       "create",
                       "update",
                       "delete",
+                      "read"
+                    ]
+                  },
+                  {
+                    "groupClaim": "cognito:groups",
+                    "provider": "userPools",
+                    "allow": "groups",
+                    "operations": [
+                      "create",
+                      "read",
+                      "update",
+                      "delete"
+                    ],
+                    "groups": [
+                      "pm",
+                      "admin"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "ReportingWorkBlock": {
+          "name": "ReportingWorkBlock",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "owner": {
+              "name": "owner",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "expertId": {
+              "name": "expertId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "expert": {
+              "name": "expert",
+              "isArray": false,
+              "type": {
+                "model": "Expert"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "expertId"
+                ]
+              }
+            },
+            "projectCode": {
+              "name": "projectCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "month": {
+              "name": "month",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "year": {
+              "name": "year",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "title": {
+              "name": "title",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "saCode": {
+              "name": "saCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "activityCode": {
+              "name": "activityCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "activityCategory": {
+              "name": "activityCategory",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "reportingFlowType": {
+              "name": "reportingFlowType",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "expertContribution": {
+              "name": "expertContribution",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "beneficiaries": {
+              "name": "beneficiaries",
+              "isArray": true,
+              "type": "String",
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true
+            },
+            "indicatorContribution": {
+              "name": "indicatorContribution",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "generatedTableSummary": {
+              "name": "generatedTableSummary",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "generatedNarrative": {
+              "name": "generatedNarrative",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "generationInputsHash": {
+              "name": "generationInputsHash",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "activityLinks": {
+              "name": "activityLinks",
+              "isArray": true,
+              "type": {
+                "model": "WorkBlockActivityLink"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "workBlockId"
+                ]
+              }
+            },
+            "deliverableLinks": {
+              "name": "deliverableLinks",
+              "isArray": true,
+              "type": {
+                "model": "WorkBlockDeliverableLink"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "workBlockId"
+                ]
+              }
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "ReportingWorkBlocks",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "reportingWorkBlocksByExpertIdAndYearAndMonth",
+                "queryField": "listReportingWorkBlockByExpertIdAndYearAndMonth",
+                "fields": [
+                  "expertId",
+                  "year",
+                  "month"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "reportingWorkBlocksByProjectCodeAndYearAndMonth",
+                "queryField": "listReportingWorkBlockByProjectCodeAndYearAndMonth",
+                "fields": [
+                  "projectCode",
+                  "year",
+                  "month"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "reportingWorkBlocksByStatus",
+                "queryField": "listReportingWorkBlockByStatus",
+                "fields": [
+                  "status"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "provider": "userPools",
+                    "ownerField": "owner",
+                    "allow": "owner",
+                    "identityClaim": "cognito:username",
+                    "operations": [
+                      "create",
+                      "update",
+                      "delete",
+                      "read"
+                    ]
+                  },
+                  {
+                    "groupClaim": "cognito:groups",
+                    "provider": "userPools",
+                    "allow": "groups",
+                    "operations": [
+                      "create",
+                      "read",
+                      "update",
+                      "delete"
+                    ],
+                    "groups": [
+                      "pm",
+                      "admin"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "WorkBlockActivityLink": {
+          "name": "WorkBlockActivityLink",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "owner": {
+              "name": "owner",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "workBlockId": {
+              "name": "workBlockId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "workBlock": {
+              "name": "workBlock",
+              "isArray": false,
+              "type": {
+                "model": "ReportingWorkBlock"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "workBlockId"
+                ]
+              }
+            },
+            "activityId": {
+              "name": "activityId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "activity": {
+              "name": "activity",
+              "isArray": false,
+              "type": {
+                "model": "Activity"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "activityId"
+                ]
+              }
+            },
+            "allocatedHours": {
+              "name": "allocatedHours",
+              "isArray": false,
+              "type": "Float",
+              "isRequired": true,
+              "attributes": []
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "WorkBlockActivityLinks",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "workBlockActivityLinksByWorkBlockId",
+                "queryField": "listWorkBlockActivityLinkByWorkBlockId",
+                "fields": [
+                  "workBlockId"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "workBlockActivityLinksByActivityId",
+                "queryField": "listWorkBlockActivityLinkByActivityId",
+                "fields": [
+                  "activityId"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "provider": "userPools",
+                    "ownerField": "owner",
+                    "allow": "owner",
+                    "identityClaim": "cognito:username",
+                    "operations": [
+                      "create",
+                      "update",
+                      "delete",
+                      "read"
+                    ]
+                  },
+                  {
+                    "groupClaim": "cognito:groups",
+                    "provider": "userPools",
+                    "allow": "groups",
+                    "operations": [
+                      "create",
+                      "read",
+                      "update",
+                      "delete"
+                    ],
+                    "groups": [
+                      "pm",
+                      "admin"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "WorkBlockDeliverableLink": {
+          "name": "WorkBlockDeliverableLink",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "owner": {
+              "name": "owner",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "workBlockId": {
+              "name": "workBlockId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "workBlock": {
+              "name": "workBlock",
+              "isArray": false,
+              "type": {
+                "model": "ReportingWorkBlock"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "workBlockId"
+                ]
+              }
+            },
+            "deliverableId": {
+              "name": "deliverableId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "deliverable": {
+              "name": "deliverable",
+              "isArray": false,
+              "type": {
+                "model": "Deliverable"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "deliverableId"
+                ]
+              }
+            },
+            "isPrimary": {
+              "name": "isPrimary",
+              "isArray": false,
+              "type": "Boolean",
+              "isRequired": false,
+              "attributes": []
+            },
+            "contributionType": {
+              "name": "contributionType",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "WorkBlockDeliverableLinks",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "workBlockDeliverableLinksByWorkBlockId",
+                "queryField": "listWorkBlockDeliverableLinkByWorkBlockId",
+                "fields": [
+                  "workBlockId"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "workBlockDeliverableLinksByDeliverableId",
+                "queryField": "listWorkBlockDeliverableLinkByDeliverableId",
+                "fields": [
+                  "deliverableId"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "provider": "userPools",
+                    "ownerField": "owner",
+                    "allow": "owner",
+                    "identityClaim": "cognito:username",
+                    "operations": [
+                      "create",
+                      "update",
+                      "delete",
+                      "read"
+                    ]
+                  },
+                  {
+                    "groupClaim": "cognito:groups",
+                    "provider": "userPools",
+                    "allow": "groups",
+                    "operations": [
+                      "create",
+                      "read",
+                      "update",
+                      "delete"
+                    ],
+                    "groups": [
+                      "pm",
+                      "admin"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "ActivityMapping": {
+          "name": "ActivityMapping",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "projectCode": {
+              "name": "projectCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "saCode": {
+              "name": "saCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "activityCode": {
+              "name": "activityCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "activityTitle": {
+              "name": "activityTitle",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "saFullTitle": {
+              "name": "saFullTitle",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "allowedExpertCategories": {
+              "name": "allowedExpertCategories",
+              "isArray": true,
+              "type": "String",
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true
+            },
+            "isActive": {
+              "name": "isActive",
+              "isArray": false,
+              "type": "Boolean",
+              "isRequired": false,
+              "attributes": []
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "ActivityMappings",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "activityMappingsByProjectCodeAndSaCodeAndActivityCode",
+                "queryField": "listActivityMappingByProjectCodeAndSaCodeAndActivityCode",
+                "fields": [
+                  "projectCode",
+                  "saCode",
+                  "activityCode"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "activityMappingsBySaCode",
+                "queryField": "listActivityMappingBySaCode",
+                "fields": [
+                  "saCode"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "allow": "private",
+                    "operations": [
                       "read"
                     ]
                   },
@@ -1646,6 +2574,20 @@
             },
             "sourceActivityProjectCode": {
               "name": "sourceActivityProjectCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "sourceActivityEventDurationHours": {
+              "name": "sourceActivityEventDurationHours",
+              "isArray": false,
+              "type": "Float",
+              "isRequired": false,
+              "attributes": []
+            },
+            "sourceActivityEventExtendedDescription": {
+              "name": "sourceActivityEventExtendedDescription",
               "isArray": false,
               "type": "String",
               "isRequired": false,
@@ -3546,6 +4488,13 @@
               "isRequired": true,
               "attributes": []
             },
+            "isActive": {
+              "name": "isActive",
+              "isArray": false,
+              "type": "Boolean",
+              "isRequired": false,
+              "attributes": []
+            },
             "description": {
               "name": "description",
               "isArray": false,
@@ -5204,6 +6153,49 @@
               "type": "Boolean",
               "isRequired": false,
               "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "validatedAt": {
+              "name": "validatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": []
+            },
+            "validatedBy": {
+              "name": "validatedBy",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "assignmentSource": {
+              "name": "assignmentSource",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "expertFunction": {
+              "name": "expertFunction",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "deliverableOptions": {
+              "name": "deliverableOptions",
+              "isArray": true,
+              "type": "String",
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true
             },
             "notes": {
               "name": "notes",
