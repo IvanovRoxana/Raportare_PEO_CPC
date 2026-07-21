@@ -1,6 +1,8 @@
 param(
   [string]$Profile = "raportarepeo",
   [string]$Region = "eu-north-1",
+  [string]$AppId = "d19mquq8thd1uj",
+  [string]$BranchName = "staging",
   [string]$Environment = $env:APP_ENV,
   [string]$OutputsPath = ".\.amplify\staging\amplify_outputs.json",
   [string]$ProductionOutputsPath = ".\amplify_outputs.json",
@@ -110,6 +112,16 @@ function Write-DdbItems([string]$TableName, [array]$Items, [string]$AwsExe) {
   Write-Host "$TableName <- $($Items.Count)"
 }
 
+function Get-DdbTableTags([string]$TableName, [string]$AwsExe) {
+  $arn = & $AwsExe dynamodb describe-table --table-name $TableName --profile $Profile --region $Region --query "Table.TableArn" --output text
+  if ($LASTEXITCODE -ne 0 -or !$arn) { throw "Nu pot citi ARN-ul tabelului $TableName." }
+  $response = & $AwsExe dynamodb list-tags-of-resource --resource-arn $arn --profile $Profile --region $Region --output json | ConvertFrom-Json
+  if ($LASTEXITCODE -ne 0) { throw "Nu pot citi tag-urile tabelului $TableName." }
+  $tags = @{}
+  foreach ($tag in @($response.Tags)) { $tags[[string]$tag.Key] = [string]$tag.Value }
+  return $tags
+}
+
 if ($Environment -ne "staging") { throw "Seed blocat: Environment trebuie sa fie exact staging." }
 $stagingOutputs = Read-JsonUtf8 $OutputsPath
 $productionOutputs = Read-JsonUtf8 $ProductionOutputsPath
@@ -127,9 +139,19 @@ if ($productionUrl -match [regex]::Escape($apiId)) { throw "Seed blocat: API ID 
 $tableNames = (& $aws dynamodb list-tables --profile $Profile --region $Region --output json | ConvertFrom-Json).TableNames
 $tables = @{}
 foreach ($model in @("Expert", "Activity", "ConcurrentProject", "ConcurrentProjectTimesheetEntry")) {
-  $expected = "$model-$apiId-NONE"
-  if ($tableNames -notcontains $expected) { throw "Lipseste tabelul staging $expected." }
-  $tables[$model] = $expected
+  $matches = @()
+  foreach ($candidate in @($tableNames | Where-Object { $_ -like "$model-*-NONE" })) {
+    $tags = Get-DdbTableTags $candidate $aws
+    if (
+      $tags["amplify:app-id"] -eq $AppId -and
+      $tags["amplify:branch-name"] -eq $BranchName -and
+      $tags["amplify:deployment-type"] -eq "branch"
+    ) {
+      $matches += $candidate
+    }
+  }
+  if ($matches.Count -ne 1) { throw "Tabelul staging pentru $model nu poate fi identificat unic dupa tag-uri." }
+  $tables[$model] = $matches[0]
 }
 
 $seed = Read-JsonUtf8 $DataPath

@@ -15,7 +15,9 @@ test('staging seed contains the 25 unique workbook people', () => {
 test('staging seed refuses production and resolves exact branch tables', () => {
   assert.match(script, /Environment -ne "staging"/);
   assert.match(script, /stagingUrl -eq \$productionUrl/);
-  assert.match(script, /"\$model-\$apiId-NONE"/);
+  assert.match(script, /amplify:app-id/);
+  assert.match(script, /amplify:branch-name/);
+  assert.match(script, /amplify:deployment-type/);
   assert.doesNotMatch(script, /Expert-3wpaiebzefggpcmhzurrifx53i-NONE/);
 });
 
