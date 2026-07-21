@@ -91,11 +91,14 @@ export function ReportingWorkBlockDraftPanel({
   const [allocatedHoursByActivityId, setAllocatedHoursByActivityId] = useState<Record<string, number>>({});
   const [selectedDeliverableIds, setSelectedDeliverableIds] = useState<string[]>([]);
   const [lastSavedSessionDraft, setLastSavedSessionDraft] = useState('');
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
+  const [saveDraftError, setSaveDraftError] = useState<string | null>(null);
+  const [saveDraftSuccess, setSaveDraftSuccess] = useState(false);
   const storageKey = useMemo(() => (
     `reporting-work-block-draft:${expertId}:${projectCode}:${year}:${month}:${editingWorkBlockId ?? 'new'}`
   ), [editingWorkBlockId, expertId, month, projectCode, year]);
   const [hydratedStorageKey, setHydratedStorageKey] = useState<string | null>(null);
-  const { prepareDraft, prepareSaveDraft } = useReportingWorkBlockDraft();
+  const { prepareDraft, prepareSaveDraft, saveDraft } = useReportingWorkBlockDraft();
   const {
     options: activityOptions,
     unallocatedActivityCount,
@@ -200,6 +203,8 @@ export function ReportingWorkBlockDraftPanel({
     ? 'Finalizeaza validarile'
     : hasUnsavedSessionChanges
       ? 'Sincronizare sesiune'
+      : isSavingDraft
+        ? 'Se salveaza'
       : 'Pregatit pentru salvare';
 
   useEffect(() => {
@@ -317,6 +322,41 @@ export function ReportingWorkBlockDraftPanel({
     setAllocatedHoursByActivityId(emptyDraft.allocatedHoursByActivityId);
     setSelectedDeliverableIds(emptyDraft.selectedDeliverableIds);
     setLastSavedSessionDraft(serializeDraftSessionState(emptyDraft));
+    setSaveDraftError(null);
+    setSaveDraftSuccess(false);
+  };
+
+  const handleSaveDraft = async () => {
+    if (!isReadyForControlledSave || isSavingDraft) {
+      return;
+    }
+
+    setIsSavingDraft(true);
+    setSaveDraftError(null);
+    setSaveDraftSuccess(false);
+
+    try {
+      await saveDraft({
+        id: editingWorkBlockId,
+        expertId,
+        projectCode,
+        month,
+        year,
+        title,
+        saCode,
+        reportingFlowType,
+        activityIds: selectedActivityIds,
+        allocatedHoursByActivityId,
+        deliverableIds: selectedDeliverableIds,
+        existingBundles,
+      }, activities);
+      window.sessionStorage.removeItem(storageKey);
+      setSaveDraftSuccess(true);
+    } catch (error) {
+      setSaveDraftError(error instanceof Error ? error.message : 'Nu am putut salva draftul work block.');
+    } finally {
+      setIsSavingDraft(false);
+    }
   };
 
   return (
@@ -477,7 +517,9 @@ export function ReportingWorkBlockDraftPanel({
             ) : (
               <>
                 <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                {hasUnsavedSessionChanges ? 'Draft local modificat' : 'Draft salvat in sesiune'}
+                {saveDraftSuccess
+                  ? 'Draft salvat in backend'
+                  : hasUnsavedSessionChanges ? 'Draft local modificat' : 'Draft salvat in sesiune'}
               </>
             )}
           </div>
@@ -486,7 +528,15 @@ export function ReportingWorkBlockDraftPanel({
               <RotateCcw className="h-4 w-4" />
               Reset draft
             </Button>
-            <Button type="button" disabled aria-disabled={!isReadyForControlledSave}>
+            {saveDraftError && (
+              <span className="text-sm text-destructive">{saveDraftError}</span>
+            )}
+            <Button
+              type="button"
+              disabled={!isReadyForControlledSave || isSavingDraft}
+              aria-disabled={!isReadyForControlledSave || isSavingDraft}
+              onClick={handleSaveDraft}
+            >
               <Save className="h-4 w-4" />
               {controlledSaveLabel}
             </Button>

@@ -78,6 +78,11 @@ test('reporting work block draft panel persists only session-scoped UI state', (
   assert.match(reportingWorkBlockDraftPanelSource, /hasUnsavedSessionChanges/);
   assert.match(reportingWorkBlockDraftPanelSource, /isReadyForControlledSave/);
   assert.match(reportingWorkBlockDraftPanelSource, /saveDraftPreview\.canSave/);
+  assert.match(reportingWorkBlockDraftPanelSource, /saveDraft\(\{/);
+  assert.match(reportingWorkBlockDraftPanelSource, /isSavingDraft/);
+  assert.match(reportingWorkBlockDraftPanelSource, /saveDraftError/);
+  assert.match(reportingWorkBlockDraftPanelSource, /saveDraftSuccess/);
+  assert.match(reportingWorkBlockDraftPanelSource, /disabled=\{!isReadyForControlledSave \|\| isSavingDraft\}/);
   assert.match(reportingWorkBlockDraftPanelSource, /controlledSaveLabel/);
   assert.match(reportingWorkBlockDraftPanelSource, /!hasUnsavedSessionChanges/);
   assert.match(reportingWorkBlockDraftPanelSource, /availableActivityIds/);
@@ -87,6 +92,7 @@ test('reporting work block draft panel persists only session-scoped UI state', (
   assert.match(reportingWorkBlockDraftPanelSource, /current\.filter\(\(deliverableId\) => availableDeliverableIds\.has\(deliverableId\)\)/);
   assert.doesNotMatch(reportingWorkBlockDraftPanelSource, /localStorage/);
   assert.doesNotMatch(reportingWorkBlockDraftPanelSource, /reportingWorkBlocksService\.(create|update|delete|upsert)/);
+  assert.doesNotMatch(reportingWorkBlockDraftPanelSource, /reportingWorkBlocksService\.saveDraft/);
 });
 
 test('reporting work block activity options hook is pure and cache-safe', () => {
