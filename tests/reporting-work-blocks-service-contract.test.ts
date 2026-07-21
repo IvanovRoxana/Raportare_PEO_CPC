@@ -73,6 +73,12 @@ test('reporting work block draft panel persists only session-scoped UI state', (
   assert.match(reportingWorkBlockDraftPanelSource, /window\.sessionStorage\.removeItem\(storageKey\)/);
   assert.match(reportingWorkBlockDraftPanelSource, /applyDraftSessionState/);
   assert.match(reportingWorkBlockDraftPanelSource, /createEmptyDraftSessionState/);
+  assert.match(reportingWorkBlockDraftPanelSource, /createDraftSessionStateFromBundle/);
+  assert.match(reportingWorkBlockDraftPanelSource, /selectedWorkBlockId/);
+  assert.match(reportingWorkBlockDraftPanelSource, /effectiveEditingWorkBlockId/);
+  assert.match(reportingWorkBlockDraftPanelSource, /selectedEditingBundle/);
+  assert.match(reportingWorkBlockDraftPanelSource, /<SelectItem value="new">Draft nou<\/SelectItem>/);
+  assert.match(reportingWorkBlockDraftPanelSource, /existingBundles\.map\(\(bundle\) =>/);
   assert.match(reportingWorkBlockDraftPanelSource, /serializeDraftSessionState/);
   assert.match(reportingWorkBlockDraftPanelSource, /lastSavedSessionDraft/);
   assert.match(reportingWorkBlockDraftPanelSource, /serializedSessionDraft === lastSavedSessionDraft/);
