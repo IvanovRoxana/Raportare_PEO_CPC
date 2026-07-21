@@ -46,6 +46,10 @@ type WorkBlockDraftSessionState = {
   selectedDeliverableIds: string[];
 };
 
+function areSameStringList(first: string[], second: string[]) {
+  return first.length === second.length && first.every((value, index) => value === second[index]);
+}
+
 interface ReportingWorkBlockDraftPanelProps {
   expertId: string;
   projectCode: string;
@@ -85,6 +89,12 @@ export function ReportingWorkBlockDraftPanel({
     options: deliverableOptions,
     unassociatedDeliverableCount,
   } = useReportingWorkBlockDeliverableOptions(activities, existingBundles, editingWorkBlockId);
+  const availableActivityIds = useMemo(() => (
+    new Set(activityOptions.map((option) => option.activityId))
+  ), [activityOptions]);
+  const availableDeliverableIds = useMemo(() => (
+    new Set(deliverableOptions.map((option) => option.deliverableId))
+  ), [deliverableOptions]);
 
   const draftPreview = useMemo(() => prepareDraft({
     id: editingWorkBlockId,
@@ -156,6 +166,27 @@ export function ReportingWorkBlockDraftPanel({
       setHydratedStorageKey(storageKey);
     }
   }, [storageKey]);
+
+  useEffect(() => {
+    if (hydratedStorageKey !== storageKey) {
+      return;
+    }
+
+    setSelectedActivityIds((current) => {
+      const next = current.filter((activityId) => availableActivityIds.has(activityId));
+      return areSameStringList(current, next) ? current : next;
+    });
+    setAllocatedHoursByActivityId((current) => {
+      const next = Object.fromEntries(
+        Object.entries(current).filter(([activityId]) => availableActivityIds.has(activityId))
+      );
+      return Object.keys(next).length === Object.keys(current).length ? current : next;
+    });
+    setSelectedDeliverableIds((current) => {
+      const next = current.filter((deliverableId) => availableDeliverableIds.has(deliverableId));
+      return areSameStringList(current, next) ? current : next;
+    });
+  }, [availableActivityIds, availableDeliverableIds, hydratedStorageKey, storageKey]);
 
   useEffect(() => {
     if (hydratedStorageKey !== storageKey) {

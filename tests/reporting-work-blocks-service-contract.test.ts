@@ -57,6 +57,11 @@ test('reporting work block draft panel persists only session-scoped UI state', (
   assert.match(reportingWorkBlockDraftPanelSource, /window\.sessionStorage\.getItem\(storageKey\)/);
   assert.match(reportingWorkBlockDraftPanelSource, /window\.sessionStorage\.setItem\(storageKey, JSON\.stringify\(sessionDraft\)\)/);
   assert.match(reportingWorkBlockDraftPanelSource, /window\.sessionStorage\.removeItem\(storageKey\)/);
+  assert.match(reportingWorkBlockDraftPanelSource, /availableActivityIds/);
+  assert.match(reportingWorkBlockDraftPanelSource, /availableDeliverableIds/);
+  assert.match(reportingWorkBlockDraftPanelSource, /current\.filter\(\(activityId\) => availableActivityIds\.has\(activityId\)\)/);
+  assert.match(reportingWorkBlockDraftPanelSource, /Object\.entries\(current\)\.filter\(\(\[activityId\]\) => availableActivityIds\.has\(activityId\)\)/);
+  assert.match(reportingWorkBlockDraftPanelSource, /current\.filter\(\(deliverableId\) => availableDeliverableIds\.has\(deliverableId\)\)/);
   assert.doesNotMatch(reportingWorkBlockDraftPanelSource, /localStorage/);
   assert.doesNotMatch(reportingWorkBlockDraftPanelSource, /reportingWorkBlocksService\.(create|update|delete|upsert)/);
 });
