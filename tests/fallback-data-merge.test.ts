@@ -6,6 +6,7 @@ import {
   isEventActivityCatalogItem,
   mergeActivityCatalogs,
   normalizeActivityCatalogSaCode,
+  resolveActivityDeliverableOptions,
   resolveExpertActivityCatalog,
   sortActivityCatalog,
 } from '../lib/activity-catalog-merge.ts';
@@ -29,6 +30,34 @@ const fallbackCatalog = [
     activityName: 'Monitorizare GT',
   },
 ] as ActivityCatalog[];
+
+test('livrabilele configurate pe activitatea din catalog devin optiunile formularului', () => {
+  assert.deepEqual(
+    resolveActivityDeliverableOptions(
+      'Raport de verificare GDPR | Nota de conformitate\n- Checklist GDPR; Raport de verificare GDPR',
+      ['Metodologie actualizata'],
+    ),
+    ['Raport de verificare GDPR', 'Nota de conformitate', 'Checklist GDPR'],
+  );
+});
+
+test('tipurile deja salvate raman disponibile cand configuratia Admin se schimba', () => {
+  assert.deepEqual(
+    resolveActivityDeliverableOptions(
+      'Raport configurat | Nota configurata',
+      ['Metodologie actualizata'],
+      ['Metodologie actualizata', 'Raport configurat', undefined],
+    ),
+    ['Raport configurat', 'Nota configurata', 'Metodologie actualizata'],
+  );
+});
+
+test('lista statica ramane fallback cand activitatea nu are livrabile configurate', () => {
+  const fallbackOptions = ['Metodologie actualizata'];
+
+  assert.deepEqual(resolveActivityDeliverableOptions('  ', fallbackOptions), fallbackOptions);
+  assert.deepEqual(resolveActivityDeliverableOptions(undefined, fallbackOptions), fallbackOptions);
+});
 
 test('catalogul backend gol pastreaza catalogul fallback complet', () => {
   const merged = mergeActivityCatalogs(fallbackCatalog, []);

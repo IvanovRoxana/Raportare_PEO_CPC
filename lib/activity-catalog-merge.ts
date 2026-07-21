@@ -46,6 +46,23 @@ export function filterActivityCatalogForFormTab(catalog: ActivityCatalog[], tab:
   return catalog;
 }
 
+export function resolveActivityDeliverableOptions(
+  catalogDeliverables: string | undefined,
+  fallbackOptions: string[],
+  currentOptions: Array<string | undefined> = [],
+) {
+  const configuredOptions = (catalogDeliverables || '')
+    .split(/\s*\|\s*|\r?\n|\s*;\s*/)
+    .map((option) => option.replace(/^[-*\u2022]\s*/, '').trim())
+    .filter(Boolean);
+  const preservedOptions = currentOptions
+    .map((option) => option?.trim())
+    .filter((option): option is string => Boolean(option));
+
+  const baseOptions = configuredOptions.length > 0 ? configuredOptions : fallbackOptions;
+  return Array.from(new Set([...baseOptions, ...preservedOptions]));
+}
+
 export function activityCatalogMergeKey(item: ActivityCatalogMergeKeyInput) {
   const category = normalizePeoCategory(item.category) || item.category?.trim().toLowerCase();
   const saCode = normalizeActivityCatalogSaCode(item.saCode);

@@ -50,7 +50,7 @@ import { useActivityCatalog, useBusinessHubEntityDirectory } from '@/hooks/use-b
 import type { Activity, Deliverable, DocumentMetadata, GrupTintaEntry, Expert, ActivityCatalog } from '@/lib/types';
 import fallbackActivityCatalog from '@/data/import/activity-catalog.json';
 import { isGtExpertCategory, normalizePeoCategory } from '@/lib/peo-category';
-import { filterActivityCatalogForFormTab, isActivityCatalogItemAvailableForForm, normalizeActivityCatalogSaCode, resolveExpertActivityCatalog } from '@/lib/activity-catalog-merge';
+import { filterActivityCatalogForFormTab, isActivityCatalogItemAvailableForForm, normalizeActivityCatalogSaCode, resolveActivityDeliverableOptions, resolveExpertActivityCatalog } from '@/lib/activity-catalog-merge';
 import { buildDocumentS3Key, findDuplicateCandidates, getDocumentAuditTitle, hashFirstPageText, normalizeDocumentTextForFingerprint, sha256Hex } from '@/lib/document-sharing';
 import {
   findMonthlyDeliverableDuplicate,
@@ -769,8 +769,12 @@ export function ActivityForm({
   }, [allActivities, allExperts, activityTitle, expertId, initialCollaborators, saCode, selectedDates]);
   
   const deliverableOptions = useMemo(() => {
-    return getDeliverableOptions(expertCategory || 'ap');
-  }, [expertCategory]);
+    return resolveActivityDeliverableOptions(
+      selectedCatalogItem?.deliverables,
+      getDeliverableOptions(expertCategory || 'ap'),
+      deliverables.map((deliverable) => deliverable.type || deliverable.deliverableType),
+    );
+  }, [deliverables, expertCategory, selectedCatalogItem?.deliverables]);
 
   const businessHubMetaDate = selectedDates[0] || initialActivity?.date || '';
   const businessHubMetaDraft = useMemo(() => ({

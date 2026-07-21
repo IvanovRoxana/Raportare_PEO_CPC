@@ -7,13 +7,16 @@ const draftPanelSource = readFileSync(
   'utf8',
 );
 
-test('draft work block panel prepares local drafts without persistence', () => {
+test('draft work block panel prepares and persists controlled drafts', () => {
   assert.match(draftPanelSource, /export function ReportingWorkBlockDraftPanel/);
   assert.match(draftPanelSource, /useReportingWorkBlockActivityOptions/);
   assert.match(draftPanelSource, /useReportingWorkBlockDeliverableOptions/);
   assert.match(draftPanelSource, /useReportingWorkBlockDraft/);
   assert.match(draftPanelSource, /prepareDraft\(\{/);
-  assert.match(draftPanelSource, /disabled>\s*[\s\S]*Salvare in curand/);
+  assert.match(draftPanelSource, /prepareSaveDraft\(\{/);
+  assert.match(draftPanelSource, /saveDraft\(\{/);
+  assert.match(draftPanelSource, /disabled=\{!isReadyForControlledSave \|\| isSavingDraft\}/);
+  assert.match(draftPanelSource, /controlledSaveLabel/);
   assert.doesNotMatch(draftPanelSource, /mutate\(|useSWR|\.create\(|\.update\(|\.delete\(|\.upsert\(/);
 });
 
