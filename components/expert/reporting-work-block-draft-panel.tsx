@@ -360,7 +360,7 @@ export function ReportingWorkBlockDraftPanel({
     setSaveDraftSuccess(false);
 
     try {
-      await saveDraft({
+      const savedBundle = await saveDraft({
         id: effectiveEditingWorkBlockId,
         expertId,
         projectCode,
@@ -376,7 +376,7 @@ export function ReportingWorkBlockDraftPanel({
       }, activities);
       window.sessionStorage.removeItem(storageKey);
       applyDraftSessionState(createEmptyDraftSessionState());
-      setSelectedWorkBlockId('new');
+      setSelectedWorkBlockId(savedBundle.workBlock.id ?? 'new');
       setSaveDraftSuccess(true);
     } catch (error) {
       setSaveDraftError(error instanceof Error ? error.message : 'Nu am putut salva draftul work block.');

@@ -87,6 +87,8 @@ test('reporting work block draft panel persists only session-scoped UI state', (
   assert.match(reportingWorkBlockDraftPanelSource, /isReadyForControlledSave/);
   assert.match(reportingWorkBlockDraftPanelSource, /saveDraftPreview\.canSave/);
   assert.match(reportingWorkBlockDraftPanelSource, /saveDraft\(\{/);
+  assert.match(reportingWorkBlockDraftPanelSource, /const savedBundle = await saveDraft\(\{/);
+  assert.match(reportingWorkBlockDraftPanelSource, /setSelectedWorkBlockId\(savedBundle\.workBlock\.id \?\? 'new'\)/);
   assert.match(reportingWorkBlockDraftPanelSource, /isSavingDraft/);
   assert.match(reportingWorkBlockDraftPanelSource, /saveDraftError/);
   assert.match(reportingWorkBlockDraftPanelSource, /saveDraftSuccess/);
