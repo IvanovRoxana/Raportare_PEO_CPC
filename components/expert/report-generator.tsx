@@ -122,6 +122,10 @@ export function ReportGenerator({
   const deterministicExportReadiness = deterministicAnexa10Model
     ? getAnexa10ExportReadiness(deterministicAnexa10Model)
     : null;
+  const persistedWorkBlockCount = workBlockBundles?.length ?? 0;
+  const deterministicWorkBlockSourceLabel = persistedWorkBlockCount > 0
+    ? `Work block-uri persistate: ${persistedWorkBlockCount}`
+    : 'Work block-uri generate din activitati (fallback)';
 
   const generateWithAI = async () => {
     setIsGenerating(true);
@@ -433,6 +437,7 @@ export function ReportGenerator({
               Export Anexa 10 determinist: {deterministicExportReadiness.statusLabel}
             </p>
             <p className="mt-1 text-muted-foreground">{deterministicExportReadiness.summary}</p>
+            <p className="mt-1 text-muted-foreground">{deterministicWorkBlockSourceLabel}</p>
             {deterministicExportReadiness.blockingMessages.length > 0 && (
               <ul className="mt-2 list-disc space-y-1 pl-5 text-destructive">
                 {deterministicExportReadiness.blockingMessages.map((message) => <li key={message}>{message}</li>)}

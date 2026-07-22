@@ -147,5 +147,9 @@ test('export page wires persisted work block bundles as a read-only optional pre
   assert.match(reportingWorkBlocksPanelSource, /const bundles = persistedBundles\.length > 0 \? persistedBundles : activityBundles;/);
   assert.match(reportGeneratorSource, /workBlockBundles\?: ReportingWorkBlockBundle\[\];/);
   assert.match(reportGeneratorSource, /workBlockBundles: workBlockBundles && workBlockBundles\.length > 0 \? workBlockBundles : undefined/);
+  assert.match(reportGeneratorSource, /const persistedWorkBlockCount = workBlockBundles\?\.length \?\? 0/);
+  assert.match(reportGeneratorSource, /const deterministicWorkBlockSourceLabel = persistedWorkBlockCount > 0/);
+  assert.match(reportGeneratorSource, /Work block-uri persistate: \$\{persistedWorkBlockCount\}/);
+  assert.match(reportGeneratorSource, /Work block-uri generate din activitati \(fallback\)/);
   assert.match(reportGeneratorSource, /\[activities, enableDeterministicAnexa10Docx, expert, expertName, month, workBlockBundles, year\]/);
 });
