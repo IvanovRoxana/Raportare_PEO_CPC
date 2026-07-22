@@ -123,6 +123,25 @@ function assertNoErrors<T>(result: ModelResult<T> | ModelListResult<T>, action: 
   }
 }
 
+function isAwsThrottlingError(error: unknown) {
+  const serialized = error instanceof Error
+    ? `${error.name} ${error.message}`
+    : JSON.stringify(error);
+  return /ThrottlingException|ThroughputExceeded|ThrottleEvents|ProvisionedThroughput/i.test(serialized);
+}
+
+function buildActivityBatchThrottleError(createdCount: number, totalCount: number) {
+  if (createdCount === 0) {
+    return new Error(
+      'Salvarea a fost oprita de limitarea temporara DynamoDB inainte de prima scriere. Reincearca dupa cateva secunde.',
+    );
+  }
+
+  return new Error(
+    `Salvarea a fost oprita de limitarea temporara DynamoDB dupa ${createdCount}/${totalCount} activitati create. Reincarca activitatile inainte de reîncercare pentru a evita duplicatele.`,
+  );
+}
+
 function hasConditionalCheckFailedError(errors: unknown) {
   return JSON.stringify(errors).includes('ConditionalCheckFailedException');
 }
@@ -1198,7 +1217,7 @@ async function attachSharedDocumentToTargetActivity(
 ) {
   if (!client.models.Deliverable || !client.models.Document) return;
 
-  const existingDeliverables = await listModel<any>(client.models.Deliverable, { activityId: { eq: targetActivity.id } });
+  const existingDeliverables = await listDeliverablesByActivityId<any>(client.models.Deliverable, targetActivity.id);
   if (existingDeliverables.some((deliverable) => deliverable.documentId === relation.documentId)) return;
 
   const documentResult = await client.models.Document.get({ id: relation.documentId });
@@ -1371,7 +1390,7 @@ async function hydrateSharedActivitySnapshots(
 async function attachActivityChildren(activity: any): Promise<Activity> {
   const client = getAwsDataClient() as any;
   const [deliverables, grupTinta] = await Promise.all([
-    listModel<any>(client.models.Deliverable, { activityId: { eq: activity.id } }),
+    listDeliverablesByActivityId<any>(client.models.Deliverable, activity.id),
     listModel<any>(client.models.GrupTintaEntry, { activityId: { eq: activity.id } }),
   ]);
 
@@ -2340,7 +2359,14 @@ export const activitiesService = {
 
     const created: Activity[] = [];
     for (const activity of preparedActivities) {
-      created.push(await createActivityUnchecked(client, activity));
+      try {
+        created.push(await createActivityUnchecked(client, activity));
+      } catch (error) {
+        if (isAwsThrottlingError(error)) {
+          throw buildActivityBatchThrottleError(created.length, preparedActivities.length);
+        }
+        throw error;
+      }
     }
     return created;
   },

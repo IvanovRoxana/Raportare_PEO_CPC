@@ -488,6 +488,30 @@ test('validarea lunara marcheaza acelasi document pe alta activitate ca duplicat
   assert.equal(duplicate.activity.id, 'activity-2');
 });
 
+test('validarea lunara detecteaza duplicatul intre doua activitati noi din acelasi batch', () => {
+  const duplicate = findMonthlyDeliverableDuplicate({
+    existingActivities: [],
+    nextActivities: [
+      activity('activity-new-1', {
+        date: '2026-06-03',
+        deliverables: [deliverable('deliverable-new-1', { documentId: 'document-common' })],
+      }),
+      activity('activity-new-2', {
+        date: '2026-06-10',
+        deliverables: [deliverable('deliverable-new-2', { documentId: 'document-common' })],
+      }),
+    ],
+    expertId: 'expert-1',
+    month: 5,
+    year: 2026,
+  });
+
+  assert.ok(duplicate);
+  assert.equal(duplicate.existingActivity.id, 'activity-new-1');
+  assert.equal(duplicate.activity.id, 'activity-new-2');
+  assert.equal(duplicate.signature, 'document:document-common');
+});
+
 test('validarea lunara permite acelasi document in alta luna si fisiere cu hash diferit', () => {
   const otherMonthDuplicate = findMonthlyDeliverableDuplicate({
     existingActivities: [
