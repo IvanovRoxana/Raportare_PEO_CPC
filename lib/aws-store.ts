@@ -6,6 +6,7 @@ import { getSignedInUser } from '@/lib/aws/auth';
 import outputs from '@/amplify_outputs.json';
 import { peoUsersAsExperts } from '@/lib/peo-users';
 import { mergeExpertLists, mergeExpertWithFallback } from '@/lib/expert-merge';
+import { listDeliverablesByActivityId } from '@/lib/aws-pagination';
 import {
   buildCollaborationExpertOptions,
   canAccessExpertId,
@@ -1461,7 +1462,7 @@ async function listActivitiesWithDeliverablesForValidation(
   const activities = data.filter((activity) => !excluded.has(activity.id));
 
   return Promise.all(activities.map(async (activity) => {
-    const deliverables = await listModel<any>(client.models.Deliverable, { activityId: { eq: activity.id } });
+    const deliverables = await listDeliverablesByActivityId<any>(client.models.Deliverable, activity.id);
 
     return {
       id: activity.id,
@@ -2451,7 +2452,7 @@ export const activitiesService = {
     }
 
     if (preparedUpdates.deliverables) {
-      const existingDeliverables = await listModel<any>(client.models.Deliverable, { activityId: { eq: id } });
+      const existingDeliverables = await listDeliverablesByActivityId<any>(client.models.Deliverable, id);
       const deliverablePlan = planDeliverableSync(existingDeliverables.map(mapDeliverable), preparedUpdates.deliverables);
 
       await Promise.all(
