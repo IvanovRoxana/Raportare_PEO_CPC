@@ -93,8 +93,33 @@ export function isConcordiaPublishedDeliverableType(deliverableType: unknown) {
   return (
     normalized.includes('material publicat + link')
     || normalized.includes('articole pe concordia.ro')
+    || (normalized.includes('articol') && normalized.includes('concordia.ro'))
     || normalized.includes('articol publicat pe site')
   );
+}
+
+export const MIN_ELIGIBILITY_TEXT_LENGTH = 80;
+
+export function hasSufficientDeliverableEvidenceForEligibility(input: {
+  extractedText?: unknown;
+  firstPageText?: unknown;
+  documentTitle?: unknown;
+  titleConfirmed?: unknown;
+  fileName?: unknown;
+  fileType?: unknown;
+  deliverableType?: unknown;
+}) {
+  const extractedText = String(input.extractedText || input.firstPageText || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (extractedText.length >= MIN_ELIGIBILITY_TEXT_LENGTH) return true;
+
+  const fileName = String(input.fileName || '').trim();
+  const fileType = String(input.fileType || '').trim().toLowerCase();
+  const isPdf = /\.pdf$/i.test(fileName) || fileType === 'application/pdf';
+  const hasConfirmedTitle = Boolean(input.titleConfirmed && String(input.documentTitle || '').trim());
+
+  return isPdf && hasConfirmedTitle && isConcordiaPublishedDeliverableType(input.deliverableType);
 }
 
 export function getConcordiaPublicationEvidence(input: {

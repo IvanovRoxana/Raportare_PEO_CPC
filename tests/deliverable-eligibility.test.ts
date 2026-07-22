@@ -6,6 +6,8 @@ import {
   CONCORDIA_PUBLICATION_ELIGIBILITY_PROMPT_RULES,
   deliverableEligibilityAiSchema,
   deliverableEligibilitySchema,
+  hasSufficientDeliverableEvidenceForEligibility,
+  isConcordiaPublishedDeliverableType,
   normalizeDeliverableEligibilityAiOutput,
   normalizeDeliverableEligibilityDocuments,
   protectConcordiaPublicationEligibility,
@@ -117,6 +119,32 @@ test('promptul trateaza printurile Concordia cu sursa initiala profit.ro ca dova
   assert.match(CONCORDIA_PUBLICATION_ELIGIBILITY_PROMPT_RULES, /URL-ul nu este vizibil/);
   assert.match(CONCORDIA_PUBLICATION_ELIGIBILITY_PROMPT_RULES, /profit\.ro/);
   assert.match(CONCORDIA_PUBLICATION_ELIGIBILITY_PROMPT_RULES, /nu include "dovada publicarii pe concordia\.ro" in missingElements/);
+});
+
+test('recunoaste tipul Articole tematice publicate pe concordia.ro', () => {
+  assert.equal(isConcordiaPublishedDeliverableType('Articole tematice publicate pe concordia.ro'), true);
+});
+
+test('permite verificarea unui PDF Concordia cu titlu confirmat chiar daca OCR-ul este scurt', () => {
+  assert.equal(hasSufficientDeliverableEvidenceForEligibility({
+    extractedText: 'Green Transition Forum 6.0',
+    documentTitle: 'Green Transition Forum 6.0',
+    titleConfirmed: true,
+    fileName: '20260602_Green Transition Forum 6.0.pdf',
+    fileType: 'application/pdf',
+    deliverableType: 'Articole tematice publicate pe concordia.ro',
+  }), true);
+});
+
+test('nu relaxeaza pragul pentru un PDF generic fara tip de articol Concordia', () => {
+  assert.equal(hasSufficientDeliverableEvidenceForEligibility({
+    extractedText: 'Titlu scurt',
+    documentTitle: 'Titlu scurt',
+    titleConfirmed: true,
+    fileName: 'document.pdf',
+    fileType: 'application/pdf',
+    deliverableType: 'Minute intalnire / MOM',
+  }), false);
 });
 
 test('nu respinge articol Concordia Daniel Apostol doar pentru mentiunea publicarii initiale pe profit.ro', () => {

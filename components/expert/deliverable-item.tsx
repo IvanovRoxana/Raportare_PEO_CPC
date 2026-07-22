@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ALL_DELIVERABLE_TYPES, DOCUMENT_STADIU_OPTIONS, type DeliverableSlot } from '@/lib/deliverable-types';
 import { extractDocxFirstPageText, extractDocxTextWithSource, extractHtmlTextWithSource, extractImageTextWithSource, extractPdfFirstPageTextWithSource, extractPdfTextWithSource, extractXlsxTextWithSource, isImageFile } from '@/lib/document-utils';
 import { DELIVERABLE_ELIGIBILITY_UI_MESSAGE, isDeliverableEligibilityCheckEnabledClient } from '@/lib/feature-flags';
+import { hasSufficientDeliverableEvidenceForEligibility } from '@/lib/deliverable-eligibility';
 import { applyAutomaticTitleSuggestion, formatTitleFromFilename, suggestTitleFromFirstPage, validateDeclaredTitleOnFirstPage } from '@/lib/title-suggestion';
 import { getDocumentAuditTitle, hashFirstPageText, normalizeDocumentTextForFingerprint, sha256Hex, type DuplicateIssueType } from '@/lib/document-sharing';
 import type { ActivityCatalog } from '@/lib/types';
@@ -26,10 +27,16 @@ export interface DeliverableDuplicateInfo {
 
 type EligibilitySuggestedSettings = NonNullable<NonNullable<DeliverableSlot['eligibilityCheck']>['suggestedSettings']>;
 type EligibilitySuggestedSettingsChange = 'activity' | 'deliverableType';
-const MIN_ELIGIBILITY_TEXT_LENGTH = 80;
-
 function hasEnoughExtractedTextForEligibility(deliverable: DeliverableSlot) {
-  return (deliverable.docText || deliverable.firstPageText || '').replace(/\s+/g, ' ').trim().length >= MIN_ELIGIBILITY_TEXT_LENGTH;
+  return hasSufficientDeliverableEvidenceForEligibility({
+    extractedText: deliverable.docText,
+    firstPageText: deliverable.firstPageText,
+    documentTitle: deliverable.declaredTitle || deliverable.suggestedTitle,
+    titleConfirmed: deliverable.titleConfirmed,
+    fileName: deliverable.filename || deliverable.name,
+    fileType: deliverable.fileType,
+    deliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
+  });
 }
 
 function getTextExtractionGateReason(deliverable: DeliverableSlot) {
