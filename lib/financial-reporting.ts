@@ -1,0 +1,275 @@
+import referenceSeed from '../data/staging/seed.json' with { type: 'json' };
+import type { Activity, ConcurrentProject, ConcurrentProjectTimesheetEntry, Expert } from './types.ts';
+
+export type FinancialConflictCode =
+  | 'missing_expert'
+  | 'extra_expert'
+  | 'role_mismatch'
+  | 'daily_norm_mismatch'
+  | 'monthly_norm_mismatch'
+  | 'peo_hours_mismatch'
+  | 'leave_hours_mismatch'
+  | 'concordia_hours_mismatch'
+  | 'goodworks_hours_mismatch'
+  | 'daily_limit_exceeded';
+
+export type FinancialConflict = {
+  code: FinancialConflictCode;
+  severity: 'error' | 'warning';
+  message: string;
+};
+
+export type FinancialReferencePerson = (typeof referenceSeed.people)[number];
+
+export type FinancialTimesheetRow = {
+  expertId?: string;
+  name: string;
+  role: string;
+  appNorm: string;
+  workbookNorm: string;
+  peoWorked: number;
+  peoLeave: number;
+  medicalLeave: number;
+  concordiaWorked: number;
+  concordiaLeave: number;
+  goodworksWorked: number;
+  totalWorked: number;
+  workbookPeoWorked?: number;
+  workbookPeoLeave?: number;
+  workbookConcordiaWorked?: number;
+  workbookConcordiaLeave?: number;
+  workbookGoodworksWorked?: number;
+  draftHours: number;
+  leaveDates: string[];
+  conflicts: FinancialConflict[];
+};
+
+export type FinancialReportingSummary = {
+  rows: FinancialTimesheetRow[];
+  totalPeoWorked: number;
+  totalLeave: number;
+  totalConcurrentWorked: number;
+  missingExperts: number;
+  conflictCount: number;
+  referenceMonth: number;
+  referenceYear: number;
+};
+
+const EPSILON = 0.01;
+
+export function normalizeFinancialPersonName(value: string | undefined) {
+  return (value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase('ro-RO')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function isSameNumber(left: number | undefined, right: number | undefined) {
+  return Math.abs((left ?? 0) - (right ?? 0)) < EPSILON;
+}
+
+function parseWorkbookNorm(norm: string) {
+  const daily = norm.match(/(\d+(?:[.,]\d+)?)\s*h\s*\/\s*zi/i);
+  if (daily) return { kind: 'daily' as const, value: Number(daily[1].replace(',', '.')) };
+  const monthly = norm.match(/(\d+(?:[.,]\d+)?)\s*h\s*\/\s*luna/i);
+  if (monthly) return { kind: 'monthly' as const, value: Number(monthly[1].replace(',', '.')) };
+  return null;
+}
+
+function expertDailyNorm(expert: Expert | undefined) {
+  return expert?.dailyHours ?? expert?.oreZi ?? expert?.norma;
+}
+
+function expertMonthlyNorm(expert: Expert | undefined) {
+  return expert?.projectMonthlyNorm ?? expert?.manualMonthlyNorm;
+}
+
+function expertNormLabel(expert: Expert | undefined) {
+  if (!expert) return 'Lipsă din baza de date';
+  const monthly = expertMonthlyNorm(expert);
+  if (monthly) return `${monthly} h/lună`;
+  const daily = expertDailyNorm(expert);
+  return daily ? `${daily} h/zi` : 'Nedefinită';
+}
+
+function projectBucket(project: ConcurrentProject | undefined) {
+  const label = `${project?.projectName ?? ''} ${project?.projectCode ?? ''}`.toLowerCase();
+  return label.includes('goodworks') ? 'goodworks' : 'concordia';
+}
+
+function addConflict(
+  target: FinancialConflict[],
+  code: FinancialConflictCode,
+  message: string,
+  severity: FinancialConflict['severity'] = 'warning',
+) {
+  target.push({ code, message, severity });
+}
+
+function compareReference(
+  row: FinancialTimesheetRow,
+  expert: Expert | undefined,
+  reference: FinancialReferencePerson,
+  compareHours: boolean,
+) {
+  const conflicts = row.conflicts;
+  if (!expert) {
+    addConflict(conflicts, 'missing_expert', 'Persoana există în Excel, dar nu este înregistrată în baza aplicației.', 'error');
+    return;
+  }
+
+  if (reference.peoPosition !== '-') {
+    const expectedRole = normalizeFinancialPersonName(reference.peoPosition);
+    const actualRole = normalizeFinancialPersonName(expert.positionInProject ?? expert.role);
+    if (expectedRole && actualRole && !expectedRole.includes(actualRole) && !actualRole.includes(expectedRole)) {
+      addConflict(conflicts, 'role_mismatch', `Funcție diferită: aplicație „${expert.positionInProject ?? expert.role}”, Excel „${reference.peoPosition}”.`);
+    }
+  }
+
+  const workbookNorm = parseWorkbookNorm(reference.peoNorm);
+  if (workbookNorm?.kind === 'daily' && !isSameNumber(expertDailyNorm(expert), workbookNorm.value)) {
+    addConflict(conflicts, 'daily_norm_mismatch', `Normă zilnică diferită: aplicație ${expertDailyNorm(expert) ?? 0} h, Excel ${workbookNorm.value} h.`);
+  }
+  if (workbookNorm?.kind === 'monthly' && !isSameNumber(expertMonthlyNorm(expert), workbookNorm.value)) {
+    addConflict(conflicts, 'monthly_norm_mismatch', `Normă lunară diferită: aplicație ${expertMonthlyNorm(expert) ?? 0} h, Excel ${workbookNorm.value} h.`);
+  }
+
+  if (!compareHours) return;
+  if (!isSameNumber(row.peoWorked, reference.peoWorked)) {
+    addConflict(conflicts, 'peo_hours_mismatch', `Ore PEO diferite: raportare ${row.peoWorked} h, Excel ${reference.peoWorked} h.`);
+  }
+  if (!isSameNumber(row.peoLeave + row.medicalLeave, reference.peoLeave)) {
+    addConflict(conflicts, 'leave_hours_mismatch', `Concediu PEO diferit: raportare ${row.peoLeave + row.medicalLeave} h, Excel ${reference.peoLeave} h.`);
+  }
+  if (!isSameNumber(row.concordiaWorked, reference.concordiaWorked)) {
+    addConflict(conflicts, 'concordia_hours_mismatch', `Ore Concordia diferite: raportare ${row.concordiaWorked} h, Excel ${reference.concordiaWorked} h.`);
+  }
+  if (!isSameNumber(row.concordiaLeave, reference.concordiaLeave)) {
+    addConflict(conflicts, 'leave_hours_mismatch', `Concediu Concordia diferit: raportare ${row.concordiaLeave} h, Excel ${reference.concordiaLeave} h.`);
+  }
+  if (!isSameNumber(row.goodworksWorked, reference.goodworksWorked)) {
+    addConflict(conflicts, 'goodworks_hours_mismatch', `Ore GOODWORKS4ALL diferite: raportare ${row.goodworksWorked} h, Excel ${reference.goodworksWorked} h.`);
+  }
+}
+
+export function buildFinancialReportingSummary(input: {
+  experts: Expert[];
+  activities: Activity[];
+  concurrentProjects?: ConcurrentProject[];
+  concurrentEntries?: ConcurrentProjectTimesheetEntry[];
+  month: number;
+  year: number;
+  referencePeople?: FinancialReferencePerson[];
+}): FinancialReportingSummary {
+  const projects = input.concurrentProjects ?? [];
+  const concurrentEntries = input.concurrentEntries ?? [];
+  const referencePeople = input.referencePeople ?? referenceSeed.people;
+  const expertById = new Map(input.experts.map((expert) => [expert.id, expert]));
+  const expertByName = new Map(input.experts.map((expert) => [normalizeFinancialPersonName(expert.name), expert]));
+  const referenceByName = new Map(referencePeople.map((person) => [normalizeFinancialPersonName(person.name), person]));
+  const activityByExpert = new Map<string, Activity[]>();
+  const concurrentByExpert = new Map<string, ConcurrentProjectTimesheetEntry[]>();
+  const projectById = new Map(projects.map((project) => [project.id, project]));
+
+  for (const activity of input.activities) {
+    const key = activity.expertId || normalizeFinancialPersonName(activity.expertName);
+    activityByExpert.set(key, [...(activityByExpert.get(key) ?? []), activity]);
+  }
+  for (const entry of concurrentEntries) {
+    concurrentByExpert.set(entry.expertId, [...(concurrentByExpert.get(entry.expertId) ?? []), entry]);
+  }
+
+  const names = new Set([...referenceByName.keys(), ...expertByName.keys()]);
+  const compareHours = input.month === referenceSeed.month && input.year === referenceSeed.year;
+  const rows = [...names].map((normalizedName) => {
+    const reference = referenceByName.get(normalizedName);
+    const expert = expertByName.get(normalizedName);
+    const activities = expert
+      ? activityByExpert.get(expert.id) ?? []
+      : [...activityByExpert.values()].flat().filter((activity) => normalizeFinancialPersonName(activity.expertName) === normalizedName);
+    const entries = expert ? concurrentByExpert.get(expert.id) ?? [] : [];
+    const leaveDates = new Set<string>();
+    let peoWorked = 0;
+    let peoLeave = 0;
+    let medicalLeave = 0;
+    let draftHours = 0;
+    const dailyTotals = new Map<string, number>();
+
+    for (const activity of activities) {
+      const hours = Number(activity.hours) || 0;
+      if (activity.dayType === 'CO') {
+        peoLeave += hours;
+        leaveDates.add(activity.date);
+      } else if (activity.dayType === 'CM') {
+        medicalLeave += hours;
+        leaveDates.add(activity.date);
+      } else {
+        peoWorked += hours;
+      }
+      if (activity.status === 'draft') draftHours += hours;
+      dailyTotals.set(activity.date, (dailyTotals.get(activity.date) ?? 0) + hours);
+    }
+
+    let concordiaWorked = 0;
+    let concordiaLeave = 0;
+    let goodworksWorked = 0;
+    for (const entry of entries) {
+      const hours = Number(entry.hours) || 0;
+      const bucket = projectBucket(projectById.get(entry.concurrentProjectId));
+      if (entry.dayType === 'CO' || entry.dayType === 'CM') {
+        if (bucket === 'concordia') concordiaLeave += hours;
+        leaveDates.add(entry.date);
+      } else if (bucket === 'goodworks') {
+        goodworksWorked += hours;
+      } else {
+        concordiaWorked += hours;
+      }
+      dailyTotals.set(entry.date, (dailyTotals.get(entry.date) ?? 0) + hours);
+    }
+
+    const row: FinancialTimesheetRow = {
+      expertId: expert?.id,
+      name: expert?.name ?? reference?.name ?? normalizedName,
+      role: expert?.positionInProject ?? expert?.role ?? reference?.peoPosition ?? '-',
+      appNorm: expertNormLabel(expert),
+      workbookNorm: reference?.peoNorm ?? 'Nu există în Excel',
+      peoWorked,
+      peoLeave,
+      medicalLeave,
+      concordiaWorked,
+      concordiaLeave,
+      goodworksWorked,
+      totalWorked: peoWorked + concordiaWorked + goodworksWorked,
+      workbookPeoWorked: compareHours ? reference?.peoWorked : undefined,
+      workbookPeoLeave: compareHours ? reference?.peoLeave : undefined,
+      workbookConcordiaWorked: compareHours ? reference?.concordiaWorked : undefined,
+      workbookConcordiaLeave: compareHours ? reference?.concordiaLeave : undefined,
+      workbookGoodworksWorked: compareHours ? reference?.goodworksWorked : undefined,
+      draftHours,
+      leaveDates: [...leaveDates].sort(),
+      conflicts: [],
+    };
+
+    if (reference) compareReference(row, expert, reference, compareHours);
+    if (expert && !reference) addConflict(row.conflicts, 'extra_expert', 'Expertul există în aplicație, dar nu apare în Excelul de referință.');
+    for (const [date, hours] of dailyTotals) {
+      if (hours > 12 + EPSILON) addConflict(row.conflicts, 'daily_limit_exceeded', `Totalul de ${hours} h din ${date} depășește limita cumulată de 12 h.`, 'error');
+    }
+    return row;
+  }).sort((left, right) => left.name.localeCompare(right.name, 'ro'));
+
+  return {
+    rows,
+    totalPeoWorked: rows.reduce((sum, row) => sum + row.peoWorked, 0),
+    totalLeave: rows.reduce((sum, row) => sum + row.peoLeave + row.medicalLeave + row.concordiaLeave, 0),
+    totalConcurrentWorked: rows.reduce((sum, row) => sum + row.concordiaWorked + row.goodworksWorked, 0),
+    missingExperts: rows.filter((row) => row.conflicts.some((conflict) => conflict.code === 'missing_expert')).length,
+    conflictCount: rows.reduce((sum, row) => sum + row.conflicts.length, 0),
+    referenceMonth: referenceSeed.month,
+    referenceYear: referenceSeed.year,
+  };
+}
+
+export const financialReferencePeople = referenceSeed.people;
