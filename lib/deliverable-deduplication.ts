@@ -111,6 +111,23 @@ export function dedupeDeliverablesBySignature<T extends Deliverable>(deliverable
   return result;
 }
 
+export function findActivityOwningDeliverableSignature<T extends ActivityWithDeliverables>(
+  activities: T[],
+  signature: string | null,
+  preferredActivityId?: string,
+) {
+  if (!signature) return undefined;
+
+  const ownsDeliverable = (activity: T) => activity.deliverables?.some((deliverable) => (
+    getDeliverableDocumentSignature(deliverable) === signature
+  ));
+  const preferredActivity = preferredActivityId
+    ? activities.find((activity) => activity.id === preferredActivityId && ownsDeliverable(activity))
+    : undefined;
+
+  return preferredActivity ?? activities.find(ownsDeliverable);
+}
+
 export function findMonthlyDeliverableDuplicate(args: {
   existingActivities: ActivityWithDeliverables[];
   nextActivities: ActivityWithDeliverables[];
@@ -121,12 +138,19 @@ export function findMonthlyDeliverableDuplicate(args: {
 }) {
   const excluded = new Set(args.excludedActivityIds ?? []);
   const seen = new Map<string, { deliverable: Deliverable; activity: ActivityWithDeliverables }>();
-  const activities = [
-    ...args.existingActivities.filter((activity) => !activity.id || !excluded.has(activity.id)),
-    ...args.nextActivities,
-  ];
+  const existingActivities = args.existingActivities.filter((activity) => !activity.id || !excluded.has(activity.id));
 
-  for (const activity of activities) {
+  for (const activity of existingActivities) {
+    if (activity.expertId !== args.expertId || !isActivityInMonth(activity.date, args.month, args.year)) continue;
+
+    for (const deliverable of activity.deliverables ?? []) {
+      const signature = getDeliverableDocumentSignature(deliverable);
+      if (!signature) continue;
+      if (!seen.has(signature)) seen.set(signature, { deliverable, activity });
+    }
+  }
+
+  for (const activity of args.nextActivities) {
     if (activity.expertId !== args.expertId || !isActivityInMonth(activity.date, args.month, args.year)) continue;
 
     for (const deliverable of activity.deliverables ?? []) {

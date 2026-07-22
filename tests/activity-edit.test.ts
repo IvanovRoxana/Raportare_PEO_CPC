@@ -13,7 +13,9 @@ import {
 import { planDeliverableSync } from '../lib/activity-deliverable-sync.ts';
 import {
   areActivitiesCompatibleForDeliverableGroup,
+  findActivityOwningDeliverableSignature,
   findMonthlyDeliverableDuplicate,
+  getDeliverableDocumentSignature,
 } from '../lib/deliverable-deduplication.ts';
 import { getActivitiesMissingDeliverables } from '../lib/submit-readiness.ts';
 import type { Activity, Deliverable } from '../lib/types.ts';
@@ -515,6 +517,35 @@ test('validarea lunara detecteaza duplicatul intre doua activitati noi din acela
   assert.equal(duplicate.signature, 'document:document-common');
 });
 
+test('validarea lunara raporteaza duplicatul nou fata de activitatea existenta cand documentul apare de mai multe ori', () => {
+  const duplicate = findMonthlyDeliverableDuplicate({
+    existingActivities: [
+      activity('activity-existing', {
+        date: '2026-06-03',
+        deliverables: [deliverable('deliverable-existing', { documentId: 'document-common' })],
+      }),
+    ],
+    nextActivities: [
+      activity('activity-new-1', {
+        date: '2026-06-10',
+        deliverables: [deliverable('deliverable-new-1', { documentId: 'document-common' })],
+      }),
+      activity('activity-new-2', {
+        date: '2026-06-11',
+        deliverables: [deliverable('deliverable-new-2', { documentId: 'document-common' })],
+      }),
+    ],
+    expertId: 'expert-1',
+    month: 5,
+    year: 2026,
+  });
+
+  assert.ok(duplicate);
+  assert.equal(duplicate.existingActivity.id, 'activity-existing');
+  assert.equal(duplicate.activity.id, 'activity-new-1');
+  assert.equal(duplicate.signature, 'document:document-common');
+});
+
 test('validarea lunara permite acelasi document in alta luna si fisiere cu hash diferit', () => {
   const otherMonthDuplicate = findMonthlyDeliverableDuplicate({
     existingActivities: [
@@ -618,4 +649,63 @@ test('gruparea livrabilului nu considera compatibile activitati fara identitate'
   });
 
   assert.equal(areActivitiesCompatibleForDeliverableGroup(current, candidate), false);
+});
+
+test('validarea lunara ignora duplicatele exclusiv istorice fara legatura cu livrabilul curent', () => {
+  const duplicateHistory = [
+    activity('activity-old-1', {
+      deliverables: [deliverable('deliverable-old-1', { documentId: 'document-old' })],
+    }),
+    activity('activity-old-2', {
+      date: '2026-06-04',
+      deliverables: [deliverable('deliverable-old-2', { documentId: 'document-old' })],
+    }),
+  ];
+
+  const duplicate = findMonthlyDeliverableDuplicate({
+    existingActivities: duplicateHistory,
+    nextActivities: [
+      activity('activity-current', {
+        date: '2026-06-10',
+        deliverables: [deliverable('deliverable-current', { documentId: 'document-current' })],
+      }),
+    ],
+    expertId: 'expert-1',
+    month: 5,
+    year: 2026,
+  });
+
+  assert.equal(duplicate, null);
+});
+
+test('livrabilul existent rezolva activitatea care il detine chiar daca legatura salvata este orfana', () => {
+  const owner = activity('activity-owner', {
+    deliverables: [deliverable('deliverable-owner', { documentId: 'document-1' })],
+  });
+  const signature = getDeliverableDocumentSignature(
+    deliverable('selected-deliverable', { documentId: 'document-1' }),
+  );
+
+  const source = findActivityOwningDeliverableSignature(
+    [owner],
+    signature,
+    'activity-deleted',
+  );
+
+  assert.equal(source?.id, 'activity-owner');
+});
+
+test('livrabilul orfan ramane fara activitate sursa si poate fi atasat activitatii curente', () => {
+  const signature = getDeliverableDocumentSignature(
+    deliverable('selected-deliverable', { documentId: 'document-orphan' }),
+  );
+  const source = findActivityOwningDeliverableSignature(
+    [activity('activity-other', {
+      deliverables: [deliverable('deliverable-other', { documentId: 'document-other' })],
+    })],
+    signature,
+    'activity-deleted',
+  );
+
+  assert.equal(source, undefined);
 });

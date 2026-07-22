@@ -53,6 +53,7 @@ import { filterActivityCatalogForFormTab, getActiveGdprActivityCatalog, isActivi
 import { buildDocumentS3Key, findDuplicateCandidates, getDocumentAuditTitle, hashFirstPageText, normalizeDocumentTextForFingerprint, sha256Hex } from '@/lib/document-sharing';
 import {
   areActivitiesCompatibleForDeliverableGroup,
+  findActivityOwningDeliverableSignature,
   findMonthlyDeliverableDuplicate,
   getDeliverableDocumentSignature,
 } from '@/lib/deliverable-deduplication';
@@ -1744,10 +1745,22 @@ export function ActivityForm({
           issues: [],
         }
       : null;
-    const sourceActivity = candidate.sourceActivityId
-      ? allActivities.find((activity) => activity.id === candidate.sourceActivityId)
-      : undefined;
-    const sourceSaCode = candidate.saCode || sourceActivity?.saCode;
+    const candidateSignature = getDeliverableDocumentSignature({
+      documentId: candidate.documentId,
+      fileHash: candidate.fileHash,
+      firstPageTextHash: candidate.firstPageTextHash,
+      contentFingerprint: candidate.contentFingerprint,
+      fileName: candidate.fileName,
+      originalFileName: candidate.fileName,
+      fileSize: candidate.fileSize,
+      fileType: candidate.fileType,
+    });
+    const sourceActivity = findActivityOwningDeliverableSignature(
+      allActivities,
+      candidateSignature,
+      candidate.sourceActivityId,
+    );
+    const sourceSaCode = sourceActivity?.saCode || candidate.saCode;
     const sourceActivityName = sourceActivity?.activityType || sourceActivity?.title;
     const sourceCatalogMatch = filteredCatalog.find((item) => (
       item.saCode === sourceSaCode
@@ -1776,9 +1789,9 @@ export function ActivityForm({
       contentFingerprint: candidate.contentFingerprint,
       uploadedByExpertId: candidate.uploadedByExpertId,
       uploadedByExpertName: candidate.uploadedByExpertName,
-      sourceActivityId: candidate.sourceActivityId,
-      activityDate: candidate.activityDate,
-      saCode: candidate.saCode,
+      sourceActivityId: sourceActivity?.id,
+      activityDate: sourceActivity?.date ?? candidate.activityDate,
+      saCode: sourceActivity?.saCode ?? candidate.saCode,
       type: existingDeliverableType,
       deliverableType: existingDeliverableType,
       isCommonDeliverable: candidate.source !== 'mine' || candidate.isCommonDeliverable === true,
