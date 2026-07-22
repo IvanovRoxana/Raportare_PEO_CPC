@@ -1598,6 +1598,7 @@ export function ActivityForm({
   // Filter deliverables by type
   const mainDeliverables = deliverables.filter(d => !d.slotType || d.slotType === 'livrabil');
   const mainDeliverableForEligibility = mainDeliverables.find((d) => d.uploaded && !d.isPhoto);
+  const deliverablesForEligibility = deliverables.filter((d) => d.uploaded && !d.isPhoto);
   const prelimDeliverables = deliverables.filter(d => d.slotType === 'raport_preliminar');
   const justifDeliverables = deliverables.filter(d => d.slotType === 'justificativ');
   const descriptionTrimmed = (description || '').trim();
@@ -2942,6 +2943,7 @@ export function ActivityForm({
                 </div>
                 <DeliverableEligibilityControl
                   deliverable={mainDeliverableForEligibility}
+                  relatedDeliverables={deliverablesForEligibility}
                   subActivity={saCode}
                   activityTitle={activityTitle}
                   selectedActivityId={selectedCatalogItem?.id}

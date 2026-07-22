@@ -47,6 +47,25 @@ function getTextExtractionGateReason(deliverable: DeliverableSlot) {
   return 'Nu exista text extras suficient din livrabil. Reincarca documentul ca PDF/DOCX cu text selectabil sau cu imagini clare pentru OCR.';
 }
 
+function buildEligibilityDocumentPayload(deliverable: DeliverableSlot, activityGroupId: string, isPrimary: boolean) {
+  return {
+    id: deliverable.id,
+    activityGroupId,
+    isPrimary,
+    documentTitle: getDocumentAuditTitle({
+      ...deliverable,
+      fileName: deliverable.filename || deliverable.name,
+      originalFileName: deliverable.filename || deliverable.name,
+    }),
+    fileName: deliverable.filename || deliverable.name,
+    extractedText: (deliverable.docText || deliverable.firstPageText || '').slice(0, 12000),
+    deliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
+    textScope: deliverable.docText && deliverable.docText !== deliverable.firstPageText
+      ? 'Text extras disponibil din document'
+      : 'Prima pagina / inceputul documentului',
+  };
+}
+
 function normalizeEligibilityContextValue(value?: string | null) {
   return String(value ?? '').trim().toLowerCase();
 }
@@ -995,6 +1014,7 @@ export function DeliverableItem({
 
 export interface DeliverableEligibilityControlProps {
   deliverable: DeliverableSlot;
+  relatedDeliverables?: DeliverableSlot[];
   subActivity: string;
   activityTitle: string;
   selectedActivityId?: string;
@@ -1024,6 +1044,7 @@ export interface DeliverableEligibilityControlProps {
 
 export function DeliverableEligibilityControl({
   deliverable,
+  relatedDeliverables,
   subActivity,
   activityTitle,
   selectedActivityId,
@@ -1073,10 +1094,20 @@ export function DeliverableEligibilityControl({
     setAiLoading(true);
     try {
       const extractedText = (deliverable.docText || deliverable.firstPageText || '').slice(0, 12000);
+      const activityGroupId = selectedActivityId || subActivity;
+      const eligibilityDeliverables = (relatedDeliverables && relatedDeliverables.length > 0
+        ? relatedDeliverables
+        : [deliverable]
+      ).filter((item) => item.uploaded && !item.isPhoto);
       const response = await fetch('/api/ai/check-deliverable-eligibility', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          deliverables: eligibilityDeliverables.map((item) => (
+            buildEligibilityDocumentPayload(item, activityGroupId, item.id === deliverable.id)
+          )),
+          primaryDeliverableId: deliverable.id,
+          activityGroupId,
           documentTitle: getDocumentAuditTitle({
             ...deliverable,
             fileName: deliverable.filename || deliverable.name,
@@ -1174,20 +1205,27 @@ export function DeliverableEligibilityControl({
   return (
     <div className={className}>
       {eligibilityCheckEnabled && canRunEligibilityCheck ? (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleAiCheck}
-          disabled={aiLoading}
-          className="w-fit border-indigo-300 text-xs text-indigo-700 hover:bg-indigo-50"
-        >
-          {aiLoading ? (
-            <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-          ) : (
-            <Sparkles className="h-3 w-3 mr-1" />
+        <div className="space-y-1">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleAiCheck}
+            disabled={aiLoading}
+            className="w-fit border-indigo-300 text-xs text-indigo-700 hover:bg-indigo-50"
+          >
+            {aiLoading ? (
+              <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+            ) : (
+              <Sparkles className="h-3 w-3 mr-1" />
+            )}
+            {aiLoading ? 'Se verifica...' : 'Verifica eligibilitatea livrabilelor'}
+          </Button>
+          {relatedDeliverables && relatedDeliverables.length > 1 && (
+            <p className="text-xs text-muted-foreground">
+              Verifica {relatedDeliverables.length} livrabile incarcate pentru activitatea curenta.
+            </p>
           )}
-          {aiLoading ? 'Se verifica...' : 'Verifica eligibilitatea livrabilului'}
-        </Button>
+        </div>
       ) : eligibilityCheckEnabled ? (
         <div className="w-fit max-w-full rounded border border-amber-200 bg-amber-50 p-2 text-[10px] text-amber-800">
           <div className="flex items-start gap-1.5">

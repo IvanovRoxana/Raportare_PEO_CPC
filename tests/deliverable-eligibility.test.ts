@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
   buildNonConclusiveAiFailure,
@@ -30,6 +31,8 @@ const deliverableOptions = [
   'Material prezentare / suport eveniment',
   'Minute intalnire / MOM',
 ];
+const deliverableItemSource = readFileSync(new URL('../components/expert/deliverable-item.tsx', import.meta.url), 'utf8');
+const activityFormSource = readFileSync(new URL('../components/expert/activity-form.tsx', import.meta.url), 'utf8');
 
 test('accepta sugestii de activitate si tip livrabil cand exista in listele permise', () => {
   const suggestion = validateEligibilitySuggestedSettings({
@@ -257,4 +260,14 @@ test('pastreaza compatibilitatea cu payloadul vechi cu un singur livrabil', () =
   assert.equal(documents.length, 1);
   assert.equal(documents[0].documentTitle, 'Material suport');
   assert.equal(documents[0].isPrimary, true);
+});
+
+test('formularul trimite toate livrabilele incarcate din activitatea curenta la eligibilitate', () => {
+  assert.match(activityFormSource, /const deliverablesForEligibility = deliverables\.filter\(\(d\) => d\.uploaded && !d\.isPhoto\)/);
+  assert.match(activityFormSource, /relatedDeliverables=\{deliverablesForEligibility\}/);
+  assert.match(deliverableItemSource, /relatedDeliverables\?: DeliverableSlot\[\]/);
+  assert.match(deliverableItemSource, /deliverables: eligibilityDeliverables\.map/);
+  assert.match(deliverableItemSource, /primaryDeliverableId: deliverable\.id/);
+  assert.match(deliverableItemSource, /activityGroupId/);
+  assert.match(deliverableItemSource, /Verifica \{relatedDeliverables\.length\} livrabile incarcate pentru activitatea curenta/);
 });
