@@ -105,7 +105,7 @@ function isEligibilityCheckObsoleteForCurrentActivity(
   }
 
   const suggestedSettings = check?.suggestedSettings;
-  if (!suggestedSettings?.changes.includes('activity')) return false;
+  if (!suggestedSettings?.changes?.includes('activity')) return false;
   if (check?.status !== 'neeligibil' && check?.status !== 'neconcludent') return false;
 
   const suggestedIdMatches = Boolean(
@@ -1330,13 +1330,13 @@ function EligibilityResultCard({
   const warning = check.status === 'neeligibil' || check.status === 'neconcludent';
   const suggestedSettings = check.suggestedSettings;
   const canApplyActivity = Boolean(
-    suggestedSettings?.changes.includes('activity')
+    suggestedSettings?.changes?.includes('activity')
     && suggestedSettings.saCode
     && suggestedSettings.activityName
     && onApplySuggestedSettings,
   );
   const canApplyDeliverableType = Boolean(
-    suggestedSettings?.changes.includes('deliverableType')
+    suggestedSettings?.changes?.includes('deliverableType')
     && suggestedSettings.deliverableType
     && onApplySuggestedSettings,
   );

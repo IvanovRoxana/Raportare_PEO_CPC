@@ -38,6 +38,12 @@ const activityFormSource = readFileSync(new URL('../components/expert/activity-f
 const eligibilityRouteSource = readFileSync(new URL('../app/api/ai/check-deliverable-eligibility/route.ts', import.meta.url), 'utf8');
 const deliverableTypesSource = readFileSync(new URL('../lib/deliverable-types.ts', import.meta.url), 'utf8');
 
+test('UI tolereaza suggestedSettings persistat fara lista changes', () => {
+  assert.doesNotMatch(deliverableItemSource, /suggestedSettings\?\.changes\.includes/);
+  assert.match(deliverableItemSource, /suggestedSettings\?\.changes\?\.includes\('activity'\)/);
+  assert.match(deliverableItemSource, /suggestedSettings\?\.changes\?\.includes\('deliverableType'\)/);
+});
+
 test('accepta sugestii de activitate si tip livrabil cand exista in listele permise', () => {
   const suggestion = validateEligibilitySuggestedSettings({
     suggestedSettings: {
