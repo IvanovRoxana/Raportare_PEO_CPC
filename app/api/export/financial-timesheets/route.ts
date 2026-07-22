@@ -7,6 +7,9 @@ export const runtime = 'nodejs';
 type ExportRow = {
   name?: string;
   role?: string;
+  basePosition?: string;
+  peoFunction?: string;
+  goodworksFunction?: string;
   appNorm?: string;
   workbookNorm?: string;
   peoWorked?: number;
@@ -16,6 +19,8 @@ type ExportRow = {
   concordiaLeave?: number;
   goodworksWorked?: number;
   totalWorked?: number;
+  totalLeave?: number;
+  totalMonth?: number;
   workbookPeoWorked?: number;
   conflicts?: Array<{ code?: string; severity?: string; message?: string }>;
 };
@@ -29,7 +34,7 @@ export async function POST(request: Request) {
     if (!month || !year || rows.length === 0) return NextResponse.json({ error: 'Lipsesc datele centralizatorului.' }, { status: 400 });
 
     const workbook = XLSX.utils.book_new();
-    const centralSheet = XLSX.utils.json_to_sheet(rows.map((row) => ({
+    const centralRows = payload.mode === 'leave' ? rows.map((row) => ({
       Expert: row.name ?? '',
       Functie_aplicatie: row.role ?? '',
       Norma_aplicatie: row.appNorm ?? '',
@@ -43,11 +48,24 @@ export async function POST(request: Request) {
       Total_lucrat: Number(row.totalWorked) || 0,
       Ore_PEO_Excel: row.workbookPeoWorked ?? '',
       Diferente: (row.conflicts ?? []).map((conflict) => conflict.message).filter(Boolean).join(' | '),
-    })));
-    centralSheet['!cols'] = [
-      { wch: 26 }, { wch: 34 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 12 }, { wch: 12 },
-      { wch: 18 }, { wch: 18 }, { wch: 22 }, { wch: 16 }, { wch: 16 }, { wch: 70 },
-    ];
+    })) : rows.map((row) => ({
+      SALARIAT: row.name ?? '',
+      'POZITIA DE BAZA (CONCORDIA)': row.basePosition ?? '',
+      'ORE LUCRATE CONCORDIA': Number(row.concordiaWorked) || 0,
+      'ORE CO CONCORDIA': Number(row.concordiaLeave) || 0,
+      'FUNCTIA IN PEO': row.peoFunction ?? row.role ?? '',
+      'ORE LUCRATE PEO': Number(row.peoWorked) || 0,
+      'ORE CO PEO': Number(row.peoLeave) || 0,
+      'FUNCTIA IN GOODWORKS4ALL': row.goodworksFunction ?? '',
+      'ORE LUCRATE GOODWORKS4ALL': Number(row.goodworksWorked) || 0,
+      'TOTAL ORE LUCRATE': Number(row.totalWorked) || 0,
+      'TOTAL ORE CO': Number(row.totalLeave) || 0,
+      'TOTAL ORE LUNA': Number(row.totalMonth) || 0,
+    }));
+    const centralSheet = XLSX.utils.json_to_sheet(centralRows);
+    centralSheet['!cols'] = payload.mode === 'leave'
+      ? [{ wch: 26 }, { wch: 34 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 12 }, { wch: 12 }, { wch: 18 }, { wch: 18 }, { wch: 22 }, { wch: 16 }, { wch: 16 }, { wch: 70 }]
+      : [{ wch: 26 }, { wch: 34 }, { wch: 22 }, { wch: 18 }, { wch: 34 }, { wch: 18 }, { wch: 14 }, { wch: 34 }, { wch: 28 }, { wch: 20 }, { wch: 16 }, { wch: 18 }];
     XLSX.utils.book_append_sheet(workbook, centralSheet, payload.mode === 'leave' ? 'Concedii' : 'Centralizator');
 
     const checks = rows.flatMap((row) => (row.conflicts ?? []).map((conflict) => ({

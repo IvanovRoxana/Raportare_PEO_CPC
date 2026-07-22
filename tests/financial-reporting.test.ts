@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { buildFinancialReportingSummary } from '../lib/financial-reporting.ts';
 import type { Activity, ConcurrentProject, ConcurrentProjectTimesheetEntry, Expert } from '../lib/types.ts';
@@ -8,9 +9,30 @@ const expert: Expert = {
   name: 'Roxana Ivanov',
   role: 'Expert recrutare si selectie grup tinta',
   positionInProject: 'Expert recrutare si selectie grup tinta',
+  jobDescriptionText: 'Expert resurse umane',
   norma: 8,
   oreZi: 8,
 };
+
+test('dashboardul Pontaje are exact cele 12 coloane solicitate', () => {
+  const source = readFileSync('components/financial/financial-reporting-dashboard.tsx', 'utf8');
+  const pontajeMarkup = source.slice(source.indexOf("mode === 'timesheets' ? ("), source.indexOf(') : (', source.indexOf("mode === 'timesheets' ? (")));
+  const headers = [...pontajeMarkup.matchAll(/<th[^>]*>([^<]+)<\/th>/g)].map((match) => match[1]);
+  assert.deepEqual(headers, [
+    'SALARIAT',
+    'POZITIA DE BAZA (CONCORDIA)',
+    'ORE LUCRATE CONCORDIA',
+    'ORE CO CONCORDIA',
+    'FUNCTIA IN PEO',
+    'ORE LUCRATE PEO',
+    'ORE CO PEO',
+    'FUNCTIA IN GOODWORKS4ALL',
+    'ORE LUCRATE GOODWORKS4ALL',
+    'TOTAL ORE LUCRATE',
+    'TOTAL ORE CO',
+    'TOTAL ORE LUNA',
+  ]);
+});
 
 test('modulul financiar calculeaza orele exclusiv din raportare si separa CO/CM', () => {
   const activities: Activity[] = [
@@ -45,8 +67,8 @@ test('auditul evidentiaza persoanele lipsa si diferentele de norma fara a inlocu
 
 test('proiectele concurente sunt separate intre Concordia si GOODWORKS4ALL', () => {
   const projects: ConcurrentProject[] = [
-    { id: 'c1', expertId: expert.id, projectName: 'Concordia', dailyHours: 8, startDate: '2026-01-01', isActive: true },
-    { id: 'g1', expertId: expert.id, projectName: 'GOODWORKS4ALL', dailyHours: 4, startDate: '2026-01-01', isActive: true },
+    { id: 'c1', expertId: expert.id, projectName: 'Concordia', expertProjectRole: 'Expert resurse umane', dailyHours: 8, startDate: '2026-01-01', isActive: true },
+    { id: 'g1', expertId: expert.id, projectName: 'GOODWORKS4ALL', expertProjectRole: 'Expert ocupare', dailyHours: 4, startDate: '2026-01-01', isActive: true },
   ];
   const entries: ConcurrentProjectTimesheetEntry[] = [
     { id: 'e1', concurrentProjectId: 'c1', expertId: expert.id, date: '2026-07-02', month: 7, year: 2026, hours: 6, dayType: 'lucratoare', status: 'verified', source: 'import' },
@@ -56,4 +78,9 @@ test('proiectele concurente sunt separate intre Concordia si GOODWORKS4ALL', () 
   assert.equal(summary.rows[0].concordiaWorked, 6);
   assert.equal(summary.rows[0].goodworksWorked, 4);
   assert.equal(summary.rows[0].totalWorked, 10);
+  assert.equal(summary.rows[0].basePosition, 'Expert resurse umane');
+  assert.equal(summary.rows[0].peoFunction, expert.positionInProject);
+  assert.equal(summary.rows[0].goodworksFunction, 'Expert ocupare');
+  assert.equal(summary.rows[0].totalLeave, 0);
+  assert.equal(summary.rows[0].totalMonth, 10);
 });

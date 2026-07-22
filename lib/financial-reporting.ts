@@ -25,6 +25,9 @@ export type FinancialTimesheetRow = {
   expertId?: string;
   name: string;
   role: string;
+  basePosition: string;
+  peoFunction: string;
+  goodworksFunction: string;
   appNorm: string;
   workbookNorm: string;
   peoWorked: number;
@@ -34,6 +37,8 @@ export type FinancialTimesheetRow = {
   concordiaLeave: number;
   goodworksWorked: number;
   totalWorked: number;
+  totalLeave: number;
+  totalMonth: number;
   workbookPeoWorked?: number;
   workbookPeoLeave?: number;
   workbookConcordiaWorked?: number;
@@ -190,6 +195,19 @@ export function buildFinancialReportingSummary(input: {
       ? activityByExpert.get(expert.id) ?? []
       : [...activityByExpert.values()].flat().filter((activity) => normalizeFinancialPersonName(activity.expertName) === normalizedName);
     const entries = expert ? concurrentByExpert.get(expert.id) ?? [] : [];
+    const expertProjects = expert ? projects.filter((project) => project.expertId === expert.id) : [];
+    const concordiaProject = expertProjects.find((project) => projectBucket(project) === 'concordia');
+    const goodworksProject = expertProjects.find((project) => projectBucket(project) === 'goodworks');
+    const basePosition = concordiaProject?.expertProjectRole
+      ?? concordiaProject?.expertFunction
+      ?? expert?.jobDescriptionText
+      ?? reference?.basePosition
+      ?? '-';
+    const peoFunction = expert?.positionInProject ?? expert?.role ?? reference?.peoPosition ?? '-';
+    const goodworksFunction = goodworksProject?.expertProjectRole
+      ?? goodworksProject?.expertFunction
+      ?? reference?.goodworksPosition
+      ?? '-';
     const leaveDates = new Set<string>();
     let peoWorked = 0;
     let peoLeave = 0;
@@ -232,7 +250,10 @@ export function buildFinancialReportingSummary(input: {
     const row: FinancialTimesheetRow = {
       expertId: expert?.id,
       name: expert?.name ?? reference?.name ?? normalizedName,
-      role: expert?.positionInProject ?? expert?.role ?? reference?.peoPosition ?? '-',
+      role: peoFunction,
+      basePosition,
+      peoFunction,
+      goodworksFunction,
       appNorm: expertNormLabel(expert),
       workbookNorm: reference?.peoNorm ?? 'Nu există în Excel',
       peoWorked,
@@ -242,6 +263,8 @@ export function buildFinancialReportingSummary(input: {
       concordiaLeave,
       goodworksWorked,
       totalWorked: peoWorked + concordiaWorked + goodworksWorked,
+      totalLeave: peoLeave + concordiaLeave,
+      totalMonth: peoWorked + concordiaWorked + goodworksWorked + peoLeave + concordiaLeave,
       workbookPeoWorked: compareHours ? reference?.peoWorked : undefined,
       workbookPeoLeave: compareHours ? reference?.peoLeave : undefined,
       workbookConcordiaWorked: compareHours ? reference?.concordiaWorked : undefined,

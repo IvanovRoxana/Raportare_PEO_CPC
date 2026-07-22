@@ -175,24 +175,57 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
           {isLoading ? (
             <div className="flex items-center justify-center py-16 text-muted-foreground"><Loader2 className="mr-2 h-5 w-5 animate-spin" />Se încarcă raportarea...</div>
           ) : (
-            <table className="w-full min-w-[1100px] border-collapse text-sm">
-              <thead><tr className="border-b bg-slate-50 text-left">
-                <th className="p-3">Expert / funcție</th><th className="p-3">Normă</th>
-                {mode === 'timesheets' ? <><th className="p-3 text-right">PEO</th><th className="p-3 text-right">Concordia</th><th className="p-3 text-right">GOODWORKS4ALL</th><th className="p-3 text-right">Total lucrat</th></> : <><th className="p-3 text-right">CO PEO</th><th className="p-3 text-right">CM PEO</th><th className="p-3 text-right">CO/CM Concordia</th><th className="p-3">Zile</th></>}
-                <th className="p-3">Status audit</th><th className="p-3 text-right">Export</th>
-              </tr></thead>
-              <tbody>
-                {visibleRows.map((row) => (
+            mode === 'timesheets' ? (
+              <table className="w-full min-w-[2100px] border-collapse text-sm">
+                <thead><tr className="border-b bg-slate-50 text-left">
+                  <th className="p-3">SALARIAT</th>
+                  <th className="p-3">POZITIA DE BAZA (CONCORDIA)</th>
+                  <th className="p-3 text-right">ORE LUCRATE CONCORDIA</th>
+                  <th className="p-3 text-right">ORE CO CONCORDIA</th>
+                  <th className="p-3">FUNCTIA IN PEO</th>
+                  <th className="p-3 text-right">ORE LUCRATE PEO</th>
+                  <th className="p-3 text-right">ORE CO PEO</th>
+                  <th className="p-3">FUNCTIA IN GOODWORKS4ALL</th>
+                  <th className="p-3 text-right">ORE LUCRATE GOODWORKS4ALL</th>
+                  <th className="p-3 text-right">TOTAL ORE LUCRATE</th>
+                  <th className="p-3 text-right">TOTAL ORE CO</th>
+                  <th className="p-3 text-right">TOTAL ORE LUNA</th>
+                </tr></thead>
+                <tbody>{visibleRows.map((row) => (
+                  <tr key={`${row.expertId ?? 'missing'}-${row.name}`} className="border-b align-top hover:bg-slate-50/60">
+                    <td className="p-3">
+                      <div className="font-medium">{row.name}</div>
+                      <div className="mt-2 flex flex-wrap items-center gap-2"><StatusBadge row={row} /><Button size="sm" variant="outline" disabled={!row.expertId || exporting !== null} onClick={() => exportExpertTemplate(row)}>{exporting === row.expertId ? <Loader2 className="h-4 w-4 animate-spin" /> : <><FileText className="mr-2 h-4 w-4" />Template</>}</Button></div>
+                      {row.conflicts.length > 0 && <ul className="mt-2 max-w-sm space-y-1 text-xs text-amber-800">{row.conflicts.map((conflict, index) => <li key={`${conflict.code}-${index}`}>• {conflict.message}</li>)}</ul>}
+                    </td>
+                    <td className="p-3">{row.basePosition}</td>
+                    <td className="p-3 text-right">{hours(row.concordiaWorked)}</td>
+                    <td className="p-3 text-right">{hours(row.concordiaLeave)}</td>
+                    <td className="p-3">{row.peoFunction}</td>
+                    <td className="p-3 text-right">{hours(row.peoWorked)}</td>
+                    <td className="p-3 text-right">{hours(row.peoLeave)}</td>
+                    <td className="p-3">{row.goodworksFunction}</td>
+                    <td className="p-3 text-right">{hours(row.goodworksWorked)}</td>
+                    <td className="p-3 text-right font-semibold">{hours(row.totalWorked)}</td>
+                    <td className="p-3 text-right font-semibold">{hours(row.totalLeave)}</td>
+                    <td className="p-3 text-right font-semibold">{hours(row.totalMonth)}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            ) : (
+              <table className="w-full min-w-[1100px] border-collapse text-sm">
+                <thead><tr className="border-b bg-slate-50 text-left"><th className="p-3">Expert / funcție</th><th className="p-3">Normă</th><th className="p-3 text-right">CO PEO</th><th className="p-3 text-right">CM PEO</th><th className="p-3 text-right">CO/CM Concordia</th><th className="p-3">Zile</th><th className="p-3">Status audit</th><th className="p-3 text-right">Export</th></tr></thead>
+                <tbody>{visibleRows.map((row) => (
                   <tr key={`${row.expertId ?? 'missing'}-${row.name}`} className="border-b align-top hover:bg-slate-50/60">
                     <td className="p-3"><div className="font-medium">{row.name}</div><div className="max-w-xs text-xs text-muted-foreground">{row.role}</div></td>
                     <td className="p-3"><div>{row.appNorm}</div>{row.workbookNorm !== row.appNorm && <div className="text-xs text-amber-700">Excel: {row.workbookNorm}</div>}</td>
-                    {mode === 'timesheets' ? <><td className="p-3 text-right font-medium">{hours(row.peoWorked)}</td><td className="p-3 text-right">{hours(row.concordiaWorked)}</td><td className="p-3 text-right">{hours(row.goodworksWorked)}</td><td className="p-3 text-right font-semibold">{hours(row.totalWorked)}</td></> : <><td className="p-3 text-right">{hours(row.peoLeave)}</td><td className="p-3 text-right">{hours(row.medicalLeave)}</td><td className="p-3 text-right">{hours(row.concordiaLeave)}</td><td className="p-3 text-xs">{row.leaveDates.join(', ') || '—'}</td></>}
+                    <td className="p-3 text-right">{hours(row.peoLeave)}</td><td className="p-3 text-right">{hours(row.medicalLeave)}</td><td className="p-3 text-right">{hours(row.concordiaLeave)}</td><td className="p-3 text-xs">{row.leaveDates.join(', ') || '—'}</td>
                     <td className="p-3"><StatusBadge row={row} />{row.conflicts.length > 0 && <ul className="mt-2 max-w-md space-y-1 text-xs text-amber-800">{row.conflicts.map((conflict, index) => <li key={`${conflict.code}-${index}`}>• {conflict.message}</li>)}</ul>}</td>
                     <td className="p-3 text-right"><Button size="sm" variant="outline" disabled={!row.expertId || exporting !== null} onClick={() => exportExpertTemplate(row)}>{exporting === row.expertId ? <Loader2 className="h-4 w-4 animate-spin" /> : <><FileText className="mr-2 h-4 w-4" />Template</>}</Button></td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                ))}</tbody>
+              </table>
+            )
           )}
           {!isLoading && visibleRows.length === 0 && <div className="py-12 text-center text-muted-foreground">Nu există înregistrări pentru filtrul selectat.</div>}
         </CardContent>
