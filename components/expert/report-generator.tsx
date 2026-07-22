@@ -438,9 +438,21 @@ export function ReportGenerator({
 
         {enableDeterministicAnexa10Docx && deterministicExportReadiness && (
           <div className={`rounded-lg border p-3 text-sm ${deterministicReadinessClassName}`}>
-            <p className="font-medium">
-              Export Anexa 10 determinist: {deterministicExportReadiness.statusLabel}
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="font-medium">
+                Export Anexa 10 determinist: {deterministicExportReadiness.statusLabel}
+              </p>
+              <span className="rounded-md border bg-background px-2 py-1 text-xs font-medium">
+                Readiness {deterministicExportReadiness.scoreLabel}
+              </span>
+            </div>
+            <div className="mt-2 h-2 rounded-full bg-background/70">
+              <div
+                className="h-2 rounded-full bg-current"
+                style={{ width: `${deterministicExportReadiness.score}%` }}
+                aria-hidden="true"
+              />
+            </div>
             <p className="mt-1 text-muted-foreground">{deterministicExportReadiness.summary}</p>
             <p className="mt-1 text-muted-foreground">{deterministicWorkBlockSourceLabel}</p>
             {deterministicExportReadiness.blockingMessages.length > 0 && (
