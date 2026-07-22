@@ -8,6 +8,8 @@ export interface DraftWorkBlockDeliverableOption {
   saCode?: string;
   activityId?: string;
   activityDate?: string;
+  eligibilityStatus?: string;
+  eligibilitySummary?: string;
   isAlreadyAssociated: boolean;
   associatedWorkBlockIds: string[];
 }
@@ -37,6 +39,8 @@ export function buildDraftWorkBlockDeliverableOptions({
         saCode: deliverable.saCode,
         activityId: deliverable.activityId ?? deliverable.sourceActivityId,
         activityDate: deliverable.activityDate,
+        eligibilityStatus: deliverable.eligibilityCheck?.status,
+        eligibilitySummary: deliverable.eligibilityCheck?.summary,
         isAlreadyAssociated: associatedWorkBlockIds.length > 0,
         associatedWorkBlockIds,
       };

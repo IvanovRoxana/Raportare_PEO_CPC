@@ -539,9 +539,13 @@ export function ReportingWorkBlockDraftPanel({
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-sm font-medium">{option.title}</span>
                         {option.saCode && <Badge variant="outline">{option.saCode}</Badge>}
+                        {option.eligibilityStatus && <Badge variant="outline">eligibilitate: {option.eligibilityStatus}</Badge>}
                         {disabled && <Badge variant="secondary">asociat</Badge>}
                       </div>
-                      <p className="mt-1 truncate text-xs text-muted-foreground">{option.fileName}</p>
+                      <p className="mt-1 truncate text-xs text-muted-foreground">
+                        {option.fileName}
+                        {option.eligibilitySummary ? ` - ${option.eligibilitySummary}` : ''}
+                      </p>
                     </div>
                   </div>
                 );
