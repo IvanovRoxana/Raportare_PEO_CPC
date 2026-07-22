@@ -52,6 +52,7 @@ import { isGtExpertCategory, normalizePeoCategory } from '@/lib/peo-category';
 import { filterActivityCatalogForFormTab, getActiveGdprActivityCatalog, isActivityCatalogItemAvailableForForm, isEventActivityCatalogItem, normalizeActivityCatalogSaCode, resolveActivityDeliverableOptions, resolveExpertActivityCatalog } from '@/lib/activity-catalog-merge';
 import { buildDocumentS3Key, findDuplicateCandidates, getDocumentAuditTitle, hashFirstPageText, normalizeDocumentTextForFingerprint, sha256Hex } from '@/lib/document-sharing';
 import {
+  areActivitiesCompatibleForDeliverableGroup,
   findMonthlyDeliverableDuplicate,
   getDeliverableDocumentSignature,
 } from '@/lib/deliverable-deduplication';
@@ -126,22 +127,6 @@ type DuplicateDeliverableActivityChoice = {
   saCode?: string;
   isCompatible: boolean;
 };
-
-function normalizeActivityMatchValue(value?: string | null) {
-  return String(value ?? '').trim().toLowerCase();
-}
-
-function areActivitiesCompatibleForDeliverableGroup(activity: Activity, candidate: Activity) {
-  if (activity.expertId && candidate.expertId && activity.expertId !== candidate.expertId) return false;
-
-  if (activity.catalogActivityId || candidate.catalogActivityId) {
-    return Boolean(activity.catalogActivityId && activity.catalogActivityId === candidate.catalogActivityId);
-  }
-
-  return normalizeActivityMatchValue(activity.saCode) === normalizeActivityMatchValue(candidate.saCode)
-    && normalizeActivityMatchValue(activity.activityType || activity.title)
-      === normalizeActivityMatchValue(candidate.activityType || candidate.title);
-}
 
 function getActivityDuplicateChoiceLabel(activity: Pick<Activity, 'activityType' | 'title'>) {
   return activity.activityType || activity.title || 'Activitate fara titlu';

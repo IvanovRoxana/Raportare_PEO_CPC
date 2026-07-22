@@ -66,7 +66,7 @@ import { buildDefaultConcurrentProjects, mergeConcurrentProjectsWithDefaults } f
 import { normalizeTitleForMatch } from './title-suggestion';
 import { parseAwsJsonField, serializeAwsJsonField } from './aws-json';
 import { planDeliverableSync } from './activity-deliverable-sync';
-import { dedupeDeliverablesBySignature, findMonthlyDeliverableDuplicate, getDeliverableDocumentSignature } from './deliverable-deduplication';
+import { areActivitiesCompatibleForDeliverableGroup, dedupeDeliverablesBySignature, findMonthlyDeliverableDuplicate, getDeliverableDocumentSignature } from './deliverable-deduplication';
 import { buildPersistedWorkBlockBundles } from './activity-report/persisted-work-blocks';
 import {
   prepareDraftWorkBlockBundle,
@@ -1505,25 +1505,6 @@ type ActivityWithDeliverablesForValidation = Pick<
   deliverables?: Deliverable[];
 };
 
-function normalizeActivityMatchValue(value?: string | null) {
-  return String(value ?? '').trim().toLowerCase();
-}
-
-function areActivitiesCompatibleForPeriodGroup(
-  activity: Pick<Activity, 'expertId' | 'saCode' | 'catalogActivityId' | 'activityType' | 'title'>,
-  candidate: Pick<Activity, 'expertId' | 'saCode' | 'catalogActivityId' | 'activityType' | 'title'>,
-) {
-  if (activity.expertId && candidate.expertId && activity.expertId !== candidate.expertId) return false;
-
-  if (activity.catalogActivityId || candidate.catalogActivityId) {
-    return Boolean(activity.catalogActivityId && activity.catalogActivityId === candidate.catalogActivityId);
-  }
-
-  return normalizeActivityMatchValue(activity.saCode) === normalizeActivityMatchValue(candidate.saCode)
-    && normalizeActivityMatchValue(activity.activityType || activity.title)
-      === normalizeActivityMatchValue(candidate.activityType || candidate.title);
-}
-
 function dedupeExistingDeliverablesForValidation(
   activities: ActivityWithDeliverablesForValidation[],
 ) {
@@ -1618,7 +1599,7 @@ async function validateActivityBatchForWrite(
       const duplicate = monthlyDuplicate;
       const duplicateGroupId = getActivityPeriodGroupId(duplicate.activity);
       const existingGroupId = getActivityPeriodGroupId(duplicate.existingActivity);
-      const duplicateMatchesExistingActivity = areActivitiesCompatibleForPeriodGroup(
+      const duplicateMatchesExistingActivity = areActivitiesCompatibleForDeliverableGroup(
         duplicate.activity,
         duplicate.existingActivity,
       );
@@ -1797,10 +1778,7 @@ async function attachActivitiesToExistingDeliverableGroups(
       ) {
         continue;
       }
-      if (
-        !sourceWasExplicitlySelected
-        && !areActivitiesCompatibleForPeriodGroup(nextActivity, sourceActivity)
-      ) {
+      if (!areActivitiesCompatibleForDeliverableGroup(nextActivity, sourceActivity)) {
         continue;
       }
 

@@ -20,6 +20,31 @@ function isActivityInMonth(date: string, month: number, year: number) {
   return !Number.isNaN(parsed.getTime()) && parsed.getMonth() === month && parsed.getFullYear() === year;
 }
 
+export function areActivitiesCompatibleForDeliverableGroup(
+  activity: Pick<Activity, 'expertId' | 'saCode' | 'catalogActivityId' | 'activityType' | 'title'>,
+  candidate: Pick<Activity, 'expertId' | 'saCode' | 'catalogActivityId' | 'activityType' | 'title'>,
+) {
+  if (activity.expertId && candidate.expertId && activity.expertId !== candidate.expertId) return false;
+
+  if (activity.catalogActivityId || candidate.catalogActivityId) {
+    return Boolean(activity.catalogActivityId && activity.catalogActivityId === candidate.catalogActivityId);
+  }
+
+  const activitySaCode = normalizeSignaturePart(activity.saCode);
+  const candidateSaCode = normalizeSignaturePart(candidate.saCode);
+  const activityLabel = normalizeSignaturePart(activity.activityType || activity.title);
+  const candidateLabel = normalizeSignaturePart(candidate.activityType || candidate.title);
+
+  return Boolean(
+    activitySaCode
+    && candidateSaCode
+    && activitySaCode === candidateSaCode
+    && activityLabel
+    && candidateLabel
+    && activityLabel === candidateLabel,
+  );
+}
+
 export function getDeliverableDocumentSignature(deliverable: Pick<
   Deliverable,
   'documentId' | 'fileHash' | 'firstPageTextHash' | 'contentFingerprint' | 'fileName' | 'originalFileName' | 'fileSize' | 'fileType' | 'fileData'

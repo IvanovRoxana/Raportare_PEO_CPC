@@ -11,7 +11,10 @@ import {
   splitActivityEditPayload,
 } from '../lib/activity-edit.ts';
 import { planDeliverableSync } from '../lib/activity-deliverable-sync.ts';
-import { findMonthlyDeliverableDuplicate } from '../lib/deliverable-deduplication.ts';
+import {
+  areActivitiesCompatibleForDeliverableGroup,
+  findMonthlyDeliverableDuplicate,
+} from '../lib/deliverable-deduplication.ts';
 import { getActivitiesMissingDeliverables } from '../lib/submit-readiness.ts';
 import type { Activity, Deliverable } from '../lib/types.ts';
 
@@ -580,4 +583,39 @@ test('validarea lunara ignora documentId vechi cand slotul are fisier nou incarc
   });
 
   assert.equal(duplicate, null);
+});
+
+test('gruparea livrabilului accepta doar activitati cu aceeasi identitate', () => {
+  const current = activity('activity-current', {
+    catalogActivityId: 'catalog-current',
+    activityType: 'Actualizare raportare',
+  });
+  const compatible = activity('activity-compatible', {
+    catalogActivityId: 'catalog-current',
+    activityType: 'Actualizare raportare',
+  });
+  const incompatible = activity('activity-incompatible', {
+    catalogActivityId: 'catalog-other',
+    activityType: 'Activare experti in comunicare',
+  });
+
+  assert.equal(areActivitiesCompatibleForDeliverableGroup(current, compatible), true);
+  assert.equal(areActivitiesCompatibleForDeliverableGroup(current, incompatible), false);
+});
+
+test('gruparea livrabilului nu considera compatibile activitati fara identitate', () => {
+  const current = activity('activity-current', {
+    saCode: undefined,
+    catalogActivityId: undefined,
+    activityType: '',
+    title: '',
+  });
+  const candidate = activity('activity-candidate', {
+    saCode: undefined,
+    catalogActivityId: undefined,
+    activityType: '',
+    title: '',
+  });
+
+  assert.equal(areActivitiesCompatibleForDeliverableGroup(current, candidate), false);
 });
