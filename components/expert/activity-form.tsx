@@ -1456,10 +1456,6 @@ export function ActivityForm({
       const compatibleSourceActivity = duplicateSourceActivities.find((activity) => (
         activities.some((nextActivity) => areActivitiesCompatibleForDeliverableGroup(nextActivity, activity))
       ));
-      const defaultSourceActivityId = selectedDuplicateSourceActivityId
-        || compatibleSourceActivity?.id
-        || monthlyDuplicate.existingActivity.id
-        || duplicateSourceActivities[0]?.id;
       const duplicateChoices = duplicateSourceActivities.map((activity) => ({
         id: activity.id,
         date: activity.date,
@@ -1467,12 +1463,34 @@ export function ActivityForm({
         saCode: activity.saCode,
         isCompatible: activities.some((nextActivity) => areActivitiesCompatibleForDeliverableGroup(nextActivity, activity)),
       }));
+      const compatibleChoices = duplicateChoices.filter((choice) => choice.isCompatible);
+      const selectedCompatibleSourceActivityId = selectedDuplicateSourceActivityId
+        && compatibleChoices.some((choice) => choice.id === selectedDuplicateSourceActivityId)
+        ? selectedDuplicateSourceActivityId
+        : undefined;
+      const defaultSourceActivityId = selectedCompatibleSourceActivityId
+        || compatibleSourceActivity?.id
+        || compatibleChoices[0]?.id;
+      const duplicateMessage = compatibleChoices.length > 0
+        ? message
+        : `${message} Nu exista o activitate compatibila pentru reutilizarea acestui fisier in aceeasi luna. Anuleaza si incarca un livrabil diferit sau alege aceeasi activitate/SA.`;
 
-      if (!confirmedMonthlyDeliverableDuplicate) {
+      if (!confirmedMonthlyDeliverableDuplicate || !defaultSourceActivityId) {
         setMonthlyDeliverableDuplicateConfirmation({
-          message,
+          message: duplicateMessage,
           confirmedActivityDuplicate: confirmedDuplicate,
           sourceActivityId: defaultSourceActivityId,
+          choices: duplicateChoices,
+        });
+        return;
+      }
+
+      const selectedDuplicateChoice = duplicateChoices.find((choice) => choice.id === defaultSourceActivityId);
+      if (!selectedDuplicateChoice?.isCompatible) {
+        setMonthlyDeliverableDuplicateConfirmation({
+          message: `${message} Activitatea aleasa nu este compatibila cu activitatea curenta. Alege o activitate recomandata sau incarca un livrabil diferit.`,
+          confirmedActivityDuplicate: confirmedDuplicate,
+          sourceActivityId: compatibleChoices[0]?.id,
           choices: duplicateChoices,
         });
         return;
@@ -2881,12 +2899,13 @@ export function ActivityForm({
                         <Label
                           key={choice.id}
                           htmlFor={`duplicate-source-${choice.id}`}
-                          className="flex cursor-pointer items-start gap-3 rounded-md border border-slate-200 p-3 text-sm hover:bg-slate-50"
+                          className={`flex items-start gap-3 rounded-md border border-slate-200 p-3 text-sm ${choice.isCompatible ? 'cursor-pointer hover:bg-slate-50' : 'cursor-not-allowed bg-slate-50 text-muted-foreground'}`}
                         >
                           <RadioGroupItem
                             id={`duplicate-source-${choice.id}`}
                             value={choice.id}
                             className="mt-0.5"
+                            disabled={!choice.isCompatible}
                           />
                           <span className="min-w-0 space-y-1">
                             <span className="block font-medium text-slate-950">
@@ -2899,7 +2918,11 @@ export function ActivityForm({
                               <span className="inline-flex text-xs font-medium text-emerald-700">
                                 Recomandata pentru activitatea curenta
                               </span>
-                            ) : null}
+                            ) : (
+                              <span className="inline-flex text-xs font-medium text-amber-700">
+                                Incompatibila cu activitatea curenta
+                              </span>
+                            )}
                           </span>
                         </Label>
                       ))}
@@ -2911,7 +2934,12 @@ export function ActivityForm({
                   <AlertDialogAction
                     disabled={Boolean(
                       monthlyDeliverableDuplicateConfirmation?.choices.length
-                      && !monthlyDeliverableDuplicateConfirmation?.sourceActivityId,
+                      && (
+                        !monthlyDeliverableDuplicateConfirmation?.sourceActivityId
+                        || !monthlyDeliverableDuplicateConfirmation.choices.some((choice) => (
+                          choice.id === monthlyDeliverableDuplicateConfirmation.sourceActivityId && choice.isCompatible
+                        ))
+                      ),
                     )}
                     onClick={() => handleSave(
                       monthlyDeliverableDuplicateConfirmation?.confirmedActivityDuplicate ?? false,
