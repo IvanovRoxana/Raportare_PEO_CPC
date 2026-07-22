@@ -171,6 +171,23 @@ export function buildSubmittedActivitiesForEdit(
   const detachedActivityGroupId = editScope === 'single' && existingGroupMembers.length > 1
     ? createActivityPeriodGroupId(`single-${editingActivity.id}`)
     : undefined;
+  const submittedGroupDeliverables = dedupeDeliverables(submittedActivities.flatMap((activity) => activity.deliverables ?? []));
+  const existingGroupDeliverables = dedupeDeliverables(existingGroupMembers.flatMap((activity) => activity.deliverables ?? []));
+  const shouldNormalizeGroupDeliverables = editScope !== 'single'
+    && existingGroupMembers.length > 1
+    && existingGroupMembers.length > 0;
+  const groupDeliverables = submittedGroupDeliverables.length > 0
+    ? submittedGroupDeliverables
+    : existingGroupDeliverables;
+  const groupDeliverableCarrierDate = submittedActivities.find((activity) => (activity.deliverables?.length ?? 0) > 0)?.date
+    ?? submittedActivities[0]?.date
+    ?? uniqueDates[0];
+
+  const resolveDeliverablesForDate = (date: string, fallback?: Deliverable[]) => {
+    if (editScope === 'series') return submittedGroupDeliverables;
+    if (!shouldNormalizeGroupDeliverables) return fallback;
+    return date === groupDeliverableCarrierDate ? groupDeliverables : [];
+  };
 
   return uniqueDates.map((date) => {
     const existingActivityForDate = existingByDate.get(date);
@@ -192,17 +209,26 @@ export function buildSubmittedActivitiesForEdit(
           hours: existingActivityForDate.hours,
           status: existingActivityForDate.status,
           pmNotes: existingActivityForDate.pmNotes,
-          deliverables: existingActivityForDate.deliverables,
+          deliverables: resolveDeliverablesForDate(date, existingActivityForDate.deliverables),
           createdAt: existingActivityForDate.createdAt,
         }
       : preserveExistingActivity && existingActivityForDate
         ? {
             ...existingActivityForDate,
-            deliverables: incomingDeliverables.length > 0
-              ? dedupeDeliverables([...(existingActivityForDate.deliverables ?? []), ...incomingDeliverables])
-              : existingActivityForDate.deliverables,
+            deliverables: resolveDeliverablesForDate(
+              date,
+              incomingDeliverables.length > 0
+                ? dedupeDeliverables([...(existingActivityForDate.deliverables ?? []), ...incomingDeliverables])
+                : existingActivityForDate.deliverables,
+            ),
           }
-        : submittedActivityForDate ?? existingActivityForDate ?? templateActivity;
+        : {
+            ...(submittedActivityForDate ?? existingActivityForDate ?? templateActivity),
+            deliverables: resolveDeliverablesForDate(
+              date,
+              (submittedActivityForDate ?? existingActivityForDate ?? templateActivity).deliverables,
+            ),
+          };
     const activityId = existingActivityForDate?.id
       ?? (sourceActivity.id !== editingActivity.id ? sourceActivity.id : createGeneratedActivityId());
     const hours = (preserveExistingActivity || editScope === 'series') && existingActivityForDate

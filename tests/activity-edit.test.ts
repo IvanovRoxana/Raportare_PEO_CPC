@@ -248,10 +248,11 @@ test('editarea unei singure zile o desprinde din serie si pastreaza celelalte zi
   assert.equal(submitted.find((item) => item.id === 'activity-5')?.periodGroupId, periodGroupId);
 });
 
-test('editarea intregii serii propaga activitatea si pastreaza datele specifice fiecarei zile', () => {
+test('editarea intregii serii propaga activitatea si livrabilele, pastrand datele specifice fiecarei zile', () => {
   const periodGroupId = 'activity-period:period-1';
   const firstDeliverable = deliverable('deliverable-1');
   const secondDeliverable = deliverable('deliverable-2');
+  const replacementDeliverable = deliverable('deliverable-new', { documentId: 'document-new' });
   const groupMembers = [
     activity('activity-4', { date: '2026-06-04', hours: 4, periodGroupId, title: 'Activitate veche', deliverables: [firstDeliverable] }),
     activity('activity-5', { date: '2026-06-05', hours: 6, periodGroupId, title: 'Activitate veche', deliverables: [secondDeliverable] }),
@@ -265,6 +266,7 @@ test('editarea intregii serii propaga activitatea si pastreaza datele specifice 
       title: 'Activitate noua',
       activityType: 'Activitate noua',
       catalogActivityId: 'catalog-new',
+      deliverables: [replacementDeliverable],
     })],
     groupMembers.map((item) => item.date),
     { '2026-06-04': '8', '2026-06-05': '8' },
@@ -278,7 +280,10 @@ test('editarea intregii serii propaga activitatea si pastreaza datele specifice 
   assert.ok(submitted.every((item) => item.title === 'Activitate noua'));
   assert.ok(submitted.every((item) => item.catalogActivityId === 'catalog-new'));
   assert.deepEqual(submitted.map((item) => item.hours), [4, 6]);
-  assert.deepEqual(submitted.map((item) => item.deliverables?.[0]?.id), ['deliverable-1', 'deliverable-2']);
+  assert.deepEqual(submitted.map((item) => item.deliverables?.map((deliverable) => deliverable.id)), [
+    ['deliverable-new'],
+    ['deliverable-new'],
+  ]);
   assert.ok(submitted.every((item) => item.periodGroupId === periodGroupId));
 });
 
@@ -318,6 +323,109 @@ test('grupurile de activitati expun livrabile deduplicate pentru raportare', () 
   assert.equal(compiled[0].date, '2026-06-04, 2026-06-05');
   assert.equal(compiled[0].hours, 10);
   assert.equal(compiled[0].deliverables?.length, 1);
+});
+
+
+test('inlocuirea livrabilului pe grup multi-day elimina livrabilul vechi de pe toate zilele grupului', () => {
+  const periodGroupId = 'activity-period:period-1';
+  const oldDeliverable = deliverable('deliverable-old', { documentId: 'document-old' });
+  const newDeliverable = deliverable('deliverable-new', { documentId: 'document-new' });
+  const groupMembers = [
+    activity('activity-4', { date: '2026-06-04', periodGroupId, deliverables: [oldDeliverable] }),
+    activity('activity-5', { date: '2026-06-05', periodGroupId, deliverables: [deliverable('deliverable-old-copy', { documentId: 'document-old' })] }),
+  ];
+
+  const submitted = buildSubmittedActivitiesForEdit(
+    groupMembers[0],
+    [activity('activity-4', { date: '2026-06-04', periodGroupId, deliverables: [newDeliverable] })],
+    ['2026-06-04', '2026-06-05'],
+    { '2026-06-04': '6', '2026-06-05': '6' },
+    groupMembers,
+    'expert-1',
+    (value, fallback) => String(value ?? fallback),
+  );
+
+  assert.equal(submitted.flatMap((item) => item.deliverables ?? []).length, 1);
+  assert.equal(submitted.flatMap((item) => item.deliverables ?? [])[0].documentId, 'document-new');
+  assert.equal(submitted.find((item) => item.date === '2026-06-05')?.deliverables?.length, 0);
+});
+
+test('stergerea zilei care detine livrabilul il reataseaza pe o zi ramasa din grup', () => {
+  const periodGroupId = 'activity-period:period-1';
+  const sharedDeliverable = deliverable('deliverable-1', { documentId: 'document-1' });
+  const groupMembers = [
+    activity('activity-4', { date: '2026-06-04', periodGroupId, deliverables: [sharedDeliverable] }),
+    activity('activity-5', { date: '2026-06-05', periodGroupId, deliverables: [] }),
+  ];
+
+  const submitted = buildSubmittedActivitiesForEdit(
+    groupMembers[0],
+    [activity('activity-5', { date: '2026-06-05', periodGroupId })],
+    ['2026-06-05'],
+    { '2026-06-05': '6' },
+    groupMembers,
+    'expert-1',
+    (value, fallback) => String(value ?? fallback),
+  );
+
+  assert.equal(submitted.length, 1);
+  assert.equal(submitted[0].date, '2026-06-05');
+  assert.equal(submitted[0].deliverables?.[0]?.documentId, 'document-1');
+});
+
+test('extinderea grupului existent pastreaza un singur livrabil comun deduplicat', () => {
+  const periodGroupId = 'activity-period:period-1';
+  const sharedDeliverable = deliverable('deliverable-1', { documentId: 'document-1' });
+  const groupMembers = [
+    activity('activity-4', { date: '2026-06-04', periodGroupId, deliverables: [sharedDeliverable] }),
+    activity('activity-5', { date: '2026-06-05', periodGroupId, deliverables: [] }),
+  ];
+
+  const submitted = buildSubmittedActivitiesForEdit(
+    groupMembers[0],
+    [activity('activity-4', { date: '2026-06-04', periodGroupId, deliverables: [sharedDeliverable] })],
+    ['2026-06-04', '2026-06-05', '2026-06-06'],
+    { '2026-06-04': '6', '2026-06-05': '6', '2026-06-06': '4' },
+    groupMembers,
+    'expert-1',
+    (value, fallback) => String(value ?? fallback),
+  );
+
+  assert.equal(submitted.length, 3);
+  assert.equal(submitted.flatMap((item) => item.deliverables ?? []).length, 1);
+  assert.equal(dedupeDeliverables(submitted.flatMap((item) => item.deliverables ?? [])).length, 1);
+});
+
+test('activitatile cu acelasi periodGroupId dar identitate diferita nu sunt grupate impreuna', () => {
+  const periodGroupId = 'activity-period:period-1';
+  const activities = [
+    activity('activity-4', { date: '2026-06-04', periodGroupId, saCode: 'SA3.4', activityType: 'Analiza legislativa' }),
+    activity('activity-5', { date: '2026-06-05', periodGroupId, saCode: 'SA3.5', activityType: 'Raportare' }),
+  ];
+
+  assert.equal(getActivityGroupMembers(activities[0], activities).length, 1);
+  assert.equal(compileActivitiesByPeriodGroup(activities).length, 2);
+});
+
+test('grupurile legacy cu workingGroupId activity-period sunt editate ca grup modern', () => {
+  const legacyGroupId = 'activity-period:legacy-1';
+  const groupMembers = [
+    activity('activity-4', { date: '2026-06-04', workingGroupId: legacyGroupId, deliverables: [deliverable('deliverable-1', { documentId: 'document-1' })] }),
+    activity('activity-5', { date: '2026-06-05', workingGroupId: legacyGroupId, deliverables: [] }),
+  ];
+
+  const submitted = buildSubmittedActivitiesForEdit(
+    groupMembers[0],
+    [activity('activity-4', { date: '2026-06-04', workingGroupId: legacyGroupId })],
+    ['2026-06-04', '2026-06-05'],
+    { '2026-06-04': '6', '2026-06-05': '6' },
+    groupMembers,
+    'expert-1',
+    (value, fallback) => String(value ?? fallback),
+  );
+
+  assert.ok(submitted.every((item) => item.periodGroupId === legacyGroupId));
+  assert.equal(submitted.flatMap((item) => item.deliverables ?? []).length, 1);
 });
 
 test('sincronizarea livrabilelor actualizeaza livrabilul existent fara sa il recreeze', () => {
