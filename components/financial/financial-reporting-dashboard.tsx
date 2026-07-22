@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   useActivitiesByMonth,
   useAllConcurrentProjects,
@@ -28,6 +29,10 @@ function hours(value: number) {
   return `${new Intl.NumberFormat('ro-RO', { maximumFractionDigits: 2 }).format(value)} h`;
 }
 
+function compactHours(value: number) {
+  return new Intl.NumberFormat('ro-RO', { maximumFractionDigits: 2 }).format(value);
+}
+
 function downloadResponse(response: Response, fallbackName: string) {
   return response.blob().then((blob) => {
     const disposition = response.headers.get('content-disposition') ?? '';
@@ -46,6 +51,28 @@ function StatusBadge({ row }: { row: FinancialTimesheetRow }) {
   if (row.conflicts.some((conflict) => conflict.severity === 'error')) return <Badge variant="destructive">Eroare</Badge>;
   if (row.conflicts.length) return <Badge variant="secondary">{row.conflicts.length} diferențe</Badge>;
   return <Badge className="bg-emerald-600 hover:bg-emerald-600">Conform</Badge>;
+}
+
+function ConflictDot({ row }: { row: FinancialTimesheetRow }) {
+  if (row.conflicts.length === 0) return null;
+  const hasError = !row.expertId || row.conflicts.some((conflict) => conflict.severity === 'error');
+  const label = `${row.conflicts.length} ${row.conflicts.length === 1 ? 'problemă' : 'probleme'} pentru ${row.name}`;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button type="button" className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={label}>
+          <span className={`h-2.5 w-2.5 rounded-full ${hasError ? 'bg-red-600' : 'bg-amber-500'}`} />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="right" className="max-w-sm p-3 text-xs">
+        <div className="mb-1.5 font-semibold">{label}</div>
+        <ul className="space-y-1">
+          {row.conflicts.map((conflict, index) => <li key={`${conflict.code}-${index}`}>• {conflict.message}</li>)}
+        </ul>
+      </TooltipContent>
+    </Tooltip>
+  );
 }
 
 export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
@@ -171,47 +198,54 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
             <Button variant={onlyConflicts ? 'default' : 'outline'} onClick={() => setOnlyConflicts((value) => !value)}>Doar diferențe</Button>
           </div>
         </CardHeader>
-        <CardContent className="overflow-x-auto">
+        <CardContent className="overflow-x-auto px-2 pb-3 sm:px-3">
           {isLoading ? (
             <div className="flex items-center justify-center py-16 text-muted-foreground"><Loader2 className="mr-2 h-5 w-5 animate-spin" />Se încarcă raportarea...</div>
           ) : (
             mode === 'timesheets' ? (
-              <table className="w-full min-w-[2100px] border-collapse text-sm">
-                <thead><tr className="border-b bg-slate-50 text-left">
-                  <th className="p-3">SALARIAT</th>
-                  <th className="p-3">POZITIA DE BAZA (CONCORDIA)</th>
-                  <th className="p-3 text-right">ORE LUCRATE CONCORDIA</th>
-                  <th className="p-3 text-right">ORE CO CONCORDIA</th>
-                  <th className="p-3">FUNCTIA IN PEO</th>
-                  <th className="p-3 text-right">ORE LUCRATE PEO</th>
-                  <th className="p-3 text-right">ORE CO PEO</th>
-                  <th className="p-3">FUNCTIA IN GOODWORKS4ALL</th>
-                  <th className="p-3 text-right">ORE LUCRATE GOODWORKS4ALL</th>
-                  <th className="p-3 text-right">TOTAL ORE LUCRATE</th>
-                  <th className="p-3 text-right">TOTAL ORE CO</th>
-                  <th className="p-3 text-right">TOTAL ORE LUNA</th>
-                </tr></thead>
-                <tbody>{visibleRows.map((row) => (
-                  <tr key={`${row.expertId ?? 'missing'}-${row.name}`} className="border-b align-top hover:bg-slate-50/60">
-                    <td className="p-3">
-                      <div className="font-medium">{row.name}</div>
-                      <div className="mt-2 flex flex-wrap items-center gap-2"><StatusBadge row={row} /><Button size="sm" variant="outline" disabled={!row.expertId || exporting !== null} onClick={() => exportExpertTemplate(row)}>{exporting === row.expertId ? <Loader2 className="h-4 w-4 animate-spin" /> : <><FileText className="mr-2 h-4 w-4" />Template</>}</Button></div>
-                      {row.conflicts.length > 0 && <ul className="mt-2 max-w-sm space-y-1 text-xs text-amber-800">{row.conflicts.map((conflict, index) => <li key={`${conflict.code}-${index}`}>• {conflict.message}</li>)}</ul>}
-                    </td>
-                    <td className="p-3">{row.basePosition}</td>
-                    <td className="p-3 text-right">{hours(row.concordiaWorked)}</td>
-                    <td className="p-3 text-right">{hours(row.concordiaLeave)}</td>
-                    <td className="p-3">{row.peoFunction}</td>
-                    <td className="p-3 text-right">{hours(row.peoWorked)}</td>
-                    <td className="p-3 text-right">{hours(row.peoLeave)}</td>
-                    <td className="p-3">{row.goodworksFunction}</td>
-                    <td className="p-3 text-right">{hours(row.goodworksWorked)}</td>
-                    <td className="p-3 text-right font-semibold">{hours(row.totalWorked)}</td>
-                    <td className="p-3 text-right font-semibold">{hours(row.totalLeave)}</td>
-                    <td className="p-3 text-right font-semibold">{hours(row.totalMonth)}</td>
-                  </tr>
-                ))}</tbody>
-              </table>
+              <TooltipProvider delayDuration={150}>
+                <table className="w-full min-w-[1120px] table-fixed border-collapse border border-slate-300 text-[10px] leading-tight xl:min-w-0">
+                  <colgroup>
+                    {[8.5, 14, 7.5, 6.5, 14, 6.5, 5.5, 13.5, 8.5, 5.5, 4.5, 5.5].map((width, index) => <col key={index} style={{ width: `${width}%` }} />)}
+                  </colgroup>
+                  <thead><tr className="text-center text-[9px] font-semibold uppercase leading-tight text-white">
+                    <th className="border-r border-white/30 bg-emerald-800 px-1 py-2">SALARIAT</th>
+                    <th className="border-r border-white/30 bg-emerald-800 px-1 py-2">POZITIA DE BAZA (CONCORDIA)</th>
+                    <th className="border-r border-white/30 bg-emerald-800 px-1 py-2">ORE LUCRATE CONCORDIA</th>
+                    <th className="border-r border-white/30 bg-emerald-800 px-1 py-2">ORE CO CONCORDIA</th>
+                    <th className="border-r border-white/30 bg-emerald-800 px-1 py-2">FUNCTIA IN PEO</th>
+                    <th className="border-r border-white/30 bg-emerald-800 px-1 py-2">ORE LUCRATE PEO</th>
+                    <th className="border-r border-white/30 bg-emerald-800 px-1 py-2">ORE CO PEO</th>
+                    <th className="border-r border-white/30 bg-emerald-800 px-1 py-2">FUNCTIA IN GOODWORKS4ALL</th>
+                    <th className="border-r border-white/30 bg-emerald-800 px-1 py-2">ORE LUCRATE GOODWORKS4ALL</th>
+                    <th className="border-r border-white/30 bg-slate-700 px-1 py-2">TOTAL ORE LUCRATE</th>
+                    <th className="border-r border-white/30 bg-slate-700 px-1 py-2">TOTAL ORE CO</th>
+                    <th className="bg-amber-600 px-1 py-2">TOTAL ORE LUNA</th>
+                  </tr></thead>
+                  <tbody>{visibleRows.map((row, rowIndex) => (
+                    <tr key={`${row.expertId ?? 'missing'}-${row.name}`} className={`border-b border-slate-300 align-middle hover:bg-emerald-50 ${rowIndex % 2 ? 'bg-emerald-50/40' : 'bg-white'}`}>
+                      <td className="border-r border-slate-300 px-1 py-1">
+                        <div className="flex min-w-0 items-center gap-0.5">
+                          <ConflictDot row={row} />
+                          <span className="min-w-0 flex-1 truncate font-medium" title={row.name}>{row.name}</span>
+                          <Button size="icon" variant="ghost" className="h-5 w-5 shrink-0" title={`Exportă template pentru ${row.name}`} aria-label={`Exportă template pentru ${row.name}`} disabled={!row.expertId || exporting !== null} onClick={() => exportExpertTemplate(row)}>{exporting === row.expertId ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileText className="h-3 w-3" />}</Button>
+                        </div>
+                      </td>
+                      <td className="border-r border-slate-300 px-1 py-1"><div className="max-h-[2.2em] overflow-hidden" title={row.basePosition}>{row.basePosition}</div></td>
+                      <td className="border-r border-slate-300 px-1 py-1 text-center tabular-nums">{compactHours(row.concordiaWorked)}</td>
+                      <td className="border-r border-slate-300 px-1 py-1 text-center tabular-nums">{compactHours(row.concordiaLeave)}</td>
+                      <td className="border-r border-slate-300 px-1 py-1"><div className="max-h-[2.2em] overflow-hidden" title={row.peoFunction}>{row.peoFunction}</div></td>
+                      <td className="border-r border-slate-300 px-1 py-1 text-center tabular-nums">{compactHours(row.peoWorked)}</td>
+                      <td className="border-r border-slate-300 px-1 py-1 text-center tabular-nums">{compactHours(row.peoLeave)}</td>
+                      <td className="border-r border-slate-300 px-1 py-1"><div className="max-h-[2.2em] overflow-hidden" title={row.goodworksFunction}>{row.goodworksFunction}</div></td>
+                      <td className="border-r border-slate-300 px-1 py-1 text-center tabular-nums">{compactHours(row.goodworksWorked)}</td>
+                      <td className="border-r border-slate-400 bg-slate-100/80 px-1 py-1 text-center font-semibold tabular-nums">{compactHours(row.totalWorked)}</td>
+                      <td className="border-r border-slate-400 bg-slate-100/80 px-1 py-1 text-center font-semibold tabular-nums">{compactHours(row.totalLeave)}</td>
+                      <td className="bg-amber-50 px-1 py-1 text-center font-semibold tabular-nums">{compactHours(row.totalMonth)}</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              </TooltipProvider>
             ) : (
               <table className="w-full min-w-[1100px] border-collapse text-sm">
                 <thead><tr className="border-b bg-slate-50 text-left"><th className="p-3">Expert / funcție</th><th className="p-3">Normă</th><th className="p-3 text-right">CO PEO</th><th className="p-3 text-right">CM PEO</th><th className="p-3 text-right">CO/CM Concordia</th><th className="p-3">Zile</th><th className="p-3">Status audit</th><th className="p-3 text-right">Export</th></tr></thead>
