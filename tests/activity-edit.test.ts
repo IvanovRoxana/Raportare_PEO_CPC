@@ -224,6 +224,64 @@ test('editarea multi-day pastreaza randul existent dar ataseaza livrabilul nou p
   assert.equal(preservedDay?.deliverables?.[0]?.documentId, 'document-1');
 });
 
+test('editarea unei singure zile o desprinde din serie si pastreaza celelalte zile neschimbate', () => {
+  const periodGroupId = 'activity-period:period-1';
+  const groupMembers = [
+    activity('activity-4', { date: '2026-06-04', hours: 4, periodGroupId, title: 'Activitate veche' }),
+    activity('activity-5', { date: '2026-06-05', hours: 6, periodGroupId, title: 'Activitate veche' }),
+  ];
+  const submitted = buildSubmittedActivitiesForEdit(
+    groupMembers[0],
+    [activity('activity-4', { date: '2026-06-04', hours: 8, periodGroupId, title: 'Activitate noua' })],
+    groupMembers.map((item) => item.date),
+    { '2026-06-04': '8', '2026-06-05': '8' },
+    groupMembers,
+    'expert-1',
+    (value, fallback) => String(value ?? fallback),
+    'single',
+  );
+
+  assert.equal(submitted.find((item) => item.id === 'activity-4')?.title, 'Activitate noua');
+  assert.notEqual(submitted.find((item) => item.id === 'activity-4')?.periodGroupId, periodGroupId);
+  assert.equal(submitted.find((item) => item.id === 'activity-5')?.title, 'Activitate veche');
+  assert.equal(submitted.find((item) => item.id === 'activity-5')?.hours, 6);
+  assert.equal(submitted.find((item) => item.id === 'activity-5')?.periodGroupId, periodGroupId);
+});
+
+test('editarea intregii serii propaga activitatea si pastreaza datele specifice fiecarei zile', () => {
+  const periodGroupId = 'activity-period:period-1';
+  const firstDeliverable = deliverable('deliverable-1');
+  const secondDeliverable = deliverable('deliverable-2');
+  const groupMembers = [
+    activity('activity-4', { date: '2026-06-04', hours: 4, periodGroupId, title: 'Activitate veche', deliverables: [firstDeliverable] }),
+    activity('activity-5', { date: '2026-06-05', hours: 6, periodGroupId, title: 'Activitate veche', deliverables: [secondDeliverable] }),
+  ];
+  const submitted = buildSubmittedActivitiesForEdit(
+    groupMembers[0],
+    [activity('activity-4', {
+      date: '2026-06-04',
+      hours: 8,
+      periodGroupId,
+      title: 'Activitate noua',
+      activityType: 'Activitate noua',
+      catalogActivityId: 'catalog-new',
+    })],
+    groupMembers.map((item) => item.date),
+    { '2026-06-04': '8', '2026-06-05': '8' },
+    groupMembers,
+    'expert-1',
+    (value, fallback) => String(value ?? fallback),
+    'series',
+  );
+
+  assert.deepEqual(submitted.map((item) => item.id), ['activity-4', 'activity-5']);
+  assert.ok(submitted.every((item) => item.title === 'Activitate noua'));
+  assert.ok(submitted.every((item) => item.catalogActivityId === 'catalog-new'));
+  assert.deepEqual(submitted.map((item) => item.hours), [4, 6]);
+  assert.deepEqual(submitted.map((item) => item.deliverables?.[0]?.id), ['deliverable-1', 'deliverable-2']);
+  assert.ok(submitted.every((item) => item.periodGroupId === periodGroupId));
+});
+
 test('livrabilul atasat pe ultima zi deblocheaza toate activitatile din perioada editata', () => {
   const periodGroupId = 'activity-period:edit-activity-4';
   const sharedDeliverable = deliverable('deliverable-1', {
