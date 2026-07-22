@@ -151,5 +151,8 @@ test('export page wires persisted work block bundles as a read-only optional pre
   assert.match(reportGeneratorSource, /const deterministicWorkBlockSourceLabel = persistedWorkBlockCount > 0/);
   assert.match(reportGeneratorSource, /Work block-uri persistate: \$\{persistedWorkBlockCount\}/);
   assert.match(reportGeneratorSource, /Work block-uri generate din activitati \(fallback\)/);
+  assert.match(reportGeneratorSource, /const deterministicExportButtonTitle = activities\.length === 0/);
+  assert.match(reportGeneratorSource, /title=\{deterministicExportButtonTitle\}/);
+  assert.match(reportGeneratorSource, /aria-label=\{deterministicExportButtonTitle\}/);
   assert.match(reportGeneratorSource, /\[activities, enableDeterministicAnexa10Docx, expert, expertName, month, workBlockBundles, year\]/);
 });

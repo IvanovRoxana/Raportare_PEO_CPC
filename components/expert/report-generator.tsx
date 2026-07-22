@@ -126,6 +126,11 @@ export function ReportGenerator({
   const deterministicWorkBlockSourceLabel = persistedWorkBlockCount > 0
     ? `Work block-uri persistate: ${persistedWorkBlockCount}`
     : 'Work block-uri generate din activitati (fallback)';
+  const deterministicExportButtonTitle = activities.length === 0
+    ? 'Nu exista activitati pentru export Anexa 10.'
+    : deterministicExportReadiness?.canExport
+      ? `${deterministicExportReadiness.statusLabel}. ${deterministicWorkBlockSourceLabel}.`
+      : deterministicExportReadiness?.blockingMessages[0] ?? 'Exportul Anexa 10 este blocat pentru verificare.';
 
   const generateWithAI = async () => {
     setIsGenerating(true);
@@ -486,6 +491,8 @@ export function ReportGenerator({
             <Button
               variant="outline"
               onClick={exportDeterministicAnexa10Docx}
+              title={deterministicExportButtonTitle}
+              aria-label={deterministicExportButtonTitle}
               disabled={
                 activities.length === 0
                 || isExportingDeterministicDocx
