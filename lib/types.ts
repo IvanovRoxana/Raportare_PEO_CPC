@@ -497,6 +497,7 @@ export interface ActivityCatalog {
   id: string;
   category: string;
   saCode: string;
+  gdprTemplateCode?: string;
   serviceCategory: string;
   activityNumber: number;
   activityName: string;

@@ -108,3 +108,15 @@ export function resolveExpertActivityCatalog({
 }) {
   return mergeActivityCatalogs(fallbackCatalog, backendCatalog);
 }
+
+export function getActiveGdprActivityCatalog(
+  catalog: ActivityCatalog[],
+  allowedSaCodes: string[] = [],
+) {
+  const allowed = new Set(allowedSaCodes.map(normalizeActivityCatalogSaCode).filter(Boolean));
+  return sortActivityCatalog(catalog.filter((item) =>
+    item.category.trim().toLowerCase() === 'gdpr'
+    && isActiveActivityCatalogItem(item)
+    && (allowed.size === 0 || allowed.has(normalizeActivityCatalogSaCode(item.saCode)))
+  ));
+}

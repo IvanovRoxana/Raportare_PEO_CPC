@@ -253,6 +253,41 @@ test('formularul separa activitatile standard de activitatile de eveniment dupa 
   assert.deepEqual(filterActivityCatalogForFormTab(catalog, 'business_hub').map((item) => item.id), ['ap-standard', 'ap-event']);
 });
 
+test('activitatile de organizare si cele fara categorie serviciu raman in tabul standard', () => {
+  const catalog = [
+    {
+      id: 'event-preparation',
+      category: 'ap',
+      saCode: 'SA3.4',
+      activityNumber: 1,
+      serviceCategory: 'Infrastructura dialog social',
+      activityName: 'Organizare eveniment / pregatire lista potentiali invitati',
+    },
+    {
+      id: 'empty-service-category',
+      category: 'ap',
+      saCode: 'SA3.4',
+      activityNumber: 2,
+      serviceCategory: '',
+      activityName: 'Pregatire documentatie',
+    },
+    {
+      id: 'event-participation',
+      category: 'ap',
+      saCode: 'SA3.4',
+      activityNumber: 3,
+      serviceCategory: 'Reprezentare si participare la evenimente',
+      activityName: 'Participare la eveniment',
+    },
+  ] as ActivityCatalog[];
+
+  assert.deepEqual(filterActivityCatalogForFormTab(catalog, 'standard').map((item) => item.id), [
+    'event-preparation',
+    'empty-service-category',
+  ]);
+  assert.deepEqual(filterActivityCatalogForFormTab(catalog, 'event').map((item) => item.id), ['event-participation']);
+});
+
 test('categoria de eveniment este recunoscuta indiferent de diacritice', () => {
   assert.equal(
     isEventActivityCatalogItem({

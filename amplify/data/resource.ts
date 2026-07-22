@@ -560,6 +560,7 @@ const schema = a.schema({
     .model({
       category: a.string().required(),
       saCode: a.string().required(),
+      gdprTemplateCode: a.string(),
       serviceCategory: a.string(),
       activityNumber: a.integer(),
       activityName: a.string().required(),

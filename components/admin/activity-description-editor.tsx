@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useActivityCatalog, useActivityCatalogMutations } from '@/hooks/use-backend-data';
 import type { ActivityCatalog } from '@/lib/types';
 import { activityCatalogMergeKey, mergeActivityCatalogs } from '@/lib/activity-catalog-merge';
+import { GDPR_TEMPLATES, resolveGdprTemplateCodeForCatalogActivity } from '@/lib/gdpr-reporting';
 
 const ALL = 'all';
 const ACTIVE = 'active';
@@ -46,6 +47,9 @@ function draftFromActivity(activity?: ActivityCatalog | null): ActivityCatalogDr
   return {
     category: activity?.category ?? '',
     saCode: activity?.saCode ?? '',
+    gdprTemplateCode: activity?.category?.trim().toLowerCase() === 'gdpr'
+      ? resolveGdprTemplateCodeForCatalogActivity(activity)
+      : activity?.gdprTemplateCode,
     serviceCategory: activity?.serviceCategory ?? '',
     activityNumber: activity?.activityNumber ?? 0,
     activityName: activity?.activityName ?? '',
@@ -65,6 +69,9 @@ function normalizeDraft(draft: ActivityCatalogDraft): ActivityCatalogDraft {
     ...draft,
     category: draft.category.trim().toLowerCase(),
     saCode: draft.saCode.trim().toUpperCase(),
+    gdprTemplateCode: draft.category.trim().toLowerCase() === 'gdpr'
+      ? draft.gdprTemplateCode?.trim() || 'GDPR_ALTE_VERIFICARI'
+      : undefined,
     serviceCategory: draft.serviceCategory.trim(),
     activityNumber: Number.isFinite(Number(draft.activityNumber)) ? Number(draft.activityNumber) : 0,
     activityName: draft.activityName.trim(),
@@ -459,6 +466,32 @@ export function ActivityDescriptionEditor({ fallbackCatalog = [] }: ActivityDesc
                     placeholder="Optional"
                   />
                 </div>
+
+                {draft.category.trim().toLowerCase() === 'gdpr' && (
+                  <div className="space-y-2">
+                    <label htmlFor="catalog-gdpr-template" className="text-sm font-semibold text-slate-900">
+                      Sablon formular GDPR
+                    </label>
+                    <Select
+                      value={draft.gdprTemplateCode || 'GDPR_ALTE_VERIFICARI'}
+                      onValueChange={(value) => updateDraft('gdprTemplateCode', value)}
+                    >
+                      <SelectTrigger id="catalog-gdpr-template">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {GDPR_TEMPLATES.map((template) => (
+                          <SelectItem key={template.code} value={template.code}>
+                            {template.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Activitatea ramane definita in catalog; sablonul controleaza doar campurile, validarile si DOCX-ul.
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-2">

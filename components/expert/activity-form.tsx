@@ -42,7 +42,6 @@ import {
 } from './existing-deliverable-picker';
 import { createDeliverableSlot, type DeliverableSlot } from '@/lib/deliverable-types';
 import { 
-  isEventActivity, 
   isExceptionActivity,
   getDeliverableOptions 
 } from '@/lib/peo-constants';
@@ -50,7 +49,7 @@ import { useActivityCatalog, useBusinessHubEntityDirectory } from '@/hooks/use-b
 import type { Activity, Deliverable, DocumentMetadata, GrupTintaEntry, Expert, ActivityCatalog } from '@/lib/types';
 import fallbackActivityCatalog from '@/data/import/activity-catalog.json';
 import { isGtExpertCategory, normalizePeoCategory } from '@/lib/peo-category';
-import { filterActivityCatalogForFormTab, isActivityCatalogItemAvailableForForm, normalizeActivityCatalogSaCode, resolveActivityDeliverableOptions, resolveExpertActivityCatalog } from '@/lib/activity-catalog-merge';
+import { filterActivityCatalogForFormTab, getActiveGdprActivityCatalog, isActivityCatalogItemAvailableForForm, isEventActivityCatalogItem, normalizeActivityCatalogSaCode, resolveActivityDeliverableOptions, resolveExpertActivityCatalog } from '@/lib/activity-catalog-merge';
 import { buildDocumentS3Key, findDuplicateCandidates, getDocumentAuditTitle, hashFirstPageText, normalizeDocumentTextForFingerprint, sha256Hex } from '@/lib/document-sharing';
 import {
   findMonthlyDeliverableDuplicate,
@@ -69,11 +68,11 @@ import {
 } from '@/lib/pontaj-rules';
 import {
   GDPR_CONCLUSION_OPTIONS,
-  GDPR_TEMPLATES,
   getGdprDeliverableRequirementLabel,
   getGdprMinimumEvidenceLabels,
   getGdprOptionLabel,
   getGdprOptionValue,
+  resolveGdprTemplateCodeForCatalogActivity,
   serializeGdprMeta,
   validateGdprActivityDraft,
   type GdprFieldDefinition,
@@ -298,6 +297,11 @@ export function ActivityForm({
       return isAvailable && matchesCategory && matchesSaCode;
     });
   }, [effectiveCatalog, expertCategory, expertSaCodes, initialActivity?.catalogActivityId]);
+
+  const gdprCatalogItems = useMemo(
+    () => getActiveGdprActivityCatalog(effectiveCatalog, expertSaCodes),
+    [effectiveCatalog, expertSaCodes],
+  );
 
   const activityTabCatalog = useMemo(
     () => filterActivityCatalogForFormTab(filteredCatalog, activityFormTab),
@@ -662,6 +666,17 @@ export function ActivityForm({
     ) || null;
   }, [activityTitle, availableActivityItems, saCode, selectedCatalogActivityId]);
 
+  const selectedGdprCatalogItem = useMemo(() => {
+    return gdprCatalogItems.find((item) => item.id === selectedCatalogActivityId)
+      || gdprCatalogItems.find((item) => item.activityName === activityTitle)
+      || (gdprTemplateCode && gdprTemplateCode !== 'GDPR_ALTE_VERIFICARI'
+        ? gdprCatalogItems.find((item) =>
+            resolveGdprTemplateCodeForCatalogActivity(item) === gdprTemplateCode
+          )
+        : null)
+      || null;
+  }, [activityTitle, gdprCatalogItems, gdprTemplateCode, selectedCatalogActivityId]);
+
   const selectedActivitySelectValue = selectedCatalogItem?.id || '';
 
   const handleActivitySelectionChange = useCallback((catalogActivityId: string) => {
@@ -669,6 +684,16 @@ export function ActivityForm({
     setSelectedCatalogActivityId(catalogActivityId);
     setActivityTitle(catalogItem?.activityName || '');
   }, [availableActivityItems]);
+
+  const handleGdprCatalogActivityChange = useCallback((catalogActivityId: string) => {
+    const catalogItem = gdprCatalogItems.find((item) => item.id === catalogActivityId);
+    if (!catalogItem) return;
+
+    handleGdprTemplateChange(resolveGdprTemplateCodeForCatalogActivity(catalogItem));
+    setSelectedCatalogActivityId(catalogItem.id);
+    setSaCode(catalogItem.saCode);
+    setActivityTitle(catalogItem.activityName);
+  }, [gdprCatalogItems, handleGdprTemplateChange]);
 
   const lastAutoDescriptionRef = useRef('');
   const {
@@ -795,12 +820,12 @@ export function ActivityForm({
   ]);
 
   const effectiveActivityTitle = isGdprExpert && selectedGdprTemplate
-    ? selectedGdprTemplate.activityTitle
+    ? selectedGdprCatalogItem?.activityName || activityTitle || selectedGdprTemplate.activityTitle
     : isBusinessHubTabActive
       ? businessHubRegistryActivityTitle
       : activityTitle;
   const effectiveSaCode = isGdprExpert && selectedGdprTemplate
-    ? selectedGdprTemplate.saCode
+    ? selectedGdprCatalogItem?.saCode || saCode || selectedGdprTemplate.saCode
     : isBusinessHubTabActive
       ? roleConfig.defaultSaCode || saCode
       : saCode;
@@ -808,15 +833,17 @@ export function ActivityForm({
   // Check if current activity is exception (no deliverable required)
   const isException = isExceptionActivity(effectiveActivityTitle);
   
-  // Check if current activity is event
-  const isEvent = isEventActivity(effectiveActivityTitle);
+  // Event documents are required exclusively for the event service category.
+  // Titles such as "organizare eveniment" may describe preparatory work only.
+  const isEvent = activityFormTab === 'event';
 
   useEffect(() => {
-    if (activityFormTab === 'business_hub') return;
-    if (isEvent && activityFormTab !== 'event') {
+    if (!initialActivity?.catalogActivityId) return;
+    const initialCatalogItem = filteredCatalog.find((item) => item.id === initialActivity.catalogActivityId);
+    if (initialCatalogItem && isEventActivityCatalogItem(initialCatalogItem)) {
       setActivityFormTab('event');
     }
-  }, [activityFormTab, isEvent]);
+  }, [filteredCatalog, initialActivity?.catalogActivityId]);
 
   useEffect(() => {
     if (!isBusinessHubExpert || activityFormTab !== 'business_hub') return;
@@ -1209,7 +1236,9 @@ export function ActivityForm({
       saCode: effectiveSaCode,
       catalogActivityId: isBusinessHubTabActive
         ? businessHubRegistryCatalogItem?.id
-        : selectedCatalogItem?.id,
+        : isGdprExpert
+          ? selectedGdprCatalogItem?.id
+          : selectedCatalogItem?.id,
       activityType: effectiveActivityTitle,
       title: effectiveActivityTitle,
       description,
@@ -1306,7 +1335,9 @@ export function ActivityForm({
         saCode: effectiveSaCode,
         catalogActivityId: isBusinessHubTabActive
           ? businessHubRegistryCatalogItem?.id
-          : selectedCatalogItem?.id,
+          : isGdprExpert
+            ? selectedGdprCatalogItem?.id
+            : selectedCatalogItem?.id,
         title: effectiveActivityTitle,
         description,
         activityKeywords: activityKeywords.trim() || undefined,
@@ -2310,14 +2341,17 @@ export function ActivityForm({
 
                 <Field>
                   <FieldLabel htmlFor="gdprTemplate">Ce tip de activitate GDPR ai desfasurat?</FieldLabel>
-                  <Select value={gdprTemplateCode} onValueChange={handleGdprTemplateChange}>
+                  <Select
+                    value={selectedGdprCatalogItem?.id || ''}
+                    onValueChange={handleGdprCatalogActivityChange}
+                  >
                     <SelectTrigger id="gdprTemplate" className="bg-white">
                       <SelectValue placeholder="Selecteaza activitatea GDPR" />
                     </SelectTrigger>
                     <SelectContent>
-                      {GDPR_TEMPLATES.map((template) => (
-                        <SelectItem key={template.code} value={template.code}>
-                          {template.label}
+                      {gdprCatalogItems.map((activity) => (
+                        <SelectItem key={activity.id} value={activity.id}>
+                          {activity.activityName}
                         </SelectItem>
                       ))}
                     </SelectContent>

@@ -2917,6 +2917,7 @@ export const activityCatalogService = {
     const result = await client.models.ActivityCatalog.create({
       category: input.category,
       saCode: input.saCode,
+      gdprTemplateCode: input.gdprTemplateCode,
       serviceCategory: input.serviceCategory,
       activityNumber: input.activityNumber,
       activityName: input.activityName,
@@ -2939,6 +2940,7 @@ export const activityCatalogService = {
       id,
       category: updates.category,
       saCode: updates.saCode,
+      gdprTemplateCode: updates.gdprTemplateCode,
       serviceCategory: updates.serviceCategory,
       activityNumber: updates.activityNumber,
       activityName: updates.activityName,
@@ -2971,6 +2973,7 @@ function mapActivityCatalog(item: any): ActivityCatalog {
     id: item.id,
     category: item.category,
     saCode: item.saCode,
+    gdprTemplateCode: item.gdprTemplateCode ?? undefined,
     serviceCategory: item.serviceCategory ?? '',
     activityNumber: item.activityNumber ?? 0,
     activityName: item.activityName,
