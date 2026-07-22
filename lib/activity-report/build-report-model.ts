@@ -200,6 +200,22 @@ function buildReportWarnings(
     }
 
     const activities = getBundleActivities(bundle, activityById);
+    const bundleDeliverables = activities.flatMap((activity) => activity.deliverables ?? [])
+      .filter((deliverable) => deliverableIds.includes(deliverable.id || deliverable.documentId || deliverable.s3Key || deliverable.fileName));
+    for (const deliverable of bundleDeliverables) {
+      const deliverableTitle = getDocumentAuditTitle(deliverable) || deliverable.id || deliverable.fileName;
+      const eligibilityStatus = deliverable.eligibilityCheck?.status;
+      if (!eligibilityStatus) {
+        warnings.push(`Livrabilul "${deliverableTitle}" din work block-ul "${bundle.workBlock.title}" nu are eligibilitatea verificata.`);
+      } else if (eligibilityStatus === 'neeligibil') {
+        warnings.push(`Livrabilul "${deliverableTitle}" din work block-ul "${bundle.workBlock.title}" este marcat neeligibil.`);
+      } else if (eligibilityStatus === 'neconcludent') {
+        warnings.push(`Livrabilul "${deliverableTitle}" din work block-ul "${bundle.workBlock.title}" are eligibilitate neconcludenta.`);
+      } else if (eligibilityStatus === 'eligibil_cu_observatii') {
+        warnings.push(`Livrabilul "${deliverableTitle}" din work block-ul "${bundle.workBlock.title}" este eligibil cu observatii.`);
+      }
+    }
+
     if (activities.some((activity) => !activity.saCode) && bundle.workBlock.reportingFlowType === 'administrative') {
       warnings.push(`Activitatea administrativa "${bundle.workBlock.title}" nu are SA.`);
     }
