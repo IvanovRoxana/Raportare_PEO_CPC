@@ -308,6 +308,12 @@ test('formularul trimite toate livrabilele incarcate din activitatea curenta la 
   assert.match(deliverableItemSource, /Verifica \{relatedDeliverables\.length\} livrabile incarcate pentru activitatea curenta/);
 });
 
+test('poarta de text pentru eligibilitate verifica toate livrabilele activitatii curente', () => {
+  assert.match(deliverableItemSource, /function getEligibilityDeliverables\(deliverable: DeliverableSlot, relatedDeliverables\?: DeliverableSlot\[\]\)/);
+  assert.match(deliverableItemSource, /eligibilityDeliverables\.some\(hasEnoughExtractedTextForEligibility\)/);
+  assert.match(deliverableItemSource, /const eligibilityDeliverables = getEligibilityDeliverables\(deliverable, relatedDeliverables\)/);
+});
+
 test('rezultatul eligibilitatii pastreaza metadatele livrabilelor analizate', () => {
   assert.match(eligibilityRouteSource, /analyzedDeliverables: eligibilityDocuments\.map/);
   assert.match(eligibilityRouteSource, /isPrimary: deliverable\.isPrimary/);

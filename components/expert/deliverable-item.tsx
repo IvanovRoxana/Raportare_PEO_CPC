@@ -39,8 +39,19 @@ function hasEnoughExtractedTextForEligibility(deliverable: DeliverableSlot) {
   });
 }
 
-function getTextExtractionGateReason(deliverable: DeliverableSlot) {
-  if (hasEnoughExtractedTextForEligibility(deliverable)) return null;
+function getEligibilityDeliverables(deliverable: DeliverableSlot, relatedDeliverables?: DeliverableSlot[]) {
+  return (relatedDeliverables && relatedDeliverables.length > 0
+    ? relatedDeliverables
+    : [deliverable]
+  ).filter((item) => item.uploaded && !item.isPhoto);
+}
+
+function getTextExtractionGateReason(deliverable: DeliverableSlot, relatedDeliverables?: DeliverableSlot[]) {
+  const eligibilityDeliverables = getEligibilityDeliverables(deliverable, relatedDeliverables);
+  if (eligibilityDeliverables.some(hasEnoughExtractedTextForEligibility)) return null;
+  if (eligibilityDeliverables.length > 1) {
+    return 'Textul extras din livrabilele incarcate pentru activitatea curenta este prea scurt pentru verificarea AI. Reincarca documentele ca PDF/DOCX cu text selectabil sau exporta-le cu OCR.';
+  }
   const hasConfirmedTitle = Boolean(deliverable.titleConfirmed || deliverable.declaredTitle || deliverable.suggestedTitle);
   if (hasConfirmedTitle) {
     return 'Titlul a fost identificat, dar textul extras din livrabil este prea scurt pentru verificarea AI. Reincarca documentul ca PDF/DOCX cu text selectabil sau exporta-l cu OCR.';
@@ -1087,7 +1098,7 @@ export function DeliverableEligibilityControl({
 
   if (!deliverable.uploaded || deliverable.isPhoto) return null;
 
-  const textExtractionGateReason = visibleEligibilityCheck ? null : getTextExtractionGateReason(deliverable);
+  const textExtractionGateReason = visibleEligibilityCheck ? null : getTextExtractionGateReason(deliverable, relatedDeliverables);
   const eligibilityGateReason = textExtractionGateReason
     || (!deliverable.titleConfirmed
       ? 'Confirma titlul livrabilului inainte de verificarea eligibilitatii.'
@@ -1103,10 +1114,7 @@ export function DeliverableEligibilityControl({
     try {
       const extractedText = (deliverable.docText || deliverable.firstPageText || '').slice(0, 12000);
       const activityGroupId = selectedActivityId || subActivity;
-      const eligibilityDeliverables = (relatedDeliverables && relatedDeliverables.length > 0
-        ? relatedDeliverables
-        : [deliverable]
-      ).filter((item) => item.uploaded && !item.isPhoto);
+      const eligibilityDeliverables = getEligibilityDeliverables(deliverable, relatedDeliverables);
       const response = await fetch('/api/ai/check-deliverable-eligibility', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1159,6 +1167,7 @@ export function DeliverableEligibilityControl({
           checkedActivityName: activityTitle,
           checkedDeliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
           modelAuditId: result.modelAuditId,
+          analyzedDeliverables: result.analyzedDeliverables,
         },
         aiCheck: {
           eligible: result.status === 'eligibil' || result.status === 'eligibil_cu_observatii'
