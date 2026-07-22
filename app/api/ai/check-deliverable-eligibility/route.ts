@@ -9,6 +9,7 @@ import {
   deliverableEligibilitySchema,
   normalizeDeliverableEligibilityAiOutput,
   normalizeDeliverableEligibilityActivityCandidates,
+  normalizeDeliverableEligibilityDocuments,
   normalizeDeliverableEligibilityStringList,
   protectConcordiaPublicationEligibility,
   validateEligibilitySuggestedSettings,
@@ -106,6 +107,10 @@ export async function POST(req: Request) {
       documentTitle,
       fileName,
       extractedText,
+      deliverables: rawDeliverables,
+      primaryDeliverableId,
+      activityGroupId,
+      workBlockId,
       selectedActivityId,
       selectedActivityName,
       currentSaCode,
@@ -126,19 +131,45 @@ export async function POST(req: Request) {
       textScope,
     } = body;
 
-    const trimmedExtractedText = trimText(extractedText, 12000).trim();
+    const eligibilityDocuments = normalizeDeliverableEligibilityDocuments({
+      deliverables: rawDeliverables,
+      primaryDeliverableId,
+      activityGroupId,
+      workBlockId,
+      documentTitle,
+      fileName,
+      extractedText,
+      deliverableType,
+      textScope,
+    });
+    const primaryEligibilityDocument = eligibilityDocuments.find((deliverable) => deliverable.isPrimary)
+      ?? eligibilityDocuments[0];
+    const trimmedExtractedText = eligibilityDocuments
+      .map((deliverable, index) => [
+        `Livrabil ${index + 1}${deliverable.isPrimary ? ' (principal)' : ''}`,
+        `Titlu: ${deliverable.documentTitle || 'Nespecificat'}`,
+        `Fisier: ${deliverable.fileName || 'Nespecificat'}`,
+        `Tip: ${deliverable.deliverableType || 'Nespecificat'}`,
+        `Arie text: ${deliverable.textScope || 'Text extras disponibil'}`,
+        deliverable.extractedText,
+      ].filter(Boolean).join('\n'))
+      .join('\n\n---\n\n')
+      .slice(0, 18000)
+      .trim();
     if (trimmedExtractedText.length < 80) {
       return NextResponse.json(nonConclusive('Textul extras este insuficient pentru verificarea eligibilității.'));
     }
 
     const allActivityCatalogCandidates = normalizeDeliverableEligibilityActivityCandidates(rawActivityCatalogCandidates);
     const deliverableOptions = normalizeDeliverableEligibilityStringList(rawDeliverableOptions);
-    const currentDeliverableType = String(deliverableType || '').trim();
+    const currentDeliverableType = primaryEligibilityDocument?.deliverableType || String(deliverableType || '').trim();
+    const currentDocumentTitle = primaryEligibilityDocument?.documentTitle || documentTitle;
+    const currentFileName = primaryEligibilityDocument?.fileName || fileName;
     const activityCatalogCandidates = shortlistActivityCandidates(
       allActivityCatalogCandidates,
       [
-        documentTitle,
-        fileName,
+        currentDocumentTitle,
+        currentFileName,
         currentDeliverableType,
         selectedActivityName,
         catalogDescription,
@@ -156,7 +187,11 @@ export async function POST(req: Request) {
       operation: 'check-deliverable-eligibility',
       request: {
         ...body,
-        extractedText: trimText(extractedText, 12000),
+        deliverables: eligibilityDocuments,
+        primaryDeliverableId,
+        activityGroupId,
+        workBlockId,
+        extractedText: trimmedExtractedText,
         activityCatalogCandidates,
         deliverableOptions,
       },
@@ -165,14 +200,15 @@ export async function POST(req: Request) {
       month,
       year,
       model: openaiModel(),
-      system: `Ești un evaluator de conformitate pentru livrabile într-un proiect PEO cu finanțare europeană. Rolul tău este să verifici dacă un document încărcat pare eligibil ca livrabil pentru activitatea selectată, pe baza textului extras din document și a reperelor oficiale din Catalogul activităților. Nu inventa informații. Nu confirma eligibilitatea dacă dovezile sunt insuficiente. Returnează doar JSON valid, fără explicații în afara JSON.`,
-      prompt: `Verifică eligibilitatea următorului livrabil.
+      system: `Ești un evaluator de conformitate pentru livrabile într-un proiect PEO cu finanțare europeană. Rolul tău este să verifici dacă documentele încărcate pentru același grup de activități par eligibile ca livrabile pentru activitatea selectată, pe baza textului extras din documente și a reperelor oficiale din Catalogul activităților. Nu inventa informații. Nu confirma eligibilitatea dacă dovezile sunt insuficiente. Returnează doar JSON valid, fără explicații în afara JSON.`,
+      prompt: `Verifică eligibilitatea livrabilelor încărcate pentru grupul de activități curent.
 
-Date document:
-- Nume fișier: ${fileName || 'Nespecificat'}
-- Titlu document: ${documentTitle || 'Nespecificat'}
+Date livrabil principal:
+- Nume fișier: ${currentFileName || 'Nespecificat'}
+- Titlu document: ${currentDocumentTitle || 'Nespecificat'}
 - Tip livrabil selectat: ${currentDeliverableType || 'Nespecificat'}
-- Aria textului analizat: ${textScope || 'Text extras disponibil'}
+- Grup activități: ${activityGroupId || workBlockId || 'Nespecificat'}
+- Număr livrabile analizate din grup: ${eligibilityDocuments.length}
 
 Activitate selectată:
 - ID: ${selectedActivityId || 'Nespecificat'}
@@ -194,10 +230,12 @@ ${JSON.stringify(activityCatalogCandidates, null, 2)}
 Tipuri de livrabil disponibile (singurele alternative permise):
 ${JSON.stringify(deliverableOptions, null, 2)}
 
-Text extras din document:
+Text extras din livrabilele grupului:
 ${trimmedExtractedText}
 
 Reguli:
+- Analizează doar livrabilele enumerate mai sus; nu presupune existența altor documente din lună sau din alte grupuri.
+- Livrabilul marcat principal are prioritate, dar livrabilele secundare pot susține eligibilitatea și precizia raportării.
 - Verifica mai intai daca problema vine din setarile alese in formular. Daca documentul pare potrivit pentru alta activitate sau alt tip de livrabil din listele permise, completeaza suggestedSettings.
 - Nu recomanda modificarea documentului cand documentul pare coerent, dar activitatea sau tipul de livrabil selectat sunt gresite. In acel caz foloseste suggestedSettings si explica motivul.
 - suggestedSettings.saCode/activityName/selectedActivityId trebuie sa existe exact in activitatile disponibile.
@@ -242,8 +280,8 @@ suggestedSettings trebuie sa fie mereu obiect cu: hasSuggestion, saCode, activit
     const protectedData = protectConcordiaPublicationEligibility({
       result: parsed.data,
       deliverableType: currentDeliverableType,
-      documentTitle,
-      fileName,
+      documentTitle: currentDocumentTitle,
+      fileName: currentFileName,
       extractedText: trimmedExtractedText,
     });
 

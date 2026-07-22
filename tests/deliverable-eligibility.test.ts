@@ -6,6 +6,7 @@ import {
   deliverableEligibilityAiSchema,
   deliverableEligibilitySchema,
   normalizeDeliverableEligibilityAiOutput,
+  normalizeDeliverableEligibilityDocuments,
   protectConcordiaPublicationEligibility,
   validateEligibilitySuggestedSettings,
 } from '../lib/deliverable-eligibility.ts';
@@ -205,4 +206,55 @@ test('schema trimisa catre AI foloseste obiect suggestedSettings fara nullable',
     parsed.success ? normalizeDeliverableEligibilityAiOutput(parsed.data).suggestedSettings : undefined,
     null,
   );
+});
+
+test('normalizeaza payload multi-livrabil doar pentru grupul de activitati curent', () => {
+  const documents = normalizeDeliverableEligibilityDocuments({
+    activityGroupId: 'group-a',
+    primaryDeliverableId: 'd2',
+    deliverables: [
+      {
+        id: 'd1',
+        activityGroupId: 'group-a',
+        documentTitle: 'Agenda reuniune',
+        fileName: 'agenda.pdf',
+        extractedText: 'Agenda reuniunii si punctele discutate.',
+        deliverableType: 'Agenda',
+      },
+      {
+        id: 'd2',
+        activityGroupId: 'group-a',
+        documentTitle: 'Minuta reuniune',
+        fileName: 'minuta.pdf',
+        extractedText: 'Minuta reuniunii cu decizii si actiuni.',
+        deliverableType: 'Minute intalnire / MOM',
+      },
+      {
+        id: 'd3',
+        activityGroupId: 'group-b',
+        documentTitle: 'Livrabil alta activitate',
+        fileName: 'alta-activitate.pdf',
+        extractedText: 'Nu trebuie inclus in verificarea grupului curent.',
+        deliverableType: 'Raport',
+      },
+    ],
+  });
+
+  assert.deepEqual(documents.map((document) => document.id), ['d2', 'd1']);
+  assert.equal(documents[0].isPrimary, true);
+  assert.equal(documents.some((document) => document.id === 'd3'), false);
+});
+
+test('pastreaza compatibilitatea cu payloadul vechi cu un singur livrabil', () => {
+  const documents = normalizeDeliverableEligibilityDocuments({
+    documentTitle: 'Material suport',
+    fileName: 'material.pdf',
+    extractedText: 'Material suport pentru activitatea selectata.',
+    deliverableType: 'Material prezentare / suport eveniment',
+    textScope: 'Text extras disponibil',
+  });
+
+  assert.equal(documents.length, 1);
+  assert.equal(documents[0].documentTitle, 'Material suport');
+  assert.equal(documents[0].isPrimary, true);
 });

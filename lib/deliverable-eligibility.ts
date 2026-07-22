@@ -59,6 +59,18 @@ export const deliverableEligibilityActivityCandidateSchema = z.object({
   indicators: z.string().optional(),
 });
 
+export const deliverableEligibilityDocumentSchema = z.object({
+  id: z.string().optional(),
+  activityGroupId: z.string().optional(),
+  workBlockId: z.string().optional(),
+  isPrimary: z.boolean().optional(),
+  documentTitle: z.string().optional(),
+  fileName: z.string().optional(),
+  extractedText: z.string().optional(),
+  deliverableType: z.string().optional(),
+  textScope: z.string().optional(),
+});
+
 export const CONCORDIA_PUBLICATION_ELIGIBILITY_PROMPT_RULES = `- Pentru tipurile de livrabil "Material publicat + link", "Articole pe concordia.ro" sau "articol publicat pe site", trateaza separat: (1) dovada publicarii/republicarii pe site-ul Concordia si (2) relevanta continutului pentru activitatea selectata.
 - Un PDF salvat, tiparit sau exportat dintr-o pagina web constituie dovada de publicare pe concordia.ro chiar daca URL-ul nu este vizibil, atunci cand contine minimum doua indicii concordante precum: sigla/denumirea Confederația Patronală Concordia, meniul site-ului, categoria articolului, titlul, autorul, data, navigatia, footerul Concordia sau mentiuni institutionale specifice site-ului.
 - Sigla, navigatia si footerul Concordia impreuna cu titlul si data sunt dovezi suficiente ca documentul reprezinta o pagina de pe site-ul Concordia. In acest caz nu include "dovada publicarii pe concordia.ro" in missingElements.
@@ -205,6 +217,59 @@ export function normalizeDeliverableEligibilityActivityCandidates(value: unknown
   const parsed = z.array(deliverableEligibilityActivityCandidateSchema).safeParse(value);
   if (!parsed.success) return [];
   return parsed.data.slice(0, 80);
+}
+
+export function normalizeDeliverableEligibilityDocuments(input: {
+  deliverables?: unknown;
+  primaryDeliverableId?: unknown;
+  activityGroupId?: unknown;
+  workBlockId?: unknown;
+  documentTitle?: unknown;
+  fileName?: unknown;
+  extractedText?: unknown;
+  deliverableType?: unknown;
+  textScope?: unknown;
+}) {
+  const parsed = z.array(deliverableEligibilityDocumentSchema).safeParse(input.deliverables);
+  const requestedActivityGroupId = String(input.activityGroupId || '').trim();
+  const requestedWorkBlockId = String(input.workBlockId || '').trim();
+  const primaryDeliverableId = String(input.primaryDeliverableId || '').trim();
+  const sourceDocuments = parsed.success && parsed.data.length > 0
+    ? parsed.data
+    : [{
+        documentTitle: String(input.documentTitle || ''),
+        fileName: String(input.fileName || ''),
+        extractedText: String(input.extractedText || ''),
+        deliverableType: String(input.deliverableType || ''),
+        textScope: String(input.textScope || ''),
+        isPrimary: true,
+      }];
+
+  return sourceDocuments
+    .filter((deliverable) => {
+      if (requestedActivityGroupId) return deliverable.activityGroupId === requestedActivityGroupId;
+      if (requestedWorkBlockId) return deliverable.workBlockId === requestedWorkBlockId;
+      return true;
+    })
+    .map((deliverable) => ({
+      ...deliverable,
+      documentTitle: String(deliverable.documentTitle || '').trim(),
+      fileName: String(deliverable.fileName || '').trim(),
+      extractedText: String(deliverable.extractedText || '').slice(0, 12000),
+      deliverableType: String(deliverable.deliverableType || '').trim(),
+      textScope: String(deliverable.textScope || '').trim(),
+      isPrimary: Boolean(
+        (primaryDeliverableId && deliverable.id === primaryDeliverableId)
+        || (!primaryDeliverableId && deliverable.isPrimary)
+      ),
+    }))
+    .filter((deliverable) => (
+      deliverable.extractedText.trim()
+      || deliverable.documentTitle
+      || deliverable.fileName
+    ))
+    .sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary))
+    .slice(0, 8);
 }
 
 export function validateEligibilitySuggestedSettings(input: {
