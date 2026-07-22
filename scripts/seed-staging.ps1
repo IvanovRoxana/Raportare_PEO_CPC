@@ -185,6 +185,7 @@ foreach ($person in $seed.people) {
     $activities += [pscustomobject][ordered]@{
       id = "staging-activity-$slug-work-$('{0:d2}' -f ($index + 1))"
       date = $peoRows[$index].date; expertId = $expertId; expertName = $person.name
+      year = [int]$seed.year; month = [int]$seed.month
       hours = $peoRows[$index].hours; activityType = "Activitate PEO (TEST)"; saCode = "SA3.2"
       title = "Activitate sintetica"; description = "Date controlate staging."
       location = "Online"; dayType = "lucratoare"; status = $status; projectCode = "302141"
@@ -195,6 +196,7 @@ foreach ($person in $seed.people) {
     $activities += [pscustomobject][ordered]@{
       id = "staging-activity-$slug-leave-$('{0:d2}' -f ($index + 1))"
       date = $leaveRows[$index].date; expertId = $expertId; expertName = $person.name
+      year = [int]$seed.year; month = [int]$seed.month
       hours = $leaveRows[$index].hours; activityType = "CO - Concediu odihna (TEST)"
       title = "Concediu odihna"; description = "Concediu sintetic staging."
       location = "N/A"; dayType = "CO"; status = "approved"; projectCode = "302141"
@@ -239,6 +241,7 @@ foreach ($person in $seed.people) {
 $simona = $experts | Where-Object { $_.name -eq "Simona Khamissi" }
 $activities += [pscustomobject][ordered]@{
   id = "staging-activity-simona-khamissi-duplicate-leave"; date = "$($seed.year)-$('{0:d2}' -f $seed.month)-30"
+  year = [int]$seed.year; month = [int]$seed.month
   expertId = $simona.id; expertName = $simona.name; hours = 0
   activityType = "CO duplicat intentionat (TEST)"; title = "Conflict concediu"
   description = "Duplicat intentionat pentru verificarea alertelor."; location = "N/A"

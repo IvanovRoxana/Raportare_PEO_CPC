@@ -22,6 +22,7 @@ test('staging seed refuses production and resolves exact branch tables', () => {
 });
 
 test('staging seed is deterministic and supports a dry run', () => {
+  assert.match(script, /year = \[int\]\$seed\.year; month = \[int\]\$seed\.month/);
   assert.match(script, /staging-expert-\$slug/);
   assert.match(script, /\[switch\]\$DryRun/);
   assert.match(script, /duplicate-leave/);
