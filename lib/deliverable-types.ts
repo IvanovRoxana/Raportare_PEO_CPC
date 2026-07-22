@@ -136,6 +136,13 @@ export interface DeliverableEligibilityCheck {
   checkedActivityName?: string;
   checkedDeliverableType?: string;
   modelAuditId?: string;
+  analyzedDeliverables?: Array<{
+    id?: string;
+    documentTitle?: string;
+    fileName?: string;
+    deliverableType?: string;
+    isPrimary?: boolean;
+  }>;
 }
 
 export interface DeliverableSlot {

@@ -33,6 +33,8 @@ const deliverableOptions = [
 ];
 const deliverableItemSource = readFileSync(new URL('../components/expert/deliverable-item.tsx', import.meta.url), 'utf8');
 const activityFormSource = readFileSync(new URL('../components/expert/activity-form.tsx', import.meta.url), 'utf8');
+const eligibilityRouteSource = readFileSync(new URL('../app/api/ai/check-deliverable-eligibility/route.ts', import.meta.url), 'utf8');
+const deliverableTypesSource = readFileSync(new URL('../lib/deliverable-types.ts', import.meta.url), 'utf8');
 
 test('accepta sugestii de activitate si tip livrabil cand exista in listele permise', () => {
   const suggestion = validateEligibilitySuggestedSettings({
@@ -270,4 +272,11 @@ test('formularul trimite toate livrabilele incarcate din activitatea curenta la 
   assert.match(deliverableItemSource, /primaryDeliverableId: deliverable\.id/);
   assert.match(deliverableItemSource, /activityGroupId/);
   assert.match(deliverableItemSource, /Verifica \{relatedDeliverables\.length\} livrabile incarcate pentru activitatea curenta/);
+});
+
+test('rezultatul eligibilitatii pastreaza metadatele livrabilelor analizate', () => {
+  assert.match(eligibilityRouteSource, /analyzedDeliverables: eligibilityDocuments\.map/);
+  assert.match(eligibilityRouteSource, /isPrimary: deliverable\.isPrimary/);
+  assert.match(deliverableItemSource, /analyzedDeliverables: result\.analyzedDeliverables/);
+  assert.match(deliverableTypesSource, /analyzedDeliverables\?: Array<\{/);
 });

@@ -396,6 +396,7 @@ export function DeliverableItem({
           checkedActivityName: activityTitle,
           checkedDeliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
           modelAuditId: result.modelAuditId,
+          analyzedDeliverables: result.analyzedDeliverables,
         },
         aiCheck: {
           eligible: result.status === 'eligibil' || result.status === 'eligibil_cu_observatii'

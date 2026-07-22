@@ -287,6 +287,13 @@ suggestedSettings trebuie sa fie mereu obiect cu: hasSuggestion, saCode, activit
 
     return NextResponse.json({
       ...protectedData,
+      analyzedDeliverables: eligibilityDocuments.map((deliverable) => ({
+        id: deliverable.id,
+        documentTitle: deliverable.documentTitle,
+        fileName: deliverable.fileName,
+        deliverableType: deliverable.deliverableType,
+        isPrimary: deliverable.isPrimary,
+      })),
       suggestedSettings: validateEligibilitySuggestedSettings({
         suggestedSettings: protectedData.suggestedSettings,
         activityCatalogCandidates,
