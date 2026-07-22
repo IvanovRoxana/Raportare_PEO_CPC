@@ -50,6 +50,8 @@ test('reporting work block bundles hook is opt-in and uses an isolated cache key
   assert.match(reportingWorkBlockBundlesHookSource, /isReportingWorkBlocksEnabledClient\(\)/);
   assert.match(reportingWorkBlockBundlesHookSource, /reporting-work-block-bundles-\$\{expertId\}-\$\{month\}-\$\{year\}/);
   assert.match(reportingWorkBlockBundlesHookSource, /reportingWorkBlocksService\.getBundlesByExpertAndMonth\(expertId!, month, year\)/);
+  assert.match(reportingWorkBlockBundlesHookSource, /isValidating/);
+  assert.match(reportingWorkBlockBundlesHookSource, /isRefreshing: isValidating/);
   assert.doesNotMatch(reportingWorkBlockBundlesHookSource, /activities-|shared-deliverables|concurrent-project-timesheet/);
 });
 
@@ -78,6 +80,9 @@ test('reporting work block draft panel persists only session-scoped UI state', (
   assert.match(reportingWorkBlockDraftPanelSource, /selectedWorkBlockId/);
   assert.match(reportingWorkBlockDraftPanelSource, /effectiveEditingWorkBlockId/);
   assert.match(reportingWorkBlockDraftPanelSource, /selectedEditingBundle/);
+  assert.match(reportingWorkBlockDraftPanelSource, /existingBundlesLoading\?: boolean/);
+  assert.match(reportingWorkBlockDraftPanelSource, /const isWaitingForSelectedBundle = Boolean/);
+  assert.match(reportingWorkBlockDraftPanelSource, /Se reincarca work block-ul salvat/);
   assert.match(reportingWorkBlockDraftPanelSource, /<SelectItem value="new">Draft nou<\/SelectItem>/);
   assert.match(reportingWorkBlockDraftPanelSource, /existingBundles\.map\(\(bundle\) =>/);
   assert.match(reportingWorkBlockDraftPanelSource, /serializeDraftSessionState/);
@@ -92,7 +97,7 @@ test('reporting work block draft panel persists only session-scoped UI state', (
   assert.match(reportingWorkBlockDraftPanelSource, /isSavingDraft/);
   assert.match(reportingWorkBlockDraftPanelSource, /saveDraftError/);
   assert.match(reportingWorkBlockDraftPanelSource, /saveDraftSuccess/);
-  assert.match(reportingWorkBlockDraftPanelSource, /disabled=\{!isReadyForControlledSave \|\| isSavingDraft\}/);
+  assert.match(reportingWorkBlockDraftPanelSource, /disabled=\{!isReadyForControlledSave \|\| isSavingDraft \|\| isWaitingForSelectedBundle\}/);
   assert.match(reportingWorkBlockDraftPanelSource, /controlledSaveLabel/);
   assert.match(reportingWorkBlockDraftPanelSource, /!hasUnsavedSessionChanges/);
   assert.match(reportingWorkBlockDraftPanelSource, /availableActivityIds/);
@@ -127,9 +132,13 @@ test('reporting work block deliverable options hook is pure and cache-safe', () 
 test('export page wires persisted work block bundles as a read-only optional preview source', () => {
   assert.match(exportPageSource, /useReportingWorkBlockBundles,/);
   assert.match(exportPageSource, /ReportingWorkBlockDraftPanel/);
-  assert.match(exportPageSource, /const \{ bundles: persistedWorkBlockBundles \} = useReportingWorkBlockBundles\(selectedExpertId, currentMonth, currentYear\);/);
+  assert.match(exportPageSource, /bundles: persistedWorkBlockBundles/);
+  assert.match(exportPageSource, /isLoading: isLoadingPersistedWorkBlockBundles/);
+  assert.match(exportPageSource, /isRefreshing: isRefreshingPersistedWorkBlockBundles/);
+  assert.match(exportPageSource, /useReportingWorkBlockBundles\(selectedExpertId, currentMonth, currentYear\);/);
   assert.match(exportPageSource, /persistedBundles=\{persistedWorkBlockBundles\}/);
   assert.match(exportPageSource, /existingBundles=\{persistedWorkBlockBundles\}/);
+  assert.match(exportPageSource, /existingBundlesLoading=\{isLoadingPersistedWorkBlockBundles \|\| isRefreshingPersistedWorkBlockBundles\}/);
   assert.match(exportPageSource, /workBlockBundles=\{reportingWorkBlocksEnabled \? persistedWorkBlockBundles : \[\]\}/);
   assert.match(exportPageSource, /projectCode=\{selectedExpert\.projectCode \?\? '302141'\}/);
   assert.match(reportingWorkBlocksPanelSource, /persistedBundles\?: ReportingWorkBlockBundle\[\];/);

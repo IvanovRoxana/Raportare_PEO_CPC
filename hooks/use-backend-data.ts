@@ -190,7 +190,7 @@ export function useActivitiesByDateRange(startDate: string, endDate: string) {
 
 export function useReportingWorkBlockBundles(expertId: string | null, month: number, year: number) {
   const key = expertId ? `reporting-work-block-bundles-${expertId}-${month}-${year}` : null;
-  const { data, error, isLoading } = useSWR<ReportingWorkBlockBundle[] | null>(
+  const { data, error, isLoading, isValidating } = useSWR<ReportingWorkBlockBundle[] | null>(
     isBackendAvailable() && isReportingWorkBlocksEnabledClient() && key ? key : null,
     safeFetcher(() => reportingWorkBlocksService.getBundlesByExpertAndMonth(expertId!, month, year))
   );
@@ -198,6 +198,7 @@ export function useReportingWorkBlockBundles(expertId: string | null, month: num
   return {
     bundles: stableList(data),
     isLoading,
+    isRefreshing: isValidating,
     error,
     mutate: () => key && mutate(key),
   };

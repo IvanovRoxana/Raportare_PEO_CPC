@@ -60,7 +60,11 @@ function ExportRaContent() {
   const { activities: allMonthActivities, isLoading: activitiesLoading } = useActivitiesByMonth(currentMonth, currentYear);
   const { projects: concurrentProjects } = useConcurrentProjects(selectedExpertId);
   const { entries: concurrentTimesheetEntries } = useConcurrentProjectTimesheetByMonth(currentMonth, currentYear);
-  const { bundles: persistedWorkBlockBundles } = useReportingWorkBlockBundles(selectedExpertId, currentMonth, currentYear);
+  const {
+    bundles: persistedWorkBlockBundles,
+    isLoading: isLoadingPersistedWorkBlockBundles,
+    isRefreshing: isRefreshingPersistedWorkBlockBundles,
+  } = useReportingWorkBlockBundles(selectedExpertId, currentMonth, currentYear);
 
   useEffect(() => {
     let isMounted = true;
@@ -221,6 +225,7 @@ function ExportRaContent() {
                 year={currentYear}
                 activities={activities}
                 existingBundles={persistedWorkBlockBundles}
+                existingBundlesLoading={isLoadingPersistedWorkBlockBundles || isRefreshingPersistedWorkBlockBundles}
               />
             </>
           )}

@@ -85,6 +85,7 @@ interface ReportingWorkBlockDraftPanelProps {
   year: number;
   activities: Activity[];
   existingBundles?: ReportingWorkBlockBundle[];
+  existingBundlesLoading?: boolean;
   editingWorkBlockId?: string;
 }
 
@@ -95,6 +96,7 @@ export function ReportingWorkBlockDraftPanel({
   year,
   activities,
   existingBundles = [],
+  existingBundlesLoading = false,
   editingWorkBlockId,
 }: ReportingWorkBlockDraftPanelProps) {
   const [title, setTitle] = useState('');
@@ -217,6 +219,9 @@ export function ReportingWorkBlockDraftPanel({
     && serializedSessionDraft !== lastSavedSessionDraft;
   const isReadyForControlledSave = saveDraftPreview.canSave
     && !hasUnsavedSessionChanges;
+  const isWaitingForSelectedBundle = Boolean(
+    effectiveEditingWorkBlockId && !selectedEditingBundle && existingBundlesLoading
+  );
   const controlledSaveLabel = draftPreview.issues.length > 0
     ? 'Finalizeaza validarile'
     : hasUnsavedSessionChanges
@@ -550,7 +555,9 @@ export function ReportingWorkBlockDraftPanel({
           <Textarea
             id="work-block-preview"
             readOnly
-            value={draftPreview.issues.length > 0
+            value={isWaitingForSelectedBundle
+              ? 'Se reincarca work block-ul salvat.'
+              : draftPreview.issues.length > 0
               ? draftPreview.issues.map((issue) => issue.message).join('\n')
               : isReadyForControlledSave
                 ? 'Draft valid local si pregatit pentru salvarea controlata.'
@@ -569,7 +576,9 @@ export function ReportingWorkBlockDraftPanel({
             ) : (
               <>
                 <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                {saveDraftSuccess
+                {isWaitingForSelectedBundle
+                  ? 'Se reincarca work block-ul salvat'
+                  : saveDraftSuccess
                   ? 'Draft salvat in backend'
                   : hasUnsavedSessionChanges ? 'Draft local modificat' : 'Draft salvat in sesiune'}
               </>
@@ -585,8 +594,8 @@ export function ReportingWorkBlockDraftPanel({
             )}
             <Button
               type="button"
-              disabled={!isReadyForControlledSave || isSavingDraft}
-              aria-disabled={!isReadyForControlledSave || isSavingDraft}
+              disabled={!isReadyForControlledSave || isSavingDraft || isWaitingForSelectedBundle}
+              aria-disabled={!isReadyForControlledSave || isSavingDraft || isWaitingForSelectedBundle}
               onClick={handleSaveDraft}
             >
               <Save className="h-4 w-4" />
