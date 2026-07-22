@@ -17,6 +17,16 @@ import {
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { MultiSelectCalendar } from '@/components/expert/multi-select-calendar';
 import { CalendarView } from '@/components/expert/calendar-view';
 import { ActivityForm, type ActivityResolutionHint, type ActivityResolutionSection } from '@/components/expert/activity-form';
@@ -65,6 +75,7 @@ import {
   getActivityGroupMembersForSelectedDates,
   mergeActivityGroupForEdit,
   planGroupedActivityEdit,
+  type ActivityEditScope,
 } from '@/lib/activity-edit';
 import { filterPendingSharedDeliverablesNotCoveredByActivity, filterSharedRelationsForMonths } from '@/lib/document-sharing';
 import { buildExpertDeliverableRows } from '@/lib/expert-deliverables';
@@ -106,6 +117,11 @@ interface SubmitReadinessItem {
 
 type DeletedActivityUndo = {
   activity: Activity;
+};
+
+type PendingGroupedActivitySave = {
+  activities: Activity[];
+  groupSize: number;
 };
 
 const SUBMIT_MIN_NORM_PERCENT = 80;
@@ -202,6 +218,7 @@ function ExpertDashboardContent() {
   const [clarificationAutoOpenedId, setClarificationAutoOpenedId] = useState<string | null>(null);
   const [selectedExistingSharedActivityId, setSelectedExistingSharedActivityId] = useState<string>('');
   const [isRegisteringExistingSharedActivity, setIsRegisteringExistingSharedActivity] = useState(false);
+  const [pendingGroupedActivitySave, setPendingGroupedActivitySave] = useState<PendingGroupedActivitySave | null>(null);
 
   // Data hooks
   const { experts, isLoading: expertsLoading } = useExperts();
@@ -544,8 +561,16 @@ function ExpertDashboardContent() {
       ? 'Luna anterioara si luna viitoare se activeaza dupa acordul PM.'
       : undefined;
 
-  const handleSaveActivities = async (newActivities: Activity[]) => {
+  const handleSaveActivities = async (newActivities: Activity[], editScope?: ActivityEditScope) => {
     if (reportStatus?.status === 'approved') return;
+
+    if (editingActivity && !editScope && !isClarificationScopedAccess) {
+      const groupMembers = getActivityGroupMembers(editingActivity, activities);
+      if (groupMembers.length > 1) {
+        setPendingGroupedActivitySave({ activities: newActivities, groupSize: groupMembers.length });
+        return;
+      }
+    }
 
     setSaveError(null);
     setIsSaving(true);
@@ -659,6 +684,7 @@ function ExpertDashboardContent() {
             editingGroupMembers,
             selectedExpertId,
             normalizePontajHoursValue,
+            editScope,
           )
         : newActivities;
       const submittedActivityIds = new Set(submittedActivities.map((activity) => activity.id));
@@ -1664,6 +1690,43 @@ function ExpertDashboardContent() {
   return (
     <>
       <AdminViewAsBanner />
+      <AlertDialog
+        open={Boolean(pendingGroupedActivitySave)}
+        onOpenChange={(open) => {
+          if (!open) setPendingGroupedActivitySave(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Modifici o activitate dintr-o serie</AlertDialogTitle>
+            <AlertDialogDescription>
+              Aceasta activitate face parte dintr-o serie de {pendingGroupedActivitySave?.groupSize ?? 0} zile.
+              Alege daca modificarea se aplica doar zilei selectate sau intregii serii.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Anuleaza</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                const pendingSave = pendingGroupedActivitySave;
+                setPendingGroupedActivitySave(null);
+                if (pendingSave) void handleSaveActivities(pendingSave.activities, 'single');
+              }}
+            >
+              Modifica doar ziua aleasa
+            </AlertDialogAction>
+            <AlertDialogAction
+              onClick={() => {
+                const pendingSave = pendingGroupedActivitySave;
+                setPendingGroupedActivitySave(null);
+                if (pendingSave) void handleSaveActivities(pendingSave.activities, 'series');
+              }}
+            >
+              Modifica intreaga serie
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <DashboardShell
         activeHref="/expert/peo"
         navItems={expertNavItems}

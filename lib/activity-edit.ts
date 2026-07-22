@@ -2,6 +2,8 @@ import type { Activity, Deliverable } from './types';
 import { createActivityPeriodGroupId } from './submit-readiness.ts';
 import { dedupeDeliverablesBySignature } from './deliverable-deduplication.ts';
 
+export type ActivityEditScope = 'single' | 'series';
+
 function createGeneratedActivityId() {
   return `activity-${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
 }
@@ -150,17 +152,25 @@ export function buildSubmittedActivitiesForEdit(
   existingGroupMembers: Activity[],
   expertId: string,
   normalizeHours: (value: string | number | undefined, fallback: string) => string,
+  editScope?: ActivityEditScope,
 ) {
   const templateActivity = submittedActivities.find((activity) => activity.id === editingActivity.id)
     ?? submittedActivities[0]
     ?? editingActivity;
   const submittedByDate = new Map(submittedActivities.map((activity) => [activity.date, activity]));
   const existingByDate = new Map(existingGroupMembers.map((activity) => [activity.date, activity]));
-  const datesForSave = selectedDates.length > 0 ? selectedDates : submittedActivities.map((activity) => activity.date);
+  const datesForSave = editScope === 'single' && existingGroupMembers.length > 1
+    ? existingGroupMembers.map((activity) => activity.date)
+    : selectedDates.length > 0
+      ? selectedDates
+      : submittedActivities.map((activity) => activity.date);
   const uniqueDates = [...new Set(datesForSave)].sort();
   const existingGroupId = getActivityEditGroupId(editingActivity);
   const periodGroupId = existingGroupId
     ?? (uniqueDates.length > 1 ? createActivityPeriodGroupId(`edit-${editingActivity.id}`) : undefined);
+  const detachedActivityGroupId = editScope === 'single' && existingGroupMembers.length > 1
+    ? createActivityPeriodGroupId(`single-${editingActivity.id}`)
+    : undefined;
 
   return uniqueDates.map((date) => {
     const existingActivityForDate = existingByDate.get(date);
@@ -172,21 +182,36 @@ export function buildSubmittedActivitiesForEdit(
     );
     const preserveExistingActivity = Boolean(existingActivityForDate && !submittedUpdatesExistingActivity);
     const incomingDeliverables = submittedActivityForDate?.deliverables ?? [];
-    const sourceActivity: Activity = preserveExistingActivity && existingActivityForDate
+    const seriesSourceActivity = submittedActivityForDate ?? templateActivity;
+    const sourceActivity: Activity = editScope === 'series' && existingActivityForDate
       ? {
           ...existingActivityForDate,
-          deliverables: incomingDeliverables.length > 0
-            ? dedupeDeliverables([...(existingActivityForDate.deliverables ?? []), ...incomingDeliverables])
-            : existingActivityForDate.deliverables,
+          ...seriesSourceActivity,
+          id: existingActivityForDate.id,
+          date: existingActivityForDate.date,
+          hours: existingActivityForDate.hours,
+          status: existingActivityForDate.status,
+          pmNotes: existingActivityForDate.pmNotes,
+          deliverables: existingActivityForDate.deliverables,
+          createdAt: existingActivityForDate.createdAt,
         }
-      : submittedActivityForDate ?? existingActivityForDate ?? templateActivity;
+      : preserveExistingActivity && existingActivityForDate
+        ? {
+            ...existingActivityForDate,
+            deliverables: incomingDeliverables.length > 0
+              ? dedupeDeliverables([...(existingActivityForDate.deliverables ?? []), ...incomingDeliverables])
+              : existingActivityForDate.deliverables,
+          }
+        : submittedActivityForDate ?? existingActivityForDate ?? templateActivity;
     const activityId = existingActivityForDate?.id
       ?? (sourceActivity.id !== editingActivity.id ? sourceActivity.id : createGeneratedActivityId());
-    const hours = preserveExistingActivity && existingActivityForDate
+    const hours = (preserveExistingActivity || editScope === 'series') && existingActivityForDate
       ? existingActivityForDate.hours
       : Number.isFinite(Number(sourceActivity.hours)) && Number(sourceActivity.hours) > 0
         ? Number(sourceActivity.hours)
         : Number(normalizeHours(selectedHours[date], editingActivity.hours.toString()));
+
+    const isDetachedActivity = Boolean(detachedActivityGroupId && date === editingActivity.date);
 
     return {
       ...sourceActivity,
@@ -194,8 +219,10 @@ export function buildSubmittedActivitiesForEdit(
       date,
       expertId,
       hours,
-      workingGroupId: periodGroupId ?? sourceActivity.workingGroupId,
-      periodGroupId,
+      workingGroupId: isDetachedActivity
+        ? detachedActivityGroupId
+        : periodGroupId ?? sourceActivity.workingGroupId,
+      periodGroupId: isDetachedActivity ? detachedActivityGroupId : periodGroupId,
     };
   });
 }
