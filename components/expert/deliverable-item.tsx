@@ -1341,6 +1341,14 @@ function EligibilityResultCard({
         <div className="font-medium">Scor: {check.score}/100</div>
       </div>
       <div className="mt-1">{check.summary}</div>
+      {check.analyzedDeliverables && check.analyzedDeliverables.length > 0 && (
+        <div className="mt-1">
+          <span className="font-medium">Livrabile analizate:</span>{' '}
+          {check.analyzedDeliverables.map((item) => (
+            `${item.documentTitle || item.fileName || item.id || 'livrabil'}${item.isPrimary ? ' (principal)' : ''}`
+          )).join('; ')}
+        </div>
+      )}
       {warning && (
         <div className="mt-1 font-medium">
           Verifică manual livrabilul înainte de validare.

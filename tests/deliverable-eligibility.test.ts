@@ -280,3 +280,8 @@ test('rezultatul eligibilitatii pastreaza metadatele livrabilelor analizate', ()
   assert.match(deliverableItemSource, /analyzedDeliverables: result\.analyzedDeliverables/);
   assert.match(deliverableTypesSource, /analyzedDeliverables\?: Array<\{/);
 });
+
+test('cardul de eligibilitate afiseaza livrabilele analizate', () => {
+  assert.match(deliverableItemSource, /Livrabile analizate:/);
+  assert.match(deliverableItemSource, /item\.isPrimary \? ' \(principal\)' : ''/);
+});
