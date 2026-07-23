@@ -17,9 +17,21 @@ export type Anexa10ExportReadiness = {
   warningMessages: string[];
 };
 
-export function getAnexa10ExportReadiness(model: Pick<Anexa10ReportModel, 'problems' | 'warnings'>): Anexa10ExportReadiness {
+export type Anexa10ExportReadinessOptions = {
+  usesPersistedWorkBlocks?: boolean;
+};
+
+const FALLBACK_WORK_BLOCK_WARNING =
+  'Work block-urile persistate nu sunt disponibile; exportul foloseste gruparea fallback din activitati.';
+
+export function getAnexa10ExportReadiness(
+  model: Pick<Anexa10ReportModel, 'problems' | 'warnings'>,
+  options: Anexa10ExportReadinessOptions = {},
+): Anexa10ExportReadiness {
   const blockingMessages = model.problems.map((problem) => problem.message);
-  const warningMessages = model.warnings;
+  const warningMessages = options.usesPersistedWorkBlocks === false
+    ? [...model.warnings, FALLBACK_WORK_BLOCK_WARNING]
+    : model.warnings;
   const canExport = blockingMessages.length === 0;
   const severity = !canExport ? 'blocked' : warningMessages.length > 0 ? 'warning' : 'ready';
   const checks = getReadinessChecks(blockingMessages.length, warningMessages.length);

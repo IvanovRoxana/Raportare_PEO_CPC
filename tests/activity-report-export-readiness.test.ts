@@ -44,6 +44,26 @@ test('permite exportul Anexa 10 cand modelul are doar avertizari', () => {
   assert.deepEqual(readiness.warningMessages, ['Livrabil fara atasament verificabil.']);
 });
 
+test('marcheaza exportul Anexa 10 cu avertizare cand foloseste fallback de work-block-uri', () => {
+  const readiness = getAnexa10ExportReadiness({
+    problems: [],
+    warnings: [],
+  }, {
+    usesPersistedWorkBlocks: false,
+  });
+
+  assert.equal(readiness.canExport, true);
+  assert.equal(readiness.severity, 'warning');
+  assert.equal(readiness.score, 85);
+  assert.equal(readiness.scoreLabel, '85/100');
+  assert.equal(readiness.statusLabel, 'Pregatit cu avertizari');
+  assert.match(readiness.summary, /avertizari \(1\)/);
+  assert.deepEqual(readiness.blockingMessages, []);
+  assert.deepEqual(readiness.warningMessages, [
+    'Work block-urile persistate nu sunt disponibile; exportul foloseste gruparea fallback din activitati.',
+  ]);
+});
+
 test('blocheaza exportul Anexa 10 cand modelul are probleme de alocare', () => {
   const readiness = getAnexa10ExportReadiness({
     problems: [

@@ -119,10 +119,12 @@ export function ReportGenerator({
       workBlockBundles: workBlockBundles && workBlockBundles.length > 0 ? workBlockBundles : undefined,
     });
   }, [activities, enableDeterministicAnexa10Docx, expert, expertName, month, workBlockBundles, year]);
-  const deterministicExportReadiness = deterministicAnexa10Model
-    ? getAnexa10ExportReadiness(deterministicAnexa10Model)
-    : null;
   const persistedWorkBlockCount = workBlockBundles?.length ?? 0;
+  const deterministicExportReadiness = deterministicAnexa10Model
+    ? getAnexa10ExportReadiness(deterministicAnexa10Model, {
+      usesPersistedWorkBlocks: persistedWorkBlockCount > 0,
+    })
+    : null;
   const deterministicWorkBlockSourceLabel = persistedWorkBlockCount > 0
     ? `Work block-uri persistate: ${persistedWorkBlockCount}`
     : 'Work block-uri generate din activitati (fallback)';
