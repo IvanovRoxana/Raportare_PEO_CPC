@@ -76,6 +76,7 @@ export function buildPersistedWorkBlockBundles({
     },
     activityLinks: activityLinks
       .filter((link) => link.workBlockId === workBlock.id)
+      .filter((link, index, links) => links.findIndex((item) => item.activityId === link.activityId) === index)
       .map((link) => ({
         id: link.id,
         workBlockId: link.workBlockId,
@@ -85,6 +86,7 @@ export function buildPersistedWorkBlockBundles({
       })),
     deliverableLinks: deliverableLinks
       .filter((link) => link.workBlockId === workBlock.id)
+      .filter((link, index, links) => links.findIndex((item) => item.deliverableId === link.deliverableId) === index)
       .map((link) => ({
         id: link.id,
         workBlockId: link.workBlockId,
