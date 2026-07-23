@@ -400,10 +400,10 @@ export function ReportingWorkBlockDraftPanel({
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <GitBranch className="h-5 w-5" />
-          Draft work block
+          Ajustare work block
         </CardTitle>
         <CardDescription>
-          Pregateste local un flux raportabil. Draftul ramane doar in sesiunea browserului.
+          Verifica sau rafineaza work block-urile generate automat din formularul de activitate.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
@@ -416,7 +416,7 @@ export function ReportingWorkBlockDraftPanel({
 
         {existingBundles.length > 0 && (
           <div className="space-y-2">
-            <label className="text-sm font-medium">Editare work block</label>
+            <label className="text-sm font-medium">Work block pentru rafinare</label>
             <Select
               value={selectedWorkBlockId}
               onValueChange={(value) => {
@@ -430,7 +430,7 @@ export function ReportingWorkBlockDraftPanel({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="new">Draft nou</SelectItem>
+                <SelectItem value="new">Ajustare manuala noua</SelectItem>
                 {existingBundles.map((bundle) => (
                   <SelectItem key={bundle.workBlock.id} value={bundle.workBlock.id}>
                     {bundle.workBlock.title}
@@ -479,7 +479,7 @@ export function ReportingWorkBlockDraftPanel({
           <section className="space-y-3">
             <div>
               <h3 className="text-sm font-semibold">Activitati</h3>
-              <p className="text-xs text-muted-foreground">Selecteaza zilele si orele alocate acestui flux.</p>
+              <p className="text-xs text-muted-foreground">Corecteaza doar daca alocarea generata automat necesita ajustari.</p>
             </div>
             <div className="max-h-[360px] space-y-2 overflow-y-auto rounded-lg border p-2">
               {activityOptions.length === 0 ? (
@@ -525,7 +525,7 @@ export function ReportingWorkBlockDraftPanel({
           <section className="space-y-3">
             <div>
               <h3 className="text-sm font-semibold">Livrabile</h3>
-              <p className="text-xs text-muted-foreground">Asociaza unul sau mai multe livrabile fluxului selectat.</p>
+              <p className="text-xs text-muted-foreground">Corecteaza doar daca livrabilele generate automat trebuie rafinate.</p>
             </div>
             <div className="max-h-[360px] space-y-2 overflow-y-auto rounded-lg border p-2">
               {deliverableOptions.length === 0 ? (

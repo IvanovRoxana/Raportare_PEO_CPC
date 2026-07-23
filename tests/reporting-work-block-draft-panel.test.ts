@@ -30,6 +30,15 @@ test('draft work block panel exposes required Etapa 3 selection surfaces', () =>
   assert.match(draftPanelSource, /allocatedHoursByActivityId/);
 });
 
+test('draft work block panel is framed as refinement after automatic activity form save', () => {
+  assert.match(draftPanelSource, /Ajustare work block/);
+  assert.match(draftPanelSource, /generate automat din formularul de activitate/);
+  assert.match(draftPanelSource, /Work block pentru rafinare/);
+  assert.match(draftPanelSource, /Ajustare manuala noua/);
+  assert.match(draftPanelSource, /Corecteaza doar daca alocarea generata automat necesita ajustari/);
+  assert.match(draftPanelSource, /Corecteaza doar daca livrabilele generate automat trebuie rafinate/);
+});
+
 test('draft work block panel confirms save and refreshes the persisted preview state', () => {
   assert.match(draftPanelSource, /const \[savedWorkBlockTitle, setSavedWorkBlockTitle\]/);
   assert.match(draftPanelSource, /const savedTitle = title\.trim\(\) \|\| 'Work block'/);

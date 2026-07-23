@@ -84,7 +84,7 @@ test('reporting work block draft panel persists only session-scoped UI state', (
   assert.match(reportingWorkBlockDraftPanelSource, /existingBundlesLoading\?: boolean/);
   assert.match(reportingWorkBlockDraftPanelSource, /const isWaitingForSelectedBundle = Boolean/);
   assert.match(reportingWorkBlockDraftPanelSource, /Se reincarca work block-ul salvat/);
-  assert.match(reportingWorkBlockDraftPanelSource, /<SelectItem value="new">Draft nou<\/SelectItem>/);
+  assert.match(reportingWorkBlockDraftPanelSource, /<SelectItem value="new">Ajustare manuala noua<\/SelectItem>/);
   assert.match(reportingWorkBlockDraftPanelSource, /existingBundles\.map\(\(bundle\) =>/);
   assert.match(reportingWorkBlockDraftPanelSource, /serializeDraftSessionState/);
   assert.match(reportingWorkBlockDraftPanelSource, /lastSavedSessionDraft/);
