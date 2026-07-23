@@ -1,14 +1,9 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { FileText, Download, Loader2, Sparkles } from 'lucide-react';
+import { FileText, Download, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { getMonthName } from '@/lib/app-utils';
 import {
   buildLocalActivityReport,
@@ -374,10 +369,10 @@ export function ReportGenerator({
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <FileText className="h-5 w-5" />
-          Generare Raport
+          Export Raport de Activitate
         </CardTitle>
         <CardDescription>
-          Generează raportul de activitate pentru {getMonthName(month)} {year}
+          Verifica si descarca Raportul de Activitate in format Anexa 10 pentru {getMonthName(month)} {year}.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -396,37 +391,6 @@ export function ReportGenerator({
           </div>
         </div>
 
-
-        <div className="grid gap-4 rounded-lg border p-4 md:grid-cols-2">
-          <div className="space-y-2">
-            <Label>Nivel detaliere</Label>
-            <Select value={detailLevel} onValueChange={setDetailLevel}>
-              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="mediu">Mediu</SelectItem>
-                <SelectItem value="detaliat">Detaliat</SelectItem>
-                <SelectItem value="foarte_detaliat">Foarte detaliat</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex items-center gap-2 pt-7">
-            <Checkbox id="fine-tuned-report" checked={useFineTunedModel} onCheckedChange={(checked) => setUseFineTunedModel(Boolean(checked))} />
-            <Label htmlFor="fine-tuned-report">Folosește model fine-tuned dacă este disponibil</Label>
-          </div>
-          <div className="space-y-2">
-            <Label>Formulări preferate (separate prin virgulă)</Label>
-            <Input value={preferredPhrases} onChange={(event) => setPreferredPhrases(event.target.value)} placeholder="am elaborat, am consolidat" />
-          </div>
-          <div className="space-y-2">
-            <Label>Formulări interzise (separate prin virgulă)</Label>
-            <Input value={forbiddenPhrases} onChange={(event) => setForbiddenPhrases(event.target.value)} placeholder="conform documentului" />
-          </div>
-          <div className="space-y-2 md:col-span-2">
-            <Label>Exemple validate / fragmente de stil</Label>
-            <Textarea value={validatedExamples} onChange={(event) => setValidatedExamples(event.target.value)} rows={3} placeholder="Lipește unul sau mai multe exemple scurte, separate prin ---" />
-          </div>
-        </div>
-
         {(calculatedTotalHours !== null || generationWarnings.length > 0) && (
           <div className="rounded-lg border p-3 text-sm">
             {calculatedTotalHours !== null && <p className="font-medium">Total ore calculate: {calculatedTotalHours}</p>}
@@ -442,7 +406,7 @@ export function ReportGenerator({
           <div className={`rounded-lg border p-3 text-sm ${deterministicReadinessClassName}`}>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="font-medium">
-                Export Anexa 10 determinist: {deterministicExportReadiness.statusLabel}
+                Raport de Activitate: {deterministicExportReadiness.statusLabel}
               </p>
               <span className="rounded-md border bg-background px-2 py-1 text-xs font-medium">
                 Readiness {deterministicExportReadiness.scoreLabel}
@@ -471,39 +435,8 @@ export function ReportGenerator({
         )}
 
         <div className="flex flex-wrap gap-2">
-          <Button onClick={generateWithAI} disabled={isGenerating || activities.length === 0}>
-            {isGenerating ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                {generationStatus || 'Se generează...'}
-              </>
-            ) : (
-              <>
-                <Sparkles className="h-4 w-4 mr-2" />
-                Generează cu AI
-              </>
-            )}
-          </Button>
-          <Button
-            variant="outline"
-            onClick={exportToWord}
-            disabled={!generatedReport || isExporting || isExportBlocked}
-          >
-            {isExporting ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Export...
-              </>
-            ) : (
-              <>
-                <Download className="h-4 w-4 mr-2" />
-                Export Word
-              </>
-            )}
-          </Button>
           {enableDeterministicAnexa10Docx && (
             <Button
-              variant="outline"
               onClick={exportDeterministicAnexa10Docx}
               title={deterministicExportButtonTitle}
               aria-label={deterministicExportButtonTitle}
@@ -516,22 +449,16 @@ export function ReportGenerator({
               {isExportingDeterministicDocx ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Export Anexa 10...
+                  Export RA...
                 </>
               ) : (
                 <>
                   <Download className="h-4 w-4 mr-2" />
-                  Export Anexa 10 DOCX
+                  Exporta Raport de Activitate DOCX
                 </>
               )}
             </Button>
           )}
-          <Button variant="secondary" onClick={markAsValidatedExample} disabled={!generatedReport || isExportBlocked}>
-            Marchează acest raport ca exemplu validat
-          </Button>
-          <Button variant="outline" onClick={exportTrainingExamples}>
-            Exportă exemple pentru fine-tuning
-          </Button>
         </div>
 
         {error && (
@@ -544,61 +471,6 @@ export function ReportGenerator({
           </div>
         )}
 
-        {generatedReport && (
-          <div className="space-y-2">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <Label>Raport generat:</Label>
-              <div className="flex rounded-lg border bg-muted/40 p-1">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={activeGeneratedTab === 'full' ? 'secondary' : 'ghost'}
-                  onClick={() => setActiveGeneratedTab('full')}
-                >
-                  Complet
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={activeGeneratedTab === 'table' ? 'secondary' : 'ghost'}
-                  onClick={() => setActiveGeneratedTab('table')}
-                >
-                  Sectiunea 1
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={activeGeneratedTab === 'narrative' ? 'secondary' : 'ghost'}
-                  onClick={() => setActiveGeneratedTab('narrative')}
-                >
-                  Sectiunea 2
-                </Button>
-              </div>
-            </div>
-            <Textarea
-              value={
-                activeGeneratedTab === 'table'
-                  ? generatedTableSection
-                  : activeGeneratedTab === 'narrative'
-                    ? generatedNarrativeSection
-                    : generatedReport
-              }
-              onChange={(e) => {
-                if (activeGeneratedTab === 'table') {
-                  updateGeneratedSection('table', e.target.value);
-                  return;
-                }
-                if (activeGeneratedTab === 'narrative') {
-                  updateGeneratedSection('narrative', e.target.value);
-                  return;
-                }
-                updateGeneratedReport(e.target.value);
-              }}
-              rows={15}
-              className="font-mono text-sm"
-            />
-          </div>
-        )}
       </CardContent>
     </Card>
   );

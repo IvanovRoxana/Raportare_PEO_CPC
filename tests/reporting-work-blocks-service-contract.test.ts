@@ -162,6 +162,14 @@ test('export page wires persisted work block bundles as a read-only optional pre
   assert.match(reportGeneratorSource, /title=\{deterministicExportButtonTitle\}/);
   assert.match(reportGeneratorSource, /aria-label=\{deterministicExportButtonTitle\}/);
   assert.match(reportGeneratorSource, /\[activities, enableDeterministicAnexa10Docx, expert, expertName, month, workBlockBundles, year\]/);
+  assert.match(exportPageSource, /enableDeterministicAnexa10Docx/);
+  assert.match(reportGeneratorSource, /Exporta Raport de Activitate DOCX/);
+  assert.doesNotMatch(reportGeneratorSource, /Genereaz[aă] cu AI/);
+  assert.doesNotMatch(reportGeneratorSource, /Nivel detaliere/);
+  assert.doesNotMatch(reportGeneratorSource, /fine-tuned/);
+  assert.doesNotMatch(reportGeneratorSource, /Formul[aă]ri preferate/);
+  assert.doesNotMatch(reportGeneratorSource, /Exemple validate/);
+  assert.doesNotMatch(reportGeneratorSource, /Marcheaz[aă] acest raport ca exemplu validat/);
 });
 
 test('expert activity save flow auto-persists reporting work blocks from saved activities', () => {
