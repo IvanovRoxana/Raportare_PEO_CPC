@@ -149,6 +149,9 @@ test('export page wires persisted work block bundles as a read-only optional pre
   assert.match(reportingWorkBlocksPanelSource, /const isUsingPersistedBundles = persistedBundles\.length > 0;/);
   assert.match(reportingWorkBlocksPanelSource, /Sursa: salvate automat din formular/);
   assert.match(reportingWorkBlocksPanelSource, /Sursa: fallback din activitati/);
+  assert.match(reportingWorkBlocksPanelSource, /getBundleDeliverableTitles\(blockActivities, bundle\)/);
+  assert.match(reportingWorkBlocksPanelSource, /bundle\.deliverableLinks/);
+  assert.match(reportingWorkBlocksPanelSource, /Livrabil asociat: \$\{link\.deliverableId\}/);
   assert.match(reportGeneratorSource, /workBlockBundles\?: ReportingWorkBlockBundle\[\];/);
   assert.match(reportGeneratorSource, /workBlockBundles: workBlockBundles && workBlockBundles\.length > 0 \? workBlockBundles : undefined/);
   assert.match(reportGeneratorSource, /const persistedWorkBlockCount = workBlockBundles\?\.length \?\? 0/);

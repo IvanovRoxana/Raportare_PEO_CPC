@@ -98,7 +98,7 @@ export function ReportingWorkBlocksPanel({ activities, month, year, persistedBun
               <TableBody>
                 {bundles.map((bundle) => {
                   const blockActivities = getBundleActivities(bundle.activityLinks.map((link) => link.activityId), activities);
-                  const deliverableTitles = getBundleDeliverableTitles(blockActivities);
+                  const deliverableTitles = getBundleDeliverableTitles(blockActivities, bundle);
                   return (
                     <TableRow key={bundle.workBlock.id}>
                       <TableCell className="min-w-[220px]">
@@ -163,8 +163,16 @@ function getBundleActivities(activityIds: string[], activities: Activity[]) {
     .sort((first, second) => first.date.localeCompare(second.date));
 }
 
-function getBundleDeliverableTitles(activities: Activity[]) {
-  return [...new Set(activities.flatMap((activity) => (
+function getBundleDeliverableTitles(activities: Activity[], bundle: ReportingWorkBlockBundle) {
+  const activityDeliverableTitles = activities.flatMap((activity) => (
     activity.deliverables?.map((deliverable) => getDocumentAuditTitle(deliverable)).filter(Boolean) ?? []
-  )))];
+  ));
+  const activityDeliverableIds = new Set(activities.flatMap((activity) => (
+    activity.deliverables?.map((deliverable) => deliverable.id).filter(Boolean) ?? []
+  )));
+  const linkedDeliverableTitles = bundle.deliverableLinks
+    .filter((link) => !activityDeliverableIds.has(link.deliverableId))
+    .map((link) => `Livrabil asociat: ${link.deliverableId}`);
+
+  return [...new Set([...activityDeliverableTitles, ...linkedDeliverableTitles])];
 }
