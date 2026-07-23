@@ -210,6 +210,60 @@ function dedupeDeliverableSlotsBySignature(deliverables: DeliverableSlot[]) {
   });
 }
 
+function mapSavedDeliverableToSlot(deliverable: Deliverable, preserveId: boolean): DeliverableSlot {
+  return {
+    id: preserveId ? deliverable.id : generateId(),
+    slotType: resolveSavedSlotType(deliverable.deliverableType, deliverable.category),
+    name: deliverable.fileName,
+    filename: deliverable.fileName,
+    fileType: deliverable.fileType,
+    fileSize: deliverable.fileSize,
+    filePath: deliverable.filePath,
+    documentId: deliverable.documentId,
+    s3Bucket: deliverable.s3Bucket,
+    s3Key: deliverable.s3Key,
+    fileHash: deliverable.fileHash,
+    firstPageTextHash: deliverable.firstPageTextHash,
+    contentFingerprint: deliverable.contentFingerprint,
+    uploadedByExpertId: deliverable.uploadedByExpertId,
+    uploadedByExpertName: deliverable.uploadedByExpertName,
+    projectId: deliverable.projectId,
+    projectName: deliverable.projectName,
+    sourceActivityId: deliverable.sourceActivityId,
+    activityDate: deliverable.activityDate,
+    saCode: deliverable.saCode,
+    deliverableType: deliverable.deliverableType,
+    isCommonDeliverable: deliverable.isCommonDeliverable,
+    sharedWithExpertIds: deliverable.sharedWithExpertIds,
+    common: Boolean(deliverable.isCommonDeliverable),
+    possibleDuplicateOfDocumentId: deliverable.possibleDuplicateOfDocumentId,
+    duplicateStatus: deliverable.duplicateStatus,
+    fileData: deliverable.fileData,
+    uploadedAt: deliverable.uploadedAt,
+    uploaded: true,
+    isPhoto: deliverable.fileType?.startsWith('image/') || false,
+    declaredTitle: deliverable.declaredTitle || '',
+    titleConfirmed: deliverable.titleConfirmed ?? false,
+    stadiu: deliverable.stadiu || '',
+    aiCheck: deliverable.aiStatus || deliverable.aiReason
+      ? {
+          eligible: deliverable.aiStatus === 'eligible' ? true : deliverable.aiStatus === 'ineligible' ? false : null,
+          reason: deliverable.aiReason || '',
+          issues: [],
+        }
+      : null,
+    docTitle: deliverable.docTitle || null,
+    docText: deliverable.docText || null,
+    suggestedTitle: deliverable.suggestedTitle || null,
+    firstPageText: deliverable.firstPageText || null,
+    titleSource: deliverable.titleSource as DeliverableSlot['titleSource'],
+    titleMatch: deliverable.titleMatch ?? null,
+    titleCheckStatus: deliverable.titleCheckStatus as DeliverableSlot['titleCheckStatus'],
+    titleCheckMessage: deliverable.titleCheckMessage,
+    isPendingConfirm: false,
+  };
+}
+
 function isStaleMultipartUploadError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error || '');
   return (
@@ -365,57 +419,7 @@ export function ActivityForm({
 
   // Deliverables state with slots
   const [deliverables, setDeliverables] = useState<DeliverableSlot[]>(
-    activitySeed?.deliverables?.map(d => ({
-      id: initialActivity ? d.id : generateId(),
-      slotType: resolveSavedSlotType(d.deliverableType, d.category),
-      name: d.fileName,
-      filename: d.fileName,
-      fileType: d.fileType,
-      fileSize: d.fileSize,
-      filePath: d.filePath,
-      documentId: d.documentId,
-      s3Bucket: d.s3Bucket,
-      s3Key: d.s3Key,
-      fileHash: d.fileHash,
-      firstPageTextHash: d.firstPageTextHash,
-      contentFingerprint: d.contentFingerprint,
-      uploadedByExpertId: d.uploadedByExpertId,
-      uploadedByExpertName: d.uploadedByExpertName,
-      projectId: d.projectId,
-      projectName: d.projectName,
-      sourceActivityId: d.sourceActivityId,
-      activityDate: d.activityDate,
-      saCode: d.saCode,
-      deliverableType: d.deliverableType,
-      isCommonDeliverable: d.isCommonDeliverable,
-      sharedWithExpertIds: d.sharedWithExpertIds,
-      common: Boolean(d.isCommonDeliverable),
-      possibleDuplicateOfDocumentId: d.possibleDuplicateOfDocumentId,
-      duplicateStatus: d.duplicateStatus,
-      fileData: d.fileData,
-      uploadedAt: d.uploadedAt,
-      uploaded: true,
-      isPhoto: d.fileType?.startsWith('image/') || false,
-      declaredTitle: d.declaredTitle || '',
-      titleConfirmed: d.titleConfirmed ?? false,
-      stadiu: d.stadiu || '',
-      aiCheck: d.aiStatus || d.aiReason
-        ? {
-            eligible: d.aiStatus === 'eligible' ? true : d.aiStatus === 'ineligible' ? false : null,
-            reason: d.aiReason || '',
-            issues: [],
-          }
-        : null,
-      docTitle: d.docTitle || null,
-      docText: d.docText || null,
-      suggestedTitle: d.suggestedTitle || null,
-      firstPageText: d.firstPageText || null,
-      titleSource: d.titleSource as DeliverableSlot['titleSource'],
-      titleMatch: d.titleMatch ?? null,
-      titleCheckStatus: d.titleCheckStatus as DeliverableSlot['titleCheckStatus'],
-      titleCheckMessage: d.titleCheckMessage,
-      isPendingConfirm: false,
-    })) || []
+    activitySeed?.deliverables?.map((deliverable) => mapSavedDeliverableToSlot(deliverable, Boolean(initialActivity))) || []
   );
 
   const gdprActivity = useGdprActivity({
@@ -1602,7 +1606,25 @@ export function ActivityForm({
   // Filter deliverables by type
   const mainDeliverables = deliverables.filter(d => !d.slotType || d.slotType === 'livrabil');
   const mainDeliverableForEligibility = mainDeliverables.find((d) => d.uploaded && !d.isPhoto);
-  const deliverablesForEligibility = deliverables.filter((d) => d.uploaded && !d.isPhoto);
+  const currentDeliverablesForEligibility = deliverables.filter((d) => d.uploaded && !d.isPhoto);
+  const deliverablesForEligibility = useMemo(() => {
+    if (!initialActivity) return currentDeliverablesForEligibility;
+    const groupId = getActivityEditGroupId(initialActivity);
+    if (!groupId) return currentDeliverablesForEligibility;
+
+    const savedGroupDeliverables = allActivities
+      .filter((activity) => activity.expertId === expertId)
+      .filter((activity) => activity.id !== initialActivity.id)
+      .filter((activity) => getActivityEditGroupId(activity) === groupId)
+      .filter((activity) => isSameEditableActivity(initialActivity, activity))
+      .flatMap((activity) => activity.deliverables ?? [])
+      .map((deliverable) => mapSavedDeliverableToSlot(deliverable, true));
+
+    return dedupeDeliverableSlotsBySignature([
+      ...currentDeliverablesForEligibility,
+      ...savedGroupDeliverables,
+    ]).filter((deliverable) => deliverable.uploaded && !deliverable.isPhoto);
+  }, [allActivities, currentDeliverablesForEligibility, expertId, initialActivity]);
   const prelimDeliverables = deliverables.filter(d => d.slotType === 'raport_preliminar');
   const justifDeliverables = deliverables.filter(d => d.slotType === 'justificativ');
   const descriptionTrimmed = (description || '').trim();

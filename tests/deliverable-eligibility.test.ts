@@ -298,8 +298,12 @@ test('pastreaza compatibilitatea cu payloadul vechi cu un singur livrabil', () =
   assert.equal(documents[0].isPrimary, true);
 });
 
-test('formularul trimite toate livrabilele incarcate din activitatea curenta la eligibilitate', () => {
-  assert.match(activityFormSource, /const deliverablesForEligibility = deliverables\.filter\(\(d\) => d\.uploaded && !d\.isPhoto\)/);
+test('formularul trimite toate livrabilele incarcate din grupul activitatii la eligibilitate', () => {
+  assert.match(activityFormSource, /const currentDeliverablesForEligibility = deliverables\.filter\(\(d\) => d\.uploaded && !d\.isPhoto\)/);
+  assert.match(activityFormSource, /const groupId = getActivityEditGroupId\(initialActivity\)/);
+  assert.match(activityFormSource, /getActivityEditGroupId\(activity\) === groupId/);
+  assert.match(activityFormSource, /isSameEditableActivity\(initialActivity, activity\)/);
+  assert.match(activityFormSource, /mapSavedDeliverableToSlot\(deliverable, true\)/);
   assert.match(activityFormSource, /relatedDeliverables=\{deliverablesForEligibility\}/);
   assert.match(deliverableItemSource, /relatedDeliverables\?: DeliverableSlot\[\]/);
   assert.match(deliverableItemSource, /deliverables: eligibilityDeliverables\.map/);
