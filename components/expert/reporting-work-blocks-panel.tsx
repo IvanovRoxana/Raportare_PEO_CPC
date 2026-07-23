@@ -29,6 +29,7 @@ export function ReportingWorkBlocksPanel({ activities, month, year, persistedBun
   const monthName = getMonthName(month);
   const activityBundles = useMemo(() => buildWorkBlocks(activities), [activities]);
   const bundles = persistedBundles.length > 0 ? persistedBundles : activityBundles;
+  const isUsingPersistedBundles = persistedBundles.length > 0;
   const problems = useMemo(() => validateWorkBlockAllocation(activities, bundles), [activities, bundles]);
   const totalHours = bundles.reduce((sum, bundle) => sum + calculateWorkBlockHours(bundle.activityLinks), 0);
   const unassociatedDeliverableCount = activities.reduce((count, activity) => (
@@ -43,8 +44,18 @@ export function ReportingWorkBlocksPanel({ activities, month, year, persistedBun
           Activitati raportabile
         </CardTitle>
         <CardDescription>
-          Previzualizare read-only a work block-urilor construite din pontajul si livrabilele lunii.
+          Previzualizare read-only a work block-urilor folosite pentru Anexa 10.
         </CardDescription>
+        <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+          <Badge variant={isUsingPersistedBundles ? 'default' : 'secondary'}>
+            {isUsingPersistedBundles ? 'Sursa: salvate automat din formular' : 'Sursa: fallback din activitati'}
+          </Badge>
+          <span>
+            {isUsingPersistedBundles
+              ? 'Exportul foloseste work block-urile persistate ale lunii.'
+              : 'Nu exista work block-uri persistate; preview-ul foloseste gruparea locala din activitati.'}
+          </span>
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid gap-3 md:grid-cols-4">

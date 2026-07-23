@@ -211,6 +211,7 @@ function ExpertDashboardContent() {
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [workBlockSaveNotice, setWorkBlockSaveNotice] = useState<string | null>(null);
   const [pendingSharedActivityRelationId, setPendingSharedActivityRelationId] = useState<string | null>(null);
   const [pendingSharedDeliverableRelationId, setPendingSharedDeliverableRelationId] = useState<string | null>(null);
   const [sharedActivityPrefill, setSharedActivityPrefill] = useState<Partial<Activity> | null>(null);
@@ -578,9 +579,9 @@ function ExpertDashboardContent() {
     deletedActivityIds?: string[];
     sourceActivityId?: string;
     editScope?: ActivityEditScope;
-  }) => {
+  }): Promise<boolean> => {
     if (!reportingWorkBlocksEnabled || isClarificationScopedAccess || savedActivities.length === 0 || !selectedExpertId) {
-      return;
+      return false;
     }
 
     const savedIds = new Set(savedActivities.map((activity) => activity.id));
@@ -600,13 +601,15 @@ function ExpertDashboardContent() {
       existingBundles: reportingWorkBlockBundles,
     });
 
-    if (!input) return;
+    if (!input) return false;
 
     try {
       await saveReportingWorkBlockDraft(input, nextActivities);
+      return true;
     } catch (error) {
       console.error('Error auto-saving reporting work block:', error);
       setSaveError('Activitatea a fost salvata, dar work block-ul Anexa 10 nu a putut fi actualizat automat. Verifica sectiunea Export.');
+      return false;
     }
   };
 
@@ -622,6 +625,7 @@ function ExpertDashboardContent() {
     }
 
     setSaveError(null);
+    setWorkBlockSaveNotice(null);
     setIsSaving(true);
     try {
       if (!selectedExpertId) {
@@ -832,12 +836,15 @@ function ExpertDashboardContent() {
           resetSharedRegistrationFlow();
         }
       }
-      await saveAutomaticReportingWorkBlock({
+      const didSaveReportingWorkBlock = await saveAutomaticReportingWorkBlock({
         savedActivities: savedActivitiesForWorkBlock,
         deletedActivityIds: deletedActivityIdsForWorkBlock,
         sourceActivityId: editingActivity?.id ?? savedActivitiesForWorkBlock[0]?.id,
         editScope,
       });
+      if (didSaveReportingWorkBlock) {
+        setWorkBlockSaveNotice('Work block-ul Anexa 10 a fost actualizat automat din formularul de activitate.');
+      }
       await refreshActivities();
       setShowForm(false);
       setEditingActivity(null);
@@ -2230,6 +2237,18 @@ function ExpertDashboardContent() {
               <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                 <p>{saveError}</p>
+              </div>
+            )}
+
+            {workBlockSaveNotice && (
+              <div className="flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
+                <CheckCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                <p>
+                  {workBlockSaveNotice}{' '}
+                  <Link href={exportRaHref} className="font-semibold underline underline-offset-2">
+                    Verifica in Export
+                  </Link>
+                </p>
               </div>
             )}
 
