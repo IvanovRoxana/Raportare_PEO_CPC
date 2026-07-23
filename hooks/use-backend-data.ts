@@ -13,6 +13,8 @@ import {
   workingGroupsService,
   concurrentProjectsService,
   concurrentProjectTimesheetService,
+  expertNormContractsService,
+  leaveEntriesService,
   reportStatusService,
   grupTintaService,
   gtDocumentsService,
@@ -41,7 +43,7 @@ import {
   sharedDeliverablesService,
   reportingWorkBlocksService,
 } from '@/lib/backend-store';
-import type { Activity, Expert, VerificationData, Neconformitate, VerificationNote, AppSettings, ActivityCatalog, WorkingGroup, ConcurrentProject, ConcurrentProjectTimesheetEntry, ReportStatus, GrupTintaEntry, BusinessHubEntityDirectoryEntry, AuditLog, ActivityAutofillAudit, AdminInterventionRequest, HistoricalImportBatch, HistoricalTimesheetDayEntry, MonthlyActivityItem, MonthlyExpertReport, UploadedReportingFile } from '@/lib/types';
+import type { Activity, Expert, ExpertNormContract, LeaveEntry, VerificationData, Neconformitate, VerificationNote, AppSettings, ActivityCatalog, WorkingGroup, ConcurrentProject, ConcurrentProjectTimesheetEntry, ReportStatus, GrupTintaEntry, BusinessHubEntityDirectoryEntry, AuditLog, ActivityAutofillAudit, AdminInterventionRequest, HistoricalImportBatch, HistoricalTimesheetDayEntry, MonthlyActivityItem, MonthlyExpertReport, UploadedReportingFile } from '@/lib/types';
 import { getContractedProcurementProjects, type ProcurementChecklist, type ProcurementContract, type ProcurementDeliverable, type ProcurementDocument, type ProcurementEvaluation, type ProcurementInvoice, type ProcurementLaunch, type ProcurementOffer, type ProcurementProject, type ProcurementReception, type ProcurementStatusHistory, type ProcurementSupplier } from '@/lib/procurement';
 import type { GTDocument, GTEntity, GTImportBatch, GTMonitoringRecord, GTPerson, Organization } from '@/lib/grup-tinta/types';
 import type { ReportingWorkBlockBundle } from '@/lib/activity-report/work-blocks';
@@ -1213,4 +1215,85 @@ export function useHistoricalImportMutations() {
   };
 
   return { createBatch, createReport, updateReport, createFile, createActivityItem, createTimesheetDay };
+}
+
+export function useAllExpertNormContracts() {
+  const key = 'expert-norm-contracts-all';
+  const { data, error, isLoading } = useSWR(
+    isBackendAvailable() ? key : null,
+    safeFetcher(expertNormContractsService.getAll),
+  );
+  return { contracts: stableList(data), error, isLoading, mutate: () => mutate(key) };
+}
+
+export function useExpertNormContracts(expertId: string | null) {
+  const { data, error, isLoading } = useSWR(
+    expertId && isBackendAvailable() ? `expert-norm-contracts-${expertId}` : null,
+    safeFetcher(() => expertNormContractsService.getByExpert(expertId!)),
+  );
+  return { contracts: stableList(data), error, isLoading };
+}
+
+export function useExpertNormContractMutations() {
+  const refresh = (expertId?: string) => {
+    mutate('expert-norm-contracts-all');
+    if (expertId) mutate(`expert-norm-contracts-${expertId}`);
+  };
+
+  const create = async (contract: Parameters<typeof expertNormContractsService.create>[0]) => {
+    const saved = await expertNormContractsService.create(contract);
+    refresh(saved.expertId);
+    return saved;
+  };
+
+  const update = async (id: string, updates: Parameters<typeof expertNormContractsService.update>[1]) => {
+    const saved = await expertNormContractsService.update(id, updates);
+    refresh(saved.expertId);
+    return saved;
+  };
+
+  return { create, update };
+}
+
+export function useLeaveEntries(month: number, year: number) {
+  const key = `leave-entries-${month}-${year}`;
+  const { data, error, isLoading } = useSWR(
+    isBackendAvailable() ? key : null,
+    safeFetcher(() => leaveEntriesService.getByMonth(month, year)),
+  );
+  return { leaveEntries: stableList(data), error, isLoading, mutate: () => mutate(key) };
+}
+
+export function useLeaveEntryMutations(month: number, year: number) {
+  const refresh = () => mutate(`leave-entries-${month}-${year}`);
+
+  const createAutomatic = async (input: {
+    expertId: string;
+    dates: string[];
+    source: 'EXPERT' | 'FINANCIAL';
+    createdBy?: string;
+  }) => {
+    const saved = await leaveEntriesService.createAutomatic(input);
+    refresh();
+    return saved;
+  };
+
+  const createManual = async (entry: Omit<LeaveEntry, 'id'> & { id?: string }) => {
+    const saved = await leaveEntriesService.createManual(entry);
+    refresh();
+    return saved;
+  };
+
+  const remove = async (id: string) => {
+    await leaveEntriesService.remove(id);
+    refresh();
+  };
+
+  const updateStatus = async (id: string, status: LeaveEntry['status'], actorId: string, reason?: string) => {
+    const saved = await leaveEntriesService.updateStatus(id, status, actorId, reason);
+    refresh();
+    return saved;
+  };
+
+  return { createAutomatic, createManual, remove, updateStatus };
 }

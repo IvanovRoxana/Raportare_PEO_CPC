@@ -1,5 +1,6 @@
 import referenceSeed from '../data/staging/seed.json' with { type: 'json' };
-import type { Activity, ConcurrentProject, ConcurrentProjectTimesheetEntry, Expert } from './types.ts';
+import type { Activity, ConcurrentProject, ConcurrentProjectTimesheetEntry, Expert, ExpertNormContract, LeaveEntry } from './types.ts';
+import { calculateCapacitySnapshot, resolveNormContract } from './time-capacity.ts';
 
 export type FinancialConflictCode =
   | 'missing_expert'
@@ -11,7 +12,10 @@ export type FinancialConflictCode =
   | 'leave_hours_mismatch'
   | 'concordia_hours_mismatch'
   | 'goodworks_hours_mismatch'
-  | 'daily_limit_exceeded';
+  | 'daily_limit_exceeded'
+  | 'peo_monthly_limit_exceeded'
+  | 'cim_monthly_limit_exceeded'
+  | 'leave_not_validated';
 
 export type FinancialConflict = {
   code: FinancialConflictCode;
@@ -29,6 +33,11 @@ export type FinancialTimesheetRow = {
   peoFunction: string;
   goodworksFunction: string;
   appNorm: string;
+  peoNorm: string;
+  cimNorm: string;
+  peoRemaining: number;
+  cimRemaining: number;
+  leaveEntries: LeaveEntry[];
   workbookNorm: string;
   peoWorked: number;
   peoLeave: number;
@@ -165,6 +174,8 @@ export function buildFinancialReportingSummary(input: {
   concurrentProjects?: ConcurrentProject[];
   concurrentEntries?: ConcurrentProjectTimesheetEntry[];
   month: number;
+  normContracts?: ExpertNormContract[];
+  leaveEntries?: LeaveEntry[];
   year: number;
   referencePeople?: FinancialReferencePerson[];
 }): FinancialReportingSummary {
@@ -172,11 +183,14 @@ export function buildFinancialReportingSummary(input: {
   const concurrentEntries = input.concurrentEntries ?? [];
   const referencePeople = input.referencePeople ?? referenceSeed.people;
   const expertById = new Map(input.experts.map((expert) => [expert.id, expert]));
+  const normContracts = input.normContracts ?? [];
+  const leaveEntries = input.leaveEntries ?? [];
   const expertByName = new Map(input.experts.map((expert) => [normalizeFinancialPersonName(expert.name), expert]));
   const referenceByName = new Map(referencePeople.map((person) => [normalizeFinancialPersonName(person.name), person]));
   const activityByExpert = new Map<string, Activity[]>();
   const concurrentByExpert = new Map<string, ConcurrentProjectTimesheetEntry[]>();
   const projectById = new Map(projects.map((project) => [project.id, project]));
+  const leaveByExpert = new Map<string, LeaveEntry[]>();
 
   for (const activity of input.activities) {
     const key = activity.expertId || normalizeFinancialPersonName(activity.expertName);
@@ -186,8 +200,12 @@ export function buildFinancialReportingSummary(input: {
     concurrentByExpert.set(entry.expertId, [...(concurrentByExpert.get(entry.expertId) ?? []), entry]);
   }
 
+  for (const leave of leaveEntries) {
+    leaveByExpert.set(leave.expertId, [...(leaveByExpert.get(leave.expertId) ?? []), leave]);
+  }
+
   const names = new Set([...referenceByName.keys(), ...expertByName.keys()]);
-  const compareHours = input.month === referenceSeed.month && input.year === referenceSeed.year;
+  const compareHours = input.month + 1 === referenceSeed.month && input.year === referenceSeed.year;
   const rows = [...names].map((normalizedName) => {
     const reference = referenceByName.get(normalizedName);
     const expert = expertByName.get(normalizedName);
@@ -203,6 +221,8 @@ export function buildFinancialReportingSummary(input: {
       ?? expert?.jobDescriptionText
       ?? reference?.basePosition
       ?? '-';
+    const leaves = expert ? leaveByExpert.get(expert.id) ?? [] : [];
+    const migratedLeaveDates = new Set(leaves.map((leave) => leave.date));
     const peoFunction = expert?.positionInProject ?? expert?.role ?? reference?.peoPosition ?? '-';
     const goodworksFunction = goodworksProject?.expertProjectRole
       ?? goodworksProject?.expertFunction
@@ -217,6 +237,7 @@ export function buildFinancialReportingSummary(input: {
 
     for (const activity of activities) {
       const hours = Number(activity.hours) || 0;
+      if (activity.dayType === 'CO' && migratedLeaveDates.has(activity.date)) continue;
       if (activity.dayType === 'CO') {
         peoLeave += hours;
         leaveDates.add(activity.date);
@@ -247,6 +268,29 @@ export function buildFinancialReportingSummary(input: {
       dailyTotals.set(entry.date, (dailyTotals.get(entry.date) ?? 0) + hours);
     }
 
+    for (const leave of leaves) {
+      if (leave.status === 'REJECTED') continue;
+      peoLeave += Number(leave.peoHours) || 0;
+      concordiaLeave += Number(leave.cpcHours) || 0;
+      leaveDates.add(leave.date);
+      dailyTotals.set(leave.date, (dailyTotals.get(leave.date) ?? 0) + (Number(leave.totalHours) || 0));
+    }
+
+    const capacity = expert ? calculateCapacitySnapshot({
+      expert,
+      contracts: normContracts,
+      activities,
+      concurrentProjects: expertProjects,
+      concurrentEntries: entries,
+      leaveEntries: leaves,
+      month: input.month,
+      year: input.year,
+    }) : undefined;
+    const activeContract = expert
+      ? resolveNormContract(expert, normContracts, input.year + '-' + String(input.month + 1).padStart(2, '0') + '-01')
+      : undefined;
+
+
     const row: FinancialTimesheetRow = {
       expertId: expert?.id,
       name: expert?.name ?? reference?.name ?? normalizedName,
@@ -256,6 +300,12 @@ export function buildFinancialReportingSummary(input: {
       goodworksFunction,
       appNorm: expertNormLabel(expert),
       workbookNorm: reference?.peoNorm ?? 'Nu există în Excel',
+      peoNorm: activeContract ? activeContract.peoNormValue + ' ' + (activeContract.peoNormUnit === 'HOURS_PER_MONTH' ? 'h/luna' : 'h/zi') : 'Nedefinita',
+      cimNorm: activeContract ? activeContract.cimNormValue + ' ' + (activeContract.cimNormUnit === 'HOURS_PER_MONTH' ? 'h/luna' : 'h/zi') : 'Nedefinita',
+      peoRemaining: capacity?.peoRemaining ?? 0,
+      cimRemaining: capacity?.cimRemaining ?? 0,
+      leaveEntries: leaves,
+
       peoWorked,
       peoLeave,
       medicalLeave,
@@ -277,8 +327,20 @@ export function buildFinancialReportingSummary(input: {
 
     if (reference) compareReference(row, expert, reference, compareHours);
     if (expert && !reference) addConflict(row.conflicts, 'extra_expert', 'Expertul există în aplicație, dar nu apare în Excelul de referință.');
+    for (const conflict of capacity?.conflicts ?? []) {
+      const code = conflict.code === 'MONTHLY_PEO_EXCEEDED'
+        ? 'peo_monthly_limit_exceeded'
+        : conflict.code === 'MONTHLY_CIM_EXCEEDED'
+          ? 'cim_monthly_limit_exceeded'
+          : 'daily_limit_exceeded';
+      addConflict(row.conflicts, code, conflict.message, 'error');
+    }
+    if (leaves.some((leave) => leave.status !== 'VALIDATED' && leave.status !== 'REJECTED')) {
+      addConflict(row.conflicts, 'leave_not_validated', 'Exista CO nevalidat de Financiar.');
+    }
+
     for (const [date, hours] of dailyTotals) {
-      if (hours > 12 + EPSILON) addConflict(row.conflicts, 'daily_limit_exceeded', `Totalul de ${hours} h din ${date} depășește limita cumulată de 12 h.`, 'error');
+      if (hours > 8 + EPSILON) addConflict(row.conflicts, 'daily_limit_exceeded', `Totalul de ${hours} h din ${date} depășește limita CIM de 8 h.`, 'error');
     }
     return row;
   }).sort((left, right) => left.name.localeCompare(right.name, 'ro'));

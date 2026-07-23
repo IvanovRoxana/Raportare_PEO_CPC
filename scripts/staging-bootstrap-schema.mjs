@@ -4,6 +4,8 @@ import { fileURLToPath } from "node:url";
 
 export const FOUNDATION_MODELS = new Set([
   "Expert",
+  "ExpertNormContract",
+  "LeaveEntry",
   "Verification",
   "Neconformitate",
   "VerificationNote",

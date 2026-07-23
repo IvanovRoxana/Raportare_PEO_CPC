@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { AlertTriangle, CalendarDays, Download, FileText, Loader2, SearchIcon, ShieldCheck, Users } from 'lucide-react';
+import { AlertTriangle, CalendarDays, CheckCircle2, Download, FileText, Loader2, Plus, Save, SearchIcon, ShieldCheck, Users, XCircle } from 'lucide-react';
 import { DashboardShell, financialNavItems } from '@/components/layout/dashboard-shell';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -13,10 +13,15 @@ import {
   useAllConcurrentProjects,
   useConcurrentProjectTimesheetByMonth,
   useExperts,
+  useAllExpertNormContracts,
+  useExpertNormContractMutations,
+  useLeaveEntries,
+  useLeaveEntryMutations,
 } from '@/hooks/use-backend-data';
 import { buildFinancialReportingSummary, type FinancialTimesheetRow } from '@/lib/financial-reporting';
 import { isFinancialLeaveEnabledClient, isFinancialTimesheetsEnabledClient } from '@/lib/feature-flags';
 import { buildPontajExportPayload } from '@/lib/pontaj-export-payload';
+import type { ExpertNormContract, LeaveEntry, NormUnit } from '@/lib/types';
 
 type SectionMode = 'timesheets' | 'leave';
 
@@ -31,6 +36,16 @@ function hours(value: number) {
 
 function compactHours(value: number) {
   return new Intl.NumberFormat('ro-RO', { maximumFractionDigits: 2 }).format(value);
+}
+
+function isoDate(year: number, month: number, day = 1) {
+  return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+function previousDay(date: string) {
+  const parsed = new Date(`${date}T00:00:00.000Z`);
+  parsed.setUTCDate(parsed.getUTCDate() - 1);
+  return parsed.toISOString().slice(0, 10);
 }
 
 function downloadResponse(response: Response, fallbackName: string) {
@@ -76,26 +91,56 @@ function ConflictDot({ row }: { row: FinancialTimesheetRow }) {
 }
 
 export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
-  const [month, setMonth] = useState(6);
+  const [month, setMonth] = useState(5);
   const [year, setYear] = useState(2026);
   const [search, setSearch] = useState('');
   const [onlyConflicts, setOnlyConflicts] = useState(false);
   const [exporting, setExporting] = useState<string | null>(null);
+  const [validating, setValidating] = useState<string | null>(null);
+  const [savingLeave, setSavingLeave] = useState(false);
+  const [savingContract, setSavingContract] = useState(false);
+  const [leaveForm, setLeaveForm] = useState({
+    expertId: '',
+    date: isoDate(2026, 5),
+    mode: 'automatic' as 'automatic' | 'manual',
+    totalHours: '8',
+    peoHours: '6',
+    cpcHours: '2',
+    justification: '',
+  });
+  const [contractForm, setContractForm] = useState({
+    expertId: '',
+    validFrom: isoDate(2026, 5),
+    peoNormUnit: 'HOURS_PER_DAY' as NormUnit,
+    peoNormValue: '8',
+    peoDailyCap: '8',
+    cimNormUnit: 'HOURS_PER_DAY' as NormUnit,
+    cimNormValue: '8',
+    cimDailyCap: '8',
+    leaveHoursPerDay: '8',
+    justification: '',
+  });
   const { experts, isLoading: loadingExperts } = useExperts();
   const { activities, isLoading: loadingActivities } = useActivitiesByMonth(month, year);
   const { projects, isLoading: loadingProjects } = useAllConcurrentProjects();
   const { entries, isLoading: loadingEntries } = useConcurrentProjectTimesheetByMonth(month, year);
+  const { contracts, isLoading: loadingContracts } = useAllExpertNormContracts();
+  const { leaveEntries, isLoading: loadingLeave } = useLeaveEntries(month, year);
+  const { createAutomatic, createManual, updateStatus } = useLeaveEntryMutations(month, year);
+  const { create: createNormContract, update: updateNormContract } = useExpertNormContractMutations();
   const enabled = mode === 'timesheets' ? isFinancialTimesheetsEnabledClient() : isFinancialLeaveEnabledClient();
-  const isLoading = loadingExperts || loadingActivities || loadingProjects || loadingEntries;
+  const isLoading = loadingExperts || loadingActivities || loadingProjects || loadingEntries || loadingContracts || loadingLeave;
 
   const summary = useMemo(() => buildFinancialReportingSummary({
     experts,
     activities,
     concurrentProjects: projects,
     concurrentEntries: entries,
+    normContracts: contracts,
+    leaveEntries,
     month,
     year,
-  }), [experts, activities, projects, entries, month, year]);
+  }), [experts, activities, projects, entries, contracts, leaveEntries, month, year]);
 
   const visibleRows = useMemo(() => {
     const query = search.trim().toLocaleLowerCase('ro-RO');
@@ -106,6 +151,104 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
     });
   }, [summary.rows, search, onlyConflicts, mode]);
 
+  const visibleLeaveRows = useMemo<Array<{ row: FinancialTimesheetRow; leave: LeaveEntry | null }>>(
+    () => visibleRows.reduce<Array<{ row: FinancialTimesheetRow; leave: LeaveEntry | null }>>((result, row) => {
+      if (row.leaveEntries.length) {
+        result.push(...row.leaveEntries.map((leave) => ({ row, leave })));
+      } else {
+        result.push({ row, leave: null });
+      }
+      return result;
+    }, []),
+    [visibleRows],
+  );
+  const setLeaveStatus = async (
+    leaveId: string,
+    status: 'VALIDATED' | 'REJECTED',
+  ) => {
+    setValidating(leaveId);
+    try {
+      await updateStatus(
+        leaveId,
+        status,
+        'financial-session',
+        status === 'REJECTED' ? 'Respins din dashboardul Financiar' : undefined,
+      );
+    } finally {
+      setValidating(null);
+    }
+  };
+
+  const saveFinancialLeave = async () => {
+    if (!leaveForm.expertId || !leaveForm.date) return;
+    setSavingLeave(true);
+    try {
+      if (leaveForm.mode === 'automatic') {
+        await createAutomatic({
+          expertId: leaveForm.expertId,
+          dates: [leaveForm.date],
+          source: 'FINANCIAL',
+          createdBy: 'financial-session',
+        });
+      } else {
+        const totalHours = Number(leaveForm.totalHours);
+        const peoHours = Number(leaveForm.peoHours);
+        const cpcHours = Number(leaveForm.cpcHours);
+        await createManual({
+          expertId: leaveForm.expertId,
+          date: leaveForm.date,
+          month,
+          year,
+          type: 'CO',
+          totalHours,
+          peoHours,
+          cpcHours,
+          source: 'FINANCIAL',
+          status: 'DRAFT',
+          lockedForExpert: true,
+          automaticSplit: false,
+          justification: leaveForm.justification,
+          createdBy: 'financial-session',
+        });
+      }
+      setLeaveForm((current) => ({ ...current, justification: '' }));
+    } finally {
+      setSavingLeave(false);
+    }
+  };
+
+  const saveNormContract = async () => {
+    if (!contractForm.expertId || !contractForm.validFrom || !contractForm.justification.trim()) return;
+    setSavingContract(true);
+    try {
+      const openContract = contracts
+        .filter((contract) => contract.expertId === contractForm.expertId && !contract.validTo && contract.validFrom < contractForm.validFrom)
+        .sort((left, right) => right.validFrom.localeCompare(left.validFrom))[0];
+      if (openContract) {
+        await updateNormContract(openContract.id, { validTo: previousDay(contractForm.validFrom), updatedBy: 'financial-session' });
+      }
+      const payload: Omit<ExpertNormContract, 'id'> = {
+        expertId: contractForm.expertId,
+        validFrom: contractForm.validFrom,
+        peoNormUnit: contractForm.peoNormUnit,
+        peoNormValue: Number(contractForm.peoNormValue),
+        peoDailyCap: Number(contractForm.peoDailyCap),
+        cimNormUnit: contractForm.cimNormUnit,
+        cimNormValue: Number(contractForm.cimNormValue),
+        cimDailyCap: Number(contractForm.cimDailyCap),
+        leaveHoursPerDay: Number(contractForm.leaveHoursPerDay),
+        status: 'ACTIVE',
+        justification: contractForm.justification,
+        createdBy: 'financial-session',
+        updatedBy: 'financial-session',
+      };
+      await createNormContract(payload);
+      setContractForm((current) => ({ ...current, justification: '' }));
+    } finally {
+      setSavingContract(false);
+    }
+  };
+
   const exportCentralizer = async () => {
     setExporting('centralizer');
     try {
@@ -115,7 +258,7 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
         body: JSON.stringify({ month, year, rows: summary.rows, mode }),
       });
       if (!response.ok) throw new Error(await response.text());
-      await downloadResponse(response, `TEST_Centralizator_${mode}_${year}-${String(month).padStart(2, '0')}.xlsx`);
+      await downloadResponse(response, `TEST_Centralizator_${mode}_${year}-${String(month + 1).padStart(2, '0')}.xlsx`);
     } finally {
       setExporting(null);
     }
@@ -142,7 +285,7 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
         })),
       });
       if (!response.ok) throw new Error(await response.text());
-      await downloadResponse(response, `TEST_Pontaj_${expert.name}_${year}-${String(month).padStart(2, '0')}.xlsx`);
+      await downloadResponse(response, `TEST_Pontaj_${expert.name}_${year}-${String(month + 1).padStart(2, '0')}.xlsx`);
     } finally {
       setExporting(null);
     }
@@ -168,7 +311,7 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
       eyebrow="Modul Financiar"
       title={title}
       description={description}
-      reportingMonth={`${MONTHS[month - 1]} ${year}`}
+      reportingMonth={`${MONTHS[month]} ${year}`}
       actions={(
         <Button onClick={exportCentralizer} disabled={isLoading || exporting !== null}>
           {exporting === 'centralizer' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
@@ -183,6 +326,66 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
         <Card><CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-sm font-medium"><ShieldCheck className="h-4 w-4" />Lipsă în aplicație</CardTitle></CardHeader><CardContent className="text-2xl font-semibold text-red-700">{summary.missingExperts}</CardContent></Card>
       </div>
 
+      {mode === 'leave' && (
+        <div className="grid gap-4 xl:grid-cols-2">
+          <Card>
+            <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-sm"><Plus className="h-4 w-4" />Adauga CO Financiar</CardTitle></CardHeader>
+            <CardContent className="grid gap-3 md:grid-cols-6">
+              <select className="h-10 rounded-md border bg-background px-3 text-sm md:col-span-2" value={leaveForm.expertId} onChange={(event) => setLeaveForm((current) => ({ ...current, expertId: event.target.value }))} aria-label="Expert concediu">
+                <option value="">Alege expert</option>
+                {experts.map((expert) => <option key={expert.id} value={expert.id}>{expert.name}</option>)}
+              </select>
+              <Input type="date" value={leaveForm.date} onChange={(event) => setLeaveForm((current) => ({ ...current, date: event.target.value }))} aria-label="Data CO" />
+              <select className="h-10 rounded-md border bg-background px-3 text-sm" value={leaveForm.mode} onChange={(event) => setLeaveForm((current) => ({ ...current, mode: event.target.value as 'automatic' | 'manual' }))} aria-label="Mod repartizare CO">
+                <option value="automatic">Automat</option>
+                <option value="manual">Manual</option>
+              </select>
+              {leaveForm.mode === 'manual' && (
+                <>
+                  <Input type="number" min="0" step="0.5" value={leaveForm.totalHours} onChange={(event) => setLeaveForm((current) => ({ ...current, totalHours: event.target.value }))} aria-label="CO total" />
+                  <Input type="number" min="0" step="0.5" value={leaveForm.peoHours} onChange={(event) => setLeaveForm((current) => ({ ...current, peoHours: event.target.value }))} aria-label="CO PEO" />
+                  <Input type="number" min="0" step="0.5" value={leaveForm.cpcHours} onChange={(event) => setLeaveForm((current) => ({ ...current, cpcHours: event.target.value }))} aria-label="CO CPC" />
+                  <Input className="md:col-span-3" value={leaveForm.justification} onChange={(event) => setLeaveForm((current) => ({ ...current, justification: event.target.value }))} placeholder="Justificare repartizare manuala" />
+                </>
+              )}
+              <Button className="md:col-span-2" onClick={saveFinancialLeave} disabled={savingLeave || !leaveForm.expertId || !leaveForm.date || (leaveForm.mode === 'manual' && !leaveForm.justification.trim())}>
+                {savingLeave ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                Salveaza CO
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-sm"><ShieldCheck className="h-4 w-4" />Versiune norma PEO/CIM</CardTitle></CardHeader>
+            <CardContent className="grid gap-3 md:grid-cols-6">
+              <select className="h-10 rounded-md border bg-background px-3 text-sm md:col-span-2" value={contractForm.expertId} onChange={(event) => setContractForm((current) => ({ ...current, expertId: event.target.value }))} aria-label="Expert norma">
+                <option value="">Alege expert</option>
+                {experts.map((expert) => <option key={expert.id} value={expert.id}>{expert.name}</option>)}
+              </select>
+              <Input type="date" value={contractForm.validFrom} onChange={(event) => setContractForm((current) => ({ ...current, validFrom: event.target.value }))} aria-label="Valabil de la" />
+              <select className="h-10 rounded-md border bg-background px-3 text-sm" value={contractForm.peoNormUnit} onChange={(event) => setContractForm((current) => ({ ...current, peoNormUnit: event.target.value as NormUnit }))} aria-label="Unitate PEO">
+                <option value="HOURS_PER_DAY">PEO h/zi</option>
+                <option value="HOURS_PER_MONTH">PEO h/luna</option>
+              </select>
+              <Input type="number" min="0" step="0.5" value={contractForm.peoNormValue} onChange={(event) => setContractForm((current) => ({ ...current, peoNormValue: event.target.value }))} aria-label="Norma PEO" />
+              <Input type="number" min="0" step="0.5" value={contractForm.peoDailyCap} onChange={(event) => setContractForm((current) => ({ ...current, peoDailyCap: event.target.value }))} aria-label="Plafon PEO zilnic" />
+              <select className="h-10 rounded-md border bg-background px-3 text-sm" value={contractForm.cimNormUnit} onChange={(event) => setContractForm((current) => ({ ...current, cimNormUnit: event.target.value as NormUnit }))} aria-label="Unitate CIM">
+                <option value="HOURS_PER_DAY">CIM h/zi</option>
+                <option value="HOURS_PER_MONTH">CIM h/luna</option>
+              </select>
+              <Input type="number" min="0" step="0.5" value={contractForm.cimNormValue} onChange={(event) => setContractForm((current) => ({ ...current, cimNormValue: event.target.value }))} aria-label="Norma CIM" />
+              <Input type="number" min="0" max="8" step="0.5" value={contractForm.cimDailyCap} onChange={(event) => setContractForm((current) => ({ ...current, cimDailyCap: event.target.value, leaveHoursPerDay: event.target.value }))} aria-label="Plafon CIM zilnic" />
+              <Input type="number" min="0" max="8" step="0.5" value={contractForm.leaveHoursPerDay} onChange={(event) => setContractForm((current) => ({ ...current, leaveHoursPerDay: event.target.value }))} aria-label="Ore CO pe zi" />
+              <Input className="md:col-span-3" value={contractForm.justification} onChange={(event) => setContractForm((current) => ({ ...current, justification: event.target.value }))} placeholder="Justificare modificare norma" />
+              <Button className="md:col-span-2" onClick={saveNormContract} disabled={savingContract || !contractForm.expertId || !contractForm.justification.trim()}>
+                {savingContract ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                Salveaza norma
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       <Card>
         <CardHeader className="gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
@@ -191,7 +394,7 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <select className="h-10 rounded-md border bg-background px-3 text-sm" value={month} onChange={(event) => setMonth(Number(event.target.value))} aria-label="Luna">
-              {MONTHS.map((label, index) => <option key={label} value={index + 1}>{label}</option>)}
+              {MONTHS.map((label, index) => <option key={label} value={index}>{label}</option>)}
             </select>
             <Input className="w-24" type="number" min={2020} max={2100} value={year} onChange={(event) => setYear(Number(event.target.value))} aria-label="Anul" />
             <div className="relative"><SearchIcon className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" /><Input className="w-64 pl-9" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Caută expert sau funcție" /></div>
@@ -247,18 +450,69 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
                 </table>
               </TooltipProvider>
             ) : (
-              <table className="w-full min-w-[1100px] border-collapse text-sm">
-                <thead><tr className="border-b bg-slate-50 text-left"><th className="p-3">Expert / funcție</th><th className="p-3">Normă</th><th className="p-3 text-right">CO PEO</th><th className="p-3 text-right">CM PEO</th><th className="p-3 text-right">CO/CM Concordia</th><th className="p-3">Zile</th><th className="p-3">Status audit</th><th className="p-3 text-right">Export</th></tr></thead>
-                <tbody>{visibleRows.map((row) => (
-                  <tr key={`${row.expertId ?? 'missing'}-${row.name}`} className="border-b align-top hover:bg-slate-50/60">
-                    <td className="p-3"><div className="font-medium">{row.name}</div><div className="max-w-xs text-xs text-muted-foreground">{row.role}</div></td>
-                    <td className="p-3"><div>{row.appNorm}</div>{row.workbookNorm !== row.appNorm && <div className="text-xs text-amber-700">Excel: {row.workbookNorm}</div>}</td>
-                    <td className="p-3 text-right">{hours(row.peoLeave)}</td><td className="p-3 text-right">{hours(row.medicalLeave)}</td><td className="p-3 text-right">{hours(row.concordiaLeave)}</td><td className="p-3 text-xs">{row.leaveDates.join(', ') || '—'}</td>
-                    <td className="p-3"><StatusBadge row={row} />{row.conflicts.length > 0 && <ul className="mt-2 max-w-md space-y-1 text-xs text-amber-800">{row.conflicts.map((conflict, index) => <li key={`${conflict.code}-${index}`}>• {conflict.message}</li>)}</ul>}</td>
-                    <td className="p-3 text-right"><Button size="sm" variant="outline" disabled={!row.expertId || exporting !== null} onClick={() => exportExpertTemplate(row)}>{exporting === row.expertId ? <Loader2 className="h-4 w-4 animate-spin" /> : <><FileText className="mr-2 h-4 w-4" />Template</>}</Button></td>
-                  </tr>
-                ))}</tbody>
-              </table>
+              <TooltipProvider delayDuration={150}>
+                <table className="w-full min-w-[1380px] border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b bg-slate-50 text-left">
+                      <th className="p-2">Expert / dată</th>
+                      <th className="p-2">Normă PEO</th>
+                      <th className="p-2">Normă CIM</th>
+                      <th className="p-2 text-right">CO total</th>
+                      <th className="p-2 text-right">CO PEO</th>
+                      <th className="p-2 text-right">CO CPC</th>
+                      <th className="p-2 text-right">Sold PEO</th>
+                      <th className="p-2 text-right">Sold CIM</th>
+                      <th className="p-2">Sursă</th>
+                      <th className="p-2">Stare</th>
+                      <th className="p-2 text-center">Conflict</th>
+                      <th className="p-2 text-right">Acțiuni</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visibleLeaveRows.map(({ row, leave }, index) => (
+                      <tr key={leave?.id ?? (row.name + '-legacy-' + index)} className="border-b align-middle hover:bg-slate-50/60">
+                        <td className="p-2">
+                          <div className="font-medium">{row.name}</div>
+                          <div className="text-[11px] text-muted-foreground">{leave?.date ?? (row.leaveDates.join(', ') || 'Date istorice')}</div>
+                        </td>
+                        <td className="p-2">{row.peoNorm}</td>
+                        <td className="p-2">{row.cimNorm}</td>
+                        <td className="p-2 text-right tabular-nums">{hours(leave?.totalHours ?? row.totalLeave)}</td>
+                        <td className="p-2 text-right tabular-nums">{hours(leave?.peoHours ?? row.peoLeave)}</td>
+                        <td className="p-2 text-right tabular-nums">{hours(leave?.cpcHours ?? row.concordiaLeave)}</td>
+                        <td className="p-2 text-right tabular-nums">{hours(row.peoRemaining)}</td>
+                        <td className="p-2 text-right tabular-nums">{hours(row.cimRemaining)}</td>
+                        <td className="p-2">{leave?.source === 'FINANCIAL' ? 'Financiar' : leave?.source === 'EXPERT' ? 'Expert' : 'Istoric'}</td>
+                        <td className="p-2">
+                          {leave
+                            ? <Badge variant={leave.status === 'VALIDATED' ? 'default' : leave.status === 'REJECTED' ? 'destructive' : 'secondary'}>{leave.status}</Badge>
+                            : <StatusBadge row={row} />}
+                        </td>
+                        <td className="p-2 text-center"><span className="inline-flex justify-center"><ConflictDot row={row} /></span></td>
+                        <td className="p-2 text-right">
+                          <div className="flex justify-end gap-1">
+                            {leave && leave.status !== 'VALIDATED' && leave.status !== 'REJECTED' && (
+                              <>
+                                <Button size="sm" variant="outline" disabled={validating !== null} onClick={() => setLeaveStatus(leave.id, 'VALIDATED')}>
+                                  {validating === leave.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
+                                  <span className="ml-1">Validează</span>
+                                </Button>
+                                <Button size="sm" variant="outline" disabled={validating !== null} onClick={() => setLeaveStatus(leave.id, 'REJECTED')}>
+                                  <XCircle className="h-3 w-3" /><span className="ml-1">Respinge</span>
+                                </Button>
+                              </>
+                            )}
+                            <Button size="sm" variant="outline" disabled={!row.expertId || exporting !== null} onClick={() => exportExpertTemplate(row)}>
+                              {exporting === row.expertId ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileText className="h-3 w-3" />}
+                              <span className="ml-1">Template</span>
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </TooltipProvider>
             )
           )}
           {!isLoading && visibleRows.length === 0 && <div className="py-12 text-center text-muted-foreground">Nu există înregistrări pentru filtrul selectat.</div>}

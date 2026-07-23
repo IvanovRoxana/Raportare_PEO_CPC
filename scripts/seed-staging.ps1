@@ -138,7 +138,7 @@ if ($productionUrl -match [regex]::Escape($apiId)) { throw "Seed blocat: API ID 
 
 $tableNames = (& $aws dynamodb list-tables --profile $Profile --region $Region --output json | ConvertFrom-Json).TableNames
 $tables = @{}
-foreach ($model in @("Expert", "Activity", "ConcurrentProject", "ConcurrentProjectTimesheetEntry")) {
+foreach ($model in @("Expert", "ExpertNormContract", "LeaveEntry", "Activity", "ConcurrentProject", "ConcurrentProjectTimesheetEntry")) {
   $matches = @()
   foreach ($candidate in @($tableNames | Where-Object { $_ -like "$model-*-NONE" })) {
     $tags = Get-DdbTableTags $candidate $aws
@@ -161,6 +161,8 @@ $experts = @()
 $activities = @()
 $projects = @()
 $entries = @()
+$contracts = @()
+$leaveEntries = @()
 
 foreach ($person in $seed.people) {
   $slug = Get-SeedId $person.name
@@ -179,6 +181,44 @@ foreach ($person in $seed.people) {
     isActive = $true
   }
 
+  $peoIsMonthly = $person.peoNorm -match "(d+)s*h/luna"
+  $peoUnit = if ($peoIsMonthly) { "HOURS_PER_MONTH" } else { "HOURS_PER_DAY" }
+  $peoValue = if ($peoIsMonthly) { [double]$Matches[1] } elseif ($person.peoNorm -eq "-") { 0 } else { [double](Get-DailyNorm $person.peoNorm) }
+  $peoDailyCap = if ($peoIsMonthly) { 6 } elseif ($person.peoNorm -eq "-") { 0 } else { [double](Get-DailyNorm $person.peoNorm) }
+  $cimIsMonthly = $person.cimNorm -match "(d+)s*h/luna"
+  $cimUnit = if ($cimIsMonthly) { "HOURS_PER_MONTH" } else { "HOURS_PER_DAY" }
+  $cimValue = if ($cimIsMonthly) { [double]$Matches[1] } elseif ($person.cimNorm -eq "-") { 0 } else { [double](Get-DailyNorm $person.cimNorm) }
+  $cimDailyCap = if ($cimIsMonthly) { 6 } elseif ($person.cimNorm -eq "-") { 0 } else { [Math]::Min(8, [double](Get-DailyNorm $person.cimNorm)) }
+  $contractStatus = if ($person.cimNorm -eq "-") { "MISSING" } elseif ($person.peoNorm -eq "-" -and $person.peoPosition -eq "-") { "NOT_APPLICABLE" } else { "ACTIVE" }
+  $contractId = "staging-contract-$slug-2026-06-01"
+  $contracts += [pscustomobject][ordered]@{
+    id = $contractId; expertId = $expertId; validFrom = "2026-06-01"; validTo = $null
+    peoNormUnit = $peoUnit; peoNormValue = $peoValue; peoDailyCap = $peoDailyCap
+    cimNormUnit = $cimUnit; cimNormValue = $cimValue; cimDailyCap = $cimDailyCap; leaveHoursPerDay = $cimDailyCap
+    status = $contractStatus; justification = "Migrare controlata din Date pentru aplicatie.xlsx"
+    createdBy = "staging-seed"; updatedBy = "staging-seed"; createdAt = "2026-06-01T00:00:00.000Z"; updatedAt = "2026-06-01T00:00:00.000Z"
+  }
+
+  $unifiedLeaveTotal = [double]$person.peoLeave + [double]$person.concordiaLeave
+  if ($unifiedLeaveTotal -gt 0 -and $cimDailyCap -gt 0) {
+    $unifiedLeaveRows = @(Expand-Hours $unifiedLeaveTotal $cimDailyCap $workdays $true)
+    $remainingPeoLeave = [double]$person.peoLeave
+    for ($leaveIndex = 0; $leaveIndex -lt $unifiedLeaveRows.Count; $leaveIndex++) {
+      $totalLeaveHours = [double]$unifiedLeaveRows[$leaveIndex].hours
+      $peoLeaveHours = [Math]::Min($totalLeaveHours, [Math]::Min($peoDailyCap, $remainingPeoLeave))
+      $remainingPeoLeave -= $peoLeaveHours
+      $leaveEntries += [pscustomobject][ordered]@{
+        id = "staging-leave-$slug-$('{0:d2}' -f ($leaveIndex + 1))"; expertId = $expertId
+        date = $unifiedLeaveRows[$leaveIndex].date; month = [int]$seed.month - 1; year = [int]$seed.year
+        type = "CO"; totalHours = $totalLeaveHours; peoHours = $peoLeaveHours; cpcHours = $totalLeaveHours - $peoLeaveHours
+        source = "FINANCIAL"; status = "VALIDATED"; lockedForExpert = $true; automaticSplit = $true
+        normContractId = $contractId; peoNormUnit = $peoUnit; peoNormValue = $peoValue
+        cimNormUnit = $cimUnit; cimNormValue = $cimValue; peoDailyCap = $peoDailyCap; cimDailyCap = $cimDailyCap
+        createdBy = "staging-seed"; validatedBy = "staging-seed"; validatedAt = "2026-06-30T18:00:00.000Z"
+        createdAt = "2026-06-01T00:00:00.000Z"; updatedAt = "2026-06-01T00:00:00.000Z"
+      }
+    }
+  }
   $peoRows = @(Expand-Hours ([double]$person.peoWorked) $dailyNorm $workdays)
   for ($index = 0; $index -lt $peoRows.Count; $index++) {
     $status = if ($index % 11 -eq 10) { "draft" } elseif ($index % 7 -eq 6) { "sent" } else { "approved" }
@@ -228,7 +268,7 @@ foreach ($person in $seed.people) {
       $entries += [pscustomobject][ordered]@{
         id = "staging-entry-$slug-$($spec.key)-$('{0:d2}' -f $counter)"
         concurrentProjectId = $projectId; expertId = $expertId; date = $row.date
-        month = [int]$seed.month; year = [int]$seed.year; hours = $row.hours
+        month = [int]$seed.month - 1; year = [int]$seed.year; hours = $row.hours
         taskName = if ($isLeave) { "CO sintetic (TEST)" } else { "Activitate sintetica (TEST)" }
         dayType = if ($isLeave) { "CO" } else { "lucratoare" }
         notes = "Date controlate staging."; status = "verified"; source = "import"
@@ -249,8 +289,10 @@ $activities += [pscustomobject][ordered]@{
 }
 
 Write-Host "API staging verificat: $apiId"
-Write-Host "Pregatit: $($experts.Count) experti, $($activities.Count) activitati, $($projects.Count) proiecte, $($entries.Count) pontaje concurente."
+Write-Host "Pregatit: $($experts.Count) experti, $($contracts.Count) contracte, $($leaveEntries.Count) concedii, $($activities.Count) activitati, $($projects.Count) proiecte, $($entries.Count) pontaje concurente."
 Write-DdbItems $tables.Expert $experts $aws
+Write-DdbItems $tables.ExpertNormContract $contracts $aws
+Write-DdbItems $tables.LeaveEntry $leaveEntries $aws
 Write-DdbItems $tables.Activity $activities $aws
 Write-DdbItems $tables.ConcurrentProject $projects $aws
 Write-DdbItems $tables.ConcurrentProjectTimesheetEntry $entries $aws

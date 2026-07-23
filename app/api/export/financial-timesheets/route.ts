@@ -22,6 +22,11 @@ type ExportRow = {
   totalLeave?: number;
   totalMonth?: number;
   workbookPeoWorked?: number;
+  peoNorm?: string;
+  cimNorm?: string;
+  peoRemaining?: number;
+  cimRemaining?: number;
+  leaveEntries?: Array<{ date?: string; type?: string; totalHours?: number; peoHours?: number; cpcHours?: number; source?: string; status?: string; automaticSplit?: boolean; justification?: string }>;
   conflicts?: Array<{ code?: string; severity?: string; message?: string }>;
 };
 
@@ -31,38 +36,42 @@ export async function POST(request: Request) {
     const month = Number(payload.month);
     const year = Number(payload.year);
     const rows = Array.isArray(payload.rows) ? payload.rows : [];
-    if (!month || !year || rows.length === 0) return NextResponse.json({ error: 'Lipsesc datele centralizatorului.' }, { status: 400 });
+    if (!Number.isInteger(month) || month < 0 || month > 11 || !year || rows.length === 0) return NextResponse.json({ error: 'Lipsesc datele centralizatorului.' }, { status: 400 });
 
     const workbook = XLSX.utils.book_new();
-    const centralRows = payload.mode === 'leave' ? rows.map((row) => ({
-      Expert: row.name ?? '',
-      Functie_aplicatie: row.role ?? '',
-      Norma_aplicatie: row.appNorm ?? '',
-      Norma_Excel: row.workbookNorm ?? '',
-      Ore_PEO_raportare: Number(row.peoWorked) || 0,
-      CO_PEO: Number(row.peoLeave) || 0,
-      CM_PEO: Number(row.medicalLeave) || 0,
-      Ore_Concordia: Number(row.concordiaWorked) || 0,
-      CO_CM_Concordia: Number(row.concordiaLeave) || 0,
-      Ore_GOODWORKS4ALL: Number(row.goodworksWorked) || 0,
-      Total_lucrat: Number(row.totalWorked) || 0,
-      Ore_PEO_Excel: row.workbookPeoWorked ?? '',
-      Diferente: (row.conflicts ?? []).map((conflict) => conflict.message).filter(Boolean).join(' | '),
-    })) : rows.map((row) => ({
+    const centralRows = payload.mode === 'leave' ? rows.flatMap((row) => {
+      const leaves = row.leaveEntries?.length ? row.leaveEntries : [undefined];
+      return leaves.map((leave) => ({
+        Expert: row.name ?? '',
+        Data: leave?.date ?? '',
+        Tip: leave?.type ?? 'CO/CM istoric',
+        Norma_PEO: row.peoNorm ?? row.appNorm ?? '',
+        Norma_CIM: row.cimNorm ?? '',
+        CO_total: Number(leave?.totalHours ?? row.totalLeave) || 0,
+        CO_PEO: Number(leave?.peoHours ?? row.peoLeave) || 0,
+        CO_CPC: Number(leave?.cpcHours ?? row.concordiaLeave) || 0,
+        Sold_PEO: Number(row.peoRemaining) || 0,
+        Sold_CIM: Number(row.cimRemaining) || 0,
+        Sursa: leave?.source ?? 'ISTORIC',
+        Stare: leave?.status ?? 'MIGRAT',
+        Repartizare: leave?.automaticSplit === false ? 'MANUALA' : 'AUTOMATA',
+        Justificare: leave?.justification ?? '',
+        Conflicte: (row.conflicts ?? []).map((conflict) => conflict.message).filter(Boolean).join(' | '),
+      }));
+    }) : rows.map((row) => ({
       SALARIAT: row.name ?? '',
-      'POZITIA DE BAZA (CONCORDIA)': row.basePosition ?? '',
+      'POZIȚIA DE BAZĂ (CONCORDIA)': row.basePosition ?? '',
       'ORE LUCRATE CONCORDIA': Number(row.concordiaWorked) || 0,
       'ORE CO CONCORDIA': Number(row.concordiaLeave) || 0,
-      'FUNCTIA IN PEO': row.peoFunction ?? row.role ?? '',
+      'FUNCȚIA ÎN PEO': row.peoFunction ?? row.role ?? '',
       'ORE LUCRATE PEO': Number(row.peoWorked) || 0,
       'ORE CO PEO': Number(row.peoLeave) || 0,
-      'FUNCTIA IN GOODWORKS4ALL': row.goodworksFunction ?? '',
+      'FUNCȚIA ÎN GOODWORKS4ALL': row.goodworksFunction ?? '',
       'ORE LUCRATE GOODWORKS4ALL': Number(row.goodworksWorked) || 0,
       'TOTAL ORE LUCRATE': Number(row.totalWorked) || 0,
       'TOTAL ORE CO': Number(row.totalLeave) || 0,
-      'TOTAL ORE LUNA': Number(row.totalMonth) || 0,
-    }));
-    const centralSheet = XLSX.utils.json_to_sheet(centralRows);
+      'TOTAL ORE LUNĂ': Number(row.totalMonth) || 0,
+    }));    const centralSheet = XLSX.utils.json_to_sheet(centralRows);
     centralSheet['!cols'] = payload.mode === 'leave'
       ? [{ wch: 26 }, { wch: 34 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 12 }, { wch: 12 }, { wch: 18 }, { wch: 18 }, { wch: 22 }, { wch: 16 }, { wch: 16 }, { wch: 70 }]
       : [{ wch: 26 }, { wch: 34 }, { wch: 22 }, { wch: 18 }, { wch: 34 }, { wch: 18 }, { wch: 14 }, { wch: 34 }, { wch: 28 }, { wch: 20 }, { wch: 16 }, { wch: 18 }];
@@ -74,7 +83,7 @@ export async function POST(request: Request) {
     })));
     checks.unshift({
       Mediu: 'TEST', Expert: '', Severitate: 'info', Cod: 'absolute_source',
-      Verificare: `Modulul Raportare este sursa de adevăr. Perioada exportată: ${String(month).padStart(2, '0')}/${year}.`,
+      Verificare: `Modulul Raportare este sursa de adevăr. Perioada exportată: ${String(month + 1).padStart(2, '0')}/${year}.`,
     });
     const checksSheet = XLSX.utils.json_to_sheet(checks);
     checksSheet['!cols'] = [{ wch: 12 }, { wch: 26 }, { wch: 14 }, { wch: 28 }, { wch: 90 }];
@@ -82,7 +91,7 @@ export async function POST(request: Request) {
 
     const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx', compression: true });
     const section = payload.mode === 'leave' ? 'Concedii' : 'Pontaje';
-    const filename = markTestFilename(`${section}_centralizat_${year}-${String(month).padStart(2, '0')}.xlsx`);
+    const filename = markTestFilename(`${section}_centralizat_${year}-${String(month + 1).padStart(2, '0')}.xlsx`);
     return new NextResponse(new Uint8Array(buffer), {
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

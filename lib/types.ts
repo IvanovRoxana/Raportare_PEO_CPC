@@ -30,6 +30,64 @@ export interface Expert {
   updatedAt?: string;
 }
 
+export type NormUnit = 'HOURS_PER_DAY' | 'HOURS_PER_MONTH';
+export type NormContractStatus = 'ACTIVE' | 'INACTIVE' | 'MISSING' | 'NOT_APPLICABLE';
+
+export interface ExpertNormContract {
+  id: string;
+  expertId: string;
+  validFrom: string;
+  validTo?: string;
+  peoNormUnit: NormUnit;
+  peoNormValue: number;
+  peoDailyCap: number;
+  cimNormUnit: NormUnit;
+  cimNormValue: number;
+  cimDailyCap: number;
+  leaveHoursPerDay: number;
+  status: NormContractStatus;
+  justification: string;
+  createdBy?: string;
+  updatedBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type LeaveType = 'CO' | 'CM';
+export type LeaveSource = 'EXPERT' | 'FINANCIAL' | 'LEGACY_IMPORT';
+export type LeaveStatus = 'DRAFT' | 'SUBMITTED' | 'VALIDATED' | 'REJECTED';
+
+export interface LeaveEntry {
+  id: string;
+  owner?: string;
+  expertId: string;
+  date: string;
+  month: number;
+  year: number;
+  type: LeaveType;
+  totalHours: number;
+  peoHours: number;
+  cpcHours: number;
+  source: LeaveSource;
+  status: LeaveStatus;
+  lockedForExpert: boolean;
+  normContractId?: string;
+  automaticSplit?: boolean;
+  peoNormUnit?: NormUnit;
+  peoNormValue?: number;
+  peoDailyCap?: number;
+  cimNormUnit?: NormUnit;
+  cimNormValue?: number;
+  cimDailyCap?: number;
+  justification?: string;
+  rejectionReason?: string;
+  createdBy?: string;
+  validatedBy?: string;
+  validatedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface Activity {
   id: string;
   date: string;
