@@ -180,4 +180,9 @@ test('expert activity save flow auto-persists reporting work blocks from saved a
   assert.match(expertPeoPageSource, /<Link href=\{exportRaHref\} className="font-semibold underline underline-offset-2">/);
   assert.match(expertPeoPageSource, /Verifica in Export/);
   assert.match(expertPeoPageSource, /Activitatea a fost salvata, dar work block-ul Anexa 10 nu a putut fi actualizat automat/);
+  assert.match(expertPeoPageSource, /catch \(error\) \{\s+console\.error\('Error auto-saving reporting work block:', error\);/);
+  assert.match(expertPeoPageSource, /setSaveError\('Activitatea a fost salvata, dar work block-ul Anexa 10 nu a putut fi actualizat automat\. Verifica sectiunea Export\.'\);/);
+  assert.match(expertPeoPageSource, /setSaveError\('Activitatea a fost salvata, dar work block-ul Anexa 10 nu a putut fi actualizat automat\. Verifica sectiunea Export\.'\);\s+return false;/);
+  assert.match(expertPeoPageSource, /if \(didSaveReportingWorkBlock\) \{\s+setWorkBlockSaveNotice/);
+  assert.match(expertPeoPageSource, /await refreshActivities\(\);\s+setShowForm\(false\);/);
 });
