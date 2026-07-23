@@ -51,7 +51,6 @@ type ProjectItem = {
 };
 
 const WORK_TABS = [
-  { label: 'Raportare', href: '/expert/peo', icon: ClipboardList, active: true },
   { label: 'Grupuri de lucru', href: '#', icon: Users, active: false },
   { label: 'Activități Colegi', href: '#', icon: BriefcaseBusiness, active: false },
   { label: 'EU Affairs', href: '#', icon: Globe2, active: false },
@@ -1084,7 +1083,7 @@ export default function ExpertHomeDashboard() {
           />
         </section>
 
-        <section className="grid gap-3 rounded-[1.5rem] border bg-card p-3 md:grid-cols-4">
+        <section className="grid gap-3 rounded-[1.5rem] border bg-card p-3 md:grid-cols-3">
           {WORK_TABS.map((tab) => {
             const Icon = tab.icon;
             const content = (
