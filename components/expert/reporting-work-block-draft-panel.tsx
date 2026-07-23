@@ -109,6 +109,7 @@ export function ReportingWorkBlockDraftPanel({
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [saveDraftError, setSaveDraftError] = useState<string | null>(null);
   const [saveDraftSuccess, setSaveDraftSuccess] = useState(false);
+  const [savedWorkBlockTitle, setSavedWorkBlockTitle] = useState<string | null>(null);
   const [selectedWorkBlockId, setSelectedWorkBlockId] = useState(editingWorkBlockId ?? 'new');
   const effectiveEditingWorkBlockId = selectedWorkBlockId === 'new' ? undefined : selectedWorkBlockId;
   const selectedEditingBundle = useMemo(() => (
@@ -347,6 +348,7 @@ export function ReportingWorkBlockDraftPanel({
     setLastSavedSessionDraft(serializeDraftSessionState(draft));
     setSaveDraftError(null);
     setSaveDraftSuccess(false);
+    setSavedWorkBlockTitle(null);
   };
 
   const resetDraft = () => {
@@ -363,8 +365,10 @@ export function ReportingWorkBlockDraftPanel({
     setIsSavingDraft(true);
     setSaveDraftError(null);
     setSaveDraftSuccess(false);
+    setSavedWorkBlockTitle(null);
 
     try {
+      const savedTitle = title.trim() || 'Work block';
       const savedBundle = await saveDraft({
         id: effectiveEditingWorkBlockId,
         expertId,
@@ -382,6 +386,7 @@ export function ReportingWorkBlockDraftPanel({
       window.sessionStorage.removeItem(storageKey);
       applyDraftSessionState(createEmptyDraftSessionState());
       setSelectedWorkBlockId(savedBundle.workBlock.id ?? 'new');
+      setSavedWorkBlockTitle(savedTitle);
       setSaveDraftSuccess(true);
     } catch (error) {
       setSaveDraftError(error instanceof Error ? error.message : 'Nu am putut salva draftul work block.');
@@ -418,6 +423,7 @@ export function ReportingWorkBlockDraftPanel({
                 setSelectedWorkBlockId(value);
                 setSaveDraftError(null);
                 setSaveDraftSuccess(false);
+                setSavedWorkBlockTitle(null);
               }}
             >
               <SelectTrigger>
@@ -559,7 +565,9 @@ export function ReportingWorkBlockDraftPanel({
           <Textarea
             id="work-block-preview"
             readOnly
-            value={isWaitingForSelectedBundle
+            value={saveDraftSuccess
+              ? `Work block "${savedWorkBlockTitle ?? 'selectat'}" salvat in backend. Preview-ul se reimprospateaza din lista persistata.`
+              : isWaitingForSelectedBundle
               ? 'Se reincarca work block-ul salvat.'
               : draftPreview.issues.length > 0
               ? draftPreview.issues.map((issue) => issue.message).join('\n')
@@ -572,7 +580,12 @@ export function ReportingWorkBlockDraftPanel({
 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            {draftPreview.issues.length > 0 ? (
+            {saveDraftSuccess ? (
+              <>
+                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                Work block salvat in backend
+              </>
+            ) : draftPreview.issues.length > 0 ? (
               <>
                 <AlertTriangle className="h-4 w-4 text-amber-600" />
                 {draftPreview.issues.length} validari de rezolvat
@@ -582,8 +595,6 @@ export function ReportingWorkBlockDraftPanel({
                 <CheckCircle2 className="h-4 w-4 text-emerald-600" />
                 {isWaitingForSelectedBundle
                   ? 'Se reincarca work block-ul salvat'
-                  : saveDraftSuccess
-                  ? 'Draft salvat in backend'
                   : hasUnsavedSessionChanges ? 'Draft local modificat' : 'Draft salvat in sesiune'}
               </>
             )}

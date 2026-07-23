@@ -5,6 +5,7 @@ import test from 'node:test';
 const awsStoreSource = readFileSync(new URL('../lib/aws-store.ts', import.meta.url), 'utf8');
 const backendStoreSource = readFileSync(new URL('../lib/backend-store.ts', import.meta.url), 'utf8');
 const backendHooksSource = readFileSync(new URL('../hooks/use-backend-data.ts', import.meta.url), 'utf8');
+const expertPeoPageSource = readFileSync(new URL('../app/expert/peo/page.tsx', import.meta.url), 'utf8');
 const exportPageSource = readFileSync(new URL('../app/expert/peo/export/page.tsx', import.meta.url), 'utf8');
 const reportingWorkBlocksPanelSource = readFileSync(new URL('../components/expert/reporting-work-blocks-panel.tsx', import.meta.url), 'utf8');
 const reportingWorkBlockDraftPanelSource = readFileSync(new URL('../components/expert/reporting-work-block-draft-panel.tsx', import.meta.url), 'utf8');
@@ -155,4 +156,19 @@ test('export page wires persisted work block bundles as a read-only optional pre
   assert.match(reportGeneratorSource, /title=\{deterministicExportButtonTitle\}/);
   assert.match(reportGeneratorSource, /aria-label=\{deterministicExportButtonTitle\}/);
   assert.match(reportGeneratorSource, /\[activities, enableDeterministicAnexa10Docx, expert, expertName, month, workBlockBundles, year\]/);
+});
+
+test('expert activity save flow auto-persists reporting work blocks from saved activities', () => {
+  assert.match(expertPeoPageSource, /useReportingWorkBlockBundles,/);
+  assert.match(expertPeoPageSource, /useReportingWorkBlockDraft,/);
+  assert.match(expertPeoPageSource, /isReportingWorkBlocksEnabledClient/);
+  assert.match(expertPeoPageSource, /buildActivitySaveWorkBlockInput/);
+  assert.match(expertPeoPageSource, /const saveAutomaticReportingWorkBlock = async/);
+  assert.match(expertPeoPageSource, /reportingWorkBlocksEnabled \|\| isClarificationScopedAccess/);
+  assert.match(expertPeoPageSource, /savedActivitiesForWorkBlock = \[\.\.\.updateActivities, \.\.\.createdActivities\]/);
+  assert.match(expertPeoPageSource, /deletedActivityIdsForWorkBlock = deleteActivityIds/);
+  assert.match(expertPeoPageSource, /savedActivitiesForWorkBlock = savedActivities/);
+  assert.match(expertPeoPageSource, /await saveAutomaticReportingWorkBlock\(\{/);
+  assert.match(expertPeoPageSource, /await saveReportingWorkBlockDraft\(input, nextActivities\)/);
+  assert.match(expertPeoPageSource, /Activitatea a fost salvata, dar work block-ul Anexa 10 nu a putut fi actualizat automat/);
 });

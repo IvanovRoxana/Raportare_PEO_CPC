@@ -15,7 +15,7 @@ test('draft work block panel prepares and persists controlled drafts', () => {
   assert.match(draftPanelSource, /prepareDraft\(\{/);
   assert.match(draftPanelSource, /prepareSaveDraft\(\{/);
   assert.match(draftPanelSource, /saveDraft\(\{/);
-  assert.match(draftPanelSource, /disabled=\{!isReadyForControlledSave \|\| isSavingDraft\}/);
+  assert.match(draftPanelSource, /disabled=\{!isReadyForControlledSave \|\| isSavingDraft \|\| isWaitingForSelectedBundle\}/);
   assert.match(draftPanelSource, /controlledSaveLabel/);
   assert.doesNotMatch(draftPanelSource, /mutate\(|useSWR|\.create\(|\.update\(|\.delete\(|\.upsert\(/);
 });
@@ -28,4 +28,12 @@ test('draft work block panel exposes required Etapa 3 selection surfaces', () =>
   assert.match(draftPanelSource, /selectedActivityIds/);
   assert.match(draftPanelSource, /selectedDeliverableIds/);
   assert.match(draftPanelSource, /allocatedHoursByActivityId/);
+});
+
+test('draft work block panel confirms save and refreshes the persisted preview state', () => {
+  assert.match(draftPanelSource, /const \[savedWorkBlockTitle, setSavedWorkBlockTitle\]/);
+  assert.match(draftPanelSource, /const savedTitle = title\.trim\(\) \|\| 'Work block'/);
+  assert.match(draftPanelSource, /setSelectedWorkBlockId\(savedBundle\.workBlock\.id \?\? 'new'\)/);
+  assert.match(draftPanelSource, /Preview-ul se reimprospateaza din lista persistata/);
+  assert.match(draftPanelSource, /Work block salvat in backend/);
 });

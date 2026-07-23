@@ -45,6 +45,8 @@ import {
   useDocuments,
   useExperts,
   useReportStatus,
+  useReportingWorkBlockBundles,
+  useReportingWorkBlockDraft,
   useSharedActivityRegistrationContext,
   useSharedDeliverableMutations,
   useSharedDeliverables,
@@ -80,6 +82,8 @@ import {
 import { filterPendingSharedDeliverablesNotCoveredByActivity, filterSharedRelationsForMonths } from '@/lib/document-sharing';
 import { buildExpertDeliverableRows } from '@/lib/expert-deliverables';
 import { isCurrentOrPreviousMonth } from '@/lib/pm-clarifications';
+import { isReportingWorkBlocksEnabledClient } from '@/lib/feature-flags';
+import { buildActivitySaveWorkBlockInput } from '@/lib/activity-report/activity-save-work-block';
 
 type SubmitReadinessSeverity = 'ok' | 'warning' | 'blocking';
 type SubmitReadinessKey =
@@ -234,6 +238,9 @@ function ExpertDashboardContent() {
   const { status: nextMonthStatus } = useReportStatus(selectedExpertId, nextMonthDate.getMonth(), nextMonthDate.getFullYear());
   const { projects: concurrentProjects } = useConcurrentProjects(selectedExpertId);
   const { entries: concurrentTimesheetEntries } = useConcurrentProjectTimesheetByMonth(currentMonth, currentYear);
+  const reportingWorkBlocksEnabled = isReportingWorkBlocksEnabledClient();
+  const { bundles: reportingWorkBlockBundles } = useReportingWorkBlockBundles(selectedExpertId, currentMonth, currentYear);
+  const { saveDraft: saveReportingWorkBlockDraft } = useReportingWorkBlockDraft();
   const { sharedDeliverables, isLoading: sharedDeliverablesLoading, mutate: refreshSharedDeliverables } = useSharedDeliverables(selectedExpertId || undefined);
   const visibleSharedDeliverables = useMemo(() => filterSharedRelationsForMonths({
     sharedDeliverables,
@@ -561,6 +568,48 @@ function ExpertDashboardContent() {
       ? 'Luna anterioara si luna viitoare se activeaza dupa acordul PM.'
       : undefined;
 
+  const saveAutomaticReportingWorkBlock = async ({
+    savedActivities,
+    deletedActivityIds = [],
+    sourceActivityId,
+    editScope,
+  }: {
+    savedActivities: Activity[];
+    deletedActivityIds?: string[];
+    sourceActivityId?: string;
+    editScope?: ActivityEditScope;
+  }) => {
+    if (!reportingWorkBlocksEnabled || isClarificationScopedAccess || savedActivities.length === 0 || !selectedExpertId) {
+      return;
+    }
+
+    const savedIds = new Set(savedActivities.map((activity) => activity.id));
+    const deletedIds = new Set(deletedActivityIds);
+    const nextActivities = [
+      ...activities.filter((activity) => !savedIds.has(activity.id) && !deletedIds.has(activity.id)),
+      ...savedActivities,
+    ];
+    const input = buildActivitySaveWorkBlockInput({
+      savedActivities,
+      sourceActivityId,
+      editScope,
+      expertId: selectedExpertId,
+      projectCode: selectedExpert.projectCode ?? '302141',
+      month: currentMonth,
+      year: currentYear,
+      existingBundles: reportingWorkBlockBundles,
+    });
+
+    if (!input) return;
+
+    try {
+      await saveReportingWorkBlockDraft(input, nextActivities);
+    } catch (error) {
+      console.error('Error auto-saving reporting work block:', error);
+      setSaveError('Activitatea a fost salvata, dar work block-ul Anexa 10 nu a putut fi actualizat automat. Verifica sectiunea Export.');
+    }
+  };
+
   const handleSaveActivities = async (newActivities: Activity[], editScope?: ActivityEditScope) => {
     if (reportStatus?.status === 'approved') return;
 
@@ -723,6 +772,9 @@ function ExpertDashboardContent() {
         throw new Error(validation.message || 'Activitatea nu respecta regulile de pontaj.');
       }
 
+      let savedActivitiesForWorkBlock: Activity[] = [];
+      let deletedActivityIdsForWorkBlock: string[] = [];
+
       if (editingActivity) {
         const { updateActivities, newActivities: activitiesToCreate, deleteActivityIds } = planGroupedActivityEdit(
           editingActivity,
@@ -731,10 +783,12 @@ function ExpertDashboardContent() {
           selectedExpertId,
         );
         await Promise.all(updateActivities.map((activity) => updateActivity(activity.id, activity)));
-        if (activitiesToCreate.length > 0) {
-          await createBatch(activitiesToCreate);
-        }
+        const createdActivities = activitiesToCreate.length > 0
+          ? await createBatch(activitiesToCreate)
+          : [];
         await Promise.all(deleteActivityIds.map((activityId) => removeActivity(activityId)));
+        savedActivitiesForWorkBlock = [...updateActivities, ...createdActivities];
+        deletedActivityIdsForWorkBlock = deleteActivityIds;
       } else {
         const existingActivityIds = new Set(activities.map((activity) => activity.id));
         const activitiesToUpdate = submittedActivities.filter((activity) => existingActivityIds.has(activity.id));
@@ -752,6 +806,7 @@ function ExpertDashboardContent() {
             })))
           : [];
         const savedActivities = [...activitiesToUpdate, ...createdActivities];
+        savedActivitiesForWorkBlock = savedActivities;
 
         const activityTargetId = savedActivities[0]?.id;
         const deliverableTargetId = pendingSharedActivityRelationId
@@ -777,6 +832,12 @@ function ExpertDashboardContent() {
           resetSharedRegistrationFlow();
         }
       }
+      await saveAutomaticReportingWorkBlock({
+        savedActivities: savedActivitiesForWorkBlock,
+        deletedActivityIds: deletedActivityIdsForWorkBlock,
+        sourceActivityId: editingActivity?.id ?? savedActivitiesForWorkBlock[0]?.id,
+        editScope,
+      });
       await refreshActivities();
       setShowForm(false);
       setEditingActivity(null);
