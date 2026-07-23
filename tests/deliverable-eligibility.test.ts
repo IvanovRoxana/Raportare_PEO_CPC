@@ -309,13 +309,14 @@ test('formularul trimite toate livrabilele incarcate din grupul activitatii la e
   assert.match(deliverableItemSource, /deliverables: eligibilityDeliverables\.map/);
   assert.match(deliverableItemSource, /primaryDeliverableId: deliverable\.id/);
   assert.match(deliverableItemSource, /activityGroupId/);
-  assert.match(deliverableItemSource, /Verifica \{relatedDeliverables\.length\} livrabile incarcate pentru activitatea curenta/);
+  assert.match(deliverableItemSource, /Verifica \{relatedDeliverables\.length\} livrabile incarcate pentru grupul activitatii/);
 });
 
-test('poarta de text pentru eligibilitate verifica toate livrabilele activitatii curente', () => {
+test('poarta de text pentru eligibilitate verifica toate livrabilele grupului activitatii', () => {
   assert.match(deliverableItemSource, /function getEligibilityDeliverables\(deliverable: DeliverableSlot, relatedDeliverables\?: DeliverableSlot\[\]\)/);
   assert.match(deliverableItemSource, /eligibilityDeliverables\.some\(hasEnoughExtractedTextForEligibility\)/);
   assert.match(deliverableItemSource, /const eligibilityDeliverables = getEligibilityDeliverables\(deliverable, relatedDeliverables\)/);
+  assert.match(deliverableItemSource, /Textul extras din livrabilele incarcate pentru grupul activitatii/);
 });
 
 test('rezultatul eligibilitatii pastreaza metadatele livrabilelor analizate', () => {

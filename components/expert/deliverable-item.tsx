@@ -50,7 +50,7 @@ function getTextExtractionGateReason(deliverable: DeliverableSlot, relatedDelive
   const eligibilityDeliverables = getEligibilityDeliverables(deliverable, relatedDeliverables);
   if (eligibilityDeliverables.some(hasEnoughExtractedTextForEligibility)) return null;
   if (eligibilityDeliverables.length > 1) {
-    return 'Textul extras din livrabilele incarcate pentru activitatea curenta este prea scurt pentru verificarea AI. Reincarca documentele ca PDF/DOCX cu text selectabil sau exporta-le cu OCR.';
+    return 'Textul extras din livrabilele incarcate pentru grupul activitatii este prea scurt pentru verificarea AI. Reincarca documentele ca PDF/DOCX cu text selectabil sau exporta-le cu OCR.';
   }
   const hasConfirmedTitle = Boolean(deliverable.titleConfirmed || deliverable.declaredTitle || deliverable.suggestedTitle);
   if (hasConfirmedTitle) {
@@ -1239,7 +1239,7 @@ export function DeliverableEligibilityControl({
           </Button>
           {relatedDeliverables && relatedDeliverables.length > 1 && (
             <p className="text-xs text-muted-foreground">
-              Verifica {relatedDeliverables.length} livrabile incarcate pentru activitatea curenta.
+              Verifica {relatedDeliverables.length} livrabile incarcate pentru grupul activitatii.
             </p>
           )}
         </div>
