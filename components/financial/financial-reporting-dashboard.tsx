@@ -62,6 +62,11 @@ function previousDay(date: string) {
   return parsed.toISOString().slice(0, 10);
 }
 
+function normLabel(unit?: NormUnit, value?: number) {
+  if (!unit || value == null) return '-';
+  return `${new Intl.NumberFormat('ro-RO', { maximumFractionDigits: 2 }).format(value)} ${unit === 'HOURS_PER_MONTH' ? 'h/luna' : 'h/zi'}`;
+}
+
 function downloadResponse(response: Response, fallbackName: string) {
   return response.blob().then((blob) => {
     const disposition = response.headers.get('content-disposition') ?? '';
@@ -181,6 +186,34 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
     () => visibleLeaveRows.find(({ leave }) => leave && leave.status !== 'VALIDATED' && leave.status !== 'REJECTED')?.leave ?? null,
     [visibleLeaveRows],
   );
+  const normPanelRows = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase('ro-RO');
+    const referenceDate = isoDate(year, month, 1);
+    return experts
+      .filter((expert) => !query || `${expert.name} ${expert.role} ${expert.positionInProject ?? ''}`.toLocaleLowerCase('ro-RO').includes(query))
+      .map((expert) => {
+        const contract = contracts
+          .filter((item) => item.expertId === expert.id && item.validFrom <= referenceDate && (!item.validTo || item.validTo >= referenceDate))
+          .sort((left, right) => right.validFrom.localeCompare(left.validFrom))[0];
+        const expertProjects = projects.filter((project) => project.expertId === expert.id && project.isActive !== false);
+        const goodworksProjects = expertProjects.filter((project) => `${project.projectName} ${project.projectCode} ${project.fundingSource}`.toUpperCase().includes('GOODWORKS4ALL'));
+        const otherProjects = expertProjects.filter((project) => !goodworksProjects.some((goodworks) => goodworks.id === project.id));
+        const otherDailyHours = otherProjects.reduce((sum, project) => sum + (Number(project.dailyHours) || 0), 0);
+        const peoDailyCap = contract?.peoDailyCap ?? expert.dailyHours ?? expert.oreZi ?? expert.norma ?? 0;
+        const cimDailyCap = contract?.cimDailyCap ?? 8;
+        const cpcFormulaHours = Math.max(0, cimDailyCap - peoDailyCap - otherDailyHours);
+        return {
+          expert,
+          contract,
+          peoDailyCap,
+          cimDailyCap,
+          cpcFormulaHours,
+          otherDailyHours,
+          goodworksProjects,
+          otherProjects,
+        };
+      });
+  }, [contracts, experts, month, projects, search, year]);
   const firstExpert = useMemo(() => experts.find((expert) => expert.id) ?? null, [experts]);
   const monthlyExpert = useMemo(() => {
     const monthlyContract = contracts.find((contract) => contract.peoNormUnit === 'HOURS_PER_MONTH' && contract.peoDailyCap === 6);
@@ -365,6 +398,23 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
     setVerificationMessage(`Concedii: norma versionata pregatita pentru ${target.name}. Apasa Salveaza norma pentru istoric nou.`);
   };
 
+  const editNormFromPanel = (row: (typeof normPanelRows)[number]) => {
+    const contract = row.contract;
+    setContractForm({
+      expertId: row.expert.id,
+      validFrom: isoDate(year, month, 1),
+      peoNormUnit: contract?.peoNormUnit ?? 'HOURS_PER_DAY',
+      peoNormValue: String(contract?.peoNormValue ?? row.peoDailyCap ?? 8),
+      peoDailyCap: String(contract?.peoDailyCap ?? row.peoDailyCap ?? 8),
+      cimNormUnit: contract?.cimNormUnit ?? 'HOURS_PER_DAY',
+      cimNormValue: String(contract?.cimNormValue ?? row.cimDailyCap ?? 8),
+      cimDailyCap: String(contract?.cimDailyCap ?? row.cimDailyCap ?? 8),
+      leaveHoursPerDay: String(contract?.leaveHoursPerDay ?? row.cimDailyCap ?? 8),
+      justification: '',
+    });
+    setVerificationMessage(`Experti si norme: ${row.expert.name} a fost incarcat in formular. CPC se calculeaza ca CIM - PEO - alte proiecte.`);
+  };
+
   const validateFirstDraftLeave = async () => {
     if (!firstDraftLeave) {
       setVerificationMessage('Concedii: nu exista CO draft vizibil pentru validare. Creeaza sau afiseaza un CO draft.');
@@ -458,6 +508,82 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
           {verificationMessage && <div className="min-w-full rounded-md border bg-slate-50 px-3 py-2 text-sm text-slate-700">{verificationMessage}</div>}
         </CardContent>
       </Card>
+
+      {mode === 'leave' && (
+        <Card id="experti-norme">
+          <CardHeader className="gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Users className="h-5 w-5" />
+                Experti si norme pe proiecte
+              </CardTitle>
+              <p className="mt-1 text-sm text-muted-foreground">
+                PEO si CIM sunt editabile prin versiuni de contract. CPC este calculat: CIM zilnic - PEO zilnic - alte proiecte active.
+              </p>
+            </div>
+            <Badge variant="secondary">{normPanelRows.length} experti</Badge>
+          </CardHeader>
+          <CardContent className="overflow-x-auto px-2 pb-3 sm:px-3">
+            <table className="w-full min-w-[1280px] border-collapse text-xs">
+              <thead>
+                <tr className="border-b bg-slate-50 text-left">
+                  <th className="p-2">Expert</th>
+                  <th className="p-2">Functie PEO</th>
+                  <th className="p-2">Norma PEO</th>
+                  <th className="p-2 text-right">Plafon PEO/zi</th>
+                  <th className="p-2">Norma CIM/CPC</th>
+                  <th className="p-2 text-right">Plafon CIM/zi</th>
+                  <th className="p-2">GOODWORKS4ALL</th>
+                  <th className="p-2">Alte proiecte</th>
+                  <th className="p-2">Formula CPC</th>
+                  <th className="p-2">Valabilitate</th>
+                  <th className="p-2 text-right">Actiuni</th>
+                </tr>
+              </thead>
+              <tbody>
+                {normPanelRows.map((row) => (
+                  <tr key={row.expert.id} className="border-b align-top hover:bg-slate-50/60">
+                    <td className="p-2">
+                      <div className="font-medium">{row.expert.name}</div>
+                      <div className="text-[11px] text-muted-foreground">{row.expert.email ?? row.expert.id}</div>
+                    </td>
+                    <td className="p-2">{row.expert.positionInProject || row.expert.role || '-'}</td>
+                    <td className="p-2">{normLabel(row.contract?.peoNormUnit, row.contract?.peoNormValue)}</td>
+                    <td className="p-2 text-right tabular-nums">{compactHours(row.peoDailyCap)}</td>
+                    <td className="p-2">{normLabel(row.contract?.cimNormUnit, row.contract?.cimNormValue)}</td>
+                    <td className="p-2 text-right tabular-nums">{compactHours(row.cimDailyCap)}</td>
+                    <td className="p-2">
+                      {row.goodworksProjects.length
+                        ? row.goodworksProjects.map((project) => project.expertProjectRole || project.projectName).join(', ')
+                        : '-'}
+                    </td>
+                    <td className="p-2">
+                      {row.otherProjects.length
+                        ? row.otherProjects.map((project) => `${project.projectName}${project.dailyHours ? ` (${compactHours(project.dailyHours)}/zi)` : ''}`).join(', ')
+                        : '-'}
+                    </td>
+                    <td className="p-2">
+                      <code className="rounded bg-slate-100 px-1.5 py-1 text-[11px]">
+                        CPC = {compactHours(row.cimDailyCap)} - {compactHours(row.peoDailyCap)} - {compactHours(row.otherDailyHours)} = {compactHours(row.cpcFormulaHours)} h/zi
+                      </code>
+                    </td>
+                    <td className="p-2">
+                      {row.contract
+                        ? `${row.contract.validFrom}${row.contract.validTo ? ` - ${row.contract.validTo}` : ' - prezent'}`
+                        : 'compatibilitate veche'}
+                    </td>
+                    <td className="p-2 text-right">
+                      <Button size="sm" variant="outline" onClick={() => editNormFromPanel(row)}>
+                        Editeaza norma
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+      )}
 
       {mode === 'leave' && (
         <div className="grid gap-4 xl:grid-cols-2">

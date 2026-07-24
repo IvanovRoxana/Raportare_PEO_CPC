@@ -11,6 +11,7 @@ import {
   FileSpreadsheet,
   FileText,
   Plus,
+  Users,
   WalletCards,
 } from 'lucide-react';
 import { DashboardShell, financialNavItems } from '@/components/layout/dashboard-shell';
@@ -199,7 +200,7 @@ export default function FinancialDashboardPage() {
         <StatCard icon={WalletCards} label="Sold disponibil" value="407.649,55 lei" description="32,61% din buget total" progress={33} tone="success" />
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2">
+      <section className="grid gap-4 lg:grid-cols-3">
         <Card className="rounded-[1.5rem]">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-lg">
@@ -234,6 +235,26 @@ export default function FinancialDashboardPage() {
             <Button asChild>
               <Link href="/financiar/concedii">
                 Deschide Concedii
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-[1.5rem]">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Users className="h-5 w-5 text-primary" />
+              Experti si norme
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-wrap items-center justify-between gap-4">
+            <p className="max-w-xl text-sm text-muted-foreground">
+              Panou cu normele PEO/CIM pe expert, proiecte active si formula CPC calculata.
+            </p>
+            <Button asChild>
+              <Link href="/financiar/concedii#experti-norme">
+                Deschide panoul
                 <ArrowRight className="h-4 w-4" />
               </Link>
             </Button>
