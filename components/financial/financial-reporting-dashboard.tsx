@@ -21,9 +21,27 @@ import {
 import { buildFinancialReportingSummary, type FinancialTimesheetRow } from '@/lib/financial-reporting';
 import { isFinancialLeaveEnabledClient, isFinancialTimesheetsEnabledClient } from '@/lib/feature-flags';
 import { buildPontajExportPayload } from '@/lib/pontaj-export-payload';
-import type { ExpertNormContract, LeaveEntry, NormUnit } from '@/lib/types';
+import type { Expert, ExpertNormContract, LeaveEntry, NormUnit } from '@/lib/types';
 
 type SectionMode = 'timesheets' | 'leave';
+
+type NormPanelRow = {
+  id: string;
+  name: string;
+  detail: string;
+  peoFunction: string;
+  peoNormLabel?: string;
+  cimNormLabel?: string;
+  financialOnly: boolean;
+  expert?: Expert;
+  contract?: ExpertNormContract;
+  peoDailyCap: number;
+  cimDailyCap: number;
+  cpcFormulaHours: number;
+  otherDailyHours: number;
+  goodworksProjects: Array<{ expertProjectRole?: string; expertFunction?: string; projectName?: string; dailyHours?: number }>;
+  otherProjects: Array<{ expertProjectRole?: string; expertFunction?: string; projectName?: string; dailyHours?: number }>;
+};
 
 const MONTHS = [
   'Ianuarie', 'Februarie', 'Martie', 'Aprilie', 'Mai', 'Iunie',
@@ -65,6 +83,11 @@ function previousDay(date: string) {
 function normLabel(unit?: NormUnit, value?: number) {
   if (!unit || value == null) return '-';
   return `${new Intl.NumberFormat('ro-RO', { maximumFractionDigits: 2 }).format(value)} ${unit === 'HOURS_PER_MONTH' ? 'h/luna' : 'h/zi'}`;
+}
+
+function parseDailyHoursLabel(value: string | undefined) {
+  const matched = value?.match(/(\d+(?:[.,]\d+)?)\s*h\s*\/\s*zi/i);
+  return matched ? Number(matched[1].replace(',', '.')) : 0;
 }
 
 function downloadResponse(response: Response, fallbackName: string) {
@@ -190,7 +213,7 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
   const normPanelRows = useMemo(() => {
     const query = search.trim().toLocaleLowerCase('ro-RO');
     const referenceDate = isoDate(year, month, 1);
-    return experts
+    const appRows: NormPanelRow[] = experts
       .filter((expert) => !query || `${expert.name} ${expert.role} ${expert.positionInProject ?? ''}`.toLocaleLowerCase('ro-RO').includes(query))
       .map((expert) => {
         const contract = contracts
@@ -204,6 +227,11 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
         const cimDailyCap = contract?.cimDailyCap ?? 8;
         const cpcFormulaHours = Math.max(0, cimDailyCap - peoDailyCap - otherDailyHours);
         return {
+          id: expert.id,
+          name: expert.name,
+          detail: expert.email ?? expert.id,
+          peoFunction: expert.positionInProject || expert.role || '-',
+          financialOnly: false,
           expert,
           contract,
           peoDailyCap,
@@ -214,7 +242,30 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
           otherProjects,
         };
       });
-  }, [contracts, experts, month, projects, search, year]);
+    const financialOnlyRows: NormPanelRow[] = summary.rows
+      .filter((row) => !row.expertId)
+      .filter((row) => !query || `${row.name} ${row.basePosition} ${row.peoFunction} ${row.goodworksFunction}`.toLocaleLowerCase('ro-RO').includes(query))
+      .map((row) => {
+        const peoDailyCap = row.workbookNorm === '-' ? 0 : parseDailyHoursLabel(row.workbookNorm);
+        const cimDailyCap = peoDailyCap > 0 || row.concordiaWorked + row.concordiaLeave + row.totalMonth > 0 ? 8 : 0;
+        return {
+          id: `financial-only-${row.name}`,
+          name: row.name,
+          detail: 'Angajat CPC din Excel, fara cont utilizator',
+          peoFunction: row.peoFunction,
+          peoNormLabel: row.workbookNorm === '-' ? 'Fara norma PEO' : row.workbookNorm,
+          cimNormLabel: cimDailyCap ? `${compactHours(cimDailyCap)} h/zi` : 'CIM de completat',
+          financialOnly: true,
+          peoDailyCap,
+          cimDailyCap,
+          cpcFormulaHours: Math.max(0, cimDailyCap - peoDailyCap),
+          otherDailyHours: 0,
+          goodworksProjects: row.goodworksFunction && row.goodworksFunction !== '-' ? [{ projectName: row.goodworksFunction }] : [],
+          otherProjects: row.basePosition && row.basePosition !== '-' ? [{ projectName: row.basePosition, dailyHours: cimDailyCap || undefined }] : [],
+        };
+      });
+    return [...appRows, ...financialOnlyRows].sort((left, right) => left.name.localeCompare(right.name, 'ro'));
+  }, [contracts, experts, month, projects, search, summary.rows, year]);
   const firstExpert = useMemo(() => experts.find((expert) => expert.id) ?? null, [experts]);
   const monthlyExpert = useMemo(() => {
     const monthlyContract = contracts.find((contract) => contract.peoNormUnit === 'HOURS_PER_MONTH' && contract.peoDailyCap === 6);
@@ -425,7 +476,11 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
     setVerificationMessage(`Concedii: norma versionata pregatita pentru ${target.name}. Apasa Salveaza norma pentru istoric nou.`);
   };
 
-  const editNormFromPanel = (row: (typeof normPanelRows)[number]) => {
+  const editNormFromPanel = (row: NormPanelRow) => {
+    if (!row.expert) {
+      setVerificationMessage(`${row.name} este angajat CPC preluat din Excel, fara cont utilizator si fara inregistrare Expert in aplicatie. Il afisam in Financiar pentru salarizare si cross-check; norma PEO este neaplicabila pana cand Financiar decide sa il inregistreze ca persoana financiara.`);
+      return;
+    }
     const contract = row.contract;
     setSelectedNormExpertName(row.expert.name);
     setContractForm({
@@ -449,10 +504,10 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
 
   const editNormFromTimesheet = (row: FinancialTimesheetRow) => {
     if (!row.expertId) {
-      setVerificationMessage(`Expertul ${row.name} exista in Excel, dar nu este inregistrat in baza de date. Intai trebuie creat expertul, apoi poate fi editata norma.`);
+      setVerificationMessage(`${row.name} exista in Excel ca angajat CPC, dar nu este utilizator/expert PEO in aplicatie. Il afisam in Financiar pentru salarizare CPC/proiecte concurente; norma PEO este neaplicabila.`);
       return;
     }
-    const panelRow = normPanelRows.find((item) => item.expert.id === row.expertId);
+    const panelRow = normPanelRows.find((item) => item.expert?.id === row.expertId);
     if (!panelRow) {
       setVerificationMessage(`Nu am gasit configuratia de norme pentru ${row.name}. Verifica daca expertul este activ in baza de date.`);
       return;
@@ -566,7 +621,7 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
                 PEO si CIM sunt editabile prin versiuni de contract. CPC este calculat: CIM zilnic - PEO zilnic - alte proiecte active.
               </p>
             </div>
-            <Badge variant="secondary">{normPanelRows.length} experti</Badge>
+            <Badge variant="secondary">{normPanelRows.length} persoane financiare</Badge>
           </CardHeader>
           <CardContent className="overflow-x-auto px-2 pb-3 sm:px-3">
             <table className="w-full min-w-[1280px] border-collapse text-xs">
@@ -587,15 +642,18 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
               </thead>
               <tbody>
                 {normPanelRows.map((row) => (
-                  <tr key={row.expert.id} className="border-b align-top hover:bg-slate-50/60">
+                  <tr key={row.id} className="border-b align-top hover:bg-slate-50/60">
                     <td className="p-2">
-                      <div className="font-medium">{row.expert.name}</div>
-                      <div className="text-[11px] text-muted-foreground">{row.expert.email ?? row.expert.id}</div>
+                      <div className="flex items-center gap-2 font-medium">
+                        {row.name}
+                        {row.financialOnly ? <Badge variant="secondary" className="text-[10px]">CPC Excel</Badge> : null}
+                      </div>
+                      <div className="text-[11px] text-muted-foreground">{row.detail}</div>
                     </td>
-                    <td className="p-2">{row.expert.positionInProject || row.expert.role || '-'}</td>
-                    <td className="p-2">{normLabel(row.contract?.peoNormUnit, row.contract?.peoNormValue)}</td>
+                    <td className="p-2">{row.peoFunction || '-'}</td>
+                    <td className="p-2">{row.peoNormLabel ?? normLabel(row.contract?.peoNormUnit, row.contract?.peoNormValue)}</td>
                     <td className="p-2 text-right tabular-nums">{compactHours(row.peoDailyCap)}</td>
-                    <td className="p-2">{normLabel(row.contract?.cimNormUnit, row.contract?.cimNormValue)}</td>
+                    <td className="p-2">{row.cimNormLabel ?? normLabel(row.contract?.cimNormUnit, row.contract?.cimNormValue)}</td>
                     <td className="p-2 text-right tabular-nums">{compactHours(row.cimDailyCap)}</td>
                     <td className="p-2">
                       {row.goodworksProjects.length
@@ -615,11 +673,11 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
                     <td className="p-2">
                       {row.contract
                         ? `${row.contract.validFrom}${row.contract.validTo ? ` - ${row.contract.validTo}` : ' - prezent'}`
-                        : 'compatibilitate veche'}
+                        : row.financialOnly ? 'Excel financiar' : 'compatibilitate veche'}
                     </td>
                     <td className="p-2 text-right">
                       <Button size="sm" variant="outline" onClick={() => editNormFromPanel(row)}>
-                        Editeaza norma
+                        {row.financialOnly ? 'Detalii financiar' : 'Editeaza norma'}
                       </Button>
                     </td>
                   </tr>
