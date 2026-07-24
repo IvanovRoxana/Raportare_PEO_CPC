@@ -241,11 +241,14 @@ async function callAdminExpertWrite(
 
 function formatAdminWriteError(error: unknown, fallback: string) {
   const message = error instanceof Error ? error.message : String(error || '');
-  if (/AccessDeniedException|Unauthorized|not authorized|acces interzis/i.test(message)) {
+  if (/Doar administratorii pot administra|drept de administrare pentru experti/i.test(message)) {
     return [
       'Scriere refuzata de backend: utilizatorul autentificat nu are drept de administrare pentru experti.',
       'Verifica daca esti logata cu contul de administrator si reincearca.',
     ].join(' ');
+  }
+  if (/AccessDeniedException|not authorized to perform|access denied/i.test(message)) {
+    return `Operatia AWS a fost refuzata de configurarea serviciului: ${message}`;
   }
   return message || fallback;
 }
