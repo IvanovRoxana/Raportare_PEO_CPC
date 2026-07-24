@@ -1,9 +1,10 @@
-import type { Activity, Deliverable } from './types.ts';
+import type { Activity, ActivityCatalog, Deliverable } from './types.ts';
 import { isExceptionActivity } from './peo-constants.ts';
 import { getBusinessHubMetaMissingFields, parseBusinessHubMetaJson } from './business-hub-reporting.ts';
 import { normalizePeoCategory } from './peo-category.ts';
 
 export const ACTIVITY_PERIOD_GROUP_PREFIX = 'activity-period:';
+export const NO_DELIVERABLE_CATALOG_MARKER = 'N/A';
 const LEGACY_ACTIVITY_PERIOD_GROUP_PREFIX = 'legacy-activity-period:';
 const LEGACY_ACTIVITY_PERIOD_WINDOW_MS = 30 * 1000;
 
@@ -173,9 +174,48 @@ export function hasUsableDeliverable(deliverables?: Deliverable[]) {
 
 interface GetActivitiesMissingDeliverablesOptions {
   expertCategory?: string;
+  activityCatalog?: ActivityCatalog[];
 }
 
-function needsDeliverableValidation(activity: Activity, expertCategory?: string) {
+export function isCatalogDeliverableNotApplicable(value?: string | null) {
+  return normalizeSignatureValue(value).toUpperCase() === NO_DELIVERABLE_CATALOG_MARKER;
+}
+
+function createCatalogNoDeliverableResolver(activityCatalog: ActivityCatalog[] = []) {
+  const catalogIds = new Set<string>();
+  const catalogActivityKeys = new Set<string>();
+
+  activityCatalog.forEach((catalogActivity) => {
+    if (!isCatalogDeliverableNotApplicable(catalogActivity.deliverables)) return;
+
+    catalogIds.add(normalizeSignatureValue(catalogActivity.id));
+    catalogActivityKeys.add([
+      normalizeSignatureValue(catalogActivity.saCode),
+      normalizeSignatureValue(catalogActivity.activityName),
+    ].join('|'));
+  });
+
+  return (activity: Activity) => {
+    const catalogActivityId = normalizeSignatureValue(activity.catalogActivityId);
+    if (catalogActivityId && catalogIds.has(catalogActivityId)) return true;
+
+    const activityName = normalizeSignatureValue(activity.activityType || activity.title);
+    if (!activityName) return false;
+
+    return catalogActivityKeys.has([
+      normalizeSignatureValue(activity.saCode),
+      activityName,
+    ].join('|'));
+  };
+}
+
+function needsDeliverableValidation(
+  activity: Activity,
+  expertCategory: string | undefined,
+  isCatalogException: (activity: Activity) => boolean,
+) {
+  if (isCatalogException(activity)) return false;
+
   if (normalizePeoCategory(expertCategory) === 'bh') {
     const businessHubMeta = parseBusinessHubMetaJson(activity.businessHubMetaJson);
     if (businessHubMeta && getBusinessHubMetaMissingFields(businessHubMeta).length === 0) {
@@ -228,14 +268,15 @@ export function getActivitiesMissingDeliverables(
   activities: Activity[],
   options: GetActivitiesMissingDeliverablesOptions = {},
 ) {
-  const { expertCategory } = options;
+  const { expertCategory, activityCatalog } = options;
   const groupedActivities = new Map<string, Activity[]>();
   const standaloneActivities: Activity[] = [];
   const inferredLegacyGroups = inferLegacyActivityPeriodGroups(activities);
   const hasAvailableDeliverable = createActivityDeliverableAvailabilityResolver(activities);
+  const isCatalogException = createCatalogNoDeliverableResolver(activityCatalog);
 
   activities.forEach((activity) => {
-    if (!needsDeliverableValidation(activity, expertCategory)) return;
+    if (!needsDeliverableValidation(activity, expertCategory, isCatalogException)) return;
 
     const groupId = getActivityPeriodGroupKey(activity, inferredLegacyGroups);
     if (!groupId) {

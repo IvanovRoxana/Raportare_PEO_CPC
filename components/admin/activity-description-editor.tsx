@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { FileText, Loader2, Plus, RotateCcw, Save, SearchIcon, Trash2 } from 'lucide-react';
+import { CheckCircle2, FileText, Loader2, Plus, RotateCcw, Save, SearchIcon, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -10,6 +10,10 @@ import { useActivityCatalog, useActivityCatalogMutations } from '@/hooks/use-bac
 import type { ActivityCatalog } from '@/lib/types';
 import { activityCatalogMergeKey, mergeActivityCatalogs } from '@/lib/activity-catalog-merge';
 import { GDPR_TEMPLATES, resolveGdprTemplateCodeForCatalogActivity } from '@/lib/gdpr-reporting';
+import {
+  isCatalogDeliverableNotApplicable,
+  NO_DELIVERABLE_CATALOG_MARKER,
+} from '@/lib/submit-readiness';
 
 const ALL = 'all';
 const ACTIVE = 'active';
@@ -561,9 +565,27 @@ export function ActivityDescriptionEditor({ fallbackCatalog = [] }: ActivityDesc
                 </div>
 
                 <div className="space-y-2">
-                  <label htmlFor="catalog-deliverables" className="text-sm font-semibold text-slate-900">
-                    Livrabile
-                  </label>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <label htmlFor="catalog-deliverables" className="text-sm font-semibold text-slate-900">
+                      Livrabile
+                    </label>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={isCatalogDeliverableNotApplicable(draft.deliverables) ? 'default' : 'outline'}
+                      onClick={() => updateDraft(
+                        'deliverables',
+                        isCatalogDeliverableNotApplicable(draft.deliverables)
+                          ? ''
+                          : NO_DELIVERABLE_CATALOG_MARKER,
+                      )}
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                      {isCatalogDeliverableNotApplicable(draft.deliverables)
+                        ? 'Eligibila fara livrabil'
+                        : 'Marcheaza fara livrabil'}
+                    </Button>
+                  </div>
                   <Textarea
                     id="catalog-deliverables"
                     value={draft.deliverables ?? ''}
@@ -571,6 +593,9 @@ export function ActivityDescriptionEditor({ fallbackCatalog = [] }: ActivityDesc
                     rows={4}
                     placeholder="Livrabile asociate..."
                   />
+                  <p className="text-xs text-muted-foreground">
+                    Valoarea exacta N/A marcheaza activitatea ca eligibila fara livrabil. Exceptiile existente raman active.
+                  </p>
                 </div>
 
                 <div className="space-y-2">

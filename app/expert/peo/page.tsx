@@ -37,6 +37,7 @@ import { MonthlyReportExport } from '@/components/expert/monthly-report-export';
 import { getMonthName } from '@/lib/backend-store';
 import {
   useActivitiesByMonth,
+  useActivityCatalog,
   useActivityMutations,
   useCollaborationExperts,
   useColleagueDocumentsByMonth,
@@ -227,6 +228,7 @@ function ExpertDashboardContent() {
 
   // Data hooks
   const { experts, isLoading: expertsLoading } = useExperts();
+  const { catalog: activityCatalog } = useActivityCatalog();
   const { experts: collaborationExperts } = useCollaborationExperts();
   const { activities: allMonthActivities, isLoading: activitiesLoading, mutate: refreshActivities } = useActivitiesByMonth(currentMonth, currentYear);
   const { documents } = useDocuments();
@@ -1039,6 +1041,7 @@ function ExpertDashboardContent() {
     const missingWorkingDays = workingDays.filter((date) => !activityDates.has(date));
     const activitiesMissingDeliverables = getActivitiesMissingDeliverables(activities, {
       expertCategory: selectedExpert.category,
+      activityCatalog,
     });
     const deliverableRefs = activities.flatMap((activity) =>
       (activity.deliverables ?? []).map((deliverable) => ({ activity, deliverable })),
@@ -1181,7 +1184,7 @@ function ExpertDashboardContent() {
         key: 'deliverables',
         label: 'Livrabile pe activitati',
         detail: activitiesMissingDeliverables.length === 0
-          ? 'Activitatile individuale au livrabil, iar activitatile multi-zi au livrabil final.'
+          ? 'Activitatile au livrabil sau sunt configurate ca eligibile fara livrabil.'
           : `${activitiesMissingDeliverables.length} activitati fara livrabil.`,
         severity: activitiesMissingDeliverables.length === 0 ? 'ok' : 'blocking',
         issues: missingDeliverableIssues,
@@ -1242,7 +1245,7 @@ function ExpertDashboardContent() {
         ? 'Adauga cel putin o activitate inainte de trimitere.'
         : blockingItems[0]?.detail || '',
     };
-  }, [activities, currentMonth, currentYear, documents, monthlyBlocking, selectedExpert.category, visibleSharedDeliverables]);
+  }, [activities, activityCatalog, currentMonth, currentYear, documents, monthlyBlocking, selectedExpert.category, visibleSharedDeliverables]);
 
   const selectedReadinessItem = selectedReadinessKey
     ? submitReadiness.items.find((item) => item.key === selectedReadinessKey && item.severity !== 'ok') ?? null

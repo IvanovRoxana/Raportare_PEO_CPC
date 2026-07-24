@@ -5,7 +5,7 @@ import {
   getActivitiesMissingDeliverables,
 } from '../lib/submit-readiness.ts';
 import { serializeBusinessHubMeta } from '../lib/business-hub-reporting.ts';
-import type { Activity } from '../lib/types.ts';
+import type { Activity, ActivityCatalog } from '../lib/types.ts';
 
 const baseActivity = (overrides: Partial<Activity>): Activity => ({
   id: overrides.id ?? 'activity',
@@ -16,6 +16,17 @@ const baseActivity = (overrides: Partial<Activity>): Activity => ({
   activityType: 'Activitate test',
   title: 'Activitate test',
   dayType: 'lucratoare',
+  ...overrides,
+});
+
+const catalogActivity = (overrides: Partial<ActivityCatalog> = {}): ActivityCatalog => ({
+  id: 'catalog-activity',
+  category: 'ap',
+  saCode: 'SA3.2',
+  serviceCategory: 'Infrastructura dialog social',
+  activityNumber: 1,
+  activityName: 'Monitorizare legislativa regionala si informare membri',
+  deliverables: 'N/A',
   ...overrides,
 });
 
@@ -120,6 +131,56 @@ test('activitatile fara grup isi pastreaza validarea individuala de livrabil', (
   const missingDeliverables = getActivitiesMissingDeliverables(activities);
 
   assert.deepEqual(missingDeliverables.map((activity) => activity.id), ['standalone']);
+});
+
+test('activitatile marcate N/A in catalog sunt eligibile fara livrabil', () => {
+  const activities = [baseActivity({
+    id: 'catalog-exception',
+    saCode: 'SA3.2',
+    catalogActivityId: 'catalog-activity',
+    activityType: 'Monitorizare legislativa regionala si informare membri',
+    title: 'Monitorizare legislativa regionala si informare membri',
+    deliverables: [],
+  })];
+
+  const missingDeliverables = getActivitiesMissingDeliverables(activities, {
+    activityCatalog: [catalogActivity()],
+  });
+
+  assert.deepEqual(missingDeliverables, []);
+});
+
+test('activitatile vechi fara catalogActivityId folosesc numele si SA-ul pentru exceptia N/A', () => {
+  const activities = [baseActivity({
+    id: 'legacy-catalog-exception',
+    saCode: 'SA3.2',
+    activityType: 'Monitorizare legislativa regionala si informare membri',
+    title: 'Monitorizare legislativa regionala si informare membri',
+    deliverables: [],
+  })];
+
+  const missingDeliverables = getActivitiesMissingDeliverables(activities, {
+    activityCatalog: [catalogActivity()],
+  });
+
+  assert.deepEqual(missingDeliverables, []);
+});
+
+test('textul de livrabil care doar contine N/A nu creeaza o exceptie', () => {
+  const activities = [baseActivity({
+    id: 'catalog-deliverable-required',
+    saCode: 'SA3.2',
+    catalogActivityId: 'catalog-activity',
+    activityType: 'Monitorizare legislativa regionala si informare membri',
+    title: 'Monitorizare legislativa regionala si informare membri',
+    deliverables: [],
+  })];
+
+  const missingDeliverables = getActivitiesMissingDeliverables(activities, {
+    activityCatalog: [catalogActivity({ deliverables: 'Raport lunar / N/A pentru draft' })],
+  });
+
+  assert.deepEqual(missingDeliverables.map((activity) => activity.id), ['catalog-deliverable-required']);
 });
 
 test('activitatile Business Hub cu registru structurat nu cer livrabil individual', () => {
