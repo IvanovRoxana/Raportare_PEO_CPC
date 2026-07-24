@@ -1777,6 +1777,16 @@ export function ActivityForm({
   });
   const attachExistingDeliverable = useCallback((candidate: ExistingDeliverableCandidate) => {
     const savedEligibilityCheck = candidate.eligibilityCheck;
+    const hasReusableEligibility = Boolean(
+      savedEligibilityCheck
+      && ['eligibil', 'eligibil_cu_observatii'].includes(savedEligibilityCheck.status),
+    );
+    const reusableTitleCheckStatus = hasReusableEligibility && (
+      !candidate.titleCheckStatus
+      || candidate.titleCheckStatus === 'extraction_failed'
+    )
+      ? 'admin_overridden'
+      : candidate.titleCheckStatus;
     const aiCheck = savedEligibilityCheck
       ? {
           eligible: savedEligibilityCheck.status === 'eligibil' || savedEligibilityCheck.status === 'eligibil_cu_observatii'
@@ -1861,12 +1871,14 @@ export function ActivityForm({
       titleSuggestionAlternatives: candidate.titleSuggestionAlternatives || [],
       titleSuggestionReason: candidate.titleSuggestionReason,
       titleSource: candidate.titleSource as DeliverableSlot['titleSource'],
-      titleMatch: candidate.titleMatch ?? null,
-      titleConfirmed: candidate.titleConfirmed ?? candidate.titleCheckStatus === 'matched',
-      titleCheckStatus: candidate.titleCheckStatus as DeliverableSlot['titleCheckStatus'],
-      titleCheckMessage: candidate.titleCheckMessage || (candidate.source === 'colleagues'
-        ? 'Livrabil atasat direct din documentele colegilor.'
-        : 'Livrabil selectat din documentele existente.'),
+      titleMatch: candidate.titleMatch ?? (hasReusableEligibility ? true : null),
+      titleConfirmed: candidate.titleConfirmed ?? (hasReusableEligibility || candidate.titleCheckStatus === 'matched'),
+      titleCheckStatus: reusableTitleCheckStatus as DeliverableSlot['titleCheckStatus'],
+      titleCheckMessage: hasReusableEligibility
+        ? 'Livrabil existent reutilizat cu eligibilitate verificata anterior.'
+        : candidate.titleCheckMessage || (candidate.source === 'colleagues'
+          ? 'Livrabil atasat direct din documentele colegilor.'
+          : 'Livrabil selectat din documentele existente.'),
       aiCheck,
       eligibilityCheck: savedEligibilityCheck,
       stadiu: inferredStadiu,

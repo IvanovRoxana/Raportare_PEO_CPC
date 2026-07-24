@@ -120,6 +120,49 @@ test('editarea pastreaza orele din formular cand selectedHours este invechit', (
   assert.equal(submitted[0].hours, 5);
 });
 
+test('editarea cu schimbare de data pastreaza id-ul si livrabilele existente', () => {
+  const existingDeliverable = deliverable('deliverable-1', {
+    titleConfirmed: true,
+    titleCheckStatus: 'verified',
+    eligibilityCheck: {
+      status: 'eligibil',
+      score: 100,
+      summary: 'Validat anterior',
+      checks: [],
+      missingElements: [],
+      recommendations: [],
+      riskFlags: [],
+    },
+  });
+  const editing = activity('activity-1', {
+    date: '2026-06-22',
+    hours: 2,
+    deliverables: [existingDeliverable],
+  });
+  const submitted = buildSubmittedActivitiesForEdit(
+    editing,
+    [activity('activity-1', {
+      date: '2026-06-27',
+      hours: 2,
+      deliverables: [existingDeliverable],
+    })],
+    ['2026-06-27'],
+    { '2026-06-27': '2' },
+    [editing],
+    'expert-1',
+    (value, fallback) => String(value ?? fallback),
+  );
+  const plan = planGroupedActivityEdit(editing, submitted, [editing], 'expert-1');
+
+  assert.equal(submitted.length, 1);
+  assert.equal(submitted[0].id, 'activity-1');
+  assert.equal(submitted[0].date, '2026-06-27');
+  assert.deepEqual(submitted[0].deliverables, [existingDeliverable]);
+  assert.deepEqual(plan.updateActivities.map((item) => item.id), ['activity-1']);
+  assert.equal(plan.newActivities.length, 0);
+  assert.equal(plan.deleteActivityIds.length, 0);
+});
+
 test('editarea unui grup actualizeaza zilele pastrate, creeaza zilele noi si sterge doar ziua scoasa', () => {
   const periodGroupId = 'activity-period:period-1';
   const groupMembers = [

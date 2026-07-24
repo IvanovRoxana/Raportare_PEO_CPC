@@ -230,7 +230,11 @@ export function buildSubmittedActivitiesForEdit(
             ),
           };
     const activityId = existingActivityForDate?.id
-      ?? (sourceActivity.id !== editingActivity.id ? sourceActivity.id : createGeneratedActivityId());
+      ?? (submittedActivityForDate?.id === editingActivity.id
+        ? editingActivity.id
+        : sourceActivity.id !== editingActivity.id
+          ? sourceActivity.id
+          : createGeneratedActivityId());
     const hours = (preserveExistingActivity || editScope === 'series') && existingActivityForDate
       ? existingActivityForDate.hours
       : Number.isFinite(Number(sourceActivity.hours)) && Number(sourceActivity.hours) > 0
