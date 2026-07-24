@@ -212,12 +212,39 @@ async function refreshAdminAuthSession() {
   await fetchAuthSession({ forceRefresh: true });
 }
 
+async function callAdminExpertWrite(
+  action: 'create' | 'update',
+  input: Partial<Expert> | Omit<Expert, 'id'>,
+  id?: string,
+) {
+  const token = (await fetchAuthSession({ forceRefresh: true })).tokens?.accessToken?.toString();
+  if (!token) {
+    throw new Error('Nu am gasit sesiunea Cognito a administratorului curent.');
+  }
+
+  const response = await fetch('/api/admin/experts', {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${token}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ action, id, input }),
+  });
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(body?.error || 'Administrarea expertului a esuat.');
+  }
+
+  return body?.data as Expert;
+}
+
 function formatAdminWriteError(error: unknown, fallback: string) {
   const message = error instanceof Error ? error.message : String(error || '');
   if (/AccessDeniedException|Unauthorized|not authorized|acces interzis/i.test(message)) {
     return [
-      'Scriere refuzata: utilizatorul real trebuie sa aiba drept de administrare pentru update pe experti.',
-      'Iesi din modul view-as, apoi delogheaza-te si autentifica-te din nou daca eroarea persista.',
+      'Scriere refuzata de backend: utilizatorul autentificat nu are drept de administrare pentru experti.',
+      'Verifica daca esti logata cu contul de administrator si reincearca.',
     ].join(' ');
   }
   return message || fallback;
@@ -360,12 +387,8 @@ export function AdminUsersTable() {
       await refreshAdminAuthSession();
 
       const savedExpert = isPersistedExpert(editingExpert)
-        ? { ...editingExpert, id: getPersistedExpertId(editingExpert) }
-        : await expertsService.create(buildExpertCreateInput(editingExpert, updates));
-
-      if (isPersistedExpert(editingExpert)) {
-        await expertsService.update(savedExpert.id, updates);
-      }
+        ? await callAdminExpertWrite('update', updates, getPersistedExpertId(editingExpert))
+        : await callAdminExpertWrite('create', buildExpertCreateInput(editingExpert, updates));
 
       await tryCreateUserAudit({
         actionType: 'user_profile_updated',
@@ -400,16 +423,12 @@ export function AdminUsersTable() {
       await refreshAdminAuthSession();
       const expertIsPersisted = isPersistedExpert(editingInstructionsExpert);
       const savedExpert = expertIsPersisted
-        ? { ...editingInstructionsExpert, id: getPersistedExpertId(editingInstructionsExpert) }
-        : await expertsService.create(buildExpertCreateInput(editingInstructionsExpert, {
+        ? await callAdminExpertWrite('update', {
+            aiReportingInstructions: nextInstructions,
+          }, getPersistedExpertId(editingInstructionsExpert))
+        : await callAdminExpertWrite('create', buildExpertCreateInput(editingInstructionsExpert, {
             aiReportingInstructions: nextInstructions,
           }));
-
-      if (expertIsPersisted) {
-        await expertsService.update(savedExpert.id, {
-          aiReportingInstructions: nextInstructions,
-        });
-      }
 
       await tryCreateUserAudit({
         actionType: 'user_ai_reporting_instructions_updated',
@@ -468,12 +487,8 @@ export function AdminUsersTable() {
 
     try {
       const savedExpert = isPersistedExpert(expert)
-        ? { ...expert, id: getPersistedExpertId(expert) }
-        : await expertsService.create(buildExpertCreateInput(expert, { isActive: nextActive }));
-
-      if (isPersistedExpert(expert)) {
-        await expertsService.update(savedExpert.id, { isActive: nextActive });
-      }
+        ? await callAdminExpertWrite('update', { isActive: nextActive }, getPersistedExpertId(expert))
+        : await callAdminExpertWrite('create', buildExpertCreateInput(expert, { isActive: nextActive }));
 
       await createUserAudit({
         actionType: nextActive ? 'user_profile_reactivated' : 'user_profile_deactivated',
@@ -506,12 +521,8 @@ export function AdminUsersTable() {
 
     try {
       const savedExpert = isPersistedExpert(expert)
-        ? { ...expert, id: getPersistedExpertId(expert) }
-        : await expertsService.create(buildExpertCreateInput(expert, { isActive: false }));
-
-      if (isPersistedExpert(expert)) {
-        await expertsService.delete(savedExpert.id);
-      }
+        ? await callAdminExpertWrite('update', { isActive: false }, getPersistedExpertId(expert))
+        : await callAdminExpertWrite('create', buildExpertCreateInput(expert, { isActive: false }));
 
       await createUserAudit({
         actionType: 'user_profile_deleted',
