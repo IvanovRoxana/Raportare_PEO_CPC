@@ -119,6 +119,7 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
   const [savingLeave, setSavingLeave] = useState(false);
   const [savingContract, setSavingContract] = useState(false);
   const [verificationMessage, setVerificationMessage] = useState('');
+  const [selectedNormExpertName, setSelectedNormExpertName] = useState('');
   const [leaveForm, setLeaveForm] = useState({
     expertId: '',
     date: isoDate(2026, 5),
@@ -400,6 +401,7 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
 
   const editNormFromPanel = (row: (typeof normPanelRows)[number]) => {
     const contract = row.contract;
+    setSelectedNormExpertName(row.expert.name);
     setContractForm({
       expertId: row.expert.id,
       validFrom: isoDate(year, month, 1),
@@ -413,6 +415,10 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
       justification: '',
     });
     setVerificationMessage(`Experti si norme: ${row.expert.name} a fost incarcat in formular. CPC se calculeaza ca CIM - PEO - alte proiecte.`);
+    window.setTimeout(() => {
+      document.getElementById('norma-editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      document.getElementById('norma-editor-justification')?.focus();
+    }, 50);
   };
 
   const validateFirstDraftLeave = async () => {
@@ -614,8 +620,14 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-sm"><ShieldCheck className="h-4 w-4" />Versiune norma PEO/CIM</CardTitle></CardHeader>
+          <Card id="norma-editor" className={selectedNormExpertName ? 'border-primary/60 shadow-sm ring-2 ring-primary/15' : undefined}>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-sm">
+                <ShieldCheck className="h-4 w-4" />
+                Versiune norma PEO/CIM{selectedNormExpertName ? ` - ${selectedNormExpertName}` : ''}
+              </CardTitle>
+              {selectedNormExpertName && <p className="text-xs text-muted-foreground">Modificarea se salveaza ca versiune noua; istoricul existent nu se suprascrie.</p>}
+            </CardHeader>
             <CardContent className="grid gap-3 md:grid-cols-6">
               <select className="h-10 rounded-md border bg-background px-3 text-sm md:col-span-2" value={contractForm.expertId} onChange={(event) => setContractForm((current) => ({ ...current, expertId: event.target.value }))} aria-label="Expert norma">
                 <option value="">Alege expert</option>
@@ -635,7 +647,7 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
               <Input type="number" min="0" step="0.5" value={contractForm.cimNormValue} onChange={(event) => setContractForm((current) => ({ ...current, cimNormValue: event.target.value }))} aria-label="Norma CIM" />
               <Input type="number" min="0" max="8" step="0.5" value={contractForm.cimDailyCap} onChange={(event) => setContractForm((current) => ({ ...current, cimDailyCap: event.target.value, leaveHoursPerDay: event.target.value }))} aria-label="Plafon CIM zilnic" />
               <Input type="number" min="0" max="8" step="0.5" value={contractForm.leaveHoursPerDay} onChange={(event) => setContractForm((current) => ({ ...current, leaveHoursPerDay: event.target.value }))} aria-label="Ore CO pe zi" />
-              <Input className="md:col-span-3" value={contractForm.justification} onChange={(event) => setContractForm((current) => ({ ...current, justification: event.target.value }))} placeholder="Justificare modificare norma" />
+              <Input id="norma-editor-justification" className="md:col-span-3" value={contractForm.justification} onChange={(event) => setContractForm((current) => ({ ...current, justification: event.target.value }))} placeholder="Justificare modificare norma" />
               <Button className="md:col-span-2" onClick={saveNormContract} disabled={savingContract || !contractForm.expertId || !contractForm.justification.trim()}>
                 {savingContract ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                 Salveaza norma
