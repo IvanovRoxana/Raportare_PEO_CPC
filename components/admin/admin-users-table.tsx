@@ -132,6 +132,16 @@ function buildEditForm(expert: Expert): EditFormState {
   };
 }
 
+function shouldSyncCognitoGroupsForProfileSave(expert: Expert, form: EditFormState) {
+  const currentRole = normalizeRole(expert.role);
+  const currentHasPmAccess = expert.hasPmAccess ?? (currentRole.includes('PM') || currentRole === 'Admin');
+  const nextHasPmAccess = form.hasPmAccess || form.role === 'Admin';
+  const currentEmail = String(expert.email || '').trim().toLowerCase();
+  const nextEmail = form.email.trim().toLowerCase();
+
+  return currentRole !== form.role || currentHasPmAccess !== nextHasPmAccess || currentEmail !== nextEmail;
+}
+
 function buildExpertCreateInput(expert: Expert, updates: Partial<Expert>): Omit<Expert, 'id'> {
   return {
     userId: expert.userId,
@@ -248,6 +258,12 @@ function formatAdminWriteError(error: unknown, fallback: string) {
     ].join(' ');
   }
   if (/AccessDeniedException|not authorized to perform|access denied/i.test(message)) {
+    if (/Cognito|grupuri/i.test(message)) {
+      return [
+        'Profilul nu a putut sincroniza rolurile Cognito: backendul nu are permisiunile AWS necesare pentru administrarea grupurilor.',
+        `Detaliu tehnic: ${message}`,
+      ].join(' ');
+    }
     return `Operatia AWS a fost refuzata de configurarea serviciului: ${message}`;
   }
   return message || fallback;
@@ -383,11 +399,15 @@ export function AdminUsersTable() {
     };
     const cognitoGroups = cognitoGroupsForRole(form.role, form.hasPmAccess || form.role === 'Admin');
     updates.cognitoGroups = cognitoGroups;
+    const shouldSyncCognitoGroups = !isPersistedExpert(editingExpert)
+      || shouldSyncCognitoGroupsForProfileSave(editingExpert, form);
 
     try {
       await refreshAdminAuthSession();
-      await syncOrInviteCognitoGroupsForUser(updates.email, cognitoGroups, updates.name);
-      await refreshAdminAuthSession();
+      if (shouldSyncCognitoGroups) {
+        await syncOrInviteCognitoGroupsForUser(updates.email, cognitoGroups, updates.name);
+        await refreshAdminAuthSession();
+      }
 
       const savedExpert = isPersistedExpert(editingExpert)
         ? await callAdminExpertWrite('update', updates, getPersistedExpertId(editingExpert))
