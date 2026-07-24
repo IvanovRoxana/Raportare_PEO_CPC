@@ -1,7 +1,8 @@
 'use client';
 
-import { Suspense, useState, useEffect, useMemo } from 'react';
-import { ArrowLeft, CalendarDays, CheckCircle, ClipboardList, FileText, Loader2, Plus, RotateCcw, Send, Lock, AlertTriangle, Upload, X } from 'lucide-react';
+import { Suspense, useState, useEffect, useMemo, useRef, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
+import { ArrowLeft, CalendarDays, CheckCircle, ChevronLeft, ChevronRight, ClipboardList, FileText, Loader2, Plus, RotateCcw, Send, Lock, AlertTriangle, Upload, X } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { DashboardShell, expertNavItems } from '@/components/layout/dashboard-shell';
@@ -27,7 +28,6 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { MultiSelectCalendar } from '@/components/expert/multi-select-calendar';
-import { CalendarView } from '@/components/expert/calendar-view';
 import { ActivityForm, type ActivityResolutionHint, type ActivityResolutionSection } from '@/components/expert/activity-form';
 import type { ExistingDeliverableCandidate } from '@/components/expert/existing-deliverable-picker';
 import { ActivitiesTable } from '@/components/expert/activities-table';
@@ -85,6 +85,7 @@ import { buildExpertDeliverableRows } from '@/lib/expert-deliverables';
 import { isCurrentOrPreviousMonth } from '@/lib/pm-clarifications';
 import { isReportingWorkBlocksEnabledClient } from '@/lib/feature-flags';
 import { buildActivitySaveWorkBlockInput } from '@/lib/activity-report/activity-save-work-block';
+import { cn } from '@/lib/utils';
 
 type SubmitReadinessSeverity = 'ok' | 'warning' | 'blocking';
 type SubmitReadinessKey =
@@ -167,6 +168,287 @@ function getDeliverableDisplayName(deliverable: Deliverable) {
     || deliverable.originalFileName
     || deliverable.docTitle
     || 'Livrabil fara titlu';
+}
+
+type FloatingWindowState = 'normal' | 'minimized' | 'maximized';
+
+function FloatingActivityWindow({
+  title,
+  children,
+  onClose,
+}: {
+  title: string;
+  children: ReactNode;
+  onClose: () => void;
+}) {
+  const [mounted, setMounted] = useState(false);
+  const [windowState, setWindowState] = useState<FloatingWindowState>('normal');
+  const [position, setPosition] = useState({ x: 520, y: 116 });
+  const [size, setSize] = useState({ width: 760, height: 680 });
+  const dragRef = useRef<{ startX: number; startY: number; originX: number; originY: number } | null>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    const handleMove = (event: PointerEvent) => {
+      if (!dragRef.current || windowState !== 'normal') return;
+      const nextX = dragRef.current.originX + event.clientX - dragRef.current.startX;
+      const nextY = dragRef.current.originY + event.clientY - dragRef.current.startY;
+      setPosition({
+        x: Math.max(8, Math.min(nextX, window.innerWidth - 96)),
+        y: Math.max(8, Math.min(nextY, window.innerHeight - 56)),
+      });
+    };
+    const handleUp = () => {
+      dragRef.current = null;
+    };
+
+    window.addEventListener('pointermove', handleMove);
+    window.addEventListener('pointerup', handleUp);
+    return () => {
+      window.removeEventListener('pointermove', handleMove);
+      window.removeEventListener('pointerup', handleUp);
+    };
+  }, [windowState]);
+
+  if (!mounted) return null;
+
+  const isMaximized = windowState === 'maximized';
+  const isMinimized = windowState === 'minimized';
+  const style = isMaximized
+    ? { left: 12, top: 12, width: 'calc(100vw - 24px)', height: 'calc(100dvh - 24px)' }
+    : isMinimized
+      ? { left: position.x, top: position.y, width: 360, height: 48 }
+      : { left: position.x, top: position.y, width: size.width, height: size.height };
+
+  return createPortal(
+    <div
+      className="fixed z-[80] overflow-hidden rounded-2xl border border-slate-300 bg-white shadow-2xl"
+      style={style}
+    >
+      <div
+        className="flex h-12 cursor-move items-center justify-between gap-2 border-b bg-slate-50 px-3"
+        onPointerDown={(event) => {
+          if (windowState !== 'normal') return;
+          dragRef.current = {
+            startX: event.clientX,
+            startY: event.clientY,
+            originX: position.x,
+            originY: position.y,
+          };
+        }}
+      >
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="shrink-0 text-sm leading-none text-slate-400">⋮⋮</span>
+          <span className="truncate text-sm font-semibold text-slate-900">{title}</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <Button type="button" size="icon" variant="ghost" className="h-8 w-8" onClick={() => setWindowState(isMinimized ? 'normal' : 'minimized')}>
+            <span className="text-sm leading-none">{isMinimized ? '⛶' : '−'}</span>
+          </Button>
+          <Button type="button" size="icon" variant="ghost" className="h-8 w-8" onClick={() => setWindowState(isMaximized ? 'normal' : 'maximized')}>
+            <span className="text-sm leading-none">{isMaximized ? '↙' : '⛶'}</span>
+          </Button>
+          <Button type="button" size="icon" variant="ghost" className="h-8 w-8" onClick={onClose}>
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+      {!isMinimized && (
+        <div className="h-[calc(100%-3rem)] overflow-y-auto bg-background">
+          {children}
+        </div>
+      )}
+      {!isMaximized && !isMinimized && (
+        <div
+          className="absolute bottom-0 right-0 h-5 w-5 cursor-nwse-resize"
+          onPointerDown={(event) => {
+            event.currentTarget.setPointerCapture(event.pointerId);
+            const startX = event.clientX;
+            const startY = event.clientY;
+            const startWidth = size.width;
+            const startHeight = size.height;
+            const handleMove = (moveEvent: PointerEvent) => {
+              setSize({
+                width: Math.max(520, Math.min(startWidth + moveEvent.clientX - startX, window.innerWidth - 24)),
+                height: Math.max(420, Math.min(startHeight + moveEvent.clientY - startY, window.innerHeight - 24)),
+              });
+            };
+            const handleUp = () => {
+              window.removeEventListener('pointermove', handleMove);
+              window.removeEventListener('pointerup', handleUp);
+            };
+            window.addEventListener('pointermove', handleMove);
+            window.addEventListener('pointerup', handleUp);
+          }}
+        />
+      )}
+    </div>,
+    document.body,
+  );
+}
+
+function OutlookMonthCalendar({
+  expert,
+  activities,
+  month,
+  year,
+  selectedDates,
+  onSelectDay,
+  onAddActivity,
+  onEditActivity,
+  onMonthChange,
+  canGoToPreviousMonth,
+  canGoToNextMonth,
+}: {
+  expert: Expert;
+  activities: Activity[];
+  month: number;
+  year: number;
+  selectedDates: string[];
+  onSelectDay: (date: string) => void;
+  onAddActivity: () => void;
+  onEditActivity: (activity: Activity) => void;
+  onMonthChange: (month: number, year: number) => void;
+  canGoToPreviousMonth: boolean;
+  canGoToNextMonth: boolean;
+}) {
+  const [selectedDay, setSelectedDay] = useState<string | null>(selectedDates[0] ?? null);
+  const today = useMemo(() => new Date(), []);
+  const days = useMemo(() => {
+    const firstDay = new Date(year, month, 1);
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const offset = (firstDay.getDay() + 6) % 7;
+    return [
+      ...Array.from({ length: offset }, () => null),
+      ...Array.from({ length: daysInMonth }, (_, index) => {
+        const day = index + 1;
+        const date = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        return { day, date, nativeDate: new Date(year, month, day) };
+      }),
+    ];
+  }, [month, year]);
+  const activitiesByDate = useMemo(() => {
+    const grouped = new Map<string, Activity[]>();
+    activities.forEach((activity) => {
+      const dayActivities = grouped.get(activity.date) ?? [];
+      dayActivities.push(activity);
+      grouped.set(activity.date, dayActivities);
+    });
+    return grouped;
+  }, [activities]);
+  const norma = expert.norma || 8;
+  const selectedDateSet = new Set(selectedDates);
+  const goToPrevious = () => {
+    const next = new Date(year, month - 1, 1);
+    onMonthChange(next.getMonth(), next.getFullYear());
+  };
+  const goToNext = () => {
+    const next = new Date(year, month + 1, 1);
+    onMonthChange(next.getMonth(), next.getFullYear());
+  };
+
+  return (
+    <div className="flex h-full min-h-[720px] flex-col bg-white">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
+        <div className="flex items-center gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={() => onMonthChange(today.getMonth(), today.getFullYear())}>
+            Azi
+          </Button>
+          <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={goToPrevious} disabled={!canGoToPreviousMonth}>
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={goToNext} disabled={!canGoToNextMonth}>
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+          <h2 className="px-2 text-xl font-semibold text-slate-900">{getMonthName(month)} {year}</h2>
+        </div>
+        <Button type="button" onClick={onAddActivity}>
+          <Plus className="h-4 w-4" />
+          Adauga activitate
+        </Button>
+      </div>
+      <div className="grid grid-cols-7 border-b bg-slate-50 text-xs font-semibold text-slate-600">
+        {['Luni', 'Marti', 'Miercuri', 'Joi', 'Vineri', 'Sambata', 'Duminica'].map((day) => (
+          <div key={day} className="border-r px-3 py-2 last:border-r-0">{day}</div>
+        ))}
+      </div>
+      <div className="grid flex-1 grid-cols-7 auto-rows-fr">
+        {days.map((day, index) => {
+          if (!day) return <div key={`empty-${index}`} className="border-b border-r bg-slate-50/50" />;
+          const dayActivities = activitiesByDate.get(day.date) ?? [];
+          const totalHours = dayActivities.reduce((sum, activity) => sum + (Number(activity.hours) || 0), 0);
+          const nonWorking = getNonWorkingDayInfo(day.nativeDate);
+          const isWeekend = nonWorking.isWeekend;
+          const isToday = day.nativeDate.toDateString() === today.toDateString();
+          const isSelected = selectedDay === day.date || selectedDateSet.has(day.date);
+          const visibleActivities = dayActivities.slice(0, 4);
+          const hiddenCount = Math.max(0, dayActivities.length - visibleActivities.length);
+          const dayClassName = cn(
+            'min-h-[124px] border-b border-r p-2 text-left transition hover:bg-blue-50/60',
+            isWeekend ? 'bg-slate-50/70' : 'bg-white',
+            !isWeekend && totalHours > 0 && totalHours < norma && 'bg-emerald-50/45',
+            !isWeekend && totalHours === norma && 'bg-slate-100/80',
+            !isWeekend && totalHours > norma && 'bg-red-50/70',
+            isSelected && 'outline outline-2 -outline-offset-2 outline-blue-500',
+          );
+
+          return (
+            <button
+              key={day.date}
+              type="button"
+              className={dayClassName}
+              onClick={() => {
+                setSelectedDay(day.date);
+                onSelectDay(day.date);
+              }}
+            >
+              <div className="mb-1 flex items-center justify-between gap-2 text-xs">
+                <span className={cn('font-semibold text-slate-700', isToday && 'rounded-full bg-blue-600 px-1.5 py-0.5 text-white')}>
+                  {day.day}
+                </span>
+                <span className="text-[11px] font-semibold text-slate-500">{totalHours}h / {norma}h</span>
+              </div>
+              <div className="space-y-1">
+                {visibleActivities.map((activity) => {
+                  const title = activity.title || activity.activityType || activity.description || 'Activitate';
+                  return (
+                    <div
+                      key={activity.id}
+                      role="button"
+                      tabIndex={0}
+                      title={title}
+                      className="group flex min-w-0 items-center gap-1 rounded border-l-2 border-blue-500 bg-blue-100/80 px-1.5 py-1 text-[11px] leading-tight text-slate-800 hover:bg-blue-200"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onEditActivity(activity);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          onEditActivity(activity);
+                        }
+                      }}
+                    >
+                      <span className="shrink-0 font-semibold text-blue-700">{activity.hours}h</span>
+                      <span className="truncate">{title}</span>
+                    </div>
+                  );
+                })}
+                {hiddenCount > 0 && (
+                  <div className="rounded bg-slate-100 px-1.5 py-0.5 text-center text-[11px] font-semibold text-slate-600">
+                    +{hiddenCount} activitati
+                  </div>
+                )}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 function readMonthParam(value: string | null, fallback: number) {
@@ -1313,6 +1595,7 @@ function ExpertDashboardContent() {
   const selectedReadinessItem = selectedReadinessKey
     ? submitReadiness.items.find((item) => item.key === selectedReadinessKey && item.severity !== 'ok') ?? null
     : null;
+  const compactReadinessItems = submitReadiness.items.filter((item) => item.severity !== 'ok');
   const submitButtonTitle = isApproved
     ? 'Luna este aprobată.'
     : isInReview
@@ -1733,6 +2016,21 @@ function ExpertDashboardContent() {
     }
   };
 
+  const handleCalendarSelectDates = (dates: string[], nextHours?: Record<string, string>) => {
+    handleSelectDates(dates, nextHours);
+    setActiveTab('calendar');
+  };
+
+  const handleCalendarAddActivity = () => {
+    handleAddActivity();
+    setActiveTab('calendar');
+  };
+
+  const handleCalendarEditActivity = (activity: Activity) => {
+    handleEditActivity(activity);
+    setActiveTab('calendar');
+  };
+
   const isLoading = isAuthLoading || expertsLoading || activitiesLoading;
   const exportRaHref = `/expert/peo/export?${new URLSearchParams({
     month: String(currentMonth),
@@ -1820,7 +2118,7 @@ function ExpertDashboardContent() {
       showObservationRail={false}
     />
   );
-  const showPopoutForm = showForm && Boolean(sharedActivityPrefill);
+  const showFloatingForm = showForm;
 
   return (
     <>
@@ -1865,7 +2163,7 @@ function ExpertDashboardContent() {
       <DashboardShell
         activeHref="/expert/peo"
         navItems={expertNavItems}
-        contentClassName={showForm ? 'max-w-none' : undefined}
+        contentClassName="max-w-none"
         eyebrow="Modul Expert"
         title={isClarificationScopedAccess ? 'Clarificare PM' : showForm ? 'Adaugă activitate' : 'Activitățile mele'}
         reportingMonth={`${getMonthName(currentMonth)} ${currentYear}`}
@@ -1928,161 +2226,6 @@ function ExpertDashboardContent() {
           { label: 'Rapoarte', href: exportRaHref, icon: FileText },
         ]}
       >
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-4">
-          <div className="space-y-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-lg font-semibold text-foreground">
-                Status raportare - {getMonthName(currentMonth)} {currentYear}
-              </h2>
-              <Badge variant={statusMeta.variant}>{statusMeta.label}</Badge>
-              {reportStatusLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
-            </div>
-            {reportStatus?.pmNotes ? (
-              <p className="text-sm text-muted-foreground">Observații PM: {reportStatus.pmNotes}</p>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                {statusDescription}
-              </p>
-            )}
-            <p className="text-sm text-muted-foreground">
-              Normă lunară: {monthlyBlocking.totalHours}h / {monthlyBlocking.monthlyNorm}h, {monthlyBlocking.remainingHours}h disponibile.
-            </p>
-            {monthlyBlocking.isBlocked && (
-              <p className="flex items-center gap-2 text-sm font-medium text-amber-700">
-                <AlertTriangle className="h-4 w-4" />
-                {monthlyBlocking.reason}
-              </p>
-            )}
-          </div>
-          <span title={submitButtonTitle}>
-            <Button
-              onClick={handleSubmitMonth}
-              disabled={
-                isApproved
-                || isSent
-                || isInReview
-              }
-            >
-            {submitButtonIcon}
-            {submitButtonLabel}
-            </Button>
-          </span>
-        </div>
-
-        <Card className="mb-6">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Submit readiness</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-              {submitReadiness.items.map((item) => {
-                const isActionable = item.severity !== 'ok';
-                const isSelected = selectedReadinessKey === item.key;
-                const cardClassName = [
-                  'flex w-full items-start gap-2 rounded-md border bg-background p-3 text-left transition-colors',
-                  isActionable ? 'hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring' : '',
-                  isSelected ? 'border-primary ring-2 ring-primary/30' : '',
-                ].filter(Boolean).join(' ');
-                const cardContent = (
-                  <>
-                    {item.severity === 'ok' ? (
-                      <CheckCircle className="mt-0.5 h-4 w-4 shrink-0 text-green-600" />
-                    ) : (
-                      <AlertTriangle
-                        className={
-                          item.severity === 'blocking'
-                            ? 'mt-0.5 h-4 w-4 shrink-0 text-red-600'
-                            : 'mt-0.5 h-4 w-4 shrink-0 text-amber-600'
-                        }
-                      />
-                    )}
-                    <div className="min-w-0 space-y-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-sm font-medium text-foreground">{item.label}</p>
-                        <Badge
-                          variant={item.severity === 'blocking' ? 'destructive' : item.severity === 'warning' ? 'outline' : 'secondary'}
-                        >
-                          {item.severity === 'blocking' ? 'Blocant' : item.severity === 'warning' ? 'Atentie' : 'OK'}
-                        </Badge>
-                        {isActionable && item.issues.length > 0 && (
-                          <span className="text-[11px] font-medium text-muted-foreground">
-                            {item.issues.length} detalii
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-xs text-muted-foreground">{item.detail}</p>
-                    </div>
-                  </>
-                );
-
-                return isActionable ? (
-                  <button
-                    key={item.key}
-                    type="button"
-                    className={cardClassName}
-                    aria-pressed={isSelected}
-                    onClick={() => setSelectedReadinessKey(item.key)}
-                  >
-                    {cardContent}
-                  </button>
-                ) : (
-                  <div key={item.key} className={cardClassName}>
-                    {cardContent}
-                  </div>
-                );
-              })}
-            </div>
-
-            {selectedReadinessItem && (
-              <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div className="space-y-1">
-                    <p className="text-sm font-semibold text-slate-900">
-                      Detalii blocaj: {selectedReadinessItem.label}
-                    </p>
-                    <p className="text-xs text-slate-600">{selectedReadinessItem.detail}</p>
-                  </div>
-                  <Badge variant={selectedReadinessItem.severity === 'blocking' ? 'destructive' : 'outline'}>
-                    {selectedReadinessItem.severity === 'blocking' ? 'Blocant' : 'Atentie'}
-                  </Badge>
-                </div>
-
-                {selectedReadinessItem.issues.length === 0 ? (
-                  <p className="mt-3 text-sm text-muted-foreground">
-                    Nu mai exista detalii active pentru acest blocaj.
-                  </p>
-                ) : (
-                  <div className="mt-3 space-y-2">
-                    {selectedReadinessItem.issues.map((issue) => (
-                      <div
-                        key={issue.id}
-                        className="flex flex-wrap items-start justify-between gap-3 rounded-md border bg-white p-3"
-                      >
-                        <div className="min-w-0 space-y-1">
-                          <p className="text-sm font-medium text-slate-900">{issue.title}</p>
-                          {issue.meta && (
-                            <p className="text-xs text-muted-foreground">{issue.meta}</p>
-                          )}
-                          <p className="text-xs text-slate-700">{issue.detail}</p>
-                        </div>
-                        {issue.action && (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleReadinessIssueAction(issue)}
-                          >
-                            {issue.actionLabel || 'Rezolva'}
-                          </Button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
 
         <div id="livrabile" className="scroll-mt-24" />
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
@@ -2286,9 +2429,9 @@ function ExpertDashboardContent() {
               </div>
             </div>
 
-            <div className={showForm && !showPopoutForm ? 'grid gap-6 xl:grid-cols-[minmax(220px,300px)_minmax(0,1fr)] xl:items-start' : 'grid gap-6 lg:grid-cols-3'}>
+            <div className="grid gap-6 lg:grid-cols-3">
               {/* Calendar Section */}
-              <div className={showForm && !showPopoutForm ? 'xl:row-span-2 xl:sticky xl:top-24 xl:self-start' : 'lg:col-span-1'}>
+              <div className="lg:col-span-1">
                 <MultiSelectCalendar
                   selectedDates={selectedDates}
                   onSelectDates={handleSelectDates}
@@ -2308,26 +2451,15 @@ function ExpertDashboardContent() {
                 {/* Form opens automatically when dates are selected */}
               </div>
 
-              {showForm && !showPopoutForm && (
-                <div className="min-w-0">
-                  {activityFormElement}
-                </div>
-              )}
-
-              <div className={showForm && !showPopoutForm ? 'min-w-0' : 'min-w-0 lg:col-span-2'}>
-                <Card className={showForm && !showPopoutForm ? 'overflow-hidden' : undefined}>
-                  <CardHeader className={showForm && !showPopoutForm ? 'space-y-1 pb-3' : undefined}>
-                    <CardTitle className={showForm && !showPopoutForm ? 'text-base' : undefined}>
-                      {showForm && !showPopoutForm ? 'Context activitati' : 'Activitati'} - {selectedExpert.name} - {getMonthName(currentMonth)}{' '}
+              <div className="min-w-0 lg:col-span-2">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>
+                      Activitati - {selectedExpert.name} - {getMonthName(currentMonth)}{' '}
                       {currentYear}
                     </CardTitle>
-                    {showForm && !showPopoutForm && (
-                      <p className="text-xs text-muted-foreground">
-                        Jurnalul ramane aici pentru comparare rapida in timp ce completezi formularul.
-                      </p>
-                    )}
                   </CardHeader>
-                  <CardContent className={showForm && !showPopoutForm ? 'max-h-[42rem] overflow-y-auto p-0' : undefined}>
+                  <CardContent>
                     {activitiesLoading ? (
                       <div className="flex items-center justify-center py-8">
                         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -2348,60 +2480,123 @@ function ExpertDashboardContent() {
           </TabsContent>
 
           {/* Tab: Calendar - vizualizare calendar cu statistici si detalii pe zi */}
-          <TabsContent id="calendar" value="calendar" className="space-y-6 scroll-mt-24">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-4">
-                <Select
-                  value={`${currentMonth}-${currentYear}`}
-                  onValueChange={(value) => {
-                    const [m, y] = value.split('-').map(Number);
-                    handleMonthChange(m, y);
-                  }}
-                >
-                  <SelectTrigger className="w-[200px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableMonthOptions.map((option) => (
-                      <SelectItem key={`${option.month}-${option.year}`} value={`${option.month}-${option.year}`}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="text-sm text-muted-foreground">
-                {selectedExpert.name} - Norma: {selectedExpert.norma || 8}h/zi
-              </div>
+          <TabsContent id="calendar" value="calendar" className="scroll-mt-24">
+            <div className="grid min-h-[calc(100dvh-15rem)] overflow-hidden rounded-2xl border bg-white lg:grid-cols-[230px_minmax(0,1fr)]">
+              <aside className="min-h-0 overflow-y-auto border-r bg-slate-50/70 p-3">
+                <MultiSelectCalendar
+                  selectedDates={selectedDates}
+                  onSelectDates={handleCalendarSelectDates}
+                  selectedHours={selectedHours}
+                  onSelectedHoursChange={setSelectedHours}
+                  activities={calendarDraftActivities}
+                  onMonthChange={handleMonthChange}
+                  onBlockedMonthChange={handleBlockedMonthChange}
+                  canGoToPreviousMonth={canOpenMonth(previousCalendarDate.getMonth(), previousCalendarDate.getFullYear())}
+                  canGoToNextMonth={canOpenMonth(nextCalendarDate.getMonth(), nextCalendarDate.getFullYear())}
+                  monthAccessMessage={monthAccessMessage}
+                  expertNorma={selectedExpert.norma || 8}
+                  displayMonth={currentMonth}
+                  displayYear={currentYear}
+                />
+
+                <div className="mt-3 space-y-3">
+                  <div className="rounded-xl border bg-white p-3 shadow-sm">
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <p className="text-sm font-semibold text-slate-900">Status raportare</p>
+                      <Badge variant={statusMeta.variant}>{statusMeta.label}</Badge>
+                    </div>
+                    <p className="text-xs leading-5 text-muted-foreground">{statusDescription}</p>
+                    <p className="mt-2 text-xs font-medium text-slate-700">
+                      {monthlyBlocking.totalHours}h / {monthlyBlocking.monthlyNorm}h pontate
+                    </p>
+                    {monthlyBlocking.isBlocked && (
+                      <p className="mt-2 flex items-start gap-1.5 text-xs font-medium text-amber-700">
+                        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                        {monthlyBlocking.reason}
+                      </p>
+                    )}
+                    <span className="mt-3 block" title={submitButtonTitle}>
+                      <Button
+                        type="button"
+                        className="w-full"
+                        onClick={handleSubmitMonth}
+                        disabled={isApproved || isSent || isInReview}
+                      >
+                        {submitButtonIcon}
+                        {submitButtonLabel}
+                      </Button>
+                    </span>
+                  </div>
+
+                  <div className="rounded-xl border bg-white p-3 shadow-sm">
+                    <p className="text-sm font-semibold text-slate-900">Blocaje / warninguri</p>
+                    <div className="mt-2 space-y-2">
+                      {compactReadinessItems.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">Nu exista blocaje active pentru luna selectata.</p>
+                      ) : (
+                        compactReadinessItems.map((item) => (
+                          <button
+                            key={item.key}
+                            type="button"
+                            className={cn(
+                              'w-full rounded-lg border p-2 text-left text-xs transition hover:bg-slate-50',
+                              selectedReadinessKey === item.key && 'border-primary bg-blue-50',
+                            )}
+                            onClick={() => setSelectedReadinessKey(item.key)}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-semibold text-slate-900">{item.label}</span>
+                              <Badge variant={item.severity === 'blocking' ? 'destructive' : 'outline'}>
+                                {item.severity === 'blocking' ? 'Blocant' : 'Atentie'}
+                              </Badge>
+                            </div>
+                            <p className="mt-1 line-clamp-2 text-muted-foreground">{item.detail}</p>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                    {selectedReadinessItem && selectedReadinessItem.issues.length > 0 && (
+                      <div className="mt-3 space-y-2 rounded-lg bg-slate-50 p-2">
+                        {selectedReadinessItem.issues.slice(0, 3).map((issue) => (
+                          <div key={issue.id} className="space-y-1 text-xs">
+                            <p className="font-medium text-slate-900">{issue.title}</p>
+                            <p className="text-muted-foreground">{issue.detail}</p>
+                            {issue.action && (
+                              <Button type="button" variant="outline" size="sm" className="h-7" onClick={() => handleReadinessIssueAction(issue)}>
+                                {issue.actionLabel || 'Rezolva'}
+                              </Button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="rounded-xl border bg-white p-3 text-xs text-slate-600 shadow-sm">
+                    <p className="mb-2 font-semibold text-slate-900">Cod culori</p>
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-2"><span className="h-3 w-3 rounded bg-emerald-50 ring-1 ring-emerald-200" />Eligibil sub norma zilei</div>
+                      <div className="flex items-center gap-2"><span className="h-3 w-3 rounded bg-slate-100 ring-1 ring-slate-200" />8 ore atinse</div>
+                      <div className="flex items-center gap-2"><span className="h-3 w-3 rounded bg-red-50 ring-1 ring-red-200" />Depasire</div>
+                      <div className="flex items-center gap-2"><span className="h-3 w-3 rounded bg-slate-50 ring-1 ring-slate-200" />Weekend / nelucratoare</div>
+                    </div>
+                  </div>
+                </div>
+              </aside>
+              <OutlookMonthCalendar
+                expert={selectedExpert as Expert}
+                activities={activities}
+                month={currentMonth}
+                year={currentYear}
+                selectedDates={selectedDates}
+                onSelectDay={(date) => handleCalendarSelectDates([date])}
+                onAddActivity={handleCalendarAddActivity}
+                onEditActivity={handleCalendarEditActivity}
+                onMonthChange={handleMonthChange}
+                canGoToPreviousMonth={canOpenMonth(previousCalendarDate.getMonth(), previousCalendarDate.getFullYear())}
+                canGoToNextMonth={canOpenMonth(nextCalendarDate.getMonth(), nextCalendarDate.getFullYear())}
+              />
             </div>
-            
-            <CalendarView
-              expert={selectedExpert as Expert}
-              activities={activities}
-              month={currentMonth}
-              year={currentYear}
-              onAddForDay={(date) => {
-                if (monthlyBlocking.isBlocked) {
-                  setSaveError(monthlyBlocking.reason);
-                  return;
-                }
-                try {
-                  assertCanLogHoursOnDate(date);
-                } catch (error) {
-                  setSaveError(error instanceof Error ? error.message : 'Ziua selectata este nelucratoare.');
-                  return;
-                }
-                setSaveError(null);
-                syncSelectedDates([date]);
-                setSharedActivityPrefill(null);
-                setActivityResolutionHint(null);
-                setDraftSessionId((current) => current + 1);
-                setShowForm(true);
-                setActiveTab('activitati');
-              }}
-              onEditActivity={handleEditActivity}
-              onDeleteActivity={handleDeleteActivity}
-            />
           </TabsContent>
 
           {/* Tab: Grup Tinta - doar pentru Expert Recrutare si Selectie GT */}
@@ -2438,10 +2633,13 @@ function ExpertDashboardContent() {
           )}
 
         </Tabs>
-        {showPopoutForm && (
-          <div className="fixed bottom-4 right-4 z-40 max-h-[calc(100vh-2rem)] w-[min(760px,calc(100vw-2rem))] overflow-y-auto rounded-lg border bg-background shadow-2xl">
+        {showFloatingForm && (
+          <FloatingActivityWindow
+            title={editingActivity ? 'Editare activitate' : 'Adauga activitate'}
+            onClose={closeActivityForm}
+          >
             {activityFormElement}
-          </div>
+          </FloatingActivityWindow>
         )}
         <ExpertDeliverablesDialog
           open={isDeliverablesDialogOpen}
