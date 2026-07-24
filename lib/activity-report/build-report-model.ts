@@ -21,18 +21,21 @@ export type ProjectReportingSettings = {
 
 export type Anexa10TableRow = {
   workBlockId: string;
-  saCode: string;
-  period: string;
-  activityTitle: string;
+  officialActivityTitle: string;
+  responsibilities: string;
+  performedActivity: string;
   resultsAndDeliverables: string[];
+  commonDeliverable: string;
   hours: number;
-  flowType: string;
 };
 
 export type Anexa10SaSection = {
   saCode: string;
   title?: string;
-  paragraphs: string[];
+  items: {
+    heading: string;
+    body: string;
+  }[];
   totalHours: number;
 };
 
@@ -68,7 +71,7 @@ export function buildAnexa10ReportModel({
   workBlockBundles,
   settings = {},
 }: {
-  expert: Pick<Expert, 'id' | 'name' | 'positionInProject' | 'role' | 'contractNumber' | 'contractType' | 'category' | 'projectCode' | 'projectTitle' | 'beneficiary'>;
+  expert: Pick<Expert, 'id' | 'name' | 'positionInProject' | 'role' | 'contractNumber' | 'contractType' | 'category' | 'expertExperienceCategory' | 'jobDescriptionText' | 'projectCode' | 'projectTitle' | 'beneficiary'>;
   activities: Activity[];
   month: number;
   year: number;
@@ -82,7 +85,7 @@ export function buildAnexa10ReportModel({
   const filteredBundles = bundles.filter((bundle) => shouldIncludeBundle(bundle, settings));
   const problems = validateWorkBlockAllocation(activities, filteredBundles);
   const warnings = buildReportWarnings(filteredBundles, activityById, settings);
-  const tableRows = filteredBundles.map((bundle) => buildTableRow(bundle, activityById, sentenceMonthName, year));
+  const tableRows = filteredBundles.map((bundle) => buildTableRow(bundle, activityById, expert));
   const saSections = buildSaSections(filteredBundles, activityById, sentenceMonthName, year);
   const projectCode = expert.projectCode || activities.find((activity) => activity.projectCode)?.projectCode || '302141';
 
@@ -94,7 +97,7 @@ export function buildAnexa10ReportModel({
       expertName: expert.name,
       position: expert.positionInProject || expert.role,
       contract: formatContract(expert.contractNumber, expert.contractType),
-      category: expert.category,
+      category: expert.expertExperienceCategory,
       projectCode,
       projectTitle: expert.projectTitle,
       beneficiary: expert.beneficiary,
@@ -114,8 +117,7 @@ export function buildAnexa10ReportModel({
 function buildTableRow(
   bundle: ReportingWorkBlockBundle,
   activityById: Map<string, Activity>,
-  monthName: string,
-  year: number,
+  expert: Pick<Expert, 'jobDescriptionText'>,
 ): Anexa10TableRow {
   const activities = getBundleActivities(bundle, activityById);
   const deliverables = getBundleDeliverableTitles(activities);
@@ -123,12 +125,12 @@ function buildTableRow(
 
   return {
     workBlockId: bundle.workBlock.id,
-    saCode: bundle.workBlock.saCode,
-    period: formatDayCluster(activities.map((activity) => ({ date: activity.date, hours: Number(activity.hours) || 0 })), monthName, year),
-    activityTitle: bundle.workBlock.title,
+    officialActivityTitle: getOfficialActivityTitle(bundle, activities),
+    responsibilities: expert.jobDescriptionText || bundle.workBlock.expertContribution || '-',
+    performedActivity: getPerformedActivity(bundle, activities),
     resultsAndDeliverables: deliverables.length > 0 ? deliverables : [getResultWithoutDeliverable(bundle)],
+    commonDeliverable: getCommonDeliverableLabel(activities),
     hours,
-    flowType: bundle.workBlock.reportingFlowType,
   };
 }
 
@@ -142,14 +144,23 @@ function buildSaSections(
 
   return Object.entries(grouped).map(([saCode, saBundles]) => ({
     saCode,
-    paragraphs: saBundles.map((bundle) => {
+    title: getSaSectionTitle(saCode, saBundles),
+    items: saBundles.map((bundle) => {
       const activities = getBundleActivities(bundle, activityById);
       const days = formatDayCluster(activities.map((activity) => ({ date: activity.date, hours: Number(activity.hours) || 0 })), monthName, year);
       const deliverables = getBundleDeliverableTitles(activities);
       const deliverableText = deliverables.length > 0
-        ? ` Livrabile asociate: ${deliverables.join('; ')}.`
+        ? ` Rezultatele obtinute / livrabilele elaborate: ${deliverables.join('; ')}.`
         : ` Rezultat raportabil fara fisier: ${getResultWithoutDeliverable(bundle)}.`;
-      return `${days}, am realizat activitatea "${bundle.workBlock.title}" in cadrul ${saCode}.${deliverableText}`;
+      return {
+        heading: `${getPerformedActivity(bundle, activities)} (${days}, ${calculateWorkBlockHours(bundle.activityLinks)} ore lucrate)`,
+        body: normalizeWhitespace(
+          bundle.workBlock.generatedNarrative
+          || bundle.workBlock.expertContribution
+          || activities.map((activity) => activity.description).filter(Boolean).join(' ')
+          || `Am realizat activitatea "${bundle.workBlock.title}" in cadrul ${saCode}.${deliverableText}`,
+        ),
+      };
     }),
     totalHours: calculateIncludedTotalHours(saBundles, {}),
   }));
@@ -237,6 +248,34 @@ function getBundleDeliverableTitles(activities: Activity[]) {
   )))];
 }
 
+function getOfficialActivityTitle(bundle: ReportingWorkBlockBundle, activities: Activity[]) {
+  return bundle.workBlock.activityCategory
+    || activities.find((activity) => activity.activityType)?.activityType
+    || bundle.workBlock.saCode
+    || '-';
+}
+
+function getPerformedActivity(bundle: ReportingWorkBlockBundle, activities: Activity[]) {
+  return normalizeWhitespace(
+    bundle.workBlock.generatedTableSummary
+    || bundle.workBlock.expertContribution
+    || activities.map((activity) => activity.description).filter(Boolean).join(' ')
+    || bundle.workBlock.title,
+  );
+}
+
+function getCommonDeliverableLabel(activities: Activity[]) {
+  const hasCommonDeliverable = activities.some((activity) => (
+    activity.deliverables?.some((deliverable) => deliverable.isCommonDeliverable)
+  ));
+  return hasCommonDeliverable ? 'Da' : 'Nu';
+}
+
+function getSaSectionTitle(saCode: string, bundles: ReportingWorkBlockBundle[]) {
+  const category = bundles.find((bundle) => bundle.workBlock.activityCategory)?.workBlock.activityCategory;
+  return category ? `${saCode} - ${category}` : saCode;
+}
+
 function getResultWithoutDeliverable(bundle: ReportingWorkBlockBundle) {
   if (bundle.workBlock.reportingFlowType === 'meeting') return 'participare, concluzii si actiuni de urmarire';
   if (bundle.workBlock.reportingFlowType === 'event') return 'participare si rezultat raportabil al evenimentului';
@@ -259,4 +298,8 @@ function formatContract(contractNumber?: string, contractType?: string) {
 
 function roundHours(value: number) {
   return Math.round(value * 100) / 100;
+}
+
+function normalizeWhitespace(value: string) {
+  return value.replace(/\s+/g, ' ').trim();
 }

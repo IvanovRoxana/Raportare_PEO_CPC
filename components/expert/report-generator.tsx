@@ -25,8 +25,9 @@ interface ReportGeneratorProps {
   month: number;
   year: number;
   expertName: string;
-  expert?: Pick<Expert, 'id' | 'name' | 'positionInProject' | 'role' | 'contractNumber' | 'contractType' | 'category' | 'projectCode' | 'projectTitle' | 'beneficiary'>;
+  expert?: Pick<Expert, 'id' | 'name' | 'positionInProject' | 'role' | 'contractNumber' | 'contractType' | 'category' | 'expertExperienceCategory' | 'jobDescriptionText' | 'projectCode' | 'projectTitle' | 'beneficiary'>;
   enableDeterministicAnexa10Docx?: boolean;
+  isLoadingDeterministicWorkBlocks?: boolean;
   workBlockBundles?: ReportingWorkBlockBundle[];
 }
 
@@ -78,6 +79,7 @@ export function ReportGenerator({
   expertName,
   expert,
   enableDeterministicAnexa10Docx = false,
+  isLoadingDeterministicWorkBlocks = false,
   workBlockBundles,
 }: ReportGeneratorProps) {
   const [isGenerating, setIsGenerating] = useState(false);
@@ -99,6 +101,7 @@ export function ReportGenerator({
   const [isLocalFallbackDraft, setIsLocalFallbackDraft] = useState(false);
   const deterministicAnexa10Model = useMemo(() => {
     if (!enableDeterministicAnexa10Docx || activities.length === 0) return null;
+    if (isLoadingDeterministicWorkBlocks) return null;
 
     const reportExpert = expert ?? {
       id: activities[0]?.expertId || 'expert',
@@ -113,7 +116,7 @@ export function ReportGenerator({
       year,
       workBlockBundles: workBlockBundles && workBlockBundles.length > 0 ? workBlockBundles : undefined,
     });
-  }, [activities, enableDeterministicAnexa10Docx, expert, expertName, month, workBlockBundles, year]);
+  }, [activities, enableDeterministicAnexa10Docx, expert, expertName, isLoadingDeterministicWorkBlocks, month, workBlockBundles, year]);
   const persistedWorkBlockCount = workBlockBundles?.length ?? 0;
   const deterministicExportReadiness = deterministicAnexa10Model
     ? getAnexa10ExportReadiness(deterministicAnexa10Model, {
@@ -125,6 +128,8 @@ export function ReportGenerator({
     : 'Work block-uri generate din activitati (fallback)';
   const deterministicExportButtonTitle = activities.length === 0
     ? 'Nu exista activitati pentru export Anexa 10.'
+    : isLoadingDeterministicWorkBlocks
+      ? 'Se incarca work block-urile persistate pentru Anexa 10.'
     : deterministicExportReadiness?.canExport
       ? `${deterministicExportReadiness.statusLabel}. ${deterministicWorkBlockSourceLabel}.`
       : deterministicExportReadiness?.blockingMessages[0] ?? 'Exportul Anexa 10 este blocat pentru verificare.';
@@ -434,6 +439,15 @@ export function ReportGenerator({
           </div>
         )}
 
+        {enableDeterministicAnexa10Docx && isLoadingDeterministicWorkBlocks && (
+          <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm">
+            <p className="font-medium">Raport de Activitate: se incarca work block-urile persistate</p>
+            <p className="mt-1 text-muted-foreground">
+              Exportul Anexa 10 este blocat temporar pentru a evita generarea fallback din activitati.
+            </p>
+          </div>
+        )}
+
         <div className="flex flex-wrap gap-2">
           {enableDeterministicAnexa10Docx && (
             <Button
@@ -442,6 +456,7 @@ export function ReportGenerator({
               aria-label={deterministicExportButtonTitle}
               disabled={
                 activities.length === 0
+                || isLoadingDeterministicWorkBlocks
                 || isExportingDeterministicDocx
                 || !deterministicExportReadiness?.canExport
               }
