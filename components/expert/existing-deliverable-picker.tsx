@@ -18,6 +18,7 @@ export interface ExistingDeliverableCandidate {
   fileName: string;
   fileType: string;
   fileSize: number;
+  deliverableId?: string;
   documentId?: string;
   s3Bucket?: string;
   s3Key?: string;
@@ -136,6 +137,7 @@ export function ExistingDeliverablePicker({
           fileName,
           fileType: deliverable.fileType || '',
           fileSize: deliverable.fileSize || 0,
+          deliverableId: deliverable.id,
           documentId: deliverable.documentId,
           s3Bucket: deliverable.s3Bucket,
           s3Key: deliverable.s3Key || deliverable.filePath,
