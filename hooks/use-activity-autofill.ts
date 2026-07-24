@@ -12,6 +12,7 @@ import {
 } from '@/lib/activity-autofill';
 import { getDocumentAuditTitle } from '@/lib/document-sharing';
 import type { DeliverableSlot } from '@/lib/deliverable-types';
+import { isActivityAgentEnabledClient } from '@/lib/feature-flags';
 import type { ActivityCatalog, Expert } from '@/lib/types';
 
 interface UseActivityAutofillParams {
@@ -21,6 +22,7 @@ interface UseActivityAutofillParams {
   expertId: string;
   expertName: string;
   month: number;
+  hours?: number;
   selectedActivityId?: string;
   saCode: string;
   activityName: string;
@@ -72,6 +74,7 @@ export function useActivityAutofill({
   expertId,
   expertName,
   month,
+  hours,
   selectedActivityId,
   saCode,
   activityName,
@@ -151,30 +154,52 @@ export function useActivityAutofill({
 
     try {
       const headers = await getJsonAuthHeaders();
-      const response = await fetch('/api/ai/suggest-activity-from-deliverables', {
+      const requestPayload = {
+        deliverables: autofillDeliverables,
+        catalogCandidates,
+        selectedActivityId,
+        saCode,
+        activityName,
+        title: activityName,
+        currentDescription,
+        expertName,
+        expertId,
+        expertRole: expert?.positionInProject || expert?.role,
+        expertReportingInstructions: expert?.aiReportingInstructions,
+        category: expert?.category,
+        projectCode: expert?.projectCode,
+        month,
+        year,
+        hours,
+        selectedDates,
+        collaborationContext,
+      };
+      const postAutofill = (endpoint: string) => fetch(endpoint, {
         method: 'POST',
         headers,
-        body: JSON.stringify({
-          deliverables: autofillDeliverables,
-          catalogCandidates,
-          selectedActivityId,
-          saCode,
-          activityName,
-          currentDescription,
-          expertName,
-          expertId,
-          expertRole: expert?.positionInProject || expert?.role,
-          expertReportingInstructions: expert?.aiReportingInstructions,
-          category: expert?.category,
-          projectCode: expert?.projectCode,
-          month,
-          year,
-          selectedDates,
-          collaborationContext,
-        }),
+        body: JSON.stringify(requestPayload),
       });
+      const legacyEndpoint = '/api/ai/suggest-activity-from-deliverables';
+      const agentEndpoint = '/api/ai/activity-agent';
+      const shouldUseAgent = isActivityAgentEnabledClient();
+      let response = await postAutofill(shouldUseAgent ? agentEndpoint : legacyEndpoint);
 
       const data = await readJsonResponse(response);
+      if (
+        shouldUseAgent
+        && !response.ok
+        && typeof data === 'object'
+        && data !== null
+        && (data as { code?: unknown }).code === 'ACTIVITY_AGENT_DISABLED'
+      ) {
+        response = await postAutofill(legacyEndpoint);
+        const legacyData = await readJsonResponse(response);
+        if (!response.ok || legacyData.error) {
+          throw new Error(legacyData.error || 'Rescrierea descrierii a esuat.');
+        }
+        setSuggestion(legacyData);
+        return;
+      }
       if (!response.ok || data.error) {
         if (isServerSideAutofillFailure(response, data)) {
           const fallback = buildFallbackActivityAutofillSuggestion({
@@ -217,6 +242,7 @@ export function useActivityAutofill({
     expert,
     expertId,
     expertName,
+    hours,
     selectedActivityId,
     saCode,
     activityName,

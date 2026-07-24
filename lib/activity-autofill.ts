@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { ActivityAgentResponse } from './agents/activity-agent-schema';
 
 const MAX_DELIVERABLE_TEXT_CHARS = 6000;
 const MAX_PROMPT_DELIVERABLES = 8;
@@ -121,6 +122,8 @@ export type ActivityAutofillSuggestion = z.infer<typeof activityAutofillSuggesti
   modelAuditId?: string;
   rag?: ActivityAutofillRagStatus;
   saPurpose?: ActivityAutofillSaPurposeStatus;
+  agent?: ActivityAgentResponse;
+  agentFallback?: boolean;
 };
 
 export type ActivityAutofillDeliverableDraft = {

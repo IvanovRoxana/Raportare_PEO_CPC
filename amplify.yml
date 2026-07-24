@@ -13,11 +13,14 @@ frontend:
       commands:
         - if [ -n "$OPENAI_API_KEY" ]; then printf "OPENAI_API_KEY=%s\n" "$OPENAI_API_KEY" >> .env.production; fi
         - if [ -n "$OPENAI_MODEL" ]; then printf "OPENAI_MODEL=%s\n" "$OPENAI_MODEL" >> .env.production; fi
+        - if [ -n "$OPENAI_ACTIVITY_AGENT_MODEL" ]; then printf "OPENAI_ACTIVITY_AGENT_MODEL=%s\n" "$OPENAI_ACTIVITY_AGENT_MODEL" >> .env.production; fi
         - if [ -n "$OPENAI_EMBEDDING_MODEL" ]; then printf "OPENAI_EMBEDDING_MODEL=%s\n" "$OPENAI_EMBEDDING_MODEL" >> .env.production; fi
         - if [ -n "$RAG_ADMIN_IMPORT_TOKEN" ]; then printf "RAG_ADMIN_IMPORT_TOKEN=%s\n" "$RAG_ADMIN_IMPORT_TOKEN" >> .env.production; fi
         - if [ -n "$ACTIVITY_AUTOFILL_RAG_ENABLED" ]; then printf "ACTIVITY_AUTOFILL_RAG_ENABLED=%s\n" "$ACTIVITY_AUTOFILL_RAG_ENABLED" >> .env.production; fi
         - if [ -n "$ACTIVITY_AUTOFILL_RAG_PA_ONLY" ]; then printf "ACTIVITY_AUTOFILL_RAG_PA_ONLY=%s\n" "$ACTIVITY_AUTOFILL_RAG_PA_ONLY" >> .env.production; fi
         - if [ -n "$ACTIVITY_AUTOFILL_RAG_AUDIT_ENABLED" ]; then printf "ACTIVITY_AUTOFILL_RAG_AUDIT_ENABLED=%s\n" "$ACTIVITY_AUTOFILL_RAG_AUDIT_ENABLED" >> .env.production; fi
+        - if [ -n "$ACTIVITY_AGENT_ENABLED" ]; then printf "ACTIVITY_AGENT_ENABLED=%s\n" "$ACTIVITY_AGENT_ENABLED" >> .env.production; fi
+        - if [ -n "$NEXT_PUBLIC_ACTIVITY_AGENT_ENABLED" ]; then printf "NEXT_PUBLIC_ACTIVITY_AGENT_ENABLED=%s\n" "$NEXT_PUBLIC_ACTIVITY_AGENT_ENABLED" >> .env.production; fi
         - if [ -n "$ENABLE_DELIVERABLE_ELIGIBILITY_CHECK" ]; then printf "ENABLE_DELIVERABLE_ELIGIBILITY_CHECK=%s\n" "$ENABLE_DELIVERABLE_ELIGIBILITY_CHECK" >> .env.production; fi
         - if [ -n "$NEXT_PUBLIC_ENABLE_DELIVERABLE_ELIGIBILITY_CHECK" ]; then printf "NEXT_PUBLIC_ENABLE_DELIVERABLE_ELIGIBILITY_CHECK=%s\n" "$NEXT_PUBLIC_ENABLE_DELIVERABLE_ELIGIBILITY_CHECK" >> .env.production; fi
         - if [ -n "$NEXT_PUBLIC_ENABLE_REPORTING_WORK_BLOCKS" ]; then printf "NEXT_PUBLIC_ENABLE_REPORTING_WORK_BLOCKS=%s\n" "$NEXT_PUBLIC_ENABLE_REPORTING_WORK_BLOCKS" >> .env.production; fi

@@ -2,6 +2,10 @@ import { createOpenAI } from '@ai-sdk/openai';
 
 export const DEFAULT_OPENAI_MODEL = process.env.OPENAI_MODEL?.trim() || 'gpt-4o-mini';
 
+export function getActivityAgentModelName() {
+  return process.env.OPENAI_ACTIVITY_AGENT_MODEL?.trim() || DEFAULT_OPENAI_MODEL;
+}
+
 export class OpenAIConfigurationError extends Error {
   code = 'OPENAI_API_KEY_MISSING';
   status = 500;

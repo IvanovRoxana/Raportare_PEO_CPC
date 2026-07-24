@@ -703,6 +703,11 @@ export function ActivityForm({
           }))
       : [],
   }), [activityCommon, allExperts, collaborators]);
+  const activityAutofillHours = useMemo(() => {
+    if (selectedDates.length === 0) return undefined;
+    const firstDate = selectedDates[0];
+    return Number(normalizePontajHoursValue(normalizedSelectedHours[firstDate], defaultHours));
+  }, [defaultHours, normalizedSelectedHours, selectedDates]);
   const {
     error: activityAutofillError,
     suggestion: activityAutofillSuggestion,
@@ -718,6 +723,7 @@ export function ActivityForm({
     expertId,
     expertName,
     month,
+    hours: activityAutofillHours,
     selectedActivityId: selectedCatalogItem?.id,
     saCode,
     activityName: activityTitle,
@@ -2872,6 +2878,48 @@ export function ActivityForm({
                         {activityAutofillSuggestion.description}
                       </div>
                     </div>
+                    {activityAutofillSuggestion.agent && (
+                      <div className="grid gap-2 md:grid-cols-2">
+                        <div className="rounded border border-emerald-200 bg-white p-2 text-xs text-slate-800">
+                          <div className="font-medium text-emerald-800">Verificari Agent PEO</div>
+                          <div className="mt-1 space-y-1">
+                            <div>Impact grup tinta: {activityAutofillSuggestion.agent.targetGroupImpact.type} - {activityAutofillSuggestion.agent.targetGroupImpact.justification}</div>
+                            {activityAutofillSuggestion.agent.requiresPmReview && (
+                              <div className="font-medium text-amber-700">Necesita verificare PM inainte de aplicare.</div>
+                            )}
+                            {((activityAutofillSuggestion.agent.proposedSaCode
+                              && activityAutofillSuggestion.agent.proposedSaCode !== saCode)
+                              || (activityAutofillSuggestion.agent.proposedActivityName
+                                && activityAutofillSuggestion.agent.proposedActivityName !== activityTitle)) && (
+                              <div className="text-amber-700">
+                                Propunere incadrare: {activityAutofillSuggestion.agent.proposedSaCode || saCode}
+                                {activityAutofillSuggestion.agent.proposedActivityName ? ` / ${activityAutofillSuggestion.agent.proposedActivityName}` : ''}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <div className="rounded border border-emerald-200 bg-white p-2 text-xs text-slate-800">
+                          <div className="font-medium text-emerald-800">Rezumat agent</div>
+                          <div className="mt-1 space-y-1">
+                            <div>Livrabil: {activityAutofillSuggestion.agent.deliverableSummary}</div>
+                            <div>Rezultat: {activityAutofillSuggestion.agent.resultSummary}</div>
+                            {activityAutofillSuggestion.agent.beneficiaries.length > 0 && (
+                              <div>Beneficiari: {activityAutofillSuggestion.agent.beneficiaries.join(', ')}</div>
+                            )}
+                          </div>
+                        </div>
+                        <div className="rounded border border-emerald-200 bg-white p-2 text-xs text-slate-800 md:col-span-2">
+                          <div className="font-medium text-emerald-800">Checklist</div>
+                          <div className="mt-1 grid gap-1 md:grid-cols-3">
+                            {Object.entries(activityAutofillSuggestion.agent.checks).map(([key, value]) => (
+                              <div key={`activity-agent-check-${key}`}>
+                                {key}: {value === null ? 'neverificat' : value ? 'ok' : 'atentie'}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                     {(activityAutofillSuggestion.evidence.length > 0 || activityAutofillSuggestion.warnings.length > 0) && (
                       <div className="grid gap-2 md:grid-cols-2">
                         {activityAutofillSuggestion.evidence.length > 0 && (

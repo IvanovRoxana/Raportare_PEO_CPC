@@ -37,6 +37,14 @@ export function isActivityAutofillRagAuditEnabled() {
   return process.env.ACTIVITY_AUTOFILL_RAG_AUDIT_ENABLED !== 'false';
 }
 
+export function isActivityAgentEnabled() {
+  return process.env.ACTIVITY_AGENT_ENABLED === 'true';
+}
+
+export function isActivityAgentEnabledClient() {
+  return process.env.NEXT_PUBLIC_ACTIVITY_AGENT_ENABLED === 'true';
+}
+
 export function getActivityAutofillEmbeddingModel() {
   return process.env.OPENAI_EMBEDDING_MODEL?.trim() || 'text-embedding-3-small';
 }

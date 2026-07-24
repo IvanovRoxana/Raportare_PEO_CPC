@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {
   getActivityAutofillEmbeddingModel,
   isAnexa10DeterministicDocxEnabledClient,
+  isActivityAgentEnabled,
+  isActivityAgentEnabledClient,
   isActivityAutofillRagAuditEnabled,
   isActivityAutofillRagEnabled,
   isActivityAutofillRagPaOnly,
@@ -136,4 +138,27 @@ test('activity autofill RAG enables only on explicit true', () => {
   restoreEnv('ACTIVITY_AUTOFILL_RAG_ENABLED', previousEnabled);
   restoreEnv('ACTIVITY_AUTOFILL_RAG_PA_ONLY', previousPaOnly);
   restoreEnv('ACTIVITY_AUTOFILL_RAG_AUDIT_ENABLED', previousAudit);
+});
+
+test('activity agent flags are disabled by default and enable only on explicit true', () => {
+  const previousServer = process.env.ACTIVITY_AGENT_ENABLED;
+  const previousClient = process.env.NEXT_PUBLIC_ACTIVITY_AGENT_ENABLED;
+
+  delete process.env.ACTIVITY_AGENT_ENABLED;
+  delete process.env.NEXT_PUBLIC_ACTIVITY_AGENT_ENABLED;
+  assert.equal(isActivityAgentEnabled(), false);
+  assert.equal(isActivityAgentEnabledClient(), false);
+
+  process.env.ACTIVITY_AGENT_ENABLED = 'false';
+  process.env.NEXT_PUBLIC_ACTIVITY_AGENT_ENABLED = 'false';
+  assert.equal(isActivityAgentEnabled(), false);
+  assert.equal(isActivityAgentEnabledClient(), false);
+
+  process.env.ACTIVITY_AGENT_ENABLED = 'true';
+  process.env.NEXT_PUBLIC_ACTIVITY_AGENT_ENABLED = 'true';
+  assert.equal(isActivityAgentEnabled(), true);
+  assert.equal(isActivityAgentEnabledClient(), true);
+
+  restoreEnv('ACTIVITY_AGENT_ENABLED', previousServer);
+  restoreEnv('NEXT_PUBLIC_ACTIVITY_AGENT_ENABLED', previousClient);
 });
