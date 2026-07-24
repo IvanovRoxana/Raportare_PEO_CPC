@@ -199,6 +199,25 @@ async function createUserAudit(input: {
   });
 }
 
+async function tryCreateUserAudit(input: Parameters<typeof createUserAudit>[0]) {
+  try {
+    await createUserAudit(input);
+  } catch (error) {
+    console.warn('Auditul actiunii de administrare nu a putut fi salvat.', error);
+  }
+}
+
+function formatAdminWriteError(error: unknown, fallback: string) {
+  const message = error instanceof Error ? error.message : String(error || '');
+  if (/AccessDeniedException|Unauthorized|not authorized|acces interzis/i.test(message)) {
+    return [
+      'Scriere refuzata de backend: sesiunea Cognito curenta nu are drept de update pe experti.',
+      'Delogheaza-te si autentifica-te din nou ca sa se reincarce grupurile admin/pm, apoi reincearca.',
+    ].join(' ');
+  }
+  return message || fallback;
+}
+
 export function AdminUsersTable() {
   const [experts, setExperts] = useState<Expert[]>([]);
   const [persistedExpertsByKey, setPersistedExpertsByKey] = useState<Map<string, Expert>>(() => new Map());
@@ -341,7 +360,7 @@ export function AdminUsersTable() {
         await expertsService.update(savedExpert.id, updates);
       }
 
-      await createUserAudit({
+      await tryCreateUserAudit({
         actionType: 'user_profile_updated',
         expert: savedExpert,
         fieldName: 'profile',
@@ -355,7 +374,7 @@ export function AdminUsersTable() {
       setForm(null);
       await loadExperts();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Actualizarea profilului a esuat.');
+      setError(formatAdminWriteError(e, 'Actualizarea profilului a esuat.'));
     } finally {
       setSavingId(null);
     }
@@ -371,17 +390,20 @@ export function AdminUsersTable() {
     const nextInstructions = instructionsDraft.trim();
 
     try {
-      const savedExpert = isPersistedExpert(editingInstructionsExpert)
+      const expertIsPersisted = isPersistedExpert(editingInstructionsExpert);
+      const savedExpert = expertIsPersisted
         ? { ...editingInstructionsExpert, id: getPersistedExpertId(editingInstructionsExpert) }
         : await expertsService.create(buildExpertCreateInput(editingInstructionsExpert, {
             aiReportingInstructions: nextInstructions,
           }));
 
-      await expertsService.update(savedExpert.id, {
-        aiReportingInstructions: nextInstructions,
-      });
+      if (expertIsPersisted) {
+        await expertsService.update(savedExpert.id, {
+          aiReportingInstructions: nextInstructions,
+        });
+      }
 
-      await createUserAudit({
+      await tryCreateUserAudit({
         actionType: 'user_ai_reporting_instructions_updated',
         expert: savedExpert,
         fieldName: 'aiReportingInstructions',
@@ -395,7 +417,7 @@ export function AdminUsersTable() {
       setInstructionsDraft('');
       await loadExperts();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Actualizarea instructiunilor AI a esuat.');
+      setError(formatAdminWriteError(e, 'Actualizarea instructiunilor AI a esuat.'));
     } finally {
       setSavingId(null);
     }
