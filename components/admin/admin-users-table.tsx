@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { fetchAuthSession } from 'aws-amplify/auth';
 import {
   CheckCircle2,
   Edit2,
@@ -207,6 +208,10 @@ async function tryCreateUserAudit(input: Parameters<typeof createUserAudit>[0]) 
   }
 }
 
+async function refreshAdminAuthSession() {
+  await fetchAuthSession({ forceRefresh: true });
+}
+
 function formatAdminWriteError(error: unknown, fallback: string) {
   const message = error instanceof Error ? error.message : String(error || '');
   if (/AccessDeniedException|Unauthorized|not authorized|acces interzis/i.test(message)) {
@@ -350,7 +355,9 @@ export function AdminUsersTable() {
     updates.cognitoGroups = cognitoGroups;
 
     try {
+      await refreshAdminAuthSession();
       await syncOrInviteCognitoGroupsForUser(updates.email, cognitoGroups, updates.name);
+      await refreshAdminAuthSession();
 
       const savedExpert = isPersistedExpert(editingExpert)
         ? { ...editingExpert, id: getPersistedExpertId(editingExpert) }
@@ -390,6 +397,7 @@ export function AdminUsersTable() {
     const nextInstructions = instructionsDraft.trim();
 
     try {
+      await refreshAdminAuthSession();
       const expertIsPersisted = isPersistedExpert(editingInstructionsExpert);
       const savedExpert = expertIsPersisted
         ? { ...editingInstructionsExpert, id: getPersistedExpertId(editingInstructionsExpert) }
