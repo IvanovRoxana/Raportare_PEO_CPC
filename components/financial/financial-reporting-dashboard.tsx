@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CalendarDays, CheckCircle2, Download, FileText, Loader2, Plus, Save, SearchIcon, ShieldCheck, Users, XCircle } from 'lucide-react';
 import { DashboardShell, financialNavItems } from '@/components/layout/dashboard-shell';
 import { Badge } from '@/components/ui/badge';
@@ -90,6 +90,10 @@ function parseDailyHoursLabel(value: string | undefined) {
   return matched ? Number(matched[1].replace(',', '.')) : 0;
 }
 
+function hourlyRateRowKey(row: FinancialTimesheetRow) {
+  return row.expertId ?? row.name;
+}
+
 function downloadResponse(response: Response, fallbackName: string) {
   return response.blob().then((blob) => {
     const disposition = response.headers.get('content-disposition') ?? '';
@@ -143,6 +147,7 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
   const [savingContract, setSavingContract] = useState(false);
   const [verificationMessage, setVerificationMessage] = useState('');
   const [selectedNormExpertName, setSelectedNormExpertName] = useState('');
+  const [hourlyRates, setHourlyRates] = useState<Record<string, string>>({});
   const [leaveForm, setLeaveForm] = useState({
     expertId: '',
     date: isoDate(2026, 5),
@@ -174,6 +179,16 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
   const { create: createNormContract, update: updateNormContract } = useExpertNormContractMutations();
   const enabled = mode === 'timesheets' ? isFinancialTimesheetsEnabledClient() : isFinancialLeaveEnabledClient();
   const isLoading = loadingExperts || loadingActivities || loadingProjects || loadingEntries || loadingContracts || loadingLeave;
+  const hourlyRateStorageKey = `financial-peo-hourly-rates-${year}-${String(month + 1).padStart(2, '0')}`;
+
+  useEffect(() => {
+    try {
+      const storedRates = window.localStorage.getItem(hourlyRateStorageKey);
+      setHourlyRates(storedRates ? JSON.parse(storedRates) as Record<string, string> : {});
+    } catch {
+      setHourlyRates({});
+    }
+  }, [hourlyRateStorageKey]);
 
   const summary = useMemo(() => buildFinancialReportingSummary({
     experts,
@@ -286,6 +301,16 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
     } finally {
       setValidating(null);
     }
+  };
+
+  const updateHourlyRate = (row: FinancialTimesheetRow, value: string) => {
+    const key = hourlyRateRowKey(row);
+    setHourlyRates((current) => {
+      const next = { ...current, [key]: value };
+      if (!value.trim()) delete next[key];
+      window.localStorage.setItem(hourlyRateStorageKey, JSON.stringify(next));
+      return next;
+    });
   };
 
   const saveFinancialLeave = async () => {
@@ -406,12 +431,13 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
     try {
       const expertProjects = projects.filter((project) => project.expertId === expert.id);
       const projectIds = new Set(expertProjects.map((project) => project.id));
+      const hourlyRate = Number(hourlyRates[hourlyRateRowKey(row)]?.replace(',', '.')) || undefined;
       const response = await fetch('/api/export/pontaj', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(buildPontajExportPayload({
           kind: 'consolidated',
-          expert,
+          expert: { ...expert, hourlyRate },
           activities: activities.filter((activity) => activity.expertId === expert.id),
           concurrentProjects: expertProjects,
           concurrentTimesheetEntries: entries.filter((entry) => projectIds.has(entry.concurrentProjectId)),
@@ -778,11 +804,12 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
           ) : (
             mode === 'timesheets' ? (
               <TooltipProvider delayDuration={150}>
-                <table className="w-full min-w-[1120px] table-fixed border-collapse border border-slate-300 text-[10px] leading-tight xl:min-w-0">
+                <table className="w-full min-w-[1280px] table-fixed border-collapse border border-slate-300 text-[10px] leading-tight">
                   <colgroup>
-                    {[8.5, 14, 7.5, 6.5, 14, 6.5, 5.5, 13.5, 8.5, 5.5, 4.5, 5.5].map((width, index) => <col key={index} style={{ width: `${width}%` }} />)}
+                    {[3.5, 8, 13, 7, 6, 13, 6, 5, 12.5, 8, 5, 4.5, 5, 9.5].map((width, index) => <col key={index} style={{ width: `${width}%` }} />)}
                   </colgroup>
                   <thead><tr className="text-center text-[9px] font-semibold uppercase leading-tight text-white">
+                    <th className="border-r border-white/30 bg-emerald-800 px-1 py-2">NR. CRT.</th>
                     <th className="border-r border-white/30 bg-emerald-800 px-1 py-2">SALARIAT</th>
                     <th className="border-r border-white/30 bg-emerald-800 px-1 py-2">POZITIA DE BAZA (CONCORDIA)</th>
                     <th className="border-r border-white/30 bg-emerald-800 px-1 py-2">ORE LUCRATE CONCORDIA</th>
@@ -795,9 +822,11 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
                     <th className="border-r border-white/30 bg-slate-700 px-1 py-2">TOTAL ORE LUCRATE</th>
                     <th className="border-r border-white/30 bg-slate-700 px-1 py-2">TOTAL ORE CO</th>
                     <th className="bg-amber-600 px-1 py-2">TOTAL ORE LUNA</th>
+                    <th className="bg-blue-800 px-1 py-2">RATA ORARA PEO</th>
                   </tr></thead>
                   <tbody>{visibleRows.map((row, rowIndex) => (
                     <tr key={`${row.expertId ?? 'missing'}-${row.name}`} className={`border-b border-slate-300 align-middle hover:bg-emerald-50 ${rowIndex % 2 ? 'bg-emerald-50/40' : 'bg-white'}`}>
+                      <td className="border-r border-slate-300 px-1 py-1 text-center font-semibold tabular-nums">{rowIndex + 1}</td>
                       <td className="border-r border-slate-300 px-1 py-1">
                         <div className="flex min-w-0 items-center gap-0.5">
                           <ConflictDot row={row} />
@@ -817,6 +846,17 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
                       <td className="border-r border-slate-400 bg-slate-100/80 px-1 py-1 text-center font-semibold tabular-nums">{compactHours(row.totalWorked)}</td>
                       <td className="border-r border-slate-400 bg-slate-100/80 px-1 py-1 text-center font-semibold tabular-nums">{compactHours(row.totalLeave)}</td>
                       <td className="bg-amber-50 px-1 py-1 text-center font-semibold tabular-nums">{compactHours(row.totalMonth)}</td>
+                      <td className="border-l border-slate-300 bg-blue-50 px-1 py-1">
+                        <Input
+                          className="h-7 px-1 text-center text-[10px] tabular-nums"
+                          inputMode="decimal"
+                          placeholder="lei/h"
+                          value={hourlyRates[hourlyRateRowKey(row)] ?? ''}
+                          disabled={!row.expertId}
+                          title={row.expertId ? `Rata orara PEO pentru ${row.name}` : 'Disponibil dupa inregistrarea expertului in aplicatie'}
+                          onChange={(event) => updateHourlyRate(row, event.target.value)}
+                        />
+                      </td>
                     </tr>
                   ))}</tbody>
                 </table>

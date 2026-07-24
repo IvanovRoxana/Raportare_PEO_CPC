@@ -12,7 +12,7 @@ type CellInput = string | number | null | { formula: string };
 
 export interface ExportPayload {
   kind: 'peo' | 'consolidated';
-  expert: Partial<Expert> & { beneficiary?: string };
+  expert: Partial<Expert> & { beneficiary?: string; hourlyRate?: number };
   activities: Partial<Activity>[];
   concurrentProjects?: Partial<ConcurrentProject>[];
   concurrentTimesheetEntries?: Partial<ConcurrentProjectTimesheetEntry>[];
@@ -160,6 +160,7 @@ async function generatePeoWorkbook(payload: ExportPayload): Promise<GeneratedWor
   const detailRows = buildPeoDetailRows(payload.year, payload.month, grouped);
   const extraRows = Math.max(0, detailRows.length - daysInMonth);
   const dailyHours = getExpertDailyHours(payload.expert);
+  const hourlyRate = getExpertHourlyRate(payload.expert);
 
   if (daysInMonth === 31) {
     sheetXml = insertPeoDay31Row(sheetXml);
@@ -186,7 +187,7 @@ async function generatePeoWorkbook(payload: ExportPayload): Promise<GeneratedWor
     sheetXml = setCell(sheetXml, `A${row}`, detail ? detail.dateSerial : null);
     sheetXml = setCell(sheetXml, `B${row}`, (hours > 0 || leaveCode) && activity ? activityCode(activity, payload.expert) : null);
     sheetXml = setCell(sheetXml, `D${row}`, (hours > 0 || leaveCode) && activity ? activitySubactivity(activity) : null);
-    sheetXml = setCell(sheetXml, `G${row}`, null);
+    sheetXml = setCell(sheetXml, `G${row}`, hourlyRate && (hours > 0 || leaveCode) ? hourlyRate : null);
     sheetXml = setCell(sheetXml, `H${row}`, leaveCode ?? (hours > 0 ? hours : null));
     sheetXml = setCell(sheetXml, `I${row}`, detail?.isWorking ? 0 : null);
   }
@@ -230,6 +231,7 @@ async function generateConsolidatedWorkbook(payload: ExportPayload): Promise<Gen
   }
   const detailEnd = peoSection.totalRow - 1;
   const dailyHours = getExpertDailyHours(payload.expert);
+  const hourlyRate = getExpertHourlyRate(payload.expert);
   const monthEndSerial = excelSerial(payload.year, payload.month, daysInMonth);
   const summaryRows = hasGoodworks
     ? { concordia: 15, goodworks: 16, peo: 17, total: 18 }
@@ -309,7 +311,7 @@ async function generateConsolidatedWorkbook(payload: ExportPayload): Promise<Gen
     sheetXml = setCell(sheetXml, `A${row}`, detail ? detail.dateSerial : null);
     sheetXml = setCell(sheetXml, `B${row}`, (hours > 0 || leaveCode) && activity ? activityCode(activity, payload.expert) : null);
     sheetXml = setCell(sheetXml, `D${row}`, (hours > 0 || leaveCode) && activity ? activitySubactivity(activity) : null);
-    sheetXml = setCell(sheetXml, `AK${row}`, null);
+    sheetXml = setCell(sheetXml, `AK${row}`, hourlyRate && (hours > 0 || leaveCode) ? hourlyRate : null);
     sheetXml = setCell(sheetXml, `AL${row}`, leaveCode ?? (hours > 0 ? hours : null));
     sheetXml = setCell(
       sheetXml,
@@ -967,6 +969,13 @@ function activityDeliverables(activity: Partial<Activity>) {
 
 function getExpertDailyHours(expert: Partial<Expert>) {
   return Number(expert.oreZi ?? expert.dailyHours ?? expert.norma ?? 8) || 8;
+}
+
+function getExpertHourlyRate(expert: Partial<Expert> & { hourlyRate?: number | string }) {
+  const value = typeof expert.hourlyRate === 'string'
+    ? Number(expert.hourlyRate.replace(',', '.'))
+    : Number(expert.hourlyRate);
+  return Number.isFinite(value) && value > 0 ? roundNumber(value) : 0;
 }
 
 function getExpertPosition(expert: Partial<Expert>) {
