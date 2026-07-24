@@ -1647,38 +1647,12 @@ export function ActivityForm({
   }, [allActivities, currentDeliverablesForEligibility, expertId, initialActivity]);
   const prelimDeliverables = deliverables.filter(d => d.slotType === 'raport_preliminar');
   const justifDeliverables = deliverables.filter(d => d.slotType === 'justificativ');
-  const descriptionTrimmed = (description || '').trim();
-  const descriptionReadyForEligibility = activityCommon
-    ? descriptionTrimmed.length >= 30
-    : descriptionTrimmed.length >= 15;
   const eligibilityBlockedReason = !effectiveSaCode
     ? 'Selecteaza subactivitatea inainte de verificarea eligibilitatii.'
     : !effectiveActivityTitle
       ? 'Selecteaza activitatea inainte de verificarea eligibilitatii.'
-      : !descriptionReadyForEligibility
-        ? activityCommon
-          ? 'Completeaza descrierea contributiei individuale, minimum 30 de caractere.'
-          : 'Completeaza descrierea activitatii, minimum 15 caractere.'
-        : undefined;
+      : undefined;
   const canCheckDeliverableEligibility = !eligibilityBlockedReason;
-  const scrollToDeliverables = useCallback(() => {
-    window.setTimeout(() => {
-      document.getElementById('activity-form-deliverables-section')?.scrollIntoView({
-        behavior: 'smooth',
-        block: 'start',
-      });
-    }, 0);
-  }, []);
-  const startDeliverableFlow = useCallback(() => {
-    if (mainDeliverables.length === 0) {
-      addDeliverableSlot('livrabil');
-    }
-    scrollToDeliverables();
-  }, [addDeliverableSlot, mainDeliverables.length, scrollToDeliverables]);
-  const openExistingDeliverableFlow = useCallback(() => {
-    setExistingDeliverablePickerOpen(true);
-    scrollToDeliverables();
-  }, [scrollToDeliverables]);
   const hasEventMomAsMainDeliverable = isEvent && deliverables.some((deliverable) => (
     deliverable.slotType === 'event_mom'
     && deliverable.uploaded
@@ -2301,35 +2275,6 @@ export function ActivityForm({
           </Tabs>
         )}
 
-        {isWorkspaceLayout && showStandardActivityWorkflow && !isLeave && !isException && (
-          <div className="rounded-lg border border-indigo-200 bg-white p-4 shadow-sm">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 text-sm font-semibold text-slate-950">
-                  <Sparkles className="h-4 w-4 text-indigo-600" />
-                  Porneste de la livrabil
-                </div>
-                <p className="mt-1 text-xs text-slate-600">
-                  Incarca sau ataseaza un livrabil existent, apoi selecteaza activitatea si foloseste AI-ul de descriere din formular.
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button type="button" variant="outline" size="sm" onClick={openExistingDeliverableFlow}>
-                  <FileText className="h-4 w-4 mr-1" />
-                  Alege existent
-                </Button>
-                <Button type="button" variant="outline" size="sm" onClick={startDeliverableFlow}>
-                  <Plus className="h-4 w-4 mr-1" />
-                  Adauga livrabil
-                </Button>
-              </div>
-            </div>
-            {!isWorkspaceLayout && activityAutofillError && (
-              <p className="mt-3 text-xs text-amber-700">{activityAutofillError}</p>
-            )}
-          </div>
-        )}
-
         {/* Day Type and Hours */}
         <div id="activity-form-details-section" className="grid scroll-mt-24 gap-4 md:grid-cols-2">
           <Field>
@@ -2582,6 +2527,109 @@ export function ActivityForm({
               </div>
             )}
 
+            {/* Sub-activity and Activity */}
+            {showStandardActivityWorkflow && (
+              <div className="space-y-4">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <Field>
+                    <FieldLabel htmlFor="saCode">Subactivitate (Rol: {expert?.role})</FieldLabel>
+                    {isGdprExpert ? (
+                      <Input id="saCode" value={saCode || selectedGdprTemplate?.saCode || 'SA1.1'} disabled />
+                    ) : (
+                      <Select value={saCode} onValueChange={setSaCode} disabled={catalogLoading && catalog.length === 0}>
+                        <SelectTrigger id="saCode">
+                          <SelectValue placeholder={catalogLoading && catalog.length === 0 ? "Se incarca..." : "Selecteaza SA"} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableSaCodes.length === 0 ? (
+                            <div className="px-2 py-1.5 text-sm text-muted-foreground">Nicio subactivitate disponibila</div>
+                          ) : (
+                            availableSaCodes.map((sa) => (
+                              <SelectItem key={sa} value={sa}>{sa}</SelectItem>
+                            ))
+                          )}
+                        </SelectContent>
+                      </Select>
+                    )}
+                    {availableSaCodes.length === 0 && !catalogLoading && (
+                      <p className="text-xs text-amber-600 mt-1">
+                        Nu exista subactivitati alocate pentru rolul tau. Contacteaza PM.
+                      </p>
+                    )}
+                  </Field>
+
+                  {!isGdprExpert ? (
+                    <Field>
+                      <FieldLabel htmlFor="activity">Activitate</FieldLabel>
+                      <Select value={selectedActivitySelectValue} onValueChange={handleActivitySelectionChange} disabled={!saCode || availableActivityItems.length === 0}>
+                        <SelectTrigger id="activity">
+                          <SelectValue placeholder={!saCode ? "Selecteaza SA mai intai" : "Selecteaza activitatea"} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableActivityItems.length === 0 ? (
+                            <div className="px-2 py-1.5 text-sm text-muted-foreground">Nicio activitate pentru acest SA</div>
+                          ) : (
+                            availableActivityItems.map((item) => (
+                              <SelectItem key={item.id} value={item.id}>{item.activityName}</SelectItem>
+                            ))
+                          )}
+                        </SelectContent>
+                      </Select>
+                      {selectedCatalogItem && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {selectedCatalogItem.serviceCategory} - {selectedCatalogItem.description}
+                        </p>
+                      )}
+                    </Field>
+                  ) : (
+                    <Field>
+                      <FieldLabel htmlFor="location">Locatie</FieldLabel>
+                      <Select value={location} onValueChange={setLocation}>
+                        <SelectTrigger id="location">
+                          <SelectValue placeholder="Selecteaza locatia" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Birou">Birou</SelectItem>
+                          <SelectItem value="Teren">Teren</SelectItem>
+                          <SelectItem value="Online">Online</SelectItem>
+                          <SelectItem value="Sediu CPC">Sediu CPC</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                  )}
+                </div>
+
+                {!isGdprExpert && (
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <Field>
+                      <FieldLabel htmlFor="location">Locatie</FieldLabel>
+                      <Select value={location} onValueChange={setLocation}>
+                        <SelectTrigger id="location">
+                          <SelectValue placeholder="Selecteaza locatia" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Birou">Birou</SelectItem>
+                          <SelectItem value="Teren">Teren</SelectItem>
+                          <SelectItem value="Online">Online</SelectItem>
+                          <SelectItem value="Sediu CPC">Sediu CPC</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor="activityKeywords">Cheie interna optionala</FieldLabel>
+                      <Input
+                        id="activityKeywords"
+                        value={activityKeywords}
+                        onChange={(event) => setActivityKeywords(event.target.value)}
+                        placeholder="ex: monitorizare iulie"
+                        maxLength={120}
+                      />
+                    </Field>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Main Deliverables */}
             {showStandardActivityWorkflow && !isException && (
               <div className="space-y-4">
@@ -2693,92 +2741,49 @@ export function ActivityForm({
               </div>
             )}
 
-            {/* Sub-activity and Activity */}
-            {showStandardActivityWorkflow && (
-              <>
-                <div className="grid grid-cols-2 gap-4">
-                  <Field>
-                    <FieldLabel htmlFor="saCode">Subactivitate (Rol: {expert?.role})</FieldLabel>
-                    {isGdprExpert ? (
-                      <Input id="saCode" value={saCode || selectedGdprTemplate?.saCode || 'SA1.1'} disabled />
-                    ) : (
-                      <Select value={saCode} onValueChange={setSaCode} disabled={catalogLoading && catalog.length === 0}>
-                        <SelectTrigger id="saCode">
-                          <SelectValue placeholder={catalogLoading && catalog.length === 0 ? "Se incarca..." : "Selecteaza SA"} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {availableSaCodes.length === 0 ? (
-                            <div className="px-2 py-1.5 text-sm text-muted-foreground">Nicio subactivitate disponibila</div>
-                          ) : (
-                            availableSaCodes.map((sa) => (
-                              <SelectItem key={sa} value={sa}>{sa}</SelectItem>
-                            ))
-                          )}
-                        </SelectContent>
-                      </Select>
-                    )}
-                    {availableSaCodes.length === 0 && !catalogLoading && (
-                      <p className="text-xs text-amber-600 mt-1">
-                        Nu exista subactivitati alocate pentru rolul tau. Contacteaza PM.
-                      </p>
-                    )}
-                  </Field>
-
-                  <Field>
-                    <FieldLabel htmlFor="location">Locatie</FieldLabel>
-                    <Select value={location} onValueChange={setLocation}>
-                      <SelectTrigger id="location">
-                        <SelectValue placeholder="Selecteaza locatia" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Birou">Birou</SelectItem>
-                        <SelectItem value="Teren">Teren</SelectItem>
-                        <SelectItem value="Online">Online</SelectItem>
-                        <SelectItem value="Sediu CPC">Sediu CPC</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </Field>
-                </div>
-
-                {/* Activity from catalog */}
-                {!isGdprExpert && (
-                  <div className="grid gap-4 lg:grid-cols-[minmax(0,0.72fr)_minmax(220px,0.28fr)]">
-                    <Field>
-                      <FieldLabel htmlFor="activity">Activitate</FieldLabel>
-                      <Select value={selectedActivitySelectValue} onValueChange={handleActivitySelectionChange} disabled={!saCode || availableActivityItems.length === 0}>
-                        <SelectTrigger id="activity">
-                          <SelectValue placeholder={!saCode ? "Selecteaza SA mai intai" : "Selecteaza activitatea"} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {availableActivityItems.length === 0 ? (
-                            <div className="px-2 py-1.5 text-sm text-muted-foreground">Nicio activitate pentru acest SA</div>
-                          ) : (
-                            availableActivityItems.map((item) => (
-                              <SelectItem key={item.id} value={item.id}>{item.activityName}</SelectItem>
-                            ))
-                          )}
-                        </SelectContent>
-                      </Select>
-                      {selectedCatalogItem && (
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {selectedCatalogItem.serviceCategory} - {selectedCatalogItem.description}
-                        </p>
-                      )}
-                    </Field>
-                    <Field>
-                      <FieldLabel htmlFor="activityKeywords">Cheie interna optionala</FieldLabel>
-                      <Input
-                        id="activityKeywords"
-                        value={activityKeywords}
-                        onChange={(event) => setActivityKeywords(event.target.value)}
-                        placeholder="ex: monitorizare iulie"
-                        maxLength={120}
-                      />
-                    </Field>
+            {showStandardActivityWorkflow && mainDeliverableForEligibility && !isLeave && !isException && (
+              <div className="rounded-lg border border-indigo-100 bg-white p-3 shadow-sm">
+                <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 text-sm font-medium text-slate-950">
+                      <Sparkles className="h-4 w-4 text-indigo-600" />
+                      Eligibilitate livrabil principal
+                    </div>
+                    <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                      {mainDeliverableForEligibility.declaredTitle
+                        || mainDeliverableForEligibility.docTitle
+                        || mainDeliverableForEligibility.filename
+                        || mainDeliverableForEligibility.name}
+                    </div>
                   </div>
-                )}
-              </>
+                </div>
+                <DeliverableEligibilityControl
+                  deliverable={mainDeliverableForEligibility}
+                  relatedDeliverables={deliverablesForEligibility}
+                  subActivity={saCode}
+                  activityTitle={activityTitle}
+                  selectedActivityId={selectedCatalogItem?.id}
+                  catalogDescription={selectedCatalogItem?.description}
+                  catalogObjectives={selectedCatalogItem?.objectives}
+                  catalogComponent={selectedCatalogItem?.serviceComponent}
+                  catalogBeneficiaries={selectedCatalogItem?.beneficiaries}
+                  catalogExpectedResults={selectedCatalogItem?.expectedResults}
+                  catalogDeliverables={selectedCatalogItem?.deliverables}
+                  catalogIndicators={selectedCatalogItem?.indicators}
+                  activityCatalogCandidates={filteredCatalog}
+                  deliverableOptions={deliverableOptions}
+                  projectCode={expert?.projectCode}
+                  month={month}
+                  year={year}
+                  expertName={expertName}
+                  onUpdate={(patch) => updateDeliverable(mainDeliverableForEligibility.id, patch)}
+                  canCheckEligibility={canCheckDeliverableEligibility}
+                  eligibilityBlockedReason={eligibilityBlockedReason}
+                  onApplyEligibilitySuggestion={applyEligibilitySuggestion}
+                />
+              </div>
             )}
+
             {/* Description */}
             {showStandardActivityWorkflow && (
             <Field>
@@ -2832,7 +2837,7 @@ export function ActivityForm({
                     ) : (
                       <Sparkles className="h-4 w-4 mr-2" />
                     )}
-                    Genereaza descrierea finala
+                    Optimizare descriere
                   </Button>
                 </div>
 
@@ -3042,49 +3047,6 @@ export function ActivityForm({
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
-
-            {showStandardActivityWorkflow && mainDeliverableForEligibility && !isLeave && !isException && (
-              <div className="rounded-lg border border-indigo-100 bg-white p-3 shadow-sm">
-                <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 text-sm font-medium text-slate-950">
-                      <Sparkles className="h-4 w-4 text-indigo-600" />
-                      Eligibilitate livrabil principal
-                    </div>
-                    <div className="mt-0.5 truncate text-xs text-muted-foreground">
-                      {mainDeliverableForEligibility.declaredTitle
-                        || mainDeliverableForEligibility.docTitle
-                        || mainDeliverableForEligibility.filename
-                        || mainDeliverableForEligibility.name}
-                    </div>
-                  </div>
-                </div>
-                <DeliverableEligibilityControl
-                  deliverable={mainDeliverableForEligibility}
-                  relatedDeliverables={deliverablesForEligibility}
-                  subActivity={saCode}
-                  activityTitle={activityTitle}
-                  selectedActivityId={selectedCatalogItem?.id}
-                  catalogDescription={selectedCatalogItem?.description}
-                  catalogObjectives={selectedCatalogItem?.objectives}
-                  catalogComponent={selectedCatalogItem?.serviceComponent}
-                  catalogBeneficiaries={selectedCatalogItem?.beneficiaries}
-                  catalogExpectedResults={selectedCatalogItem?.expectedResults}
-                  catalogDeliverables={selectedCatalogItem?.deliverables}
-                  catalogIndicators={selectedCatalogItem?.indicators}
-                  activityCatalogCandidates={filteredCatalog}
-                  deliverableOptions={deliverableOptions}
-                  projectCode={expert?.projectCode}
-                  month={month}
-                  year={year}
-                  expertName={expertName}
-                  onUpdate={(patch) => updateDeliverable(mainDeliverableForEligibility.id, patch)}
-                  canCheckEligibility={canCheckDeliverableEligibility}
-                  eligibilityBlockedReason={eligibilityBlockedReason}
-                  onApplyEligibilitySuggestion={applyEligibilitySuggestion}
-                />
-              </div>
-            )}
 
             {/* Event duration (for event activities) */}
             {showStandardActivityWorkflow && isEvent && !isWorkspaceLayout && (
