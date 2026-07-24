@@ -257,8 +257,11 @@ async function findCurrentExpertFromBackend(client: any, user: AccessUser | null
   return backendExpert ? mergeExpertWithFallback(backendExpert, fallbackExpert) : fallbackExpert;
 }
 
-async function getCurrentDataAccessScope(client: any): Promise<DataAccessScope> {
-  const user = await getSignedInUser();
+async function getCurrentDataAccessScope(
+  client: any,
+  options: { ignoreViewAs?: boolean } = {},
+): Promise<DataAccessScope> {
+  const user = await getSignedInUser({ ignoreViewAs: options.ignoreViewAs });
   const initialScope = resolveDataAccessScope({ user, experts: [] });
   if (initialScope.canAccessAllExperts) return initialScope;
 
@@ -1904,7 +1907,7 @@ export const expertsService = {
 
   async create(expert: Omit<Expert, 'id'>): Promise<Expert> {
     const client = getAwsDataClient() as any;
-    const scope = await getCurrentDataAccessScope(client);
+    const scope = await getCurrentDataAccessScope(client, { ignoreViewAs: true });
     if (!scope.canAccessAllExperts) throw new Error(ACCESS_DENIED_MESSAGE);
 
     const result = await client.models.Expert.create(withSupportedExpertFields({
@@ -1924,7 +1927,7 @@ export const expertsService = {
 
   async update(id: string, updates: Partial<Expert>): Promise<void> {
     const client = getAwsDataClient() as any;
-    const scope = await getCurrentDataAccessScope(client);
+    const scope = await getCurrentDataAccessScope(client, { ignoreViewAs: true });
     if (!scope.canAccessAllExperts) throw new Error(ACCESS_DENIED_MESSAGE);
 
     const result = await client.models.Expert.update(withSupportedExpertFields({

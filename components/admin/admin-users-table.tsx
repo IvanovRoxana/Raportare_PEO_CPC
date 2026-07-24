@@ -216,8 +216,8 @@ function formatAdminWriteError(error: unknown, fallback: string) {
   const message = error instanceof Error ? error.message : String(error || '');
   if (/AccessDeniedException|Unauthorized|not authorized|acces interzis/i.test(message)) {
     return [
-      'Scriere refuzata de backend: sesiunea Cognito curenta nu are drept de update pe experti.',
-      'Delogheaza-te si autentifica-te din nou ca sa se reincarce grupurile admin/pm, apoi reincearca.',
+      'Scriere refuzata: utilizatorul real trebuie sa aiba drept de administrare pentru update pe experti.',
+      'Iesi din modul view-as, apoi delogheaza-te si autentifica-te din nou daca eroarea persista.',
     ].join(' ');
   }
   return message || fallback;
