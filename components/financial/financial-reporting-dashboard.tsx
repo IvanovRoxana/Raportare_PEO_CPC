@@ -141,7 +141,7 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
     leaveHoursPerDay: '8',
     justification: '',
   });
-  const { experts, isLoading: loadingExperts } = useExperts();
+  const { experts, isLoading: loadingExperts } = useExperts({ includeFallback: false });
   const { activities, isLoading: loadingActivities } = useActivitiesByMonth(month, year);
   const { projects, isLoading: loadingProjects } = useAllConcurrentProjects();
   const { entries, isLoading: loadingEntries } = useConcurrentProjectTimesheetByMonth(month, year);

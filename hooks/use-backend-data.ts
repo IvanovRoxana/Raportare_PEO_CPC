@@ -76,17 +76,20 @@ const safeFetcher = <T>(fetcher: () => Promise<T>) => async (): Promise<T | null
 // ============================================
 // EXPERTS HOOKS
 // ============================================
-export function useExperts() {
+export function useExperts(options?: { includeInactive?: boolean; includeFallback?: boolean }) {
+  const key = options
+    ? `experts-${options.includeInactive ? 'with-inactive' : 'active'}-${options.includeFallback === false ? 'backend-only' : 'with-fallback'}`
+    : 'experts';
   const { data, error, isLoading } = useSWR(
-    isBackendAvailable() ? 'experts' : null,
-    safeFetcher(expertsService.getAll)
+    isBackendAvailable() ? key : null,
+    safeFetcher(() => expertsService.getAll(options))
   );
 
   return {
     experts: stableList(data),
     isLoading,
     error,
-    mutate: () => mutate('experts'),
+    mutate: () => mutate(key),
   };
 }
 
