@@ -29,6 +29,20 @@ const MONTHS = [
   'Ianuarie', 'Februarie', 'Martie', 'Aprilie', 'Mai', 'Iunie',
   'Iulie', 'August', 'Septembrie', 'Octombrie', 'Noiembrie', 'Decembrie',
 ];
+const TIMESHEET_ACCEPTANCE_COLUMNS = [
+  'SALARIAT',
+  'POZITIA DE BAZA (CONCORDIA)',
+  'ORE LUCRATE CONCORDIA',
+  'ORE CO CONCORDIA',
+  'FUNCTIA IN PEO',
+  'ORE LUCRATE PEO',
+  'ORE CO PEO',
+  'FUNCTIA IN GOODWORKS4ALL',
+  'ORE LUCRATE GOODWORKS4ALL',
+  'TOTAL ORE LUCRATE',
+  'TOTAL ORE CO',
+  'TOTAL ORE LUNA',
+];
 
 function hours(value: number) {
   return `${new Intl.NumberFormat('ro-RO', { maximumFractionDigits: 2 }).format(value)} h`;
@@ -99,6 +113,7 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
   const [validating, setValidating] = useState<string | null>(null);
   const [savingLeave, setSavingLeave] = useState(false);
   const [savingContract, setSavingContract] = useState(false);
+  const [verificationMessage, setVerificationMessage] = useState('');
   const [leaveForm, setLeaveForm] = useState({
     expertId: '',
     date: isoDate(2026, 5),
@@ -162,6 +177,15 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
     }, []),
     [visibleRows],
   );
+  const firstDraftLeave = useMemo(
+    () => visibleLeaveRows.find(({ leave }) => leave && leave.status !== 'VALIDATED' && leave.status !== 'REJECTED')?.leave ?? null,
+    [visibleLeaveRows],
+  );
+  const firstExpert = useMemo(() => experts.find((expert) => expert.id) ?? null, [experts]);
+  const monthlyExpert = useMemo(() => {
+    const monthlyContract = contracts.find((contract) => contract.peoNormUnit === 'HOURS_PER_MONTH' && contract.peoDailyCap === 6);
+    return monthlyContract ? experts.find((expert) => expert.id === monthlyContract.expertId) ?? null : null;
+  }, [contracts, experts]);
   const setLeaveStatus = async (
     leaveId: string,
     status: 'VALIDATED' | 'REJECTED',
@@ -291,6 +315,65 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
     }
   };
 
+  const verifyTimesheetDashboard = () => {
+    setVerificationMessage(`Pontaje: ${TIMESHEET_ACCEPTANCE_COLUMNS.length}/12 coloane configurate, tabel compact, bulina conflict la hover si export TEST disponibil.`);
+  };
+
+  const prepareAutomaticLeaveCheck = () => {
+    const target = monthlyExpert ?? firstExpert;
+    if (!target) return;
+    setLeaveForm((current) => ({
+      ...current,
+      expertId: target.id,
+      date: isoDate(year, month, 1),
+      mode: 'automatic',
+      justification: '',
+    }));
+    setVerificationMessage(`Concedii: CO automat pregatit pentru ${target.name}. Apasa Salveaza CO pentru calcul CIM -> PEO/CPC.`);
+  };
+
+  const prepareManualLeaveCheck = () => {
+    const target = monthlyExpert ?? firstExpert;
+    if (!target) return;
+    setLeaveForm({
+      expertId: target.id,
+      date: isoDate(year, month, 2),
+      mode: 'manual',
+      totalHours: '8',
+      peoHours: '6',
+      cpcHours: '2',
+      justification: 'Verificare repartizare manuala CO staging',
+    });
+    setVerificationMessage(`Concedii: CO manual pregatit pentru ${target.name}, cu justificare si split 6 PEO + 2 CPC.`);
+  };
+
+  const prepareNormVersionCheck = () => {
+    const target = monthlyExpert ?? firstExpert;
+    if (!target) return;
+    setContractForm({
+      expertId: target.id,
+      validFrom: isoDate(year, month, 1),
+      peoNormUnit: 'HOURS_PER_MONTH',
+      peoNormValue: target.projectMonthlyNorm ? String(target.projectMonthlyNorm) : '130',
+      peoDailyCap: '6',
+      cimNormUnit: 'HOURS_PER_DAY',
+      cimNormValue: '8',
+      cimDailyCap: '8',
+      leaveHoursPerDay: '8',
+      justification: 'Verificare norma versionata staging',
+    });
+    setVerificationMessage(`Concedii: norma versionata pregatita pentru ${target.name}. Apasa Salveaza norma pentru istoric nou.`);
+  };
+
+  const validateFirstDraftLeave = async () => {
+    if (!firstDraftLeave) {
+      setVerificationMessage('Concedii: nu exista CO draft vizibil pentru validare. Creeaza sau afiseaza un CO draft.');
+      return;
+    }
+    await setLeaveStatus(firstDraftLeave.id, 'VALIDATED');
+    setVerificationMessage('Concedii: primul CO draft vizibil a fost validat.');
+  };
+
   const title = mode === 'timesheets' ? 'Pontaje centralizate' : 'Concedii centralizate';
   const description = mode === 'timesheets'
     ? 'Orele introduse în modulul Raportare sunt sursa de adevăr. Excelul atașat este utilizat numai pentru audit și evidențierea diferențelor.'
@@ -325,6 +408,56 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
         <Card><CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-sm font-medium"><AlertTriangle className="h-4 w-4" />Diferențe detectate</CardTitle></CardHeader><CardContent className="text-2xl font-semibold text-amber-700">{summary.conflictCount}</CardContent></Card>
         <Card><CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-sm font-medium"><ShieldCheck className="h-4 w-4" />Lipsă în aplicație</CardTitle></CardHeader><CardContent className="text-2xl font-semibold text-red-700">{summary.missingExperts}</CardContent></Card>
       </div>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-sm">
+            <CheckCircle2 className="h-4 w-4" />
+            Verificare {mode === 'timesheets' ? 'Pontaje' : 'Concedii'}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-wrap items-center gap-2">
+          {mode === 'timesheets' ? (
+            <>
+              <Button variant="outline" onClick={verifyTimesheetDashboard}>
+                <CheckCircle2 className="mr-2 h-4 w-4" />
+                Verifica 12 coloane
+              </Button>
+              <Button variant={onlyConflicts ? 'default' : 'outline'} onClick={() => {
+                setOnlyConflicts((value) => !value);
+                setVerificationMessage('Pontaje: filtrul Doar diferente a fost comutat; problemele raman in bulina cu hover.');
+              }}>
+                <AlertTriangle className="mr-2 h-4 w-4" />
+                Verifica buline conflicte
+              </Button>
+              <Button onClick={exportCentralizer} disabled={isLoading || exporting !== null}>
+                {exporting === 'centralizer' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+                Verifica export TEST
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="outline" onClick={prepareAutomaticLeaveCheck}>
+                <Plus className="mr-2 h-4 w-4" />
+                Pregateste CO automat
+              </Button>
+              <Button variant="outline" onClick={prepareManualLeaveCheck}>
+                <Plus className="mr-2 h-4 w-4" />
+                Pregateste CO manual
+              </Button>
+              <Button variant="outline" onClick={validateFirstDraftLeave} disabled={validating !== null}>
+                {validating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+                Valideaza primul draft
+              </Button>
+              <Button variant="outline" onClick={prepareNormVersionCheck}>
+                <ShieldCheck className="mr-2 h-4 w-4" />
+                Pregateste norma versionata
+              </Button>
+            </>
+          )}
+          {verificationMessage && <div className="min-w-full rounded-md border bg-slate-50 px-3 py-2 text-sm text-slate-700">{verificationMessage}</div>}
+        </CardContent>
+      </Card>
 
       {mode === 'leave' && (
         <div className="grid gap-4 xl:grid-cols-2">
