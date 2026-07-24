@@ -33,6 +33,44 @@ function fallbackDescription(request: ActivityAgentRequest) {
   ].filter(Boolean).join(' ');
 }
 
+function buildActivityAgentAuditRequest(
+  request: ActivityAgentRequest,
+  context: Awaited<ReturnType<typeof createActivityAgentToolContext>>,
+) {
+  return {
+    expertId: request.expertId,
+    expertName: request.expertName,
+    projectCode: request.projectCode,
+    category: request.category,
+    month: request.month,
+    year: request.year,
+    saCode: request.saCode,
+    activityName: request.activityName,
+    selectedActivityId: request.selectedActivityId,
+    deliverableCount: request.deliverables.length,
+    selectedDatesCount: request.selectedDates?.length ?? 0,
+    collaboration: {
+      isCommonActivity: Boolean(request.collaborationContext?.isCommonActivity),
+      collaboratorCount: request.collaborationContext?.collaborators.length ?? 0,
+    },
+    expertInstructions: {
+      found: context.expertAiInstructions.found,
+      active: context.expertAiInstructions.active,
+      updatedAt: context.expertAiInstructions.updatedAt,
+      conflicts: context.expertAiInstructions.conflicts,
+    },
+    prechecks: {
+      ragEnabled: context.approvedReports.enabled,
+      ragChunks: context.approvedReports.chunks.length,
+      saPurposeFound: context.saPurpose.found,
+      saPurposeSourceType: context.saPurpose.context?.sourceType,
+      saPurposeDocumentId: context.saPurpose.context?.documentId,
+      hoursValid: context.hours.valid,
+      classificationConfidence: context.classification.confidence,
+    },
+  };
+}
+
 export function buildControlledFallbackActivityAgentResponse(
   request: ActivityAgentRequest,
   warnings: string[],
@@ -63,10 +101,17 @@ export function buildControlledFallbackActivityAgentResponse(
       ...warnings,
       'Fallback controlat: descrierea nu trebuie considerata validare completa a incadrarii.',
     ]),
+    expertInstructionAudit: {
+      found: Boolean(request.expertReportingInstructions?.trim()),
+      active: Boolean(request.expertReportingInstructions?.trim()),
+      updatedAt: request.expertReportingInstructionsUpdatedAt,
+      conflicts: [],
+    },
     confidence: 'low',
     requiresPmReview: true,
     checks: {
       jobDescriptionAligned: null,
+      saPurposeFound: null,
       subactivityAligned: null,
       deliverableSupported: request.deliverables.length > 0 ? true : null,
       hoursPlausible: null,
@@ -84,16 +129,7 @@ export async function runActivityAgent(
   const result = await governedGenerateText({
     endpoint: '/api/ai/activity-agent',
     operation: 'activity-peo-agent',
-    request: {
-      ...request,
-      prechecks: {
-        ragEnabled: context.approvedReports.enabled,
-        ragChunks: context.approvedReports.chunks.length,
-        saPurposeFound: context.saPurpose.found,
-        hoursValid: context.hours.valid,
-        classificationConfidence: context.classification.confidence,
-      },
-    },
+    request: buildActivityAgentAuditRequest(request, context),
     actorId: request.expertId,
     actorName: request.expertName,
     projectCode: request.projectCode,
@@ -117,14 +153,25 @@ export async function runActivityAgent(
     ...context.hours.errors,
     ...context.targetGroupImpact.warnings,
     ...context.classification.warnings,
+    ...context.expertAiInstructions.warnings,
   ]);
 
   return {
     ...parsed,
     warnings,
+    expertInstructionAudit: {
+      found: context.expertAiInstructions.found,
+      active: context.expertAiInstructions.active,
+      updatedAt: context.expertAiInstructions.updatedAt,
+      conflicts: uniqueMessages([
+        ...(parsed.expertInstructionAudit?.conflicts ?? []),
+        ...context.expertAiInstructions.conflicts,
+      ]),
+    },
     auditId: result.auditId,
     checks: {
       ...parsed.checks,
+      saPurposeFound: context.saPurpose.found,
       hoursPlausible: context.hours.valid,
       deliverableSupported: request.deliverables.length > 0 && request.deliverables.some((deliverable) => deliverable.extractedText?.trim()),
       subactivityAligned: parsed.checks.subactivityAligned ?? context.classification.confidence >= 0.55,

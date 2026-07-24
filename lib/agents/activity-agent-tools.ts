@@ -30,6 +30,51 @@ function unique(values: string[]) {
   return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
 }
 
+function splitTerms(value: string) {
+  return value
+    .split(/[,;\n]/)
+    .map((term) => term.replace(/^[-*]\s*/, '').trim())
+    .filter((term) => term.length > 1)
+    .slice(0, 20);
+}
+
+export function getExpertAiInstructionsValue(request: Pick<ActivityAgentRequest, 'expertId' | 'expertReportingInstructions' | 'expertReportingInstructionsUpdatedAt'>) {
+  const instructions = trimText(request.expertReportingInstructions, 3000);
+  const normalized = normalize(instructions);
+  const conflicts = unique([
+    /ignora|omite|ocoleste/.test(normalized) && /peo|eligibil|pontaj|dovez|oir|pm/.test(normalized)
+      ? 'Instructiunea pare sa ceara ignorarea unor reguli obligatorii PEO/PM/OIR.'
+      : '',
+    /inventeaza|adauga fictiv|presupune/.test(normalized)
+      ? 'Instructiunea pare sa permita inventarea de informatii.'
+      : '',
+    /fara verificare pm|nu necesita pm|nu marca warning/.test(normalized)
+      ? 'Instructiunea pare sa ceara eliminarea verificarilor PM/warning obligatorii.'
+      : '',
+  ]);
+  const forbiddenMatch = instructions.match(/(?:termeni interzisi|evita|nu folosi)\s*[:\-]\s*([\s\S]*?)(?:\n\s*\n|$)/i);
+  const preferredMatch = instructions.match(/(?:termeni preferati|foloseste|prefer)\s*[:\-]\s*([\s\S]*?)(?:\n\s*\n|$)/i);
+  const detailLevel = /detaliat|amplu|dezvoltat/.test(normalized)
+    ? 'detailed'
+    : /concis|scurt|succint/.test(normalized)
+      ? 'concise'
+      : 'standard';
+  const tone = /formal|institutional|oficial/.test(normalized) ? 'formal' : 'neutral';
+
+  return {
+    found: Boolean(instructions),
+    active: Boolean(instructions),
+    instructions: instructions || undefined,
+    preferredDetailLevel: detailLevel as 'concise' | 'standard' | 'detailed',
+    preferredTone: tone as 'formal' | 'neutral',
+    forbiddenTerms: forbiddenMatch ? splitTerms(forbiddenMatch[1]) : [],
+    preferredTerms: preferredMatch ? splitTerms(preferredMatch[1]) : [],
+    updatedAt: request.expertReportingInstructionsUpdatedAt,
+    conflicts,
+    warnings: conflicts.map((conflict) => `Instructiune AI expert ignorata partial: ${conflict}`),
+  };
+}
+
 function firstSelectedCandidate(request: ActivityAgentRequest) {
   return request.catalogCandidates.find((candidate) => (
     candidate.id && candidate.id === request.selectedActivityId
@@ -250,6 +295,7 @@ export async function createActivityAgentToolContext(request: ActivityAgentReque
   const subactivityText = saPurpose.context?.text;
   const targetGroupImpact = evaluateTargetGroupImpactValue({ request, deliverableInspection, subactivityText });
   const classification = validateSubactivityClassificationValue({ request, subactivityText });
+  const expertAiInstructions = getExpertAiInstructionsValue(request);
 
   return {
     ragRequest,
@@ -260,6 +306,7 @@ export async function createActivityAgentToolContext(request: ActivityAgentReque
     hours,
     targetGroupImpact,
     classification,
+    expertAiInstructions,
   };
 }
 
@@ -338,6 +385,11 @@ export function createActivityAgentTools(
           warnings: context.saPurpose.warnings,
         };
       },
+    }),
+    getExpertAiInstructions: tool({
+      description: 'Returneaza instructiunile AI active ale expertului ca preferinte controlate, nu ca surse factuale.',
+      inputSchema: z.object({}),
+      execute: async () => context.expertAiInstructions,
     }),
     validateActivityHours: tool({
       description: 'Verifica determinist regulile de pontaj pentru orele transmise.',

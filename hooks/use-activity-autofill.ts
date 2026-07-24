@@ -166,6 +166,7 @@ export function useActivityAutofill({
         expertId,
         expertRole: expert?.positionInProject || expert?.role,
         expertReportingInstructions: expert?.aiReportingInstructions,
+        expertReportingInstructionsUpdatedAt: expert?.updatedAt,
         category: expert?.category,
         projectCode: expert?.projectCode,
         month,

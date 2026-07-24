@@ -2917,6 +2917,21 @@ export function ActivityForm({
                               </div>
                             ))}
                           </div>
+                          {activityAutofillSuggestion.agent.expertInstructionAudit && (
+                            <div className="mt-2 border-t border-emerald-100 pt-2">
+                              Instructiuni AI expert: {activityAutofillSuggestion.agent.expertInstructionAudit.active ? 'active' : 'inactive/absente'}
+                              {activityAutofillSuggestion.agent.expertInstructionAudit.updatedAt
+                                ? `, actualizate la ${activityAutofillSuggestion.agent.expertInstructionAudit.updatedAt}`
+                                : ''}
+                              {activityAutofillSuggestion.agent.expertInstructionAudit.conflicts.length > 0 && (
+                                <ul className="mt-1 list-disc space-y-1 pl-4 text-amber-700">
+                                  {activityAutofillSuggestion.agent.expertInstructionAudit.conflicts.map((conflict, index) => (
+                                    <li key={`activity-agent-instruction-conflict-${index}`}>{conflict}</li>
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}
