@@ -1,11 +1,10 @@
 'use client';
 
 import { Suspense, useState, useEffect, useMemo } from 'react';
-import { ArrowLeft, CalendarDays, CheckCircle, ClipboardList, Clock3, FileText, Loader2, Plus, RotateCcw, Send, Lock, AlertTriangle, Upload, X } from 'lucide-react';
+import { ArrowLeft, CalendarDays, CheckCircle, ClipboardList, FileText, Loader2, Plus, RotateCcw, Send, Lock, AlertTriangle, Upload, X } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { DashboardShell, expertNavItems } from '@/components/layout/dashboard-shell';
-import { ProgressBar, RightInfoCard } from '@/components/layout/dashboard-primitives';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -631,15 +630,16 @@ function ExpertDashboardContent() {
     setWorkBlockSaveNotice(null);
     setIsSaving(true);
     try {
+      const safeSelectedDates = Array.isArray(selectedDates) ? selectedDates : [];
       if (!selectedExpertId) {
         throw new Error('Selecteaza un expert inainte de salvare.');
       }
-      if (selectedDates.length === 0) {
+      if (safeSelectedDates.length === 0) {
         throw new Error('Selecteaza cel putin o zi din calendar inainte de salvare.');
       }
 
       const editingGroupMembers = editingActivity
-        ? getActivityGroupMembersForSelectedDates(editingActivity, activities, selectedDates)
+        ? getActivityGroupMembersForSelectedDates(editingActivity, activities, safeSelectedDates)
         : [];
       const editingGroupMemberIds = new Set(editingGroupMembers.map((activity) => activity.id));
       if (isClarificationScopedAccess) {
@@ -735,7 +735,7 @@ function ExpertDashboardContent() {
         ? buildSubmittedActivitiesForEdit(
             editingActivity,
             newActivities,
-            selectedDates,
+            safeSelectedDates,
             selectedHours,
             editingGroupMembers,
             selectedExpertId,
@@ -1927,57 +1927,6 @@ function ExpertDashboardContent() {
           { label: 'Livrabile', href: '#livrabile', icon: Upload },
           { label: 'Rapoarte', href: exportRaHref, icon: FileText },
         ]}
-        aside={showForm ? undefined : (
-          <>
-            <RightInfoCard title="Rezumat zi" icon={Clock3}>
-              <p className="text-sm font-semibold text-muted-foreground">Luni, 12 mai 2026</p>
-              <div className="mt-5 flex items-end justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Total ore introduse</p>
-                  <p className="mt-1 text-4xl font-bold text-slate-950">
-                    {selectedDates.reduce((sum, date) => sum + Number(normalizePontajHoursValue(selectedHours[date], getDefaultHours())), 0)}h
-                  </p>
-                </div>
-                <span className="text-sm text-muted-foreground">din 8h disponibile</span>
-              </div>
-              <ProgressBar value={Math.min(100, selectedDates.reduce((sum, date) => sum + Number(normalizePontajHoursValue(selectedHours[date], getDefaultHours())), 0) * 12.5)} className="mt-4" />
-              <Link href="#calendar" className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-primary">
-                Vezi detaliile zilei
-              </Link>
-            </RightInfoCard>
-
-            {!showForm && (
-            <RightInfoCard title="Status raportare" icon={ClipboardList}>
-              <div className="space-y-4 text-sm">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                  <span className="text-muted-foreground">Luna curentă</span>
-                  <Badge variant="conform">Deschisă</Badge>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Pontaj</span>
-                  <Badge variant={isApproved ? 'conform' : 'in_lucru'}>{isApproved ? 'Aprobat' : 'În lucru'}</Badge>
-                </div>
-              </div>
-            </RightInfoCard>
-            )}
-
-            <RightInfoCard title="Sfaturi completare" icon={CheckCircle}>
-              <div className="space-y-3 text-sm leading-6">
-                {[
-                  'Completează date, titlu și descrierea activității.',
-                  'Atașează documente relevante, dacă este cazul.',
-                  'Asigură-te că activitatea se încadrează în subactivitatea selectată.',
-                  'Maximum 8 ore raportate pe zi.',
-                ].map((tip) => (
-                  <div key={tip} className="flex items-start gap-2 text-muted-foreground">
-                    <CheckCircle className="mt-1 h-4 w-4 shrink-0 text-[#36c2a0]" />
-                    {tip}
-                  </div>
-                ))}
-              </div>
-            </RightInfoCard>
-          </>
-        )}
       >
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-4">
           <div className="space-y-1">
