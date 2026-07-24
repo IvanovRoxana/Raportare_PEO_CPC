@@ -1,6 +1,7 @@
 import { createHash, createHmac, randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import outputs from '@/amplify_outputs.json';
+import { EXPERT_PM_EXTENDED_ACCESS_EMAILS } from '@/lib/access-control';
 
 export const runtime = 'nodejs';
 
@@ -84,8 +85,8 @@ function decodeJwtPayload(token: string) {
 }
 
 function normalizeGroups(value: unknown) {
-  if (Array.isArray(value)) return value.map(String);
-  return value ? [String(value)] : [];
+  const groups = Array.isArray(value) ? value.map(String) : value ? [String(value)] : [];
+  return groups.map((group) => group.trim().toLowerCase()).filter(Boolean);
 }
 
 function sha256(value: string) {
@@ -218,7 +219,10 @@ async function validateAccessTokenWithCognito(accessToken: string) {
     throw new AdminExpertsRouteError('Sesiunea Cognito a administratorului nu a putut fi validata.', 401);
   }
 
-  return response.json() as Promise<{ Username?: string }>;
+  return response.json() as Promise<{
+    Username?: string;
+    UserAttributes?: Array<{ Name?: string; Value?: string }>;
+  }>;
 }
 
 async function assertAdminCaller(request: Request) {
@@ -247,15 +251,27 @@ async function assertAdminCaller(request: Request) {
 
   const cognitoUser = await validateAccessTokenWithCognito(token);
   const username = String(cognitoUser.Username || payload.username || payload.sub || '').trim();
+  const email = String(
+    cognitoUser.UserAttributes?.find((attribute) => attribute.Name === 'email')?.Value || payload.email || '',
+  ).trim().toLowerCase();
   if (!username) {
     throw new AdminExpertsRouteError('Nu pot identifica utilizatorul Cognito curent.', 403);
   }
 
-  const liveGroups = await callSignedCognito<{ Groups?: Array<{ GroupName?: string }> }>('AdminListGroupsForUser', {
-    UserPoolId: userPoolId,
-    Username: username,
-  });
-  if (!normalizeGroups(liveGroups.Groups?.map((group) => group.GroupName).filter(Boolean)).includes('admin')) {
+  let groups = normalizeGroups(payload['cognito:groups']);
+  try {
+    const liveGroups = await callSignedCognito<{ Groups?: Array<{ GroupName?: string }> }>('AdminListGroupsForUser', {
+      UserPoolId: userPoolId,
+      Username: username,
+    });
+    groups = normalizeGroups(liveGroups.Groups?.map((group) => group.GroupName).filter(Boolean));
+  } catch (error) {
+    console.warn('Nu am putut citi live grupurile Cognito pentru utilizatorul curent; folosesc grupurile din token.', error);
+  }
+
+  const hasAdminAccess = groups.includes('admin');
+  const hasExplicitPmAdminAccess = groups.includes('pm') && EXPERT_PM_EXTENDED_ACCESS_EMAILS.includes(email);
+  if (!hasAdminAccess && !hasExplicitPmAdminAccess) {
     throw new AdminExpertsRouteError('Doar administratorii pot administra profilurile expertilor.', 403);
   }
 }
