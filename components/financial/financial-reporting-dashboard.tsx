@@ -276,15 +276,17 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
   };
 
   const saveNormContract = async () => {
-    if (!contractForm.expertId || !contractForm.validFrom || !contractForm.justification.trim()) return;
+    if (!contractForm.expertId || !contractForm.validFrom) {
+      setVerificationMessage('Alege expertul si data de inceput pentru versiunea de norma.');
+      return;
+    }
+    if (!contractForm.justification.trim()) {
+      setVerificationMessage('Justificarea este obligatorie ca sa putem pastra istoricul modificarilor de norma.');
+      document.getElementById('norma-editor-justification')?.focus();
+      return;
+    }
     setSavingContract(true);
     try {
-      const openContract = contracts
-        .filter((contract) => contract.expertId === contractForm.expertId && !contract.validTo && contract.validFrom < contractForm.validFrom)
-        .sort((left, right) => right.validFrom.localeCompare(left.validFrom))[0];
-      if (openContract) {
-        await updateNormContract(openContract.id, { validTo: previousDay(contractForm.validFrom), updatedBy: 'financial-session' });
-      }
       const payload: Omit<ExpertNormContract, 'id'> = {
         expertId: contractForm.expertId,
         validFrom: contractForm.validFrom,
@@ -300,7 +302,31 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
         createdBy: 'financial-session',
         updatedBy: 'financial-session',
       };
-      await createNormContract(payload);
+      const sameDateContract = contracts.find((contract) => contract.expertId === contractForm.expertId && contract.validFrom === contractForm.validFrom);
+      if (sameDateContract) {
+        await updateNormContract(sameDateContract.id, {
+          peoNormUnit: payload.peoNormUnit,
+          peoNormValue: payload.peoNormValue,
+          peoDailyCap: payload.peoDailyCap,
+          cimNormUnit: payload.cimNormUnit,
+          cimNormValue: payload.cimNormValue,
+          cimDailyCap: payload.cimDailyCap,
+          leaveHoursPerDay: payload.leaveHoursPerDay,
+          status: 'ACTIVE',
+          justification: payload.justification,
+          updatedBy: 'financial-session',
+        });
+        setVerificationMessage(`Norma pentru ${selectedNormExpertName || 'expert'} a fost actualizata pentru ${contractForm.validFrom}.`);
+      } else {
+        const openContract = contracts
+          .filter((contract) => contract.expertId === contractForm.expertId && !contract.validTo && contract.validFrom < contractForm.validFrom)
+          .sort((left, right) => right.validFrom.localeCompare(left.validFrom))[0];
+        if (openContract) {
+          await updateNormContract(openContract.id, { validTo: previousDay(contractForm.validFrom), updatedBy: 'financial-session' });
+        }
+        await createNormContract(payload);
+        setVerificationMessage(`Norma pentru ${selectedNormExpertName || 'expert'} a fost salvata ca versiune noua din ${contractForm.validFrom}.`);
+      }
       setContractForm((current) => ({ ...current, justification: '' }));
     } finally {
       setSavingContract(false);
@@ -648,7 +674,8 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
               <Input type="number" min="0" max="8" step="0.5" value={contractForm.cimDailyCap} onChange={(event) => setContractForm((current) => ({ ...current, cimDailyCap: event.target.value, leaveHoursPerDay: event.target.value }))} aria-label="Plafon CIM zilnic" />
               <Input type="number" min="0" max="8" step="0.5" value={contractForm.leaveHoursPerDay} onChange={(event) => setContractForm((current) => ({ ...current, leaveHoursPerDay: event.target.value }))} aria-label="Ore CO pe zi" />
               <Input id="norma-editor-justification" className="md:col-span-3" value={contractForm.justification} onChange={(event) => setContractForm((current) => ({ ...current, justification: event.target.value }))} placeholder="Justificare modificare norma" />
-              <Button className="md:col-span-2" onClick={saveNormContract} disabled={savingContract || !contractForm.expertId || !contractForm.justification.trim()}>
+              {contractForm.expertId && !contractForm.justification.trim() ? <p className="md:col-span-3 text-xs text-amber-700">Justificarea este obligatorie pentru audit. Scrie motivul modificarii, apoi salveaza.</p> : null}
+              <Button className="md:col-span-2" onClick={saveNormContract} disabled={savingContract || !contractForm.expertId || !contractForm.validFrom}>
                 {savingContract ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                 Salveaza norma
               </Button>
