@@ -585,7 +585,7 @@ export function ActivityForm({
 
       const candidateDate = duplicate.document.activityDate || duplicate.document.uploadDate;
       const candidateMonthKey = candidateDate?.slice(0, 7);
-      const duplicateIssues = duplicate.issues ?? [];
+      const duplicateIssues = Array.isArray(duplicate.issues) ? duplicate.issues : [];
       matches.set(deliverable.id, {
         documentId: duplicate.document.id,
         title: getDocumentAuditTitle(duplicate.document),
@@ -1197,9 +1197,10 @@ export function ActivityForm({
       }
     }
 
+    const safeSelectedDates = Array.isArray(selectedDates) ? selectedDates : [];
     const activityDatesForSave = initialActivity
-      ? (selectedDates.length > 0 ? selectedDates : [initialActivity.date])
-      : selectedDates;
+      ? (safeSelectedDates.length > 0 ? safeSelectedDates : [initialActivity.date])
+      : safeSelectedDates;
     const editedActivityDate = initialActivity
       ? activityDatesForSave.includes(initialActivity.date)
         ? initialActivity.date

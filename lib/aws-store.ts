@@ -855,7 +855,7 @@ async function createDocumentMetadataForDeliverable(
 
   const duplicateMatches = await findExistingDocumentDuplicates(client, deliverable);
   const duplicate = duplicateMatches[0];
-  const duplicateIssues = duplicate?.issues ?? [];
+  const duplicateIssues = Array.isArray(duplicate?.issues) ? duplicate.issues : [];
   const duplicateStatus = duplicate
     ? duplicateIssues.includes('same_file_hash')
       ? 'same_file_hash'
