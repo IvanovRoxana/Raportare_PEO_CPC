@@ -140,6 +140,8 @@ test('export page wires persisted work block bundles as a read-only optional pre
   assert.match(exportPageSource, /persistedBundles=\{persistedWorkBlockBundles\}/);
   assert.match(exportPageSource, /existingBundles=\{persistedWorkBlockBundles\}/);
   assert.match(exportPageSource, /existingBundlesLoading=\{isLoadingPersistedWorkBlockBundles \|\| isRefreshingPersistedWorkBlockBundles\}/);
+  assert.match(exportPageSource, /const isLoadingDeterministicWorkBlocks = reportingWorkBlocksEnabled/);
+  assert.match(exportPageSource, /isLoadingDeterministicWorkBlocks=\{isLoadingDeterministicWorkBlocks\}/);
   assert.match(exportPageSource, /workBlockBundles=\{reportingWorkBlocksEnabled \? persistedWorkBlockBundles : \[\]\}/);
   assert.match(exportPageSource, /projectCode=\{selectedExpert\.projectCode \?\? '302141'\}/);
   assert.match(reportingWorkBlocksPanelSource, /persistedBundles\?: ReportingWorkBlockBundle\[\];/);
@@ -161,7 +163,9 @@ test('export page wires persisted work block bundles as a read-only optional pre
   assert.match(reportGeneratorSource, /const deterministicExportButtonTitle = activities\.length === 0/);
   assert.match(reportGeneratorSource, /title=\{deterministicExportButtonTitle\}/);
   assert.match(reportGeneratorSource, /aria-label=\{deterministicExportButtonTitle\}/);
-  assert.match(reportGeneratorSource, /\[activities, enableDeterministicAnexa10Docx, expert, expertName, month, workBlockBundles, year\]/);
+  assert.match(reportGeneratorSource, /if \(isLoadingDeterministicWorkBlocks\) return null;/);
+  assert.match(reportGeneratorSource, /\|\| isLoadingDeterministicWorkBlocks/);
+  assert.match(reportGeneratorSource, /\[activities, enableDeterministicAnexa10Docx, expert, expertName, isLoadingDeterministicWorkBlocks, month, workBlockBundles, year\]/);
   assert.match(exportPageSource, /enableDeterministicAnexa10Docx/);
   assert.match(reportGeneratorSource, /Exporta Raport de Activitate DOCX/);
   assert.doesNotMatch(reportGeneratorSource, /Genereaz[aă] cu AI/);

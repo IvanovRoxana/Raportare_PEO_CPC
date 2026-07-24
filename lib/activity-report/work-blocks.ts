@@ -33,6 +33,8 @@ export interface ReportingWorkBlock {
   expertContribution?: string;
   beneficiaries?: string[];
   indicatorContribution?: string;
+  generatedTableSummary?: string;
+  generatedNarrative?: string;
   createdAt?: string;
   updatedAt?: string;
 }

@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { getSignedInUser } from '@/lib/aws/auth';
 import { getMonthName } from '@/lib/backend-store';
-import { isReportingWorkBlocksEnabledClient } from '@/lib/feature-flags';
+import { isAnexa10DeterministicDocxEnabledClient, isReportingWorkBlocksEnabledClient } from '@/lib/feature-flags';
 import type { Expert } from '@/lib/types';
 import {
   useActivitiesByMonth,
@@ -132,6 +132,9 @@ function ExportRaContent() {
   const isLoading = isAuthLoading || expertsLoading || activitiesLoading;
   const backHref = buildPeoHref(selectedExpertId, currentMonth, currentYear);
   const reportingWorkBlocksEnabled = isReportingWorkBlocksEnabledClient();
+  const deterministicAnexa10DocxEnabled = isAnexa10DeterministicDocxEnabledClient();
+  const isLoadingDeterministicWorkBlocks = reportingWorkBlocksEnabled
+    && (isLoadingPersistedWorkBlockBundles || isRefreshingPersistedWorkBlockBundles);
 
   if (isLoading && (experts.length === 0 || !selectedExpertId)) {
     return (
@@ -234,7 +237,8 @@ function ExportRaContent() {
             year={currentYear}
             expertName={selectedExpert.name}
             expert={selectedExpert as Expert}
-            enableDeterministicAnexa10Docx
+            enableDeterministicAnexa10Docx={deterministicAnexa10DocxEnabled}
+            isLoadingDeterministicWorkBlocks={isLoadingDeterministicWorkBlocks}
             workBlockBundles={reportingWorkBlocksEnabled ? persistedWorkBlockBundles : []}
           />
         </div>

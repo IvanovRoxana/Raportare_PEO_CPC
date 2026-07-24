@@ -71,6 +71,8 @@ export function buildPersistedWorkBlockBundles({
       expertContribution: workBlock.expertContribution,
       beneficiaries: workBlock.beneficiaries,
       indicatorContribution: workBlock.indicatorContribution,
+      generatedTableSummary: workBlock.generatedTableSummary,
+      generatedNarrative: workBlock.generatedNarrative,
       createdAt: workBlock.createdAt,
       updatedAt: workBlock.updatedAt,
     },
