@@ -113,6 +113,11 @@ function projectBucket(project: ConcurrentProject | undefined) {
   return label.includes('goodworks') ? 'goodworks' : 'concordia';
 }
 
+function referencePosition(value: string | undefined) {
+  const trimmed = value?.trim();
+  return trimmed && trimmed !== '-' ? trimmed : undefined;
+}
+
 function addConflict(
   target: FinancialConflict[],
   code: FinancialConflictCode,
@@ -216,17 +221,20 @@ export function buildFinancialReportingSummary(input: {
     const expertProjects = expert ? projects.filter((project) => project.expertId === expert.id) : [];
     const concordiaProject = expertProjects.find((project) => projectBucket(project) === 'concordia');
     const goodworksProject = expertProjects.find((project) => projectBucket(project) === 'goodworks');
-    const basePosition = concordiaProject?.expertProjectRole
+    const basePosition = referencePosition(reference?.basePosition)
+      ?? concordiaProject?.expertProjectRole
       ?? concordiaProject?.expertFunction
       ?? expert?.jobDescriptionText
-      ?? reference?.basePosition
       ?? '-';
     const leaves = expert ? leaveByExpert.get(expert.id) ?? [] : [];
     const migratedLeaveDates = new Set(leaves.map((leave) => leave.date));
-    const peoFunction = expert?.positionInProject ?? expert?.role ?? reference?.peoPosition ?? '-';
-    const goodworksFunction = goodworksProject?.expertProjectRole
+    const peoFunction = referencePosition(reference?.peoPosition)
+      ?? expert?.positionInProject
+      ?? expert?.role
+      ?? '-';
+    const goodworksFunction = referencePosition(reference?.goodworksPosition)
+      ?? goodworksProject?.expertProjectRole
       ?? goodworksProject?.expertFunction
-      ?? reference?.goodworksPosition
       ?? '-';
     const leaveDates = new Set<string>();
     let peoWorked = 0;

@@ -88,6 +88,37 @@ test('proiectele concurente sunt separate intre Concordia si GOODWORKS4ALL', () 
   assert.equal(summary.rows[0].totalMonth, 10);
 });
 
+test('centralizatorul preia functiile din Excelul de referinta cand exista', () => {
+  const summary = buildFinancialReportingSummary({
+    experts: [expert],
+    activities: [],
+    concurrentProjects: [
+      { id: 'c1', expertId: expert.id, projectName: 'Concordia', expertProjectRole: 'Rol vechi Concordia', dailyHours: 8, startDate: '2026-01-01', isActive: true },
+      { id: 'g1', expertId: expert.id, projectName: 'GOODWORKS4ALL', expertProjectRole: 'Rol vechi Goodworks', dailyHours: 4, startDate: '2026-01-01', isActive: true },
+    ],
+    concurrentEntries: [],
+    month: 5,
+    year: 2026,
+    referencePeople: [{
+      name: 'Roxana Ivanov',
+      basePosition: 'Pozitie corecta Concordia',
+      peoPosition: 'Functie corecta PEO',
+      peoNorm: '8 h/zi',
+      cimNorm: '8 h/zi',
+      concordiaWorked: 0,
+      concordiaLeave: 0,
+      peoWorked: 0,
+      peoLeave: 0,
+      goodworksPosition: 'Functie corecta GOODWORKS4ALL',
+      goodworksWorked: 0,
+    }],
+  });
+
+  assert.equal(summary.rows[0].basePosition, 'Pozitie corecta Concordia');
+  assert.equal(summary.rows[0].peoFunction, 'Functie corecta PEO');
+  assert.equal(summary.rows[0].goodworksFunction, 'Functie corecta GOODWORKS4ALL');
+});
+
 test('centralizeaza in dashboard financiar orele pontate de expert in raportare PEO', () => {
   const experts = [
     {
