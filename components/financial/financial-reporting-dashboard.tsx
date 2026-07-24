@@ -447,6 +447,19 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
     }, 50);
   };
 
+  const editNormFromTimesheet = (row: FinancialTimesheetRow) => {
+    if (!row.expertId) {
+      setVerificationMessage(`Expertul ${row.name} exista in Excel, dar nu este inregistrat in baza de date. Intai trebuie creat expertul, apoi poate fi editata norma.`);
+      return;
+    }
+    const panelRow = normPanelRows.find((item) => item.expert.id === row.expertId);
+    if (!panelRow) {
+      setVerificationMessage(`Nu am gasit configuratia de norme pentru ${row.name}. Verifica daca expertul este activ in baza de date.`);
+      return;
+    }
+    editNormFromPanel(panelRow);
+  };
+
   const validateFirstDraftLeave = async () => {
     if (!firstDraftLeave) {
       setVerificationMessage('Concedii: nu exista CO draft vizibil pentru validare. Creeaza sau afiseaza un CO draft.');
@@ -617,8 +630,9 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
         </Card>
       )}
 
-      {mode === 'leave' && (
+      {(mode === 'leave' || selectedNormExpertName) && (
         <div className="grid gap-4 xl:grid-cols-2">
+          {mode === 'leave' && (
           <Card>
             <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-sm"><Plus className="h-4 w-4" />Adauga CO Financiar</CardTitle></CardHeader>
             <CardContent className="grid gap-3 md:grid-cols-6">
@@ -645,6 +659,7 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
               </Button>
             </CardContent>
           </Card>
+          )}
 
           <Card id="norma-editor" className={selectedNormExpertName ? 'border-primary/60 shadow-sm ring-2 ring-primary/15' : undefined}>
             <CardHeader className="pb-3">
@@ -729,6 +744,7 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
                         <div className="flex min-w-0 items-center gap-0.5">
                           <ConflictDot row={row} />
                           <span className="min-w-0 flex-1 truncate font-medium" title={row.name}>{row.name}</span>
+                          <Button size="icon" variant="ghost" className="h-5 w-5 shrink-0" title={`Editeaza norma pentru ${row.name}`} aria-label={`Editeaza norma pentru ${row.name}`} onClick={() => editNormFromTimesheet(row)}><ShieldCheck className="h-3 w-3" /></Button>
                           <Button size="icon" variant="ghost" className="h-5 w-5 shrink-0" title={`Exportă template pentru ${row.name}`} aria-label={`Exportă template pentru ${row.name}`} disabled={!row.expertId || exporting !== null} onClick={() => exportExpertTemplate(row)}>{exporting === row.expertId ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileText className="h-3 w-3" />}</Button>
                         </div>
                       </td>
