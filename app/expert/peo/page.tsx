@@ -30,6 +30,7 @@ import {
 import { MultiSelectCalendar } from '@/components/expert/multi-select-calendar';
 import { CalendarView } from '@/components/expert/calendar-view';
 import { ActivityForm, type ActivityResolutionHint, type ActivityResolutionSection } from '@/components/expert/activity-form';
+import type { ExistingDeliverableCandidate } from '@/components/expert/existing-deliverable-picker';
 import { ActivitiesTable } from '@/components/expert/activities-table';
 import { ExpertDeliverablesDialog } from '@/components/expert/expert-deliverables-dialog';
 import { MonthlyEvidencePanel } from '@/components/expert/monthly-evidence-panel';
@@ -986,6 +987,68 @@ function ExpertDashboardContent() {
     }
   };
 
+  const handleDeleteBrokenExistingDeliverable = async (candidate: ExistingDeliverableCandidate) => {
+    if (reportStatus?.status === 'approved') return false;
+    if (isClarificationScopedAccess) {
+      setSaveError('In modul clarificari nu poti sterge livrabile.');
+      return false;
+    }
+    if (candidate.source !== 'mine' || candidate.isCommonDeliverable) {
+      setSaveError('Livrabilele comune sau ale colegilor nu pot fi sterse de aici.');
+      return false;
+    }
+    if (!candidate.sourceActivityId || !candidate.deliverableId) {
+      setSaveError('Nu pot identifica activitatea sursa a livrabilului. Deschide activitatea originala pentru curatare.');
+      return false;
+    }
+
+    const sourceActivity = allMonthActivities.find((activity) => activity.id === candidate.sourceActivityId);
+    if (!sourceActivity || sourceActivity.expertId !== selectedExpertId) {
+      setSaveError('Livrabilul nu apartine expertului selectat sau activitatea sursa nu este disponibila.');
+      return false;
+    }
+
+    const deliverable = sourceActivity.deliverables?.find((item) => (
+      item.id === candidate.deliverableId
+      || (candidate.documentId && item.documentId === candidate.documentId)
+      || (candidate.s3Key && (item.s3Key === candidate.s3Key || item.filePath === candidate.s3Key))
+    ));
+    if (!deliverable) {
+      setSaveError('Livrabilul nu mai exista in activitatea sursa.');
+      return false;
+    }
+    if (deliverable.isCommonDeliverable || (deliverable.sharedWithExpertIds?.length ?? 0) > 0) {
+      setSaveError('Livrabilul este comun/partajat si nu poate fi sters automat din lista.');
+      return false;
+    }
+
+    const isReferencedElsewhere = allMonthActivities.some((activity) => (
+      activity.id !== sourceActivity.id
+      && activity.deliverables?.some((item) => (
+        (candidate.documentId && item.documentId === candidate.documentId)
+        || (candidate.s3Key && (item.s3Key === candidate.s3Key || item.filePath === candidate.s3Key))
+        || (candidate.fileHash && item.fileHash === candidate.fileHash)
+      ))
+    ));
+    if (isReferencedElsewhere) {
+      setSaveError('Livrabilul este referentiat si in alta activitate. Nu il sterg automat.');
+      return false;
+    }
+
+    try {
+      await updateActivity(sourceActivity.id, {
+        deliverables: (sourceActivity.deliverables ?? []).filter((item) => item.id !== deliverable.id),
+      });
+      await refreshActivities();
+      setSaveError(null);
+      return true;
+    } catch (error) {
+      console.error('Error deleting broken deliverable:', error);
+      setSaveError(error instanceof Error ? error.message : 'Livrabilul nu a putut fi sters.');
+      return false;
+    }
+  };
+
   const handleUndoDeleteActivity = async () => {
     if (!deletedActivityUndo || reportStatus?.status === 'approved') return;
 
@@ -1748,6 +1811,7 @@ function ExpertDashboardContent() {
       year={currentYear}
       onSave={handleSaveActivities}
       onCancel={isClarificationScopedAccess ? () => router.push(`/expert/clarificari?month=${currentMonth}&year=${currentYear}`) : closeActivityForm}
+      onDeleteBrokenExistingDeliverable={handleDeleteBrokenExistingDeliverable}
       initialActivity={editingActivity || undefined}
       prefillActivity={sharedActivityPrefill || undefined}
       resolutionHint={activityResolutionHint || undefined}
