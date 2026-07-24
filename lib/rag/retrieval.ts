@@ -6,6 +6,7 @@ import { normalizePeoCategory } from '../peo-category.ts';
 import type { KnowledgeChunk } from '../types.ts';
 import { normalizeRagText } from './chunking.ts';
 import { cosineSimilarity, generateEmbedding, getRagEmbeddingModelName, parseEmbedding } from './embeddings.ts';
+import { findSaPurposeContext, type SaPurposeRetrievalResult } from './sa-purpose.ts';
 import type { RagAuthContext, RagRetrievalRequest, RagRetrievalResult } from './types.ts';
 
 const MAX_QUERY_CHARS = 5000;
@@ -14,6 +15,7 @@ const DEFAULT_TOP_K = 8;
 const DEFAULT_RETRIEVAL_TIMEOUT_MS = 5500;
 const APPROVED_REPORT_SOURCE_TYPE = 'raportare_aprobata_oir';
 const REFERENCE_SOURCE_TYPES = ['cerere_finantare', 'manual_beneficiar', 'descriere_activitati', 'fisa_post'];
+const SA_PURPOSE_SOURCE_TYPES = ['scop_sa', 'descriere_activitati', 'other'];
 const MIN_EXPERT_HISTORY_CHUNKS = 30;
 
 type CandidateBucket = 'expert_history' | 'same_sa' | 'reference';
@@ -298,6 +300,67 @@ export async function retrieveActivityAutofillContext(
       skippedReason: 'retrieval_failed',
       chunks: [],
       warnings: ['Retrieval RAG indisponibil; descrierea asistata a continuat fara context RAG.'],
+    };
+  }
+}
+
+export async function retrieveSaPurposeContext(
+  request: Pick<RagRetrievalRequest, 'saCode' | 'category'>,
+  options: RagAuthContext = {},
+): Promise<SaPurposeRetrievalResult> {
+  const saCode = request.saCode?.trim();
+  if (!saCode) {
+    return { found: false, warnings: ['Codul SA lipseste; scopul oficial nu a putut fi identificat.'] };
+  }
+  if (!options.authToken) {
+    return {
+      found: false,
+      warnings: ['Scopul oficial al SA nu a putut fi citit fara sesiunea Cognito a utilizatorului.'],
+    };
+  }
+
+  try {
+    const store = await import('./store.ts');
+    for (const sourceType of SA_PURPOSE_SOURCE_TYPES) {
+      const directChunks = await store.listKnowledgeChunksBySaCode(
+        saCode,
+        activeChunkFilter(undefined, { sourceType: { eq: sourceType } }),
+        { ...options, limit: 100, maxItems: 300 },
+      );
+      const directContext = findSaPurposeContext(directChunks, saCode);
+      if (directContext) return { found: true, context: directContext, warnings: [] };
+    }
+
+    const category = normalizePeoCategory(request.category) || undefined;
+    for (const sourceType of SA_PURPOSE_SOURCE_TYPES) {
+      const scopedChunks = category
+        ? await store.listKnowledgeChunksByCategoryAndSourceType(
+            category,
+            sourceType,
+            activeChunkFilter(),
+            { ...options, limit: 100, maxItems: 500 },
+          )
+        : [];
+      const scopedContext = findSaPurposeContext(scopedChunks, saCode);
+      if (scopedContext) return { found: true, context: scopedContext, warnings: [] };
+
+      const globalChunks = await store.listKnowledgeChunks(
+        activeChunkFilter(undefined, { sourceType: { eq: sourceType } }),
+        { ...options, limit: 100, maxItems: 500 },
+      );
+      const context = findSaPurposeContext(globalChunks, saCode);
+      if (context) return { found: true, context, warnings: [] };
+    }
+
+    return {
+      found: false,
+      warnings: [`Nu a fost gasita in baza RAG sectiunea oficiala pentru ${saCode}.`],
+    };
+  } catch (error) {
+    console.warn('[activity-autofill-rag] SA purpose retrieval failed.', error);
+    return {
+      found: false,
+      warnings: [`Scopul oficial pentru ${saCode} nu a putut fi citit din baza RAG.`],
     };
   }
 }

@@ -5,6 +5,8 @@ import {
   buildActivityAutofillDeliverablesPayload,
   buildFallbackActivityAutofillSuggestion,
   buildActivityAutofillPrompt,
+  activityAutofillRequestSchema,
+  getActivityAutofillMissingSteps,
   validateActivityAutofillSuggestionAgainstCatalog,
   type ActivityAutofillCatalogCandidate,
 } from '../lib/activity-autofill.ts';
@@ -128,6 +130,128 @@ test('promptul include context RAG doar cand este furnizat', () => {
   });
   assert.match(withRag.prompt, /Context RAG intern/);
   assert.match(withRag.prompt, /context aprobat/);
+});
+
+test('promptul include separat scopul oficial al SA si accepta descriere curenta goala', () => {
+  const parsed = activityAutofillRequestSchema.safeParse({
+    deliverables: [
+      {
+        fileName: 'raport.docx',
+        documentTitle: 'Raport de analiza',
+        extractedText: 'Analiza documentara si recomandari pentru politici publice.',
+      },
+    ],
+    catalogCandidates,
+    ...selectedActivityContext,
+    expertName: 'Expert Test',
+    currentDescription: '',
+    saPurposeContext: {
+      saCode: 'SA1.1',
+      title: 'Informare, recrutare, selectie GT',
+      text: 'Scopul oficial al subactivitatii este informarea si selectia grupului tinta.',
+      sourceType: 'scop_sa',
+      documentId: 'sauri-document',
+      chunkIds: ['chunk-1'],
+    },
+  });
+  assert.equal(parsed.success, true);
+  if (!parsed.success) return;
+
+  const { prompt } = buildActivityAutofillPrompt(parsed.data);
+  assert.match(prompt, /Scop oficial pentru SA1\.1/);
+  assert.match(prompt, /informarea si selectia grupului tinta/);
+  assert.match(prompt, /nu il transforma in munca pretins realizata/i);
+});
+
+test('promptul pentru activitate comuna include colaboratorii confirmati', () => {
+  const { prompt } = buildActivityAutofillPrompt({
+    deliverables: [
+      {
+        fileName: 'raport.docx',
+        documentTitle: 'Raport de analiza',
+        extractedText: 'Analiza documentara si recomandari pentru politici publice.',
+      },
+    ],
+    catalogCandidates,
+    ...selectedActivityContext,
+    expertName: 'Expert Curent',
+    collaborationContext: {
+      isCommonActivity: true,
+      collaborators: [
+        { id: 'expert-2', name: 'Expert Colaborator', role: 'AP', positionInProject: 'Expert politici publice' },
+      ],
+    },
+  });
+
+  assert.match(prompt, /Context colaborare activitate comuna/);
+  assert.match(prompt, /Expert Colaborator/);
+  assert.match(prompt, /am colaborat cu persoanele/);
+  assert.match(prompt, /Nu inventa impartirea rolurilor/);
+});
+
+test('promptul include instructiunile PM/Admin pentru expert sub regulile principale', () => {
+  const { prompt } = buildActivityAutofillPrompt({
+    deliverables: [
+      {
+        fileName: 'raport.docx',
+        documentTitle: 'Raport de analiza',
+        extractedText: 'Analiza documentara si recomandari pentru politici publice.',
+      },
+    ],
+    catalogCandidates,
+    ...selectedActivityContext,
+    expertName: 'Expert Curent',
+    expertReportingInstructions: 'Accentueaza analiza legislativa si sinteza pentru membri.',
+  });
+
+  assert.match(prompt, /Instructiuni PM\/Admin pentru expert/);
+  assert.match(prompt, /Accentueaza analiza legislativa/);
+  assert.match(prompt, /nu pot contrazice scopul oficial al SA/);
+});
+
+test('promptul pentru activitate privata interzice mentionarea colaboratorilor', () => {
+  const { prompt } = buildActivityAutofillPrompt({
+    deliverables: [
+      {
+        fileName: 'raport.docx',
+        documentTitle: 'Raport de analiza',
+        extractedText: 'Analiza documentara si recomandari pentru politici publice.',
+      },
+    ],
+    catalogCandidates,
+    ...selectedActivityContext,
+    expertName: 'Expert Curent',
+    collaborationContext: {
+      isCommonActivity: false,
+      collaborators: [
+        { id: 'expert-2', name: 'Expert Colaborator' },
+      ],
+    },
+  });
+
+  assert.match(prompt, /Activitatea nu este marcata ca activitate comuna/);
+  assert.doesNotMatch(prompt, /Expert Colaborator/);
+});
+
+test('descrierea finala se deblocheaza numai dupa cei patru pasi ai fiecarui livrabil', () => {
+  assert.deepEqual(getActivityAutofillMissingSteps([
+    {
+      uploaded: true,
+      docText: 'Continut extras',
+      titleConfirmed: false,
+      stadiu: '',
+    },
+  ]), ['titlul confirmat', 'stadiul selectat', 'eligibilitatea verificata']);
+
+  assert.deepEqual(getActivityAutofillMissingSteps([
+    {
+      uploaded: true,
+      docText: 'Continut extras',
+      titleConfirmed: true,
+      stadiu: 'final',
+      aiCheck: { eligible: true },
+    },
+  ]), []);
 });
 
 test('validarea respinge raspunsurile care incearca sa propuna activitatea', () => {

@@ -20,6 +20,7 @@ const schema = a.schema({
       contractType: a.string(),
       expertExperienceCategory: a.string(),
       jobDescriptionText: a.string(),
+      aiReportingInstructions: a.string(),
       beneficiary: a.string(),
       saCodes: a.string().array(),
       hasPmAccess: a.boolean().default(false),

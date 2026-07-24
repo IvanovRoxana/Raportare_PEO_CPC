@@ -148,6 +148,7 @@ interface ActivityFormProps {
   year: number;
   onSave: (activities: Activity[]) => void | Promise<void>;
   onCancel: () => void;
+  onDeleteBrokenExistingDeliverable?: (candidate: ExistingDeliverableCandidate) => Promise<boolean>;
   initialActivity?: Activity;
   prefillActivity?: Partial<Activity>;
   resolutionHint?: ActivityResolutionHint;
@@ -289,6 +290,7 @@ export function ActivityForm({
   year,
   onSave,
   onCancel,
+  onDeleteBrokenExistingDeliverable,
   initialActivity,
   prefillActivity,
   resolutionHint,
@@ -583,17 +585,18 @@ export function ActivityForm({
 
       const candidateDate = duplicate.document.activityDate || duplicate.document.uploadDate;
       const candidateMonthKey = candidateDate?.slice(0, 7);
+      const duplicateIssues = duplicate.issues ?? [];
       matches.set(deliverable.id, {
         documentId: duplicate.document.id,
         title: getDocumentAuditTitle(duplicate.document),
         uploadedByExpertName: duplicate.document.uploadedByExpertName,
         activityDate: duplicate.document.activityDate || duplicate.document.uploadDate,
-        status: duplicate.issues.includes('same_file_hash')
+        status: duplicateIssues.includes('same_file_hash')
           ? 'same_file_hash'
-          : duplicate.issues.includes('same_first_page_hash')
+          : duplicateIssues.includes('same_first_page_hash')
             ? 'same_first_page_hash'
             : 'possible_common_unmarked',
-        issues: duplicate.issues,
+        issues: duplicateIssues,
         isPreviousPeriod: Boolean(candidateMonthKey && candidateMonthKey < referenceMonthKey),
         isOtherExpert: Boolean(duplicate.document.uploadedByExpertId && duplicate.document.uploadedByExpertId !== expertId),
       });
@@ -686,11 +689,26 @@ export function ActivityForm({
   }, [gdprCatalogItems, handleGdprTemplateChange]);
 
   const lastAutoDescriptionRef = useRef('');
+  const activityAutofillCollaborationContext = useMemo(() => ({
+    isCommonActivity: activityCommon,
+    collaborators: activityCommon
+      ? collaborators
+          .map((collaboratorId) => allExperts.find((candidate) => candidate.id === collaboratorId))
+          .filter((candidate): candidate is Expert => Boolean(candidate))
+          .map((candidate) => ({
+            id: candidate.id,
+            name: candidate.name,
+            role: candidate.role,
+            positionInProject: candidate.positionInProject,
+          }))
+      : [],
+  }), [activityCommon, allExperts, collaborators]);
   const {
     error: activityAutofillError,
     suggestion: activityAutofillSuggestion,
     apply: applyActivityAutofillSuggestion,
     isLoading: isAutofillingActivity,
+    unavailableMessage: activityAutofillUnavailableMessage,
     suggest: handleSuggestActivityFromDeliverables,
     dismiss: dismissActivityAutofillSuggestion,
   } = useActivityAutofill({
@@ -705,6 +723,7 @@ export function ActivityForm({
     activityName: activityTitle,
     currentDescription: description,
     selectedDates,
+    collaborationContext: activityAutofillCollaborationContext,
     setDescription,
     year,
     onApplied: () => {
@@ -1756,7 +1775,18 @@ export function ActivityForm({
     },
   });
   const attachExistingDeliverable = useCallback((candidate: ExistingDeliverableCandidate) => {
-    const aiCheck = candidate.aiStatus
+    const savedEligibilityCheck = candidate.eligibilityCheck;
+    const aiCheck = savedEligibilityCheck
+      ? {
+          eligible: savedEligibilityCheck.status === 'eligibil' || savedEligibilityCheck.status === 'eligibil_cu_observatii'
+            ? true
+            : savedEligibilityCheck.status === 'neeligibil'
+              ? false
+              : null,
+          reason: savedEligibilityCheck.summary || 'Verificare eligibilitate existenta.',
+          issues: [...(savedEligibilityCheck.missingElements || []), ...(savedEligibilityCheck.riskFlags || [])],
+        }
+      : candidate.aiStatus
       ? {
           eligible: candidate.aiStatus === 'eligible'
             ? true
@@ -1837,9 +1867,12 @@ export function ActivityForm({
         ? 'Livrabil atasat direct din documentele colegilor.'
         : 'Livrabil selectat din documentele existente.'),
       aiCheck,
-      eligibilityCheck: candidate.eligibilityCheck,
+      eligibilityCheck: savedEligibilityCheck,
       stadiu: inferredStadiu,
       common: false,
+      attachedFromExisting: true,
+      lockedExistingMetadata: Boolean(savedEligibilityCheck || candidate.source !== 'mine'),
+      uploadError: candidate.uploadError,
       isPendingConfirm: false,
     };
 
@@ -2582,6 +2615,7 @@ export function ActivityForm({
                     excludedActivityId={initialActivity?.id}
                     month={month}
                     onAttach={attachExistingDeliverable}
+                    onDeleteBroken={onDeleteBrokenExistingDeliverable}
                     onOpenChange={setExistingDeliverablePickerOpen}
                     open={existingDeliverablePickerOpen}
                     year={year}
@@ -2769,7 +2803,7 @@ export function ActivityForm({
                   <div>
                     <div className="text-sm font-medium text-slate-900">Descriere asistata AI</div>
                     <div className="text-xs text-slate-600">
-                      Foloseste descrierea curenta, activitatea selectata si livrabilele citite.
+                      Dupa cei patru pasi, foloseste scopul oficial al SA, catalogul Admin si toate livrabilele citite.
                     </div>
                   </div>
                   <Button
@@ -2777,16 +2811,23 @@ export function ActivityForm({
                     variant="outline"
                     size="sm"
                     onClick={handleSuggestActivityFromDeliverables}
-                    disabled={isAutofillingActivity}
+                    disabled={isAutofillingActivity || Boolean(activityAutofillUnavailableMessage)}
+                    title={activityAutofillUnavailableMessage || undefined}
                   >
                     {isAutofillingActivity ? (
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                     ) : (
                       <Sparkles className="h-4 w-4 mr-2" />
                     )}
-                    Rescrie descrierea
+                    Genereaza descrierea finala
                   </Button>
                 </div>
+
+                {activityAutofillUnavailableMessage && (
+                  <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-2 text-xs text-slate-700">
+                    {activityAutofillUnavailableMessage}
+                  </div>
+                )}
 
                 {!isWorkspaceLayout && activityAutofillError && (
                   <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
@@ -2856,6 +2897,22 @@ export function ActivityForm({
                         ) : (
                           <div className="mt-1 text-slate-600">Nu au fost returnate fragmente RAG pentru aceasta sugestie.</div>
                         )}
+                      </div>
+                    )}
+                    {activityAutofillSuggestion.saPurpose && (
+                      <div className={`rounded border p-2 text-xs ${
+                        activityAutofillSuggestion.saPurpose.found
+                          ? 'border-emerald-200 bg-white text-slate-800'
+                          : 'border-amber-200 bg-amber-50 text-amber-900'
+                      }`}>
+                        <div className="font-medium">
+                          Scop oficial {activityAutofillSuggestion.saPurpose.saCode}
+                        </div>
+                        <div className="mt-1">
+                          {activityAutofillSuggestion.saPurpose.found
+                            ? `Sectiune identificata${activityAutofillSuggestion.saPurpose.title ? `: ${activityAutofillSuggestion.saPurpose.title}` : '.'}`
+                            : activityAutofillSuggestion.saPurpose.warnings.join(' ')}
+                        </div>
                       </div>
                     )}
                     <div className="flex justify-end gap-2">

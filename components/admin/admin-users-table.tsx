@@ -6,6 +6,7 @@ import {
   Edit2,
   Filter,
   Lock,
+  MessageSquare,
   MoreHorizontal,
   RotateCcw,
   SearchIcon,
@@ -37,6 +38,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { StatusBadge } from '@/components/ui/status-badge';
+import { Textarea } from '@/components/ui/textarea';
 import { expertIdentityKey } from '@/lib/expert-merge';
 import { syncOrInviteCognitoGroupsForUser } from '@/lib/admin-cognito';
 import { cognitoGroupsForRole } from '@/lib/cognito-roles';
@@ -53,6 +55,7 @@ type EditFormState = {
   beneficiary: string;
   projectCode: string;
   positionInProject: string;
+  aiReportingInstructions: string;
   hasPmAccess: boolean;
   isActive: boolean;
 };
@@ -122,6 +125,7 @@ function buildEditForm(expert: Expert): EditFormState {
     beneficiary: expert.beneficiary || '',
     projectCode: expert.projectCode || '',
     positionInProject: expert.positionInProject || '',
+    aiReportingInstructions: expert.aiReportingInstructions || '',
     hasPmAccess: expert.hasPmAccess ?? (role.includes('PM') || role === 'Admin'),
     isActive: expert.isActive ?? true,
   };
@@ -144,6 +148,7 @@ function buildExpertCreateInput(expert: Expert, updates: Partial<Expert>): Omit<
     positionInProject: updates.positionInProject ?? expert.positionInProject,
     projectCode: updates.projectCode ?? expert.projectCode,
     projectTitle: updates.projectTitle ?? expert.projectTitle,
+    aiReportingInstructions: updates.aiReportingInstructions ?? expert.aiReportingInstructions,
     beneficiary: updates.beneficiary ?? expert.beneficiary,
     saCodes: updates.saCodes ?? expert.saCodes ?? [],
     hasPmAccess: updates.hasPmAccess ?? expert.hasPmAccess ?? false,
@@ -163,6 +168,7 @@ function auditProfileValue(expert: Expert | (Partial<Expert> & { name?: string; 
     beneficiary: expert.beneficiary || '',
     projectCode: expert.projectCode || '',
     positionInProject: expert.positionInProject || '',
+    aiReportingInstructions: expert.aiReportingInstructions || '',
     hasPmAccess: expert.hasPmAccess ?? false,
     isActive: expert.isActive ?? true,
   });
@@ -204,6 +210,8 @@ export function AdminUsersTable() {
   const [roleFilter, setRoleFilter] = useState('all');
   const [organizationFilter, setOrganizationFilter] = useState('all');
   const [editingExpert, setEditingExpert] = useState<Expert | null>(null);
+  const [editingInstructionsExpert, setEditingInstructionsExpert] = useState<Expert | null>(null);
+  const [instructionsDraft, setInstructionsDraft] = useState('');
   const [form, setForm] = useState<EditFormState | null>(null);
 
   async function loadExperts() {
@@ -269,6 +277,13 @@ export function AdminUsersTable() {
   function openEditDialog(expert: Expert) {
     setEditingExpert(expert);
     setForm(buildEditForm(expert));
+    setError(null);
+    setOk(null);
+  }
+
+  function openInstructionsDialog(expert: Expert) {
+    setEditingInstructionsExpert(expert);
+    setInstructionsDraft(expert.aiReportingInstructions || '');
     setError(null);
     setOk(null);
   }
@@ -341,6 +356,46 @@ export function AdminUsersTable() {
       await loadExperts();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Actualizarea profilului a esuat.');
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  async function handleSaveInstructions() {
+    if (!editingInstructionsExpert) return;
+
+    setSavingId(editingInstructionsExpert.id);
+    setError(null);
+    setOk(null);
+
+    const nextInstructions = instructionsDraft.trim();
+
+    try {
+      const savedExpert = isPersistedExpert(editingInstructionsExpert)
+        ? { ...editingInstructionsExpert, id: getPersistedExpertId(editingInstructionsExpert) }
+        : await expertsService.create(buildExpertCreateInput(editingInstructionsExpert, {
+            aiReportingInstructions: nextInstructions,
+          }));
+
+      await expertsService.update(savedExpert.id, {
+        aiReportingInstructions: nextInstructions,
+      });
+
+      await createUserAudit({
+        actionType: 'user_ai_reporting_instructions_updated',
+        expert: savedExpert,
+        fieldName: 'aiReportingInstructions',
+        oldValue: editingInstructionsExpert.aiReportingInstructions || '',
+        newValue: nextInstructions,
+        justification: 'Instructiuni AI pentru raportare actualizate din panoul de administrare.',
+      });
+
+      setOk(`Instructiunile AI pentru ${editingInstructionsExpert.name} au fost actualizate.`);
+      setEditingInstructionsExpert(null);
+      setInstructionsDraft('');
+      await loadExperts();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Actualizarea instructiunilor AI a esuat.');
     } finally {
       setSavingId(null);
     }
@@ -595,6 +650,29 @@ export function AdminUsersTable() {
 
           {form ? (
             <div className="grid gap-4 md:grid-cols-2">
+              <div className="md:col-span-2 rounded-md border border-slate-200 bg-slate-50 p-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-slate-900">Instructiuni AI pentru raportare</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {editingExpert?.aiReportingInstructions?.trim()
+                        ? 'Prompt PM/Admin configurat pentru generarea descrierilor.'
+                        : 'Nu exista instructiuni AI dedicate pentru acest expert.'}
+                    </p>
+                  </div>
+                  {editingExpert && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => openInstructionsDialog(editingExpert)}
+                    >
+                      <MessageSquare className="h-4 w-4" />
+                      Instructiuni AI pentru raportare
+                    </Button>
+                  )}
+                </div>
+              </div>
               <div className="space-y-2">
                 <Label htmlFor="admin-user-name">Nume</Label>
                 <Input
@@ -716,6 +794,61 @@ export function AdminUsersTable() {
             </Button>
             <Button onClick={handleSaveProfile} disabled={!editingExpert || savingId === editingExpert.id}>
               Salveaza modificarile
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(editingInstructionsExpert)} onOpenChange={(open) => {
+        if (!open) {
+          setEditingInstructionsExpert(null);
+          setInstructionsDraft('');
+        }
+      }}>
+        <DialogContent className="sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Instructiuni AI pentru raportare</DialogTitle>
+            <DialogDescription>
+              Configureaza promptul PM/Admin folosit la generarea descrierilor pentru expert.
+            </DialogDescription>
+          </DialogHeader>
+
+          {editingInstructionsExpert ? (
+            <div className="space-y-4">
+              <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
+                <div className="font-medium text-slate-900">{editingInstructionsExpert.name}</div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  {editingInstructionsExpert.positionInProject || editingInstructionsExpert.role}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="admin-user-ai-reporting-instructions">Prompt PM/Admin</Label>
+                <Textarea
+                  id="admin-user-ai-reporting-instructions"
+                  value={instructionsDraft}
+                  onChange={(event) => setInstructionsDraft(event.target.value)}
+                  rows={12}
+                  placeholder="Ex: Pentru acest expert, descrierile trebuie sa sublinieze analiza de politici publice, sinteza pentru membri si formularea de recomandari. Evita formulari despre organizare evenimente daca livrabilul nu sustine explicit acest lucru."
+                />
+                <p className="text-xs text-muted-foreground">
+                  Aceste instructiuni ajusteaza stilul si accentul descrierii. Nu pot suprascrie scopul SA, catalogul Admin, eligibilitatea sau continutul livrabilelor.
+                </p>
+              </div>
+            </div>
+          ) : null}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setEditingInstructionsExpert(null);
+                setInstructionsDraft('');
+              }}
+            >
+              Anuleaza
+            </Button>
+            <Button onClick={handleSaveInstructions} disabled={!editingInstructionsExpert || savingId === editingInstructionsExpert.id}>
+              Salveaza instructiunile
             </Button>
           </DialogFooter>
         </DialogContent>

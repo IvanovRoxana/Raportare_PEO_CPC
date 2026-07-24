@@ -212,6 +212,8 @@ export function DeliverableItem({
     selectedActivityId,
     deliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
   }) ? null : deliverable.eligibilityCheck;
+  const hasReusableEligibilityCheck = Boolean(visibleEligibilityCheck);
+  const metadataLocked = Boolean(deliverable.lockedExistingMetadata);
 
   const readFileAsDataUrl = (file: File) =>
     new Promise<string>((resolve, reject) => {
@@ -573,7 +575,7 @@ export function DeliverableItem({
       : !deliverable.stadiu
         ? 'Selecteaza stadiul documentului inainte de verificarea eligibilitatii.'
         : eligibilityBlockedReason);
-  const canRunEligibilityCheck = canCheckEligibility && !eligibilityGateReason;
+  const canRunEligibilityCheck = canCheckEligibility && !eligibilityGateReason && !hasReusableEligibilityCheck;
   const allOk = step1ok && step2ok && step3ok && step4ok;
   const auditTitle = getDocumentAuditTitle({
     ...deliverable,
@@ -626,6 +628,10 @@ export function DeliverableItem({
               {required && <span className="text-xs text-red-600 ml-1">obligatoriu</span>}
             </div>
             {hint && <div className="text-[10px] text-slate-500 mt-0.5">{hint}</div>}
+          </div>
+        ) : metadataLocked ? (
+          <div className="flex-1 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
+            {deliverable.type || deliverable.deliverableType || 'Livrabil existent'}
           </div>
         ) : (
           <Select
@@ -896,7 +902,7 @@ export function DeliverableItem({
           variant="outline"
           size="sm"
           onClick={handleConfirmTitle}
-          disabled={deliverable.titleCheckStatus === 'mismatch'}
+          disabled={metadataLocked || deliverable.titleCheckStatus === 'mismatch'}
           className={`justify-self-start border-green-400 text-xs text-green-700 hover:bg-green-50 disabled:border-amber-300 disabled:text-amber-700 ${renderInlineNotes ? 'xl:col-start-1' : ''}`}
         >
           {deliverable.titleCheckStatus === 'mismatch' || deliverable.titleCheckStatus === 'extraction_failed' ? (
@@ -910,27 +916,33 @@ export function DeliverableItem({
 
       {deliverable.uploaded && !deliverable.isPhoto && (
         <div className={renderInlineNotes ? 'xl:col-start-1' : ''}>
-          <Select
-            value={deliverable.stadiu}
-            onValueChange={(value: string) => onUpdate({ stadiu: value })}
-          >
-            <SelectTrigger className="text-xs">
-              <SelectValue placeholder="Stadiu document" />
-            </SelectTrigger>
-            <SelectContent>
-              {DOCUMENT_STADIU_OPTIONS.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value} className="text-xs">
-                  {opt.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {metadataLocked ? (
+            <div className="rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
+              {DOCUMENT_STADIU_OPTIONS.find((opt) => opt.value === deliverable.stadiu)?.label || 'Stadiu existent'}
+            </div>
+          ) : (
+            <Select
+              value={deliverable.stadiu}
+              onValueChange={(value: string) => onUpdate({ stadiu: value })}
+            >
+              <SelectTrigger className="text-xs">
+                <SelectValue placeholder="Stadiu document" />
+              </SelectTrigger>
+              <SelectContent>
+                {DOCUMENT_STADIU_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </div>
       )}
 
       {showEligibilityControl && renderInlineNotes && deliverable.uploaded && !deliverable.isPhoto && (
         <div className="space-y-2 xl:col-start-2">
-          {eligibilityCheckEnabled && canRunEligibilityCheck ? (
+          {eligibilityCheckEnabled && hasReusableEligibilityCheck ? null : eligibilityCheckEnabled && canRunEligibilityCheck ? (
             <Button
               variant="outline"
               size="sm"
@@ -995,7 +1007,7 @@ export function DeliverableItem({
           {aiLoading ? 'Se verifică...' : 'Verifică eligibilitatea livrabilului'}
         </Button>
       )}
-      {showEligibilityControl && !renderInlineNotes && deliverable.uploaded && !deliverable.isPhoto && eligibilityCheckEnabled && !canRunEligibilityCheck && (
+      {showEligibilityControl && !renderInlineNotes && deliverable.uploaded && !deliverable.isPhoto && eligibilityCheckEnabled && !hasReusableEligibilityCheck && !canRunEligibilityCheck && (
         <div className="w-fit max-w-full rounded border border-amber-200 bg-amber-50 p-2 text-[10px] text-amber-800">
           <div className="flex items-start gap-1.5">
             <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
@@ -1095,6 +1107,7 @@ export function DeliverableEligibilityControl({
     selectedActivityId,
     deliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
   }) ? null : deliverable.eligibilityCheck;
+  const hasReusableEligibilityCheck = Boolean(visibleEligibilityCheck);
 
   if (!deliverable.uploaded || deliverable.isPhoto) return null;
 
@@ -1105,7 +1118,7 @@ export function DeliverableEligibilityControl({
       : !deliverable.stadiu
         ? 'Selecteaza stadiul documentului inainte de verificarea eligibilitatii.'
         : eligibilityBlockedReason);
-  const canRunEligibilityCheck = canCheckEligibility && !eligibilityGateReason;
+  const canRunEligibilityCheck = canCheckEligibility && !eligibilityGateReason && !hasReusableEligibilityCheck;
 
   const handleAiCheck = async () => {
     if (!eligibilityCheckEnabled) return;
@@ -1221,7 +1234,7 @@ export function DeliverableEligibilityControl({
 
   return (
     <div className={className}>
-      {eligibilityCheckEnabled && canRunEligibilityCheck ? (
+      {eligibilityCheckEnabled && hasReusableEligibilityCheck ? null : eligibilityCheckEnabled && canRunEligibilityCheck ? (
         <div className="space-y-1">
           <Button
             variant="outline"

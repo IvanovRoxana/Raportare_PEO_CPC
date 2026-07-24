@@ -350,6 +350,7 @@ function withSupportedExpertFields(payload: Record<string, unknown>, expert: Par
     positionInProject: expert.positionInProject,
     projectCode: expert.projectCode,
     projectTitle: expert.projectTitle,
+    aiReportingInstructions: expert.aiReportingInstructions,
   };
 
   Object.entries(extendedFields).forEach(([field, value]) => {
@@ -493,6 +494,7 @@ function mapExpert(item: any): Expert {
     positionInProject: item.positionInProject ?? undefined,
     projectCode: item.projectCode ?? undefined,
     projectTitle: item.projectTitle ?? undefined,
+    aiReportingInstructions: item.aiReportingInstructions ?? undefined,
     saCodes: item.saCodes ?? [],
     hasPmAccess: item.hasPmAccess ?? false,
     isActive: item.isActive ?? true,
@@ -850,12 +852,13 @@ async function createDocumentMetadataForDeliverable(
 
   const duplicateMatches = await findExistingDocumentDuplicates(client, deliverable);
   const duplicate = duplicateMatches[0];
+  const duplicateIssues = duplicate?.issues ?? [];
   const duplicateStatus = duplicate
-    ? duplicate.issues.includes('same_file_hash')
+    ? duplicateIssues.includes('same_file_hash')
       ? 'same_file_hash'
-      : duplicate.issues.includes('same_first_page_hash')
+      : duplicateIssues.includes('same_first_page_hash')
         ? 'same_first_page_hash'
-        : 'possible_common_unmarked'
+        : deliverable.duplicateStatus ?? 'possible_common_unmarked'
     : deliverable.duplicateStatus;
 
   const payload = {

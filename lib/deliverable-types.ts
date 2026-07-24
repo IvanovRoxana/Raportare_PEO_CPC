@@ -199,6 +199,9 @@ export interface DeliverableSlot {
   } | null;
   eligibilityCheck?: DeliverableEligibilityCheck | null;
   common?: boolean; // If this is a shared deliverable across experts
+  attachedFromExisting?: boolean;
+  lockedExistingMetadata?: boolean;
+  uploadError?: string;
   isPendingConfirm: boolean;
 }
 

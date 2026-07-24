@@ -13,6 +13,7 @@ export type RagSourceType =
   | 'cerere_finantare'
   | 'manual_beneficiar'
   | 'descriere_activitati'
+  | 'scop_sa'
   | 'fisa_post'
   | 'raportare_aprobata_oir'
   | 'livrabil_istoric'

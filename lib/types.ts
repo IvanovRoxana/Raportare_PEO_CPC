@@ -21,6 +21,7 @@ export interface Expert {
   contractType?: string;
   expertExperienceCategory?: string;
   jobDescriptionText?: string;
+  aiReportingInstructions?: string;
   beneficiary?: string;
   saCodes?: string[]; // Assigned sub-activities (SA1.1, SA2.1, etc.)
   hasPmAccess?: boolean; // True if expert has access to PM module
