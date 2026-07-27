@@ -156,6 +156,7 @@ function buildSaSections(
         heading: `${getPerformedActivity(bundle, activities)} (${days}, ${calculateWorkBlockHours(bundle.activityLinks)} ore lucrate)`,
         body: normalizeWhitespace(
           bundle.workBlock.generatedNarrative
+          || bundle.workBlock.cleanedActivitySummary
           || bundle.workBlock.expertContribution
           || activities.map((activity) => activity.description).filter(Boolean).join(' ')
           || `Am realizat activitatea "${bundle.workBlock.title}" in cadrul ${saCode}.${deliverableText}`,
@@ -258,6 +259,7 @@ function getOfficialActivityTitle(bundle: ReportingWorkBlockBundle, activities: 
 function getPerformedActivity(bundle: ReportingWorkBlockBundle, activities: Activity[]) {
   return normalizeWhitespace(
     bundle.workBlock.generatedTableSummary
+    || bundle.workBlock.cleanedActivitySummary
     || bundle.workBlock.expertContribution
     || activities.map((activity) => activity.description).filter(Boolean).join(' ')
     || bundle.workBlock.title,

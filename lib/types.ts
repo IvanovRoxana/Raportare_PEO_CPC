@@ -299,9 +299,12 @@ export interface PersistedReportingWorkBlock {
   expertContribution?: string;
   beneficiaries?: string[];
   indicatorContribution?: string;
+  cleanedActivitySummary?: string;
   generatedTableSummary?: string;
   generatedNarrative?: string;
   generationInputsHash?: string;
+  aiConsolidationStatus?: string;
+  aiConsolidationUpdatedAt?: string;
   status?: string;
   createdAt?: string;
   updatedAt?: string;

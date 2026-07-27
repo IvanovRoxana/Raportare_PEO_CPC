@@ -21,6 +21,13 @@ export function isReportingWorkBlocksEnabledClient() {
   return process.env.NEXT_PUBLIC_ENABLE_REPORTING_WORK_BLOCKS === 'true';
 }
 
+export function isWorkBlockAiConsolidationEnabled() {
+  return (
+    process.env.ENABLE_WORK_BLOCK_AI_CONSOLIDATION === 'true'
+    || process.env.NEXT_PUBLIC_ENABLE_WORK_BLOCK_AI_CONSOLIDATION === 'true'
+  );
+}
+
 export function isAnexa10DeterministicDocxEnabledClient() {
   return process.env.NEXT_PUBLIC_ENABLE_ANEXA10_DETERMINISTIC_DOCX === 'true';
 }

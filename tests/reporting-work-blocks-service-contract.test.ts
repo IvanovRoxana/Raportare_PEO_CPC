@@ -64,7 +64,9 @@ test('reporting work block draft hook saves drafts with isolated cache invalidat
   assert.match(reportingWorkBlockDraftHookSource, /const prepareSaveDraft = \(input: DraftWorkBlockInput, activities: Activity\[\]\)/);
   assert.match(reportingWorkBlockDraftHookSource, /reportingWorkBlocksService\.prepareSaveDraft\(input, activities\)/);
   assert.match(reportingWorkBlockDraftHookSource, /const saveDraft = async \(input: DraftWorkBlockInput, activities: Activity\[\]\)/);
-  assert.match(reportingWorkBlockDraftHookSource, /reportingWorkBlocksService\.saveDraft\(input, activities\)/);
+  assert.match(reportingWorkBlockDraftHookSource, /consolidateWorkBlockBeforeSave\(preparedDraft\.bundle, activities\)/);
+  assert.match(reportingWorkBlockDraftHookSource, /cleanedActivitySummary: consolidation\.cleanedActivitySummary/);
+  assert.match(reportingWorkBlockDraftHookSource, /reportingWorkBlocksService\.saveDraft\(\{/);
   assert.match(reportingWorkBlockDraftHookSource, /mutate\(`reporting-work-block-bundles-\$\{input\.expertId\}-\$\{input\.month\}-\$\{input\.year\}`\)/);
   assert.doesNotMatch(reportingWorkBlockDraftHookSource, /useSWR|activities-|shared-deliverables|concurrent-project-timesheet/);
 });

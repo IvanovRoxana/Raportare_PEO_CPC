@@ -33,8 +33,12 @@ export interface ReportingWorkBlock {
   expertContribution?: string;
   beneficiaries?: string[];
   indicatorContribution?: string;
+  cleanedActivitySummary?: string;
   generatedTableSummary?: string;
   generatedNarrative?: string;
+  generationInputsHash?: string;
+  aiConsolidationStatus?: string;
+  aiConsolidationUpdatedAt?: string;
   createdAt?: string;
   updatedAt?: string;
 }
