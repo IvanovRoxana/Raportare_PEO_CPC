@@ -402,6 +402,7 @@ export default function ExpertHomeDashboard() {
   const { activities: monthActivities } = useActivitiesByMonth(currentMonth, currentYear);
   const { documents } = useDocuments();
   const [selectedConcurrentProjectId, setSelectedConcurrentProjectId] = useState<string>('');
+  const [consolidatedTab, setConsolidatedTab] = useState('ore');
   const [draftConcurrentEntries, setDraftConcurrentEntries] = useState<Record<string, Partial<ConcurrentProjectTimesheetEntry>>>({});
 
   useEffect(() => {
@@ -623,11 +624,22 @@ export default function ExpertHomeDashboard() {
 
   const handleProjectShortcutChange = (projectId: string) => {
     if (projectId === 'peo') {
-      router.push(peoHref);
+      setSelectedConcurrentProjectId('');
       return;
     }
 
     setSelectedConcurrentProjectId(projectId);
+  };
+
+  const handleOpenSelectedWorkspace = () => {
+    if (!selectedMonthHasAccess) return;
+
+    if (selectedProjectShortcutValue === 'peo') {
+      router.push(`${peoHref}#calendar`);
+      return;
+    }
+
+    setConsolidatedTab('paralele');
     window.requestAnimationFrame(() => {
       document.getElementById('proiecte-paralele')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
@@ -803,16 +815,32 @@ export default function ExpertHomeDashboard() {
               )}
             </div>
             {selectedMonthHasAccess ? (
-              <Button asChild>
-                <Link href={peoHref}>
-                  Adaugă activitate
-                  <ArrowRight className="h-4 w-4" />
-                </Link>
+              <Button type="button" onClick={handleOpenSelectedWorkspace} disabled={!currentExpert}>
+                {selectedProjectShortcutValue === 'peo' ? (
+                  <>
+                    Deschide calendarul
+                    <CalendarDays className="h-4 w-4" />
+                  </>
+                ) : (
+                  <>
+                    Deschide pontajul
+                    <ArrowRight className="h-4 w-4" />
+                  </>
+                )}
               </Button>
             ) : (
               <Button type="button" disabled>
-                Adaugă activitate
-                <ArrowRight className="h-4 w-4" />
+                {selectedProjectShortcutValue === 'peo' ? (
+                  <>
+                    Deschide calendarul
+                    <CalendarDays className="h-4 w-4" />
+                  </>
+                ) : (
+                  <>
+                    Deschide pontajul
+                  <ArrowRight className="h-4 w-4" />
+                  </>
+                )}
               </Button>
             )}
             {canOpenPmDashboard && (
@@ -1145,7 +1173,7 @@ export default function ExpertHomeDashboard() {
               <CardTitle className="text-lg">Detalii pontaj consolidat</CardTitle>
             </CardHeader>
             <CardContent className="p-4">
-              <Tabs defaultValue="ore" className="w-full">
+              <Tabs value={consolidatedTab} onValueChange={setConsolidatedTab} className="w-full">
                 <TabsList className="grid h-auto w-full gap-2 bg-muted/50 p-1 sm:grid-cols-3">
                   <TabsTrigger value="ore">Ore luna selectata</TabsTrigger>
                   <TabsTrigger value="consolidat">Pontaj consolidat</TabsTrigger>
