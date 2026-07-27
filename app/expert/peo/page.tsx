@@ -461,12 +461,13 @@ function OutlookMonthCalendar({
               <div className="space-y-1">
                 {visibleActivities.map((activity) => {
                   const title = activity.title || activity.activityType || activity.description || 'Activitate';
+                  const compactSummary = activity.activitySummary || title;
                   return (
                     <div
                       key={activity.id}
                       role="button"
                       tabIndex={0}
-                      title={title}
+                      title={compactSummary}
                       className="group flex min-w-0 items-center gap-1 rounded border-l-2 border-blue-500 bg-blue-100/80 px-1.5 py-1 text-[11px] leading-tight text-slate-800 hover:bg-blue-200"
                       onClick={(event) => {
                         event.stopPropagation();
@@ -480,7 +481,7 @@ function OutlookMonthCalendar({
                       }}
                     >
                       <span className="shrink-0 font-semibold text-blue-700">{activity.hours}h</span>
-                      <span className="truncate">{title}</span>
+                      <span className="truncate">{compactSummary}</span>
                     </div>
                   );
                 })}
@@ -991,6 +992,9 @@ function ExpertDashboardContent() {
           catalogActivityId: sourceActivity.catalogActivityId,
           title: sourceActivity.title,
           description: sourceActivity.description,
+          activitySummary: sourceActivity.activitySummary,
+          activitySummaryGeneratedAt: sourceActivity.activitySummaryGeneratedAt,
+          activitySummaryAuditId: sourceActivity.activitySummaryAuditId,
           activityKeywords: sourceActivity.activityKeywords,
           location: sourceActivity.location,
           dayType: sourceActivity.dayType,
@@ -1045,6 +1049,9 @@ function ExpertDashboardContent() {
           catalogActivityId: nextActivity.catalogActivityId,
           title: nextActivity.title,
           description: nextActivity.description,
+          activitySummary: nextActivity.activitySummary,
+          activitySummaryGeneratedAt: nextActivity.activitySummaryGeneratedAt,
+          activitySummaryAuditId: nextActivity.activitySummaryAuditId,
           activityKeywords: nextActivity.activityKeywords,
           location: nextActivity.location,
           dayType: nextActivity.dayType,

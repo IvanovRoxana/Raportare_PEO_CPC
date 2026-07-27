@@ -366,12 +366,12 @@ export function CalendarView({
                           {activity.saCode || 'SA'}
                         </Badge>
                         <span className="text-sm font-medium truncate">
-                          {activity.title || activity.description?.slice(0, 50) || 'Activitate'}
+                          {activity.title || activity.activitySummary || activity.description?.slice(0, 50) || 'Activitate'}
                         </span>
                       </div>
-                      {activity.description && (
+                      {(activity.activitySummary || activity.description) && (
                         <p className="text-xs text-muted-foreground mt-1 line-clamp-1">
-                          {activity.description}
+                          {activity.activitySummary || activity.description}
                         </p>
                       )}
                     </div>

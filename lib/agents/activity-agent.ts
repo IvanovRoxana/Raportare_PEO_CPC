@@ -33,6 +33,24 @@ function fallbackDescription(request: ActivityAgentRequest) {
   ].filter(Boolean).join(' ');
 }
 
+function fallbackShortSummary(request: ActivityAgentRequest) {
+  const deliverableNames = request.deliverables
+    .map((deliverable) => deliverable.documentTitle)
+    .filter(Boolean)
+    .slice(0, 2)
+    .join('; ');
+  const activity = request.activityName || request.title || 'activitatea selectata';
+  const sa = request.saCode ? ` (${request.saCode})` : '';
+  const collaboratorNames = request.collaborationContext?.isCommonActivity
+    ? request.collaborationContext.collaborators.map((collaborator) => collaborator.name).filter(Boolean)
+    : [];
+  const collaboration = collaboratorNames.length > 0
+    ? `, in colaborare cu ${collaboratorNames.join(', ')}`
+    : '';
+
+  return `Am realizat ${activity}${sa}${collaboration}${deliverableNames ? `, pe baza livrabilului ${deliverableNames}` : ''}.`;
+}
+
 function buildActivityAgentAuditRequest(
   request: ActivityAgentRequest,
   context: Awaited<ReturnType<typeof createActivityAgentToolContext>>,
@@ -82,6 +100,7 @@ export function buildControlledFallbackActivityAgentResponse(
 
   return {
     description: fallbackDescription(request),
+    shortSummary: fallbackShortSummary(request),
     proposedSaCode: request.saCode,
     proposedActivityName: request.activityName,
     deliverableSummary,
@@ -183,6 +202,7 @@ export async function runActivityAgent(
 export function mapActivityAgentResponseToAutofillSuggestion(response: ActivityAgentResponse) {
   return {
     description: response.description,
+    shortSummary: response.shortSummary,
     confidence: response.confidence,
     fieldInstructions: {
       description: response.requiresPmReview

@@ -30,6 +30,7 @@ interface UseActivityAutofillParams {
   selectedDates: string[];
   collaborationContext?: ActivityAutofillCollaborationContext;
   setDescription: (value: string) => void;
+  setActivitySummary?: (value: string) => void;
   year: number;
   onApplied?: (suggestion: ActivityAutofillSuggestion) => void;
 }
@@ -82,6 +83,7 @@ export function useActivityAutofill({
   selectedDates,
   collaborationContext,
   setDescription,
+  setActivitySummary,
   year,
   onApplied,
 }: UseActivityAutofillParams) {
@@ -288,6 +290,9 @@ export function useActivityAutofill({
     }
 
     setDescription(suggestion.description);
+    if (suggestion.shortSummary?.trim()) {
+      setActivitySummary?.(suggestion.shortSummary.trim());
+    }
     setError(null);
     setSuggestion(null);
     onApplied?.(suggestion);
@@ -298,6 +303,7 @@ export function useActivityAutofill({
     activityName,
     markSuggestionApplied,
     onApplied,
+    setActivitySummary,
     setDescription,
     suggestion,
   ]);

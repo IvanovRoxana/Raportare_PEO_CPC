@@ -33,10 +33,14 @@ Reguli:
 - Pastreaza subactivitatea si activitatea selectate daca dovezile nu indica o problema clara.
 - Daca propui alta incadrare, seteaza requiresPmReview=true.
 - Descrierea trebuie sa fie narativa, fara bullets, de regula 900-1600 caractere cand informatia permite.
+- shortSummary trebuie sa fie un rezumat scurt al activitatii, normal 1 propozitie, maxim 2 propozitii cand sunt multe informatii relevante.
+- shortSummary este la nivel de activitate/zi/expert si nu inlocuieste rezumatul consolidat pentru Anexa 10.
 - Daca activitatea este comuna, mentioneaza colaborarea natural si pastreaza contributia expertului la persoana I.
+- Pentru activitati comune, mentioneaza colaborarea in shortSummary doar daca exista colaboratori confirmati.
 - Aplica instructiunile AI ale expertului numai la ton, nivel de detaliu, termeni preferati/interzisi si structura, fara sa schimbi faptele.
 - Daca instructiunile expertului contin conflicte, ignora partea conflictuala si include conflictul in warnings/expertInstructionAudit.
 - Nu include citari tehnice in descriere; sursele merg in evidenceUsed.
+- Returneaza si shortSummary in JSON, fara rezultate, beneficiari, institutii, livrabile sau colaboratori care nu apar in dovezi.
 
 Cerere:
 ${JSON.stringify(request, null, 2)}

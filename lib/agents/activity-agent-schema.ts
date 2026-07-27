@@ -67,6 +67,7 @@ export const activityAgentEvidenceSchema = z.object({
 
 export const activityAgentResponseSchema = z.object({
   description: z.string().min(20),
+  shortSummary: z.string().min(20).max(360),
   proposedSaCode: z.string().optional(),
   proposedActivityName: z.string().optional(),
   deliverableSummary: z.string(),

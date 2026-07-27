@@ -42,6 +42,9 @@ export interface Activity {
   catalogActivityId?: string;
   title: string;
   description?: string;
+  activitySummary?: string;
+  activitySummaryGeneratedAt?: string;
+  activitySummaryAuditId?: string;
   activityKeywords?: string;
   deliverables?: Deliverable[];
   location?: string;

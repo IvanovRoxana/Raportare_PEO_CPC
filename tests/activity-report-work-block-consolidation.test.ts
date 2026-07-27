@@ -50,6 +50,23 @@ test('consolidarea determinista deduplica descrierile identice inainte de summar
   assert.ok(result.generationInputsHash.length > 0);
 });
 
+test('consolidarea determinista prefera activity summary fata de descrierea lunga', () => {
+  const result = buildDeterministicWorkBlockConsolidation({
+    ...request,
+    activities: request.activities.map((activity) => ({
+      ...activity,
+      summary: 'Am consolidat documentele GT pentru verificarea raportarii.',
+      description: `${activity.description} Detaliu lung care nu trebuie duplicat cand rezumatul scurt exista.`,
+    })),
+  });
+
+  assert.equal(
+    occurrences(result.generatedTableSummary, 'Am consolidat documentele GT pentru verificarea raportarii.'),
+    1,
+  );
+  assert.equal(result.generatedTableSummary.includes('Detaliu lung'), false);
+});
+
 test('modelul Anexa 10 foloseste textul curatat inaintea descrierilor brute repetate', () => {
   const activities: Activity[] = [
     { id: 'a-1', expertId: 'e-1', date: '2026-07-01', hours: 8, title: 'Zi 1', description: 'Text brut repetat.' } as Activity,
@@ -91,6 +108,7 @@ test('promptul cere explicit JSON si deduplicare inainte de summary', () => {
   const prompt = buildWorkBlockConsolidationPrompt(request);
 
   assert.match(prompt, /Nu repeta aceeasi descriere/);
+  assert.match(prompt, /campul summary/);
   assert.match(prompt, /generatedTableSummary/);
   assert.match(prompt, /generatedNarrative/);
 });
