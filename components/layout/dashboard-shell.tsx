@@ -128,6 +128,7 @@ type DashboardShellProps = {
   progressValue?: number;
   className?: string;
   contentClassName?: string;
+  hideHeader?: boolean;
 };
 
 export function DashboardShell({
@@ -141,10 +142,12 @@ export function DashboardShell({
   aside,
   className,
   contentClassName,
+  hideHeader = false,
 }: DashboardShellProps) {
   return (
     <div className={cn('min-h-screen bg-background text-foreground', className)}>
       <main className={cn('mx-auto w-full max-w-screen-2xl px-4 py-5 sm:px-6 lg:px-8 lg:py-7', contentClassName)}>
+        {!hideHeader ? (
         <header className="rounded-[2rem] border border-[#dce5ef] bg-white p-6 shadow-sm">
           <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div className="min-w-0">
@@ -212,14 +215,15 @@ export function DashboardShell({
             </div>
           ) : null}
         </header>
+        ) : null}
 
         {aside ? (
-          <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(20rem,1fr)]">
+          <div className={cn(!hideHeader && 'mt-6', 'grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(20rem,1fr)]')}>
             <div className="min-w-0 space-y-6">{children}</div>
             <aside className="hidden space-y-6 lg:block">{aside}</aside>
           </div>
         ) : (
-          <div className="mt-6 space-y-6">{children}</div>
+          <div className={cn(!hideHeader && 'mt-6', 'space-y-6')}>{children}</div>
         )}
       </main>
     </div>
