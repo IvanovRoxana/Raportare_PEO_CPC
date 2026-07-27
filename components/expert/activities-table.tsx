@@ -191,225 +191,252 @@ export function ActivitiesTable({
         </Badge>
       </div>
 
-      <div className="space-y-3">
-        {workingGroups.map((group) => (
-          <section key={group.id} className="overflow-hidden rounded-lg border bg-card">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-muted/40 px-4 py-3">
-              <div className="min-w-0">
-                <h4 className="break-words text-sm font-semibold leading-5 text-foreground">{group.title}</h4>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {group.dayCount} {group.dayCount === 1 ? 'zi pontata' : 'zile pontate'} - {group.dateLabel}
-                </p>
-              </div>
-              <Badge variant="outline" className="rounded-lg bg-background px-3 py-1 text-sm">
-                {group.totalHours}h
-              </Badge>
-            </div>
+      <div className="space-y-2">
+        {workingGroups.map((group) => {
+          const representativeActivity = group.activities[0];
+          const isExpanded = expandedRows.has(group.id);
+          const isActive = group.activities.some((activity) => activeActivityId === activity.id);
+          const deliverableCount = group.activities.reduce(
+            (count, activity) => count + (activity.deliverables?.length ?? 0),
+            0,
+          );
+          const saCodes = [...new Set(group.activities.map((activity) => activity.saCode).filter(Boolean))];
+          const primaryDeliverable = representativeActivity ? getPrimaryDeliverable(representativeActivity) : null;
+          const primaryDeliverableTitle = primaryDeliverable ? getDeliverableTitle(primaryDeliverable) : '';
 
-            <div className="divide-y">
-              {group.activities.map((activity) => {
-                const isExpanded = expandedRows.has(activity.id);
-                const isActive = activeActivityId === activity.id;
-                const deliverables = activity.deliverables ?? [];
-                const grupTinta = activity.grupTinta ?? [];
-                const primaryDeliverable = getPrimaryDeliverable(activity);
-                const primaryDeliverableTitle = primaryDeliverable
-                  ? getDeliverableTitle(primaryDeliverable)
-                  : '';
-                const activityTitle = activity.title || activity.activityType || 'Activitate fara titlu';
+          return (
+            <section
+              key={group.id}
+              className={cn(
+                'overflow-hidden rounded-lg border bg-card transition-colors',
+                isActive ? 'bg-primary/5 ring-1 ring-inset ring-primary/30' : 'hover:bg-muted/20',
+              )}
+            >
+              <div
+                className={cn(
+                  'grid items-center gap-3 px-3 py-2.5',
+                  compact ? 'grid-cols-1' : 'lg:grid-cols-[72px_minmax(0,1fr)_auto]',
+                )}
+              >
+                <div className="flex items-center gap-2 lg:block">
+                  <div className="flex h-11 w-14 shrink-0 items-center justify-center rounded-lg border bg-background text-sm font-semibold text-foreground">
+                    {group.totalHours}h
+                  </div>
+                  <Badge variant="outline" className="lg:mt-1">
+                    {group.dayCount} {group.dayCount === 1 ? 'zi' : 'zile'}
+                  </Badge>
+                </div>
 
-                return (
-                  <Fragment key={activity.id}>
-                    <article
-                      className={cn(
-                        compact
-                          ? 'space-y-3 px-4 py-4 transition-colors'
-                          : 'grid gap-3 px-4 py-4 transition-colors xl:grid-cols-[72px_minmax(0,1fr)_auto]',
-                        isActive ? 'bg-primary/5 ring-1 ring-inset ring-primary/30' : 'hover:bg-muted/30',
-                      )}
-                    >
-                      <div className={cn('flex items-start gap-3', !compact && 'xl:block')}>
-                        <div className={cn('flex shrink-0 items-center justify-center rounded-lg border bg-background text-sm font-semibold text-foreground', compact ? 'h-10 w-12' : 'h-12 w-14')}>
-                          {Number(activity.hours) || 0}h
-                        </div>
-                        <div className={cn('min-w-0', !compact && 'xl:mt-2')}>
-                          <Badge variant="outline" className="max-w-full truncate text-xs">
-                            {formatDateRo(activity.date)}
-                          </Badge>
-                        </div>
-                      </div>
-
-                      <div className="min-w-0 space-y-3">
-                        <div className="space-y-1">
-                          <h4 className="break-words text-sm font-semibold leading-5 text-foreground">
-                            {activityTitle}
-                          </h4>
-                          {activity.activityKeywords && (
-                            <p className="text-xs font-medium text-primary">
-                              {activity.activityKeywords}
-                            </p>
-                          )}
-                          <Badge variant="outline" className="max-w-full truncate text-xs">
-                            {activity.activityType || 'Tip neprecizat'}
-                          </Badge>
-                          <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
-                            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                              Livrabil
-                            </p>
-                            <p className="mt-1 break-words text-sm font-medium leading-5 text-foreground">
-                              {primaryDeliverableTitle || 'Fara livrabil atasat'}
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="space-y-1">
-                          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                            Descriere scurta
-                          </p>
-                          <p className="break-words text-sm leading-6 text-muted-foreground">
-                            {getActivitySummary(activity)}
-                          </p>
-                        </div>
-
-                        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                          {activity.location && (
-                            <span className="inline-flex items-center gap-1">
-                              <CalendarDays className="h-3.5 w-3.5" />
-                              {activity.location}
-                            </span>
-                          )}
-                          <span className="inline-flex items-center gap-1 rounded-md border bg-background px-2 py-1">
-                            <FileText className="h-3.5 w-3.5" />
-                            {deliverables.length === 0
-                              ? 'Fara livrabile'
-                              : `${deliverables.length} ${deliverables.length === 1 ? 'livrabil' : 'livrabile'}`}
-                          </span>
-                          {activity.saCode && (
-                            <span className="rounded-md border bg-background px-2 py-1">
-                              {activity.saCode}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className={cn('flex flex-wrap items-center gap-2', !compact && 'xl:justify-end')}>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => onEdit(activity)}
-                          className={compact ? 'flex-1 justify-center' : undefined}
-                        >
-                          <Edit2 className="h-4 w-4" />
-                          Editeaza
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => toggleRow(activity.id)}
-                          className={compact ? 'flex-1 justify-center' : undefined}
-                        >
-                          {isExpanded ? (
-                            <>
-                              <ChevronUp className="h-4 w-4" />
-                              Ascunde
-                            </>
-                          ) : (
-                            <>
-                              <ChevronDown className="h-4 w-4" />
-                              Detalii
-                            </>
-                          )}
-                        </Button>
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="h-9 w-9 text-destructive hover:text-destructive"
-                              aria-label="Sterge activitatea"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Sterge activitatea?</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                Aceasta actiune nu poate fi anulata. Activitatea din{' '}
-                                {formatDateRo(activity.date)} va fi stearsa permanent.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Anuleaza</AlertDialogCancel>
-                              <AlertDialogAction
-                                onClick={() => onDelete(activity.id)}
-                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                              >
-                                Sterge
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      </div>
-                    </article>
-
-                    {isExpanded && (
-                      <div className="space-y-4 bg-muted/20 px-4 pb-4 pt-1">
-                        <div className="rounded-lg border bg-background p-4">
-                          <h4 className="mb-2 text-sm font-medium">Descriere completa</h4>
-                          <p className="whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
-                            {activity.description || 'Fara descriere'}
-                          </p>
-                        </div>
-
-                        {activity.gdprTemplateCode && <GdprActivityDetails activity={activity} />}
-
-                        {deliverables.length > 0 && (
-                          <div className="rounded-lg border bg-background p-4">
-                            <h4 className="mb-2 text-sm font-medium">Livrabile</h4>
-                            <ul className="space-y-2 text-sm text-muted-foreground">
-                              {deliverables.map((deliverable) => (
-                                <li key={deliverable.id} className="flex items-start gap-2">
-                                  <FileText className="mt-0.5 h-4 w-4 shrink-0" />
-                                  <span>
-                                    {getDeliverableTitle(deliverable)}
-                                    {deliverable.fileName && getDeliverableTitle(deliverable) !== deliverable.fileName
-                                      ? ` (${deliverable.fileName})`
-                                      : ''}
-                                  </span>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-
-                        {grupTinta.length > 0 && (
-                          <div className="rounded-lg border bg-background p-4">
-                            <h4 className="mb-2 flex items-center gap-2 text-sm font-medium">
-                              <Users className="h-4 w-4" />
-                              Grup tinta
-                            </h4>
-                            <ul className="space-y-1 text-sm text-muted-foreground">
-                              {grupTinta.map((entry) => (
-                                <li key={entry.id}>
-                                  {entry.name || entry.type || entry.activityType || 'Intrare GT'}
-                                  {entry.cnp ? ` (CNP: ${entry.cnp})` : ''}
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                      </div>
+                <div className="min-w-0 space-y-1">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <h4 className="min-w-0 break-words text-sm font-semibold leading-5 text-foreground">
+                      {group.title}
+                    </h4>
+                    <span className="text-xs text-muted-foreground">{group.dateLabel}</span>
+                  </div>
+                  <p className="line-clamp-1 text-sm leading-5 text-muted-foreground">
+                    {representativeActivity ? getActivitySummary(representativeActivity) : 'Fara descriere completata.'}
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    <Badge variant="outline" className="max-w-full truncate">
+                      {representativeActivity?.activityType || 'Tip neprecizat'}
+                    </Badge>
+                    {saCodes.length > 0 && (
+                      <span className="rounded-md border bg-background px-2 py-1">
+                        {saCodes.join(', ')}
+                      </span>
                     )}
-                  </Fragment>
-                );
-              })}
-            </div>
-          </section>
-        ))}
+                    <span className="inline-flex items-center gap-1 rounded-md border bg-background px-2 py-1">
+                      <FileText className="h-3.5 w-3.5" />
+                      {deliverableCount === 0
+                        ? 'Fara livrabile'
+                        : `${deliverableCount} ${deliverableCount === 1 ? 'livrabil' : 'livrabile'}`}
+                    </span>
+                    {primaryDeliverableTitle && (
+                      <span className="max-w-full truncate rounded-md border bg-slate-50 px-2 py-1">
+                        {primaryDeliverableTitle}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className={cn('flex flex-wrap items-center gap-2', !compact && 'lg:justify-end')}>
+                  {representativeActivity && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onEdit(representativeActivity)}
+                      className={compact ? 'flex-1 justify-center' : undefined}
+                    >
+                      <Edit2 className="h-4 w-4" />
+                      Editeaza
+                    </Button>
+                  )}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => toggleRow(group.id)}
+                    className={compact ? 'flex-1 justify-center' : undefined}
+                  >
+                    {isExpanded ? (
+                      <>
+                        <ChevronUp className="h-4 w-4" />
+                        Ascunde
+                      </>
+                    ) : (
+                      <>
+                        <ChevronDown className="h-4 w-4" />
+                        Detalii
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+
+              {isExpanded && (
+                <div className="divide-y border-t bg-muted/20">
+                  {group.activities.map((activity) => {
+                    const deliverables = activity.deliverables ?? [];
+                    const grupTinta = activity.grupTinta ?? [];
+                    const activityTitle = activity.title || activity.activityType || 'Activitate fara titlu';
+
+                    return (
+                      <Fragment key={activity.id}>
+                        <article className="grid gap-3 px-4 py-3 lg:grid-cols-[72px_minmax(0,1fr)_auto]">
+                          <div className="flex items-center gap-2 lg:block">
+                            <div className="flex h-10 w-12 shrink-0 items-center justify-center rounded-lg border bg-background text-sm font-semibold text-foreground">
+                              {Number(activity.hours) || 0}h
+                            </div>
+                            <Badge variant="outline" className="lg:mt-1">
+                              {formatDateRo(activity.date)}
+                            </Badge>
+                          </div>
+
+                          <div className="min-w-0 space-y-2">
+                            <div>
+                              <h5 className="break-words text-sm font-semibold leading-5 text-foreground">
+                                {activityTitle}
+                              </h5>
+                              {activity.activityKeywords && (
+                                <p className="text-xs font-medium text-primary">{activity.activityKeywords}</p>
+                              )}
+                            </div>
+                            <p className="break-words text-sm leading-6 text-muted-foreground">
+                              {activity.description || getActivitySummary(activity)}
+                            </p>
+                            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                              {activity.location && (
+                                <span className="inline-flex items-center gap-1">
+                                  <CalendarDays className="h-3.5 w-3.5" />
+                                  {activity.location}
+                                </span>
+                              )}
+                              <span className="inline-flex items-center gap-1 rounded-md border bg-background px-2 py-1">
+                                <FileText className="h-3.5 w-3.5" />
+                                {deliverables.length === 0
+                                  ? 'Fara livrabile'
+                                  : `${deliverables.length} ${deliverables.length === 1 ? 'livrabil' : 'livrabile'}`}
+                              </span>
+                              {activity.saCode && (
+                                <span className="rounded-md border bg-background px-2 py-1">{activity.saCode}</span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex flex-wrap items-start gap-2 lg:justify-end">
+                            <Button type="button" variant="outline" size="sm" onClick={() => onEdit(activity)}>
+                              <Edit2 className="h-4 w-4" />
+                              Editeaza ziua
+                            </Button>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-9 w-9 text-destructive hover:text-destructive"
+                                  aria-label="Sterge activitatea"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Sterge activitatea?</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    Aceasta actiune nu poate fi anulata. Activitatea din{' '}
+                                    {formatDateRo(activity.date)} va fi stearsa permanent.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Anuleaza</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    onClick={() => onDelete(activity.id)}
+                                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                  >
+                                    Sterge
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          </div>
+                        </article>
+
+                        {activity.gdprTemplateCode && (
+                          <div className="px-4 pb-3">
+                            <GdprActivityDetails activity={activity} />
+                          </div>
+                        )}
+
+                        {(deliverables.length > 0 || grupTinta.length > 0) && (
+                          <div className="grid gap-3 px-4 pb-4 md:grid-cols-2">
+                            {deliverables.length > 0 && (
+                              <div className="rounded-lg border bg-background p-3">
+                                <h4 className="mb-2 text-sm font-medium">Livrabile</h4>
+                                <ul className="space-y-2 text-sm text-muted-foreground">
+                                  {deliverables.map((deliverable) => (
+                                    <li key={deliverable.id} className="flex items-start gap-2">
+                                      <FileText className="mt-0.5 h-4 w-4 shrink-0" />
+                                      <span>
+                                        {getDeliverableTitle(deliverable)}
+                                        {deliverable.fileName && getDeliverableTitle(deliverable) !== deliverable.fileName
+                                          ? ` (${deliverable.fileName})`
+                                          : ''}
+                                      </span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+
+                            {grupTinta.length > 0 && (
+                              <div className="rounded-lg border bg-background p-3">
+                                <h4 className="mb-2 flex items-center gap-2 text-sm font-medium">
+                                  <Users className="h-4 w-4" />
+                                  Grup tinta
+                                </h4>
+                                <ul className="space-y-1 text-sm text-muted-foreground">
+                                  {grupTinta.map((entry) => (
+                                    <li key={entry.id}>
+                                      {entry.name || entry.type || entry.activityType || 'Intrare GT'}
+                                      {entry.cnp ? ` (CNP: ${entry.cnp})` : ''}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          );
+        })}
       </div>
     </div>
   );
