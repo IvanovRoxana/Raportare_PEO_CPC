@@ -3,7 +3,10 @@ backend:
   phases:
     build:
       commands:
+        - npm ci --legacy-peer-deps
+        - if [ "$STAGING_BOOTSTRAP_PHASE" = "foundation" ]; then node scripts/staging-bootstrap-schema.mjs apply; fi
         - npx ampx pipeline-deploy --branch $AWS_BRANCH --app-id $AWS_APP_ID
+        - if [ "$STAGING_BOOTSTRAP_PHASE" = "foundation" ]; then node scripts/staging-bootstrap-schema.mjs restore; fi
 frontend:
   phases:
     preBuild:
@@ -11,6 +14,10 @@ frontend:
         - npm ci --legacy-peer-deps
     build:
       commands:
+        - if [ -n "$APP_ENV" ]; then printf "APP_ENV=%s\n" "$APP_ENV" >> .env.production; fi
+        - if [ -n "$NEXT_PUBLIC_APP_ENV" ]; then printf "NEXT_PUBLIC_APP_ENV=%s\n" "$NEXT_PUBLIC_APP_ENV" >> .env.production; fi
+        - if [ -n "$NEXT_PUBLIC_ENABLE_FINANCIAL_TIMESHEETS" ]; then printf "NEXT_PUBLIC_ENABLE_FINANCIAL_TIMESHEETS=%s\n" "$NEXT_PUBLIC_ENABLE_FINANCIAL_TIMESHEETS" >> .env.production; fi
+        - if [ -n "$NEXT_PUBLIC_ENABLE_FINANCIAL_LEAVE" ]; then printf "NEXT_PUBLIC_ENABLE_FINANCIAL_LEAVE=%s\n" "$NEXT_PUBLIC_ENABLE_FINANCIAL_LEAVE" >> .env.production; fi
         - if [ -n "$OPENAI_API_KEY" ]; then printf "OPENAI_API_KEY=%s\n" "$OPENAI_API_KEY" >> .env.production; fi
         - if [ -n "$OPENAI_MODEL" ]; then printf "OPENAI_MODEL=%s\n" "$OPENAI_MODEL" >> .env.production; fi
         - if [ -n "$OPENAI_ACTIVITY_AGENT_MODEL" ]; then printf "OPENAI_ACTIVITY_AGENT_MODEL=%s\n" "$OPENAI_ACTIVITY_AGENT_MODEL" >> .env.production; fi

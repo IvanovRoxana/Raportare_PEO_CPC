@@ -3,7 +3,7 @@ import type { Activity, ConcurrentProject, ConcurrentProjectTimesheetEntry, Expe
 type PontajExportKind = 'peo' | 'consolidated';
 type ExportPayload = {
   kind: PontajExportKind;
-  expert: Partial<Expert> & { beneficiary?: string };
+  expert: Partial<Expert> & { beneficiary?: string; hourlyRate?: number };
   activities: Partial<Activity>[];
   concurrentProjects?: Partial<ConcurrentProject>[];
   concurrentTimesheetEntries?: Partial<ConcurrentProjectTimesheetEntry>[];
@@ -13,7 +13,7 @@ type ExportPayload = {
 
 type BuildPontajExportPayloadInput = {
   kind: PontajExportKind;
-  expert: Expert & { beneficiary?: string };
+  expert: Expert & { beneficiary?: string; hourlyRate?: number };
   activities: Activity[];
   concurrentProjects?: ConcurrentProject[];
   concurrentTimesheetEntries?: ConcurrentProjectTimesheetEntry[];
@@ -45,6 +45,7 @@ export function buildPontajExportPayload({
       projectCode: expert.projectCode,
       projectTitle: expert.projectTitle,
       beneficiary: expert.beneficiary,
+      hourlyRate: expert.hourlyRate,
       saCodes: expert.saCodes,
     },
     activities: activities.map((activity) => ({

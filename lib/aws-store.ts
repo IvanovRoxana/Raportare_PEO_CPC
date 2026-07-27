@@ -30,6 +30,7 @@ import {
   type ActivityDraftForValidation,
 } from '@/lib/pontaj-rules';
 import { assertCanLogHoursOnDate, getNonWorkingDayInfo } from '@/lib/non-working-days';
+import { allocateLeaveEntries, assertCapacity, calculateCapacitySnapshot, resolveNormContract } from './time-capacity';
 import type {
   Activity,
   ActivityCatalog,
@@ -40,6 +41,9 @@ import type {
   ConcurrentProject,
   ConcurrentProjectTimesheetEntry,
   Deliverable,
+  ExpertNormContract,
+  LeaveEntry,
+
   DocumentMetadata,
   Expert,
   BusinessHubEntityDirectoryEntry,
@@ -1588,6 +1592,23 @@ async function validateActivityBatchForWrite(
     if (!validation.ok) {
       throw new Error(validation.message ?? 'Activitatea nu a fost creată: regula de pontaj ar fi depășită.');
     }
+
+    const [normContracts, concurrentProjects, concurrentEntries, leaveEntries] = await Promise.all([
+      expertNormContractsService.getByExpert(sample.expertId),
+      concurrentProjectsService.getByExpert(sample.expertId),
+      concurrentProjectTimesheetService.getAllByMonth(month, year),
+      leaveEntriesService.getByMonth(month, year),
+    ]);
+    assertCapacity(calculateCapacitySnapshot({
+      expert,
+      contracts: normContracts,
+      activities: [...existingActivities, ...groupActivities],
+      concurrentProjects,
+      concurrentEntries: concurrentEntries.filter((entry) => entry.expertId === sample.expertId),
+      leaveEntries: leaveEntries.filter((entry) => entry.expertId === sample.expertId),
+      month,
+      year,
+    }));
     const existingActivitiesWithDeliverables = await listActivitiesWithDeliverablesForValidation(
       client,
       sample.expertId,
@@ -3203,6 +3224,25 @@ export const concurrentProjectTimesheetService = {
     const client = getAwsDataClient() as any;
     await assertCanAccessExpert(client, entry.expertId);
     if (!client.models.ConcurrentProjectTimesheetEntry) throw new Error('Modelul ConcurrentProjectTimesheetEntry nu este disponibil in backend.');
+    const expert = await expertsService.getById(entry.expertId);
+    if (!expert) throw new Error('Expertul nu exista.');
+    const [normContracts, activities, projects, monthEntries, leaveEntries] = await Promise.all([
+      expertNormContractsService.getByExpert(entry.expertId),
+      activitiesService.getByMonth(entry.month, entry.year),
+      concurrentProjectsService.getByExpert(entry.expertId),
+      concurrentProjectTimesheetService.getAllByMonth(entry.month, entry.year),
+      leaveEntriesService.getByMonth(entry.month, entry.year),
+    ]);
+    assertCapacity(calculateCapacitySnapshot({
+      expert,
+      contracts: normContracts,
+      activities: activities.filter((item) => item.expertId === entry.expertId),
+      concurrentProjects: projects,
+      concurrentEntries: [...monthEntries.filter((item) => item.expertId === entry.expertId && item.id !== entry.id), entry],
+      leaveEntries: leaveEntries.filter((item) => item.expertId === entry.expertId),
+      month: entry.month,
+      year: entry.year,
+    }));
     const payload = {
       concurrentProjectId: entry.concurrentProjectId,
       expertId: entry.expertId,
@@ -3505,6 +3545,31 @@ export const reportStatusService = {
   async upsert(status: Omit<ReportStatus, 'id'>): Promise<ReportStatus> {
     const client = getAwsDataClient() as any;
     await assertCanAccessExpert(client, status.expertId);
+    if (status.status === 'sent' || status.status === 'approved') {
+      const [expert, contracts, activities, projects, entries, leaves] = await Promise.all([
+        expertsService.getById(status.expertId),
+        expertNormContractsService.getByExpert(status.expertId),
+        activitiesService.getByMonth(status.month, status.year),
+        concurrentProjectsService.getByExpert(status.expertId),
+        concurrentProjectTimesheetService.getAllByMonth(status.month, status.year),
+        leaveEntriesService.getByMonth(status.month, status.year),
+      ]);
+      if (!expert) throw new Error('Expertul nu exista.');
+      const expertLeaves = leaves.filter((leave) => leave.expertId === status.expertId);
+      if (expertLeaves.some((leave) => leave.status !== 'VALIDATED' && leave.status !== 'REJECTED')) {
+        throw new Error('Pontajul nu poate fi trimis sau aprobat cat timp exista CO nevalidat.');
+      }
+      assertCapacity(calculateCapacitySnapshot({
+        expert,
+        contracts,
+        activities: activities.filter((activity) => activity.expertId === status.expertId),
+        concurrentProjects: projects,
+        concurrentEntries: entries.filter((entry) => entry.expertId === status.expertId),
+        leaveEntries: expertLeaves,
+        month: status.month,
+        year: status.year,
+      }));
+    }
     const existing = await reportStatusService.getByExpertAndMonth(status.expertId, status.month, status.year);
     const payload = {
       expertId: status.expertId,
@@ -3891,5 +3956,232 @@ export const businessHubEntityDirectoryService = {
     if (!client.models.BusinessHubEntityDirectory) return;
     const result = await client.models.BusinessHubEntityDirectory.delete({ id });
     assertNoErrors(result, 'AWS delete business hub entity directory entry');
+  },
+};
+function mapExpertNormContract(data: any): ExpertNormContract {
+  return {
+    id: data.id,
+    expertId: data.expertId,
+    validFrom: data.validFrom,
+    validTo: data.validTo ?? undefined,
+    peoNormUnit: data.peoNormUnit,
+    peoNormValue: Number(data.peoNormValue) || 0,
+    peoDailyCap: Number(data.peoDailyCap) || 0,
+    cimNormUnit: data.cimNormUnit,
+    cimNormValue: Number(data.cimNormValue) || 0,
+    cimDailyCap: Number(data.cimDailyCap) || 8,
+    leaveHoursPerDay: Number(data.leaveHoursPerDay) || 8,
+    status: data.status ?? 'ACTIVE',
+    justification: data.justification ?? '',
+    createdBy: data.createdBy ?? undefined,
+    updatedBy: data.updatedBy ?? undefined,
+    createdAt: data.createdAt ?? undefined,
+    updatedAt: data.updatedAt ?? undefined,
+  };
+}
+
+function mapLeaveEntry(data: any): LeaveEntry {
+  return {
+    id: data.id,
+    owner: data.owner ?? undefined,
+    expertId: data.expertId,
+    date: data.date,
+    month: Number(data.month),
+    year: Number(data.year),
+    type: data.type,
+    totalHours: Number(data.totalHours) || 0,
+    peoHours: Number(data.peoHours) || 0,
+    cpcHours: Number(data.cpcHours) || 0,
+    source: data.source,
+    status: data.status ?? 'DRAFT',
+    lockedForExpert: Boolean(data.lockedForExpert),
+    normContractId: data.normContractId ?? undefined,
+    automaticSplit: data.automaticSplit !== false,
+    peoNormUnit: data.peoNormUnit ?? undefined,
+    peoNormValue: data.peoNormValue == null ? undefined : Number(data.peoNormValue),
+    peoDailyCap: data.peoDailyCap == null ? undefined : Number(data.peoDailyCap),
+    cimNormUnit: data.cimNormUnit ?? undefined,
+    cimNormValue: data.cimNormValue == null ? undefined : Number(data.cimNormValue),
+    cimDailyCap: data.cimDailyCap == null ? undefined : Number(data.cimDailyCap),
+    justification: data.justification ?? undefined,
+    rejectionReason: data.rejectionReason ?? undefined,
+    createdBy: data.createdBy ?? undefined,
+    validatedBy: data.validatedBy ?? undefined,
+    validatedAt: data.validatedAt ?? undefined,
+    createdAt: data.createdAt ?? undefined,
+    updatedAt: data.updatedAt ?? undefined,
+  };
+}
+
+export const expertNormContractsService = {
+  async getAll(): Promise<ExpertNormContract[]> {
+    const client = getAwsDataClient() as any;
+    if (!client.models.ExpertNormContract) return [];
+    return (await listModel<any>(client.models.ExpertNormContract)).map(mapExpertNormContract);
+  },
+
+  async getByExpert(expertId: string): Promise<ExpertNormContract[]> {
+    const client = getAwsDataClient() as any;
+    await assertCanAccessExpert(client, expertId);
+    if (!client.models.ExpertNormContract) return [];
+    return (await listModel<any>(client.models.ExpertNormContract, { expertId: { eq: expertId } }))
+      .map(mapExpertNormContract)
+      .sort((left, right) => left.validFrom.localeCompare(right.validFrom));
+  },
+
+  async create(contract: Omit<ExpertNormContract, 'id'> & { id?: string }): Promise<ExpertNormContract> {
+    const client = getAwsDataClient() as any;
+    const scope = await getCurrentDataAccessScope(client);
+    if (!scope.canAccessAllExperts) throw new Error(ACCESS_DENIED_MESSAGE);
+    if ((contract.peoNormUnit === 'HOURS_PER_MONTH' || contract.cimNormUnit === 'HOURS_PER_MONTH') && !contract.validFrom.endsWith('-01')) {
+      throw new Error('O norma lunara poate incepe numai in prima zi a lunii.');
+    }
+    const result = await client.models.ExpertNormContract.create(contract);
+    assertNoErrors(result, 'AWS create expert norm contract');
+    return mapExpertNormContract(result.data);
+  },
+
+  async update(id: string, updates: Partial<ExpertNormContract>): Promise<ExpertNormContract> {
+    const client = getAwsDataClient() as any;
+    const scope = await getCurrentDataAccessScope(client);
+    if (!scope.canAccessAllExperts) throw new Error(ACCESS_DENIED_MESSAGE);
+    const result = await client.models.ExpertNormContract.update({ id, ...updates });
+    assertNoErrors(result, 'AWS update expert norm contract');
+    return mapExpertNormContract(result.data);
+  },
+};
+
+export const leaveEntriesService = {
+  async getByMonth(month: number, year: number): Promise<LeaveEntry[]> {
+    const client = getAwsDataClient() as any;
+    const scope = await getCurrentDataAccessScope(client);
+    if (scope.accessLevel === 'none' || !client.models.LeaveEntry) return [];
+    const data = await listModel<any>(client.models.LeaveEntry, {
+      ...(scope.canAccessAllExperts ? {} : { expertId: { eq: scope.currentExpertId } }),
+      month: { eq: month },
+      year: { eq: year },
+    });
+    return data.map(mapLeaveEntry);
+  },
+
+  async createAutomatic(args: {
+    expertId: string;
+    dates: string[];
+    source: 'EXPERT' | 'FINANCIAL';
+    createdBy?: string;
+  }): Promise<LeaveEntry[]> {
+    const client = getAwsDataClient() as any;
+    await assertCanAccessExpert(client, args.expertId);
+    if (args.source === 'FINANCIAL') {
+      const scope = await getCurrentDataAccessScope(client);
+      if (!scope.canAccessAllExperts) throw new Error(ACCESS_DENIED_MESSAGE);
+    }
+    const expert = await expertsService.getById(args.expertId);
+    if (!expert) throw new Error('Expertul nu exista.');
+    const month = Number(args.dates[0]?.slice(5, 7)) - 1;
+    const year = Number(args.dates[0]?.slice(0, 4));
+    if (args.dates.some((date) => Number(date.slice(5, 7)) - 1 !== month || Number(date.slice(0, 4)) !== year)) {
+      throw new Error('CO-urile dintr-o operatiune trebuie sa fie in aceeasi luna.');
+    }
+    const [contracts, activities, projects, entries, leaves] = await Promise.all([
+      expertNormContractsService.getByExpert(args.expertId),
+      activitiesService.getByMonth(month, year),
+      concurrentProjectsService.getByExpert(args.expertId),
+      concurrentProjectTimesheetService.getAllByMonth(month, year),
+      leaveEntriesService.getByMonth(month, year),
+    ]);
+    const allocations = allocateLeaveEntries({
+      expert,
+      contracts,
+      activities: activities.filter((item) => item.expertId === args.expertId),
+      concurrentProjects: projects,
+      concurrentEntries: entries.filter((item) => item.expertId === args.expertId),
+      leaveEntries: leaves.filter((item) => item.expertId === args.expertId),
+      month,
+      year,
+      dates: args.dates,
+      source: args.source,
+      createdBy: args.createdBy,
+    });
+    const saved: LeaveEntry[] = [];
+    for (const allocation of allocations) {
+      const result = await client.models.LeaveEntry.create(allocation);
+      assertNoErrors(result, 'AWS create leave entry');
+      saved.push(mapLeaveEntry(result.data));
+    }
+    return saved;
+  },
+
+  async createManual(entry: Omit<LeaveEntry, 'id'> & { id?: string }): Promise<LeaveEntry> {
+    const client = getAwsDataClient() as any;
+    const scope = await getCurrentDataAccessScope(client);
+    if (!scope.canAccessAllExperts) throw new Error(ACCESS_DENIED_MESSAGE);
+    if (!entry.justification?.trim()) throw new Error('Justificarea este obligatorie pentru repartizarea manuala.');
+    if (entry.totalHours !== entry.peoHours + entry.cpcHours) throw new Error('CO total trebuie sa fie egal cu PEO + CPC.');
+    const expert = await expertsService.getById(entry.expertId);
+    if (!expert) throw new Error('Expertul nu exista.');
+    const [contracts, activities, projects, entries, leaves] = await Promise.all([
+      expertNormContractsService.getByExpert(entry.expertId),
+      activitiesService.getByMonth(entry.month, entry.year),
+      concurrentProjectsService.getByExpert(entry.expertId),
+      concurrentProjectTimesheetService.getAllByMonth(entry.month, entry.year),
+      leaveEntriesService.getByMonth(entry.month, entry.year),
+    ]);
+    const contract = resolveNormContract(expert, contracts, entry.date);
+    const candidate = {
+      ...entry,
+      source: 'FINANCIAL' as const,
+      lockedForExpert: true,
+      automaticSplit: false,
+      normContractId: contract.id,
+      peoNormUnit: contract.peoNormUnit,
+      peoNormValue: contract.peoNormValue,
+      peoDailyCap: contract.peoDailyCap,
+      cimNormUnit: contract.cimNormUnit,
+      cimNormValue: contract.cimNormValue,
+      cimDailyCap: contract.cimDailyCap,
+    };
+    assertCapacity(calculateCapacitySnapshot({
+      expert,
+      contracts,
+      activities: activities.filter((item) => item.expertId === entry.expertId),
+      concurrentProjects: projects,
+      concurrentEntries: entries.filter((item) => item.expertId === entry.expertId),
+      leaveEntries: [...leaves.filter((item) => item.expertId === entry.expertId), candidate],
+      month: entry.month,
+      year: entry.year,
+    }));
+    const result = await client.models.LeaveEntry.create(candidate);
+    assertNoErrors(result, 'AWS create manual leave entry');
+    return mapLeaveEntry(result.data);
+  },
+
+  async remove(id: string): Promise<void> {
+    const client = getAwsDataClient() as any;
+    const existing = await client.models.LeaveEntry.get({ id });
+    assertNoErrors(existing, 'AWS get leave entry');
+    const leave = existing.data ? mapLeaveEntry(existing.data) : undefined;
+    if (!leave) return;
+    await assertCanAccessExpert(client, leave.expertId);
+    const scope = await getCurrentDataAccessScope(client);
+    if (leave.lockedForExpert && !scope.canAccessAllExperts) throw new Error('CO introdus de Financiar nu poate fi sters de expert.');
+    if (leave.status === 'VALIDATED' && !scope.canAccessAllExperts) throw new Error('CO validat nu poate fi sters de expert.');
+    const result = await client.models.LeaveEntry.delete({ id });
+    assertNoErrors(result, 'AWS delete leave entry');
+  },
+  async updateStatus(id: string, status: LeaveEntry['status'], actorId: string, reason?: string): Promise<LeaveEntry> {
+    const client = getAwsDataClient() as any;
+    if (status !== 'VALIDATED' && status !== 'REJECTED') throw new Error('Financiarul poate doar valida sau respinge CO.');
+    const scope = await getCurrentDataAccessScope(client);
+    if (!scope.canAccessAllExperts) throw new Error(ACCESS_DENIED_MESSAGE);
+    const result = await client.models.LeaveEntry.update({
+      id,
+      status,
+      rejectionReason: status === 'REJECTED' ? reason : undefined,
+      validatedBy: status === 'VALIDATED' ? actorId : undefined,
+      validatedAt: status === 'VALIDATED' ? new Date().toISOString() : undefined,
+    });
+    assertNoErrors(result, 'AWS update leave status');
+    return mapLeaveEntry(result.data);
   },
 };

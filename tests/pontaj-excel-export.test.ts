@@ -85,7 +85,7 @@ describe('export pontaj Excel', () => {
       kind: 'consolidated',
       month: 4,
       year: 2026,
-      expert: { id: 'expert-2', name: 'Simona Khamissi', role: 'Expert Protectia Datelor', category: 'Expert', oreZi: 8, saCodes: ['SA1.1'] },
+      expert: { id: 'expert-2', name: 'Simona Khamissi', role: 'Expert Protectia Datelor', category: 'Expert', oreZi: 8, saCodes: ['SA1.1'], hourlyRate: 123.45 },
       activities: [
         {
           date: '2026-05-21',
@@ -109,6 +109,7 @@ describe('export pontaj Excel', () => {
     assert.match(cellXml(sheet, 'V16'), /\$AL\$58:\$AL\$88/);
     assert.match(cellXml(sheet, 'B78'), /A1/);
     assert.match(cellXml(sheet, 'D78'), /SA1\.1 Informare, recrutare, selectie GT/);
+    assert.match(cellXml(sheet, 'AK78'), /<v>123.45<\/v>/);
     assert.match(cellXml(sheet, 'AL78'), /<v>4<\/v>/);
     assert.match(cellXml(sheet, 'AO78'), /<v>46163<\/v>/);
     assert.match(cellXml(sheet, 'AP78'), /LEFT\(D78,6\)/);
@@ -147,7 +148,7 @@ describe('export pontaj Excel', () => {
       kind: 'peo',
       month: 4,
       year: 2026,
-      expert: { id: 'expert-co', name: 'Expert CO', role: 'Expert GT', category: 'Expert', oreZi: 8, saCodes: ['SA1.1'] },
+      expert: { id: 'expert-co', name: 'Expert CO', role: 'Expert GT', category: 'Expert', oreZi: 8, saCodes: ['SA1.1'], hourlyRate: 99 },
       activities: [
         { date: '2026-05-22', hours: 0, activityType: 'CO - Concediu odihna', title: 'CO - Concediu odihna', dayType: 'CO', saCode: 'SA1.1', status: 'approved' },
       ],
@@ -159,6 +160,7 @@ describe('export pontaj Excel', () => {
     const sheet = files.get('xl/worksheets/sheet1.xml')!.toString('utf8');
 
     assert.match(cellXml(sheet, 'H35'), /CO/);
+    assert.match(cellXml(sheet, 'G35'), /<v>99<\/v>/);
     assert.match(cellXml(sheet, 'H45'), /COUNTIF\(H14:H44,&quot;CO&quot;\)\*8/);
   });
 
