@@ -852,7 +852,6 @@ export default function ExpertHomeDashboard() {
           </>
         }
         quickTabs={[
-          { label: 'Pontaj lunar', href: '#calendar-ore', icon: CalendarDays, active: true },
           { label: 'Activitățile mele', href: peoHref, icon: ClipboardList },
           { label: 'Livrabile', href: `${peoHref}#livrabile`, icon: CheckCircle2 },
           { label: 'Rapoarte', href: `${peoHref}#rapoarte`, icon: BriefcaseBusiness },
