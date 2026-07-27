@@ -4,7 +4,8 @@ import { getActivityAgentModelName, openaiModel } from '../openai.ts';
 import type { RagAuthContext } from '../rag/types.ts';
 import { buildActivityAgentPrompt, buildActivityAgentSystemPrompt } from './activity-agent-prompt.ts';
 import {
-  activityAgentResponseSchema,
+  activityAgentGenerationSchema,
+  type ActivityAgentGeneration,
   type ActivityAgentRequest,
   type ActivityAgentResponse,
 } from './activity-agent-schema.ts';
@@ -27,6 +28,79 @@ function splitSentences(value: unknown) {
     .split(/(?<=[.!?])\s+/)
     .map((sentence) => sentence.trim())
     .filter((sentence) => sentence.length >= 45 && sentence.length <= 360);
+}
+
+function formatActivityDates(request: ActivityAgentRequest) {
+  const dates = (request.selectedDates?.length ? request.selectedDates : request.date ? [request.date] : [])
+    .map((date) => {
+      const parsed = new Date(`${date}T00:00:00`);
+      if (Number.isNaN(parsed.getTime())) return String(date);
+      const months = [
+        'ianuarie',
+        'februarie',
+        'martie',
+        'aprilie',
+        'mai',
+        'iunie',
+        'iulie',
+        'august',
+        'septembrie',
+        'octombrie',
+        'noiembrie',
+        'decembrie',
+      ];
+      return `${parsed.getDate()} ${months[parsed.getMonth()]} ${parsed.getFullYear()}`;
+    });
+
+  if (dates.length === 0) return '';
+  if (dates.length === 1) return `În data de ${dates[0]}`;
+  if (dates.length === 2) return `În zilele de ${dates.join(' si ')}`;
+  return `În zilele de ${dates.slice(0, -1).join(', ')} si ${dates.at(-1)}`;
+}
+
+function lowerFirst(value: string) {
+  return value ? `${value.charAt(0).toLocaleLowerCase('ro-RO')}${value.slice(1)}` : value;
+}
+
+function cleanFinalDescription(value: unknown, request: ActivityAgentRequest) {
+  const forbiddenPatterns = [
+    /\bformular(?:ul)?\b/i,
+    /\bactivitatea selectat[ae]\b/i,
+    /\bagent(?:ul)?\s+AI\b/i,
+    /\bOCR\b/i,
+    /\bRAG\b/i,
+    /\bcontext disponibil\b/i,
+    /\bam (?:citit|extras|procesat) (?:livrabilul|documentul)\b/i,
+    /\blivrabil(?:ul|e|ele|ului)?\b/i,
+    /\bsursele?\s+(?:folosite|utilizate|disponibile|consultate)\b/i,
+    /\bam urmarit sa pastrez descrierea aliniata\b/i,
+    /\b(?:necesita|necesită) verificare PM\b/i,
+    /\bvalidare de catre PM\b/i,
+    /\bpregatit(?:a)? formularea pentru raportarea lunara\b/i,
+  ];
+  const normalized = String(value ?? '')
+    .replace(/\s+/g, ' ')
+    .replace(/\b([A-Za-zăâîșțĂÂÎȘȚ])-\s+([A-Za-zăâîșțĂÂÎȘȚ])\b/g, '$1$2')
+    .trim();
+  const sentences = normalized
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => sentence.length > 0)
+    .filter((sentence) => !forbiddenPatterns.some((pattern) => pattern.test(sentence)));
+  const cleaned = sentences.join(' ').trim() || normalized;
+  const prefix = formatActivityDates(request);
+
+  if (!prefix || /^În (data|zilele) de\b/i.test(cleaned)) {
+    return cleaned;
+  }
+
+  return `${prefix}, ${lowerFirst(cleaned).replace(/^\s*în\s+data\s+de\s+/i, '')}`;
+}
+
+function shortSummaryFromDescription(description: string, request: ActivityAgentRequest) {
+  const firstSentence = splitSentences(description)[0] || description.slice(0, 240);
+  if (firstSentence.length >= 20 && firstSentence.length <= 360) return firstSentence;
+  return fallbackShortSummary(request);
 }
 
 function extractFallbackEvidence(request: ActivityAgentRequest) {
@@ -79,25 +153,19 @@ function fallbackDeliverableInterpretation(request: ActivityAgentRequest) {
 }
 
 function fallbackDescription(request: ActivityAgentRequest) {
-  const deliverableNames = request.deliverables
-    .map((deliverable) => deliverable.documentTitle)
-    .filter(Boolean)
-    .slice(0, 3)
-    .join('; ');
-  const activity = request.activityName || 'activitatea selectata';
-  const sa = request.saCode || 'subactivitatea selectata';
+  const activity = request.activityName || request.title || 'activitatea raportata';
+  const sa = request.saCode ? ` pentru ${request.saCode}` : '';
   const evidence = extractFallbackEvidence(request);
-  const evidenceText = evidence.length > 0
-    ? `Din continutul livrabilului reiese urmatorul context de lucru: ${evidence.join(' ')}`
-    : '';
+  const factualContext = evidence.length > 0
+    ? `Am analizat si sintetizat elementele factuale disponibile privind ${evidence.slice(0, 3).join(' ')}`
+    : `Am analizat informatiile disponibile si am formulat o descriere prudenta a activitatii de ${activity}.`;
+  const result = `Activitatea a contribuit la documentarea si fundamentarea rezultatelor aferente${sa}, prin structurarea unei descrieri coerente si relevante pentru raportarea tehnica a proiectului.`;
 
-  return [
-    request.currentDescription,
-    `Am lucrat la ${activity} (${sa}) pe baza livrabilului${deliverableNames ? ` ${deliverableNames}` : ' atasat'}, urmarind sa pastrez descrierea aliniata cu activitatea selectata in formular.`,
-    evidenceText,
-    'Am extras si structurat informatiile relevante, am verificat coerenta continutului fata de obiectivul activitatii si am pregatit formularea pentru raportarea lunara, fara a schimba incadrarea selectata.',
-    'Descrierea trebuie revizuita de PM deoarece agentul AI complet nu a putut valida toate sursele necesare.',
-  ].filter(Boolean).join(' ');
+  return cleanFinalDescription([
+    request.currentDescription || `Am realizat activitati de ${activity}.`,
+    factualContext,
+    result,
+  ].filter(Boolean).join(' '), request);
 }
 
 function clampScore(value: number) {
@@ -205,11 +273,6 @@ function mergeExplainableScores(
 }
 
 function fallbackShortSummary(request: ActivityAgentRequest) {
-  const deliverableNames = request.deliverables
-    .map((deliverable) => deliverable.documentTitle)
-    .filter(Boolean)
-    .slice(0, 2)
-    .join('; ');
   const activity = request.activityName || request.title || 'activitatea selectata';
   const sa = request.saCode ? ` (${request.saCode})` : '';
   const collaboratorNames = request.collaborationContext?.isCommonActivity
@@ -219,7 +282,19 @@ function fallbackShortSummary(request: ActivityAgentRequest) {
     ? `, in colaborare cu ${collaboratorNames.join(', ')}`
     : '';
 
-  return `Am realizat ${activity}${sa}${collaboration}${deliverableNames ? `, pe baza livrabilului ${deliverableNames}` : ''}.`;
+  return `Am realizat ${activity}${sa}${collaboration}.`;
+}
+
+function buildEvidenceUsed(request: ActivityAgentRequest, generated: ActivityAgentGeneration) {
+  const facts = generated.usedFacts.length > 0 ? generated.usedFacts : extractFallbackEvidence(request);
+  return request.deliverables.flatMap((deliverable) => (
+    facts.slice(0, 6).map((fact) => ({
+      sourceType: 'livrabil_curent',
+      title: deliverable.documentTitle,
+      chunkId: deliverable.id,
+      relevantExcerpt: trimText(fact, 500),
+    }))
+  )).slice(0, 8);
 }
 
 function buildActivityAgentAuditRequest(
@@ -271,6 +346,7 @@ export function buildControlledFallbackActivityAgentResponse(
 
   return {
     description: fallbackDescription(request),
+    usedFacts: extractFallbackEvidence(request),
     shortSummary: fallbackShortSummary(request),
     proposedSaCode: request.saCode,
     proposedActivityName: request.activityName,
@@ -280,7 +356,7 @@ export function buildControlledFallbackActivityAgentResponse(
     beneficiaries: [],
     targetGroupImpact: {
       type: 'unclear',
-      justification: 'Agentul complet nu a putut confirma impactul asupra grupului tinta.',
+      justification: 'Impactul asupra grupului tinta nu a putut fi confirmat complet din datele disponibile.',
     },
     evidenceUsed: request.deliverables.map((deliverable) => ({
       sourceType: 'livrabil_curent',
@@ -293,20 +369,20 @@ export function buildControlledFallbackActivityAgentResponse(
         id: 'fallback-confidence',
         label: 'Nivel fallback',
         score: 0.25,
-        reason: 'Agentul complet nu a finalizat analiza, astfel scorurile complete necesita verificare PM.',
+        reason: 'Analiza completa nu a fost finalizata, astfel scorurile complete necesita verificare PM.',
         evidence: warnings.slice(0, 3),
       },
       {
         id: 'deliverable-text',
         label: 'Text livrabil disponibil',
         score: request.deliverables.some((deliverable) => deliverable.extractedText?.trim()) ? 0.75 : 0.1,
-        reason: 'Fallback-ul a folosit textul extras disponibil din livrabile.',
+        reason: 'Au existat informatii textuale disponibile pentru formularea prudenta a descrierii.',
         evidence: request.deliverables.map((deliverable) => deliverable.documentTitle).filter(Boolean).slice(0, 3),
       },
     ],
     warnings: uniqueMessages([
       ...warnings,
-      'Fallback controlat: descrierea nu trebuie considerata validare completa a incadrarii.',
+      'Descriere formulata prudent pe baza datelor disponibile; incadrarea necesita verificare interna.',
     ]),
     expertInstructionAudit: {
       found: Boolean(request.expertReportingInstructions?.trim()),
@@ -348,18 +424,13 @@ export async function runActivityAgent(
     tools,
     stopWhen: stepCountIs(10),
     maxOutputTokens: 1800,
-    output: Output.object({ schema: activityAgentResponseSchema }),
+    output: Output.object({ schema: activityAgentGenerationSchema }),
   });
-  const parsed = activityAgentResponseSchema.parse(result.output);
-  const changedSelectedActivity = Boolean(
-    (request.saCode && parsed.proposedSaCode && parsed.proposedSaCode !== request.saCode)
-    || (request.activityName && parsed.proposedActivityName && parsed.proposedActivityName !== request.activityName),
-  );
+  const generated = activityAgentGenerationSchema.parse(result.output);
+  const description = cleanFinalDescription(generated.description, request);
+  const changedSelectedActivity = false;
   const warnings = uniqueMessages([
-    ...parsed.warnings,
-    changedSelectedActivity
-      ? 'Agentul a detectat o posibila alta incadrare, dar optimizarea a pastrat activitatea selectata in formular.'
-      : '',
+    ...generated.warnings,
     ...context.approvedReports.warnings,
     ...context.saPurpose.warnings,
     ...context.deliverableInspection.warnings,
@@ -369,40 +440,57 @@ export async function runActivityAgent(
     ...context.classification.warnings,
     ...context.expertAiInstructions.warnings,
   ]);
+  const interpretation = fallbackDeliverableInterpretation(request);
+  const evidenceUsed = buildEvidenceUsed(request, generated);
 
   return {
-    ...parsed,
-    proposedSaCode: request.saCode || parsed.proposedSaCode,
-    proposedActivityName: request.activityName || parsed.proposedActivityName,
+    description,
+    usedFacts: generated.usedFacts,
+    shortSummary: shortSummaryFromDescription(description, request),
+    proposedSaCode: request.saCode,
+    proposedActivityName: request.activityName,
+    deliverableSummary: request.deliverables.map((deliverable) => deliverable.documentTitle).filter(Boolean).join('; ')
+      || 'Nu exista livrabile cu titlu disponibil.',
+    deliverableInterpretation: {
+      ...interpretation,
+      keyFacts: uniqueMessages([
+        ...generated.usedFacts,
+        ...interpretation.keyFacts,
+      ]).slice(0, 8),
+      unsupportedGaps: uniqueMessages([
+        ...interpretation.unsupportedGaps,
+        ...context.deliverableInspection.warnings,
+      ]),
+    },
+    resultSummary: splitSentences(description).at(-1) || shortSummaryFromDescription(description, request),
+    beneficiaries: context.targetGroupImpact.beneficiaries,
+    targetGroupImpact: {
+      type: context.targetGroupImpact.impactType,
+      justification: context.targetGroupImpact.justification,
+    },
+    evidenceUsed,
     warnings,
     expertInstructionAudit: {
       found: context.expertAiInstructions.found,
       active: context.expertAiInstructions.active,
       updatedAt: context.expertAiInstructions.updatedAt,
-      conflicts: uniqueMessages([
-        ...(parsed.expertInstructionAudit?.conflicts ?? []),
-        ...context.expertAiInstructions.conflicts,
-      ]),
+      conflicts: uniqueMessages(context.expertAiInstructions.conflicts),
     },
     auditId: result.auditId,
-    deliverableInterpretation: {
-      ...parsed.deliverableInterpretation,
-      unsupportedGaps: uniqueMessages([
-        ...parsed.deliverableInterpretation.unsupportedGaps,
-        ...context.deliverableInspection.warnings,
-      ]),
-    },
-    explainableScores: mergeExplainableScores(
-      parsed.explainableScores,
-      buildDeterministicExplainableScores(request, context, changedSelectedActivity),
-    ),
+    explainableScores: mergeExplainableScores([], buildDeterministicExplainableScores(request, context, changedSelectedActivity)),
+    confidence: context.classification.confidence >= 0.75 && warnings.length === 0
+      ? 'high'
+      : context.classification.confidence >= 0.55
+        ? 'medium'
+        : 'low',
+    requiresPmReview: warnings.length > 0 || context.classification.confidence < 0.55,
     checks: {
-      ...parsed.checks,
+      jobDescriptionAligned: null,
       saPurposeFound: context.saPurpose.found,
-      hoursPlausible: context.hours.valid,
+      subactivityAligned: context.classification.confidence >= 0.55,
       deliverableSupported: request.deliverables.length > 0 && request.deliverables.some((deliverable) => deliverable.extractedText?.trim()),
-      subactivityAligned: changedSelectedActivity ? false : parsed.checks.subactivityAligned ?? context.classification.confidence >= 0.55,
-      targetGroupImpactSupported: parsed.checks.targetGroupImpactSupported ?? context.targetGroupImpact.impactType !== 'unclear',
+      hoursPlausible: context.hours.valid,
+      targetGroupImpactSupported: context.targetGroupImpact.impactType !== 'unclear',
     },
   } satisfies ActivityAgentResponse;
 }
@@ -414,8 +502,8 @@ export function mapActivityAgentResponseToAutofillSuggestion(response: ActivityA
     confidence: response.confidence,
     fieldInstructions: {
       description: response.requiresPmReview
-        ? 'Revizuieste descrierea inainte de aplicare; agentul a marcat verificare PM.'
-        : 'Descriere optimizata de Agentul PEO pe baza livrabilelor si contextului disponibil.',
+        ? 'Revizuieste incadrarea si informatiile lipsa inainte de aplicare.'
+        : 'Descriere pregatita pentru Anexa 10.',
     },
     evidence: response.evidenceUsed
       .map((evidence) => [

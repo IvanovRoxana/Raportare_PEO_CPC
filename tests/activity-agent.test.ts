@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  activityAgentGenerationSchema,
   activityAgentRequestSchema,
   activityAgentResponseSchema,
   type ActivityAgentRequest,
@@ -61,8 +62,9 @@ const baseRequest: ActivityAgentRequest = {
 
 test('activity agent response schema accepts the structured output contract', () => {
   const parsed = activityAgentResponseSchema.parse({
-    description: 'Expertul a analizat livrabilul atasat si a formulat informatii relevante pentru raportarea activitatii.',
-    shortSummary: 'Am analizat livrabilul atasat pentru raportarea activitatii selectate.',
+    description: 'În data de 24 iulie 2026, am analizat initiative legislative regionale si am formulat informatii relevante pentru membrii CPC.',
+    usedFacts: ['24 iulie 2026', 'monitorizare legislativa regionala', 'informarea membrilor CPC'],
+    shortSummary: 'Am analizat initiative legislative regionale si am formulat informatii relevante pentru membrii CPC.',
     proposedSaCode: 'SA3.2',
     proposedActivityName: 'Monitorizare legislativa regionala si informare membri',
     deliverableSummary: 'Raport de monitorizare legislativa regionala',
@@ -114,18 +116,32 @@ test('activity agent response schema accepts the structured output contract', ()
   });
 
   assert.equal(parsed.confidence, 'high');
-  assert.equal(parsed.shortSummary, 'Am analizat livrabilul atasat pentru raportarea activitatii selectate.');
+  assert.equal(parsed.usedFacts.length, 3);
   assert.equal(parsed.targetGroupImpact.type, 'direct');
   assert.equal(parsed.explainableScores[0].score, 0.92);
   assert.match(parsed.deliverableInterpretation.summary, /monitorizare legislativa/);
 });
 
-test('activity agent prompt requests deliverable interpretation and explainable scores', () => {
+test('activity agent generation schema accepts only final description, warnings and used facts', () => {
+  const parsed = activityAgentGenerationSchema.parse({
+    description: 'În data de 24 iulie 2026, am analizat initiative legislative regionale si am formulat informatii relevante pentru membrii CPC, contribuind la fundamentarea informarii in cadrul proiectului.',
+    warnings: ['Nu exista informatii suficiente despre destinatarii finali.'],
+    usedFacts: ['24 iulie 2026', 'initiative legislative regionale', 'membrii CPC'],
+  });
+
+  assert.equal(parsed.warnings.length, 1);
+  assert.deepEqual(Object.keys(parsed).sort(), ['description', 'usedFacts', 'warnings']);
+});
+
+test('activity agent prompt requests Anexa 10 final JSON contract', () => {
   const prompt = buildActivityAgentPrompt(baseRequest);
 
-  assert.match(prompt, /deliverableInterpretation/);
-  assert.match(prompt, /explainableScores/);
-  assert.match(prompt, /scoruri 0\.\.1/);
+  assert.match(prompt, /Anexa 10/);
+  assert.match(prompt, /"description"/);
+  assert.match(prompt, /"warnings"/);
+  assert.match(prompt, /"usedFacts"/);
+  assert.match(prompt, /Nu mentiona formularul/);
+  assert.match(prompt, /În data de \[data\]/);
 });
 
 test('getExpertAiInstructions returns inactive preference context when instructions are missing', () => {

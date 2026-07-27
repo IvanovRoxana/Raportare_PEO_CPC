@@ -81,8 +81,15 @@ export const activityAgentExplainableScoreSchema = z.object({
   evidence: z.array(z.string()).default([]),
 });
 
+export const activityAgentGenerationSchema = z.object({
+  description: z.string().min(80),
+  warnings: z.array(z.string()).default([]),
+  usedFacts: z.array(z.string()).default([]),
+});
+
 export const activityAgentResponseSchema = z.object({
   description: z.string().min(20),
+  usedFacts: z.array(z.string()).default([]),
   shortSummary: z.string().min(20).max(360),
   proposedSaCode: z.string().optional(),
   proposedActivityName: z.string().optional(),
@@ -118,5 +125,6 @@ export const activityAgentResponseSchema = z.object({
 
 export type ActivityAgentRequest = z.infer<typeof activityAgentRequestSchema>;
 export type ActivityAgentResponse = z.infer<typeof activityAgentResponseSchema>;
+export type ActivityAgentGeneration = z.infer<typeof activityAgentGenerationSchema>;
 export type ActivityAgentDeliverable = z.infer<typeof activityAgentDeliverableSchema>;
 export type ActivityAgentCatalogCandidate = z.infer<typeof activityAgentCatalogCandidateSchema>;
