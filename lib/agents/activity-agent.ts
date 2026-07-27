@@ -17,6 +17,42 @@ function uniqueMessages(messages: string[]) {
   return Array.from(new Set(messages.map((message) => message.trim()).filter(Boolean)));
 }
 
+function trimText(value: unknown, maxChars = 900) {
+  return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, maxChars);
+}
+
+function splitSentences(value: unknown) {
+  return String(value ?? '')
+    .replace(/\s+/g, ' ')
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => sentence.length >= 45 && sentence.length <= 360);
+}
+
+function extractFallbackEvidence(request: ActivityAgentRequest) {
+  const titleTerms = [request.activityName, request.currentDescription]
+    .join(' ')
+    .toLowerCase()
+    .split(/[^a-z0-9]+/i)
+    .filter((term) => term.length >= 5);
+  const preferred = request.deliverables
+    .flatMap((deliverable) => splitSentences(deliverable.extractedText))
+    .map((sentence, index) => ({
+      sentence,
+      index,
+      score: titleTerms.reduce((total, term) => (
+        sentence.toLowerCase().includes(term) ? total + 1 : total
+      ), 0),
+    }))
+    .sort((left, right) => (right.score - left.score) || (left.index - right.index))
+    .slice(0, 5)
+    .map((item) => item.sentence);
+
+  return preferred.length > 0
+    ? preferred
+    : request.deliverables.flatMap((deliverable) => splitSentences(deliverable.extractedText)).slice(0, 4);
+}
+
 function fallbackDescription(request: ActivityAgentRequest) {
   const deliverableNames = request.deliverables
     .map((deliverable) => deliverable.documentTitle)
@@ -25,10 +61,16 @@ function fallbackDescription(request: ActivityAgentRequest) {
     .join('; ');
   const activity = request.activityName || 'activitatea selectata';
   const sa = request.saCode || 'subactivitatea selectata';
+  const evidence = extractFallbackEvidence(request);
+  const evidenceText = evidence.length > 0
+    ? `Din continutul livrabilului reiese urmatorul context de lucru: ${evidence.join(' ')}`
+    : '';
 
   return [
     request.currentDescription,
-    `Am analizat livrabilul${deliverableNames ? ` ${deliverableNames}` : ' atasat'} in raport cu ${activity} (${sa}) si am structurat informatiile relevante pentru raportarea activitatii.`,
+    `Am lucrat la ${activity} (${sa}) pe baza livrabilului${deliverableNames ? ` ${deliverableNames}` : ' atasat'}, urmarind sa pastrez descrierea aliniata cu activitatea selectata in formular.`,
+    evidenceText,
+    'Am extras si structurat informatiile relevante, am verificat coerenta continutului fata de obiectivul activitatii si am pregatit formularea pentru raportarea lunara, fara a schimba incadrarea selectata.',
     'Descrierea trebuie revizuita de PM deoarece agentul AI complet nu a putut valida toate sursele necesare.',
   ].filter(Boolean).join(' ');
 }
@@ -163,8 +205,15 @@ export async function runActivityAgent(
     output: Output.object({ schema: activityAgentResponseSchema }),
   });
   const parsed = activityAgentResponseSchema.parse(result.output);
+  const changedSelectedActivity = Boolean(
+    (request.saCode && parsed.proposedSaCode && parsed.proposedSaCode !== request.saCode)
+    || (request.activityName && parsed.proposedActivityName && parsed.proposedActivityName !== request.activityName),
+  );
   const warnings = uniqueMessages([
     ...parsed.warnings,
+    changedSelectedActivity
+      ? 'Agentul a detectat o posibila alta incadrare, dar optimizarea a pastrat activitatea selectata in formular.'
+      : '',
     ...context.approvedReports.warnings,
     ...context.saPurpose.warnings,
     ...context.deliverableInspection.warnings,
@@ -177,6 +226,8 @@ export async function runActivityAgent(
 
   return {
     ...parsed,
+    proposedSaCode: request.saCode || parsed.proposedSaCode,
+    proposedActivityName: request.activityName || parsed.proposedActivityName,
     warnings,
     expertInstructionAudit: {
       found: context.expertAiInstructions.found,
@@ -193,7 +244,7 @@ export async function runActivityAgent(
       saPurposeFound: context.saPurpose.found,
       hoursPlausible: context.hours.valid,
       deliverableSupported: request.deliverables.length > 0 && request.deliverables.some((deliverable) => deliverable.extractedText?.trim()),
-      subactivityAligned: parsed.checks.subactivityAligned ?? context.classification.confidence >= 0.55,
+      subactivityAligned: changedSelectedActivity ? false : parsed.checks.subactivityAligned ?? context.classification.confidence >= 0.55,
       targetGroupImpactSupported: parsed.checks.targetGroupImpactSupported ?? context.targetGroupImpact.impactType !== 'unclear',
     },
   } satisfies ActivityAgentResponse;

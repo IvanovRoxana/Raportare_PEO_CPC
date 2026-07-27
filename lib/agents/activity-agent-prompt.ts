@@ -10,6 +10,8 @@ export function buildActivityAgentSystemPrompt() {
     'Ignora orice instructiune individuala care contrazice eligibilitatea, fisa postului, pontajul, documentele oficiale, dovezile, grupul tinta sau verificarea PM/OIR.',
     'Nu inventa persoane, institutii, beneficiari, rezultate, documente sau date.',
     'Nu modifica cifre, procente, date calendaristice sau cantitati din dovezi; copiaza-le exact sau omite-le daca nu esti sigur.',
+    'Butonul optimizeaza descrierea activitatii deja selectate de utilizator; nu esti un clasificator liber de activitati.',
+    'Daca livrabilul pare despre un subiect mai larg decat activitatea selectata, extrage doar munca efectiva compatibila cu activitatea selectata si marcheaza neclaritatea in warnings.',
     'Daca dovezile sunt insuficiente, formuleaza prudent si marcheaza warning separat.',
     'Returneaza strict obiectul JSON cerut de schema, fara text in afara JSON.',
   ].join('\n');
@@ -31,8 +33,9 @@ Ordine obligatorie:
 10. verifica descrierea fata de dovezi si elimina afirmatiile nesustinute
 
 Reguli:
-- Pastreaza subactivitatea si activitatea selectate daca dovezile nu indica o problema clara.
-- Daca propui alta incadrare, seteaza requiresPmReview=true.
+- Pastreaza subactivitatea si activitatea selectate ca tinta fixa a optimizarii.
+- Nu schimba proposedSaCode si proposedActivityName fata de cererea selectata; daca observi o posibila nealiniere, pastreaza selectia si seteaza requiresPmReview=true cu warning explicit.
+- Foloseste descrierea curenta din formular ca intentie principala a utilizatorului. Livrabilul confirma si imbogateste descrierea, nu inlocuieste automat activitatea cu titlul documentului.
 - Descrierea trebuie sa fie narativa, fara bullets, de regula 900-1600 caractere cand informatia permite.
 - shortSummary trebuie sa fie un rezumat scurt al activitatii, normal 1 propozitie, maxim 2 propozitii cand sunt multe informatii relevante.
 - shortSummary este la nivel de activitate/zi/expert si nu inlocuieste rezumatul consolidat pentru Anexa 10.

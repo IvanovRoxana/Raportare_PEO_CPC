@@ -1,6 +1,5 @@
 import { tool } from 'ai';
 import { z } from 'zod';
-import { isValidPontajHours } from '../pontaj-rules.ts';
 import { buildCompactActivityAutofillRagContext } from '../rag/activity-autofill-rag.ts';
 import { retrieveActivityAutofillContext, retrieveSaPurposeContext } from '../rag/retrieval.ts';
 import type { RagAuthContext } from '../rag/types.ts';
@@ -28,6 +27,11 @@ function normalize(value: unknown) {
 
 function unique(values: string[]) {
   return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
+}
+
+function isValidActivityAgentPontajHours(hours: unknown) {
+  const value = Number(hours);
+  return Number.isInteger(value) && value >= 1 && value <= 8;
 }
 
 function splitTerms(value: string) {
@@ -187,7 +191,7 @@ export function validateActivityHoursValue(request: Pick<ActivityAgentRequest, '
 
   if (hours === undefined || !Number.isFinite(hours)) {
     warnings.push('Numarul de ore nu a fost transmis agentului.');
-  } else if (!isValidPontajHours(hours)) {
+  } else if (!isValidActivityAgentPontajHours(hours)) {
     errors.push('Orele trebuie sa fie intregi si intre 1 si 8 pe zi.');
   }
 

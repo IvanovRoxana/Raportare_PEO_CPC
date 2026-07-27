@@ -10,6 +10,7 @@ import {
   validateActivityAutofillSuggestionAgainstCatalog,
   type ActivityAutofillCatalogCandidate,
 } from '../lib/activity-autofill.ts';
+import { buildActivityAgentPrompt } from '../lib/agents/activity-agent-prompt.ts';
 
 const catalogCandidates: ActivityAutofillCatalogCandidate[] = [
   {
@@ -103,6 +104,27 @@ test('promptul cere doar rescrierea descrierii activitatii', () => {
   assert.match(prompt, /fieldInstructions\.description/);
   assert.match(prompt, /persoana I singular/);
   assert.match(prompt, /Ghid de incadrare AP\/PA/);
+});
+
+test('promptul Agentului PEO pastreaza activitatea selectata ca tinta fixa', () => {
+  const prompt = buildActivityAgentPrompt({
+    deliverables: [
+      {
+        documentTitle: 'Analiza acte normative iunie 2026',
+        extractedText: 'Pentru luna iunie, au fost analizate 85 proiecte de acte normative.',
+      },
+    ],
+    catalogCandidates,
+    selectedActivityId: 'cat-2',
+    saCode: 'SA2.1',
+    activityName: 'Pregatire materiale de informare',
+    currentDescription: 'Am redactat si consolidat continut pentru newsletterul intern CPC.',
+    expertName: 'Expert Test',
+  });
+
+  assert.match(prompt, /Pastreaza subactivitatea si activitatea selectate ca tinta fixa/);
+  assert.match(prompt, /Nu schimba proposedSaCode si proposedActivityName/);
+  assert.match(prompt, /descrierea curenta din formular ca intentie principala/);
 });
 
 test('promptul include context RAG doar cand este furnizat', () => {
@@ -455,6 +477,7 @@ test('fallbackul local rescrie prudent descrierea fara sa schimbe activitatea se
   });
 
   assert.match(fallback?.description || '', /Organizarea de evenimente/);
+  assert.match(fallback?.description || '', /Minuta surprinde discutiile/);
   assert.match(fallback?.evidence.join('\n') || '', /SA3.4 :: Organizare eveniment/);
   assert.equal(fallback?.confidence, 'low');
   assert.match(fallback?.warnings.join('\n') || '', /generata local/);

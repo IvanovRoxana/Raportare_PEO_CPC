@@ -18,6 +18,7 @@ import { DashboardShell, adminNavItems } from '@/components/layout/dashboard-she
 import { ProgressBar, RightInfoCard } from '@/components/layout/dashboard-primitives';
 import { ActivityDescriptionEditor } from '@/components/admin/activity-description-editor';
 import { AiApiStatusPanel } from '@/components/admin/ai-api-status-panel';
+import { AiContextHealthPanel } from '@/components/admin/ai-context-health-panel';
 import { AdminStatCards } from '@/components/admin/admin-stat-cards';
 import { AdminUsersTable } from '@/components/admin/admin-users-table';
 import { AdminProjectsPanel } from '@/components/admin/admin-projects-panel';
@@ -210,7 +211,10 @@ export default async function AdminPage({
             </TabsContent>
 
             <TabsContent value="ai" className="m-0 p-6">
-              <AiApiStatusPanel />
+              <div className="space-y-6">
+                <AiApiStatusPanel />
+                <AiContextHealthPanel />
+              </div>
             </TabsContent>
           </CardContent>
         </Tabs>

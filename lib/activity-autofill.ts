@@ -226,6 +226,14 @@ function countOccurrences(haystack: string, needle: string) {
   return count;
 }
 
+function splitEvidenceSentences(value: unknown) {
+  return String(value ?? '')
+    .replace(/\s+/g, ' ')
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => sentence.length >= 45 && sentence.length <= 360);
+}
+
 function getCandidateSearchText(candidate: ActivityAutofillCatalogCandidate) {
   return [
     candidate.saCode,
@@ -358,6 +366,12 @@ export function buildFallbackActivityAutofillSuggestion(input: ActivityAutofillR
   const saGuide = PA_SA_GUIDE[normalizeSaCode(candidate.saCode)]?.label || candidate.serviceCategory || 'activitatea selectata';
   const activityPurpose = candidate.description || candidate.objectives || candidate.serviceComponent || saGuide;
   const currentDescription = trimText(normalized.currentDescription, 1400);
+  const evidenceSentences = normalized.deliverables
+    .flatMap((deliverable) => splitEvidenceSentences(deliverable.extractedText))
+    .slice(0, 4);
+  const evidenceSentence = evidenceSentences.length > 0
+    ? `Din livrabil reiese urmatorul context de lucru: ${evidenceSentences.join(' ')}`
+    : '';
   const collaboratorNames = normalized.collaborationContext?.isCommonActivity
     ? (normalized.collaborationContext.collaborators ?? []).map((collaborator) => collaborator.name).filter(Boolean)
     : [];
@@ -373,6 +387,7 @@ export function buildFallbackActivityAutofillSuggestion(input: ActivityAutofillR
     description: [
       currentDescription,
       `In raport cu livrabilul ${deliverableSummary}, am detaliat activitatea prin verificarea continutului disponibil, corelarea acestuia cu obiectivul din catalog (${activityPurpose}) si pregatirea informatiilor necesare pentru raportarea lunara.`,
+      evidenceSentence,
       collaborationSentence,
       'Descrierea poate fi ajustata manual cu detalii suplimentare despre participanti, concluzii sau etape de lucru, numai daca acestea reies din documentul incarcat.',
     ].filter(Boolean).join(' '),

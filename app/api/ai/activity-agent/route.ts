@@ -7,7 +7,11 @@ import {
   runActivityAgent,
 } from '@/lib/agents/activity-agent';
 import { activityAgentRequestSchema } from '@/lib/agents/activity-agent-schema';
-import { validateActivityAutofillSuggestionAgainstCatalog } from '@/lib/activity-autofill';
+import {
+  validateActivityAutofillSuggestionAgainstCatalog,
+  type ActivityAutofillCatalogCandidate,
+  type ActivityAutofillRequest,
+} from '@/lib/activity-autofill';
 import { getCognitoAccessTokenFromRequest } from '@/lib/rag/cognito-auth';
 
 export const runtime = 'nodejs';
@@ -43,10 +47,29 @@ export async function POST(req: Request) {
     try {
       const agentResponse = await runActivityAgent(parsed.data, { authToken });
       const suggestion = mapActivityAgentResponseToAutofillSuggestion(agentResponse);
+      const validationCatalogCandidates: ActivityAutofillCatalogCandidate[] = parsed.data.catalogCandidates
+        .map((candidate, index) => ({
+          ...candidate,
+          id: candidate.id || `agent-candidate-${index}`,
+          saCode: candidate.saCode || parsed.data.saCode || agentResponse.proposedSaCode || '',
+        }))
+        .filter((candidate) => Boolean(candidate.saCode));
+      const validationRequest: ActivityAutofillRequest = {
+        ...parsed.data,
+        saCode: parsed.data.saCode || agentResponse.proposedSaCode || '',
+        activityName: parsed.data.activityName || agentResponse.proposedActivityName || '',
+        deliverables: parsed.data.deliverables
+          .map((deliverable) => ({
+            ...deliverable,
+            extractedText: deliverable.extractedText || deliverable.documentTitle,
+          }))
+          .filter((deliverable) => Boolean(deliverable.extractedText)),
+        catalogCandidates: validationCatalogCandidates,
+      };
       const validation = validateActivityAutofillSuggestionAgainstCatalog(
         suggestion,
-        parsed.data.catalogCandidates,
-        parsed.data,
+        validationCatalogCandidates,
+        validationRequest,
       );
       if (!validation.ok) {
         return NextResponse.json(
