@@ -2183,7 +2183,7 @@ function ExpertDashboardContent() {
           if (!open) setPendingGroupedActivitySave(null);
         }}
       >
-        <AlertDialogContent>
+        <AlertDialogContent className="z-[100]">
           <AlertDialogHeader>
             <AlertDialogTitle>Modifici o activitate dintr-o serie</AlertDialogTitle>
             <AlertDialogDescription>
