@@ -227,7 +227,6 @@ export function buildFinancialReportingSummary(input: {
       ?? expert?.jobDescriptionText
       ?? '-';
     const leaves = expert ? leaveByExpert.get(expert.id) ?? [] : [];
-    const migratedLeaveDates = new Set(leaves.map((leave) => leave.date));
     const peoFunction = referencePosition(reference?.peoPosition)
       ?? expert?.positionInProject
       ?? expert?.role
@@ -245,40 +244,39 @@ export function buildFinancialReportingSummary(input: {
 
     for (const activity of activities) {
       const hours = Number(activity.hours) || 0;
-      if (activity.dayType === 'CO' && migratedLeaveDates.has(activity.date)) continue;
-      if (activity.dayType === 'CO') {
-        peoLeave += hours;
-        leaveDates.add(activity.date);
-      } else if (activity.dayType === 'CM') {
-        medicalLeave += hours;
+      if (activity.dayType === 'CO' || activity.dayType === 'CM') {
         leaveDates.add(activity.date);
       } else {
         peoWorked += hours;
+        dailyTotals.set(activity.date, (dailyTotals.get(activity.date) ?? 0) + hours);
       }
       if (activity.status === 'draft') draftHours += hours;
-      dailyTotals.set(activity.date, (dailyTotals.get(activity.date) ?? 0) + hours);
     }
 
-    let concordiaWorked = 0;
+    let concurrentConcordiaWorked = 0;
     let concordiaLeave = 0;
     let goodworksWorked = 0;
     for (const entry of entries) {
       const hours = Number(entry.hours) || 0;
       const bucket = projectBucket(projectById.get(entry.concurrentProjectId));
       if (entry.dayType === 'CO' || entry.dayType === 'CM') {
-        if (bucket === 'concordia') concordiaLeave += hours;
         leaveDates.add(entry.date);
       } else if (bucket === 'goodworks') {
         goodworksWorked += hours;
+        dailyTotals.set(entry.date, (dailyTotals.get(entry.date) ?? 0) + hours);
       } else {
-        concordiaWorked += hours;
+        concurrentConcordiaWorked += hours;
+        dailyTotals.set(entry.date, (dailyTotals.get(entry.date) ?? 0) + hours);
       }
-      dailyTotals.set(entry.date, (dailyTotals.get(entry.date) ?? 0) + hours);
     }
 
     for (const leave of leaves) {
       if (leave.status === 'REJECTED') continue;
-      peoLeave += Number(leave.peoHours) || 0;
+      if (leave.type === 'CM') {
+        medicalLeave += Number(leave.peoHours) || 0;
+      } else {
+        peoLeave += Number(leave.peoHours) || 0;
+      }
       concordiaLeave += Number(leave.cpcHours) || 0;
       leaveDates.add(leave.date);
       dailyTotals.set(leave.date, (dailyTotals.get(leave.date) ?? 0) + (Number(leave.totalHours) || 0));
@@ -297,6 +295,10 @@ export function buildFinancialReportingSummary(input: {
     const activeContract = expert
       ? resolveNormContract(expert, normContracts, input.year + '-' + String(input.month + 1).padStart(2, '0') + '-01')
       : undefined;
+    const totalLeave = peoLeave + medicalLeave + concordiaLeave;
+    const concordiaWorked = capacity
+      ? Math.max(0, capacity.cimMonthlyLimit - peoWorked - goodworksWorked - totalLeave)
+      : concurrentConcordiaWorked;
 
 
     const row: FinancialTimesheetRow = {
@@ -321,8 +323,8 @@ export function buildFinancialReportingSummary(input: {
       concordiaLeave,
       goodworksWorked,
       totalWorked: peoWorked + concordiaWorked + goodworksWorked,
-      totalLeave: peoLeave + concordiaLeave,
-      totalMonth: peoWorked + concordiaWorked + goodworksWorked + peoLeave + concordiaLeave,
+      totalLeave,
+      totalMonth: peoWorked + concordiaWorked + goodworksWorked + totalLeave,
       workbookPeoWorked: compareHours ? reference?.peoWorked : undefined,
       workbookPeoLeave: compareHours ? reference?.peoLeave : undefined,
       workbookConcordiaWorked: compareHours ? reference?.concordiaWorked : undefined,
