@@ -52,6 +52,9 @@ function getTextExtractionGateReason(deliverable: DeliverableSlot, relatedDelive
   if (eligibilityDeliverables.length > 1) {
     return 'Textul extras din livrabilele incarcate pentru grupul activitatii este prea scurt pentru verificarea AI. Reincarca documentele ca PDF/DOCX cu text selectabil sau exporta-le cu OCR.';
   }
+  if (deliverable.slotType === 'event_mom') {
+    return 'Raportul de eveniment este atasat, dar textul extras este prea scurt pentru verificarea AI. Daca documentul este corect, poti continua; pentru verificare AI completa, reincarca PDF/DOCX cu text selectabil sau OCR.';
+  }
   const hasConfirmedTitle = Boolean(deliverable.titleConfirmed || deliverable.declaredTitle || deliverable.suggestedTitle);
   if (hasConfirmedTitle) {
     return 'Titlul a fost identificat, dar textul extras din livrabil este prea scurt pentru verificarea AI. Reincarca documentul ca PDF/DOCX cu text selectabil sau exporta-l cu OCR.';

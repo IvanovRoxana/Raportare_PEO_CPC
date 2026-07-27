@@ -133,6 +133,46 @@ test('activitatile fara grup isi pastreaza validarea individuala de livrabil', (
   assert.deepEqual(missingDeliverables.map((activity) => activity.id), ['standalone']);
 });
 
+test('activitatile de eveniment accepta MOM sau raport eveniment ca livrabil', () => {
+  const activities: Activity[] = [baseActivity({
+    id: 'event-mom',
+    activityType: 'Participare / reprezentare consultare publica sau dezbatere',
+    title: 'Participare / reprezentare consultare publica sau dezbatere',
+    deliverables: [{
+      id: 'mom',
+      fileName: 'Raport_eveniment.docx',
+      fileType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      fileSize: 1234,
+      deliverableType: 'event_mom',
+      uploaded: true,
+    }],
+  })];
+
+  const missingDeliverables = getActivitiesMissingDeliverables(activities);
+
+  assert.deepEqual(missingDeliverables.map((activity) => activity.id), []);
+});
+
+test('activitatile de eveniment nu accepta poza singura ca livrabil complet', () => {
+  const activities: Activity[] = [baseActivity({
+    id: 'event-proof-only',
+    activityType: 'Participare / reprezentare consultare publica sau dezbatere',
+    title: 'Participare / reprezentare consultare publica sau dezbatere',
+    deliverables: [{
+      id: 'proof',
+      fileName: 'foto-eveniment.jpg',
+      fileType: 'image/jpeg',
+      fileSize: 1234,
+      deliverableType: 'event_proof',
+      uploaded: true,
+    }],
+  })];
+
+  const missingDeliverables = getActivitiesMissingDeliverables(activities);
+
+  assert.deepEqual(missingDeliverables.map((activity) => activity.id), ['event-proof-only']);
+});
+
 test('activitatile marcate N/A in catalog sunt eligibile fara livrabil', () => {
   const activities = [baseActivity({
     id: 'catalog-exception',

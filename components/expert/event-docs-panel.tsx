@@ -130,6 +130,7 @@ export function EventDocsPanel({
       uploaded: false,
       filename: '',
       declaredTitle: title,
+      requiresEventProof: true,
       isPendingConfirm: true,
     });
   };
@@ -189,6 +190,7 @@ export function EventDocsPanel({
       filename,
       declaredTitle: previewTitle,
       titleConfirmed: true,
+      requiresEventProof: true,
       isPendingConfirm: false,
     });
   };
@@ -271,7 +273,10 @@ export function EventDocsPanel({
               deliverable={eventMOM || createDeliverableSlot('event_mom', 'Minute intalnire / MOM')}
               subActivity={subActivity}
               activityTitle={activityTitle}
-              onUpdate={(patch) => onUpsertSlot('event_mom', 'MOM / Minut / Proces verbal eveniment', patch)}
+              onUpdate={(patch) => onUpsertSlot('event_mom', 'MOM / Minut / Proces verbal eveniment', {
+                ...patch,
+                requiresEventProof: false,
+              })}
               showSteps={false}
               required={true}
               label="MOM / Proces verbal / Raport de eveniment"
@@ -398,6 +403,7 @@ export function EventDocsPanel({
                         setConfirmed(false);
                         onUpsertSlot('event_mom', 'Raport de participare eveniment', {
                           uploaded: false,
+                          requiresEventProof: true,
                           isPendingConfirm: false,
                         });
                       }}
@@ -415,17 +421,15 @@ export function EventDocsPanel({
         </div>
 
         {/* SLOT 2: Dovada participare */}
-        <div>
-          <div className="text-[11px] font-medium text-green-800 mb-1">
-            2. Dovada participare {proofRequired ? '- obligatorie' : '- optionala'}
-          </div>
-          <div className="text-[10px] text-green-600 mb-2">
-            {proofRequired
-              ? 'Incarca poza/lista de prezenta sau indica expertul care a incarcat dovada comuna.'
-              : 'Optional: MOM-ul semnat contine deja lista participantilor, deci dovada separata nu blocheaza salvarea.'}
-          </div>
+        {!hasMOM && (
+          <div>
+            <div className="text-[11px] font-medium text-green-800 mb-1">
+              2. Dovada participare - obligatorie
+            </div>
+            <div className="text-[10px] text-green-600 mb-2">
+              Incarca poza/lista de prezenta sau indica expertul care a incarcat dovada comuna.
+            </div>
 
-          {!hasMOM && (
             <div className="mb-2 rounded-md border border-amber-200 bg-white/70 p-2">
               <div className="flex items-center space-x-2">
                 <Checkbox
@@ -474,49 +478,49 @@ export function EventDocsPanel({
                 </div>
               )}
             </div>
-          )}
 
-          {!proofAtOtherExpert && (
-            <div className="space-y-2">
-              {(localEventProofs.length > 0 ? localEventProofs : [createDeliverableSlot('event_proof', 'Fotografii eveniment')]).map((proof, index) => (
-                <DeliverableItem
-                  key={proof.id}
-                  deliverable={proof}
-                  subActivity={subActivity}
-                  activityTitle={activityTitle}
-                  onUpdate={(patch) => (
-                    localEventProofs.length > 0
-                      ? onUpdateDeliverable(proof.id, patch)
-                      : onUpsertSlot('event_proof', 'Fotografii + link eveniment', patch)
-                  )}
-                  onRemove={localEventProofs.length > 1 ? () => onRemoveDeliverable(proof.id) : undefined}
-                  showSteps={false}
-                  required={proofRequired && index === 0}
-                  label={index === 0 ? 'Fotografie eveniment SAU Lista prezenta cu semnaturi olografe' : `Fotografie eveniment ${index + 1}`}
-                  hint="JPG/PNG sau document scanat cu semnaturile participantilor."
-                  canCheckEligibility={canCheckEligibility}
-                  eligibilityBlockedReason={eligibilityBlockedReason}
-                  notesMode={deliverableNotesMode}
-                />
-              ))}
-              <div className="flex items-center justify-between gap-2 rounded-md border border-dashed border-green-300 bg-white/70 px-3 py-2">
-                <div className="text-[10px] text-green-700">
-                  Fotografiile incarcate aici vor fi inserate automat in raportul Word generat.
+            {!proofAtOtherExpert && (
+              <div className="space-y-2">
+                {(localEventProofs.length > 0 ? localEventProofs : [createDeliverableSlot('event_proof', 'Fotografii eveniment')]).map((proof, index) => (
+                  <DeliverableItem
+                    key={proof.id}
+                    deliverable={proof}
+                    subActivity={subActivity}
+                    activityTitle={activityTitle}
+                    onUpdate={(patch) => (
+                      localEventProofs.length > 0
+                        ? onUpdateDeliverable(proof.id, patch)
+                        : onUpsertSlot('event_proof', 'Fotografii + link eveniment', patch)
+                    )}
+                    onRemove={localEventProofs.length > 1 ? () => onRemoveDeliverable(proof.id) : undefined}
+                    showSteps={false}
+                    required={index === 0}
+                    label={index === 0 ? 'Fotografie eveniment SAU Lista prezenta cu semnaturi olografe' : `Fotografie eveniment ${index + 1}`}
+                    hint="JPG/PNG sau document scanat cu semnaturile participantilor."
+                    canCheckEligibility={canCheckEligibility}
+                    eligibilityBlockedReason={eligibilityBlockedReason}
+                    notesMode={deliverableNotesMode}
+                  />
+                ))}
+                <div className="flex items-center justify-between gap-2 rounded-md border border-dashed border-green-300 bg-white/70 px-3 py-2">
+                  <div className="text-[10px] text-green-700">
+                    Fotografiile incarcate aici vor fi inserate automat in raportul Word generat.
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={onAddEventProof}
+                    className="h-8 shrink-0 border-green-300 text-xs text-green-700"
+                  >
+                    <Plus className="mr-1 h-3 w-3" />
+                    Adauga fotografie
+                  </Button>
                 </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={onAddEventProof}
-                  className="h-8 shrink-0 border-green-300 text-xs text-green-700"
-                >
-                  <Plus className="mr-1 h-3 w-3" />
-                  Adauga fotografie
-                </Button>
               </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Date mismatch warning */}
