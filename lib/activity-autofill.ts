@@ -518,6 +518,7 @@ Reguli obligatorii pentru fiecare camp:
 - Daca sursele RAG contrazic orice element din catalog, catalogul are prioritate.
 - Daca scopul oficial al SA contrazice o sursa RAG de stil sau istoric, scopul oficial si catalogul activitatii au prioritate.
 - Poti inspira stilul descrierii din raportari aprobate, dar nu copia mecanic fragmente lungi.
+- Copiaza fidel toate cifrele, procentele, datele calendaristice si cantitatile din livrabile. Nu aproxima, nu rotunji si nu inlocui valori numerice; daca nu esti sigur, omite cifra.
 
 Ghid de incadrare AP/PA:
 ${paSaGuide}
@@ -576,6 +577,65 @@ Returneaza strict JSON valid cu:
   };
 }
 
+function extractNumericFacts(value: unknown) {
+  return Array.from(String(value ?? '').matchAll(/(?<![A-Za-z])\d+(?:[.,]\d+)?%?(?![A-Za-z])/g))
+    .map((match) => match[0].replace(',', '.'))
+    .filter((value) => value.length > 0);
+}
+
+function collectAllowedNumericFacts(request: ActivityAutofillRequest, catalogCandidates: ActivityAutofillCatalogCandidate[]) {
+  const sourceParts: unknown[] = [
+    request.currentDescription,
+    request.saCode,
+    request.activityName,
+    request.month,
+    request.year,
+    request.selectedDates?.join(' '),
+    request.expertRole,
+    request.category,
+    request.projectCode,
+    request.saPurposeContext?.title,
+    request.saPurposeContext?.text,
+    request.knowledgeContext,
+    request.internalRagContext?.promptContext,
+    ...request.deliverables.map((deliverable) => [
+      deliverable.fileName,
+      deliverable.documentTitle,
+      deliverable.deliverableType,
+      deliverable.stadiu,
+      deliverable.extractedText,
+      deliverable.eligibilityStatus,
+      deliverable.eligibilitySummary,
+    ].join(' ')),
+    ...catalogCandidates.map((candidate) => [
+      candidate.saCode,
+      candidate.activityNumber,
+      candidate.activityName,
+      candidate.description,
+      candidate.objectives,
+      candidate.serviceComponent,
+      candidate.beneficiaries,
+      candidate.expectedResults,
+      candidate.deliverables,
+      candidate.indicators,
+    ].join(' ')),
+  ];
+
+  return new Set(sourceParts.flatMap(extractNumericFacts));
+}
+
+export function findUnsupportedActivityAutofillNumbers(
+  description: string,
+  request: ActivityAutofillRequest,
+  catalogCandidates: ActivityAutofillCatalogCandidate[] = request.catalogCandidates,
+) {
+  const usedNumbers = Array.from(new Set(extractNumericFacts(description)));
+  if (usedNumbers.length === 0) return [];
+
+  const allowedNumbers = collectAllowedNumericFacts(request, catalogCandidates);
+  return usedNumbers.filter((value) => !allowedNumbers.has(value));
+}
+
 export function validateActivityAutofillSuggestionAgainstCatalog(
   output: unknown,
   catalogCandidates: ActivityAutofillCatalogCandidate[],
@@ -591,6 +651,20 @@ export function validateActivityAutofillSuggestionAgainstCatalog(
       ok: false as const,
       error: 'Activitatea selectata nu exista in catalogul disponibil.',
     };
+  }
+
+  if (request) {
+    const unsupportedNumbers = findUnsupportedActivityAutofillNumbers(
+      [parsed.data.description, parsed.data.shortSummary].filter(Boolean).join(' '),
+      request,
+      catalogCandidates,
+    );
+    if (unsupportedNumbers.length > 0) {
+      return {
+        ok: false as const,
+        error: `Descrierea AI contine cifre care nu apar in livrabile sau context: ${unsupportedNumbers.join(', ')}.`,
+      };
+    }
   }
 
   return { ok: true as const, data: parsed.data };

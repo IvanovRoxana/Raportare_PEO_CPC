@@ -304,6 +304,49 @@ test('validarea accepta descrierea pentru activitatea selectata din catalog', ()
   assert.equal(result.ok, true);
 });
 
+test('validarea respinge cifre inventate fata de livrabil', () => {
+  const request = {
+    deliverables: [
+      {
+        extractedText: 'Pentru luna iunie, au fost analizate 85 proiecte de acte normative. Pentru 56 proiecte nu se impune agregarea unei pozitii Concordia.',
+      },
+    ],
+    catalogCandidates,
+    ...selectedActivityContext,
+  };
+
+  const valid = validateActivityAutofillSuggestionAgainstCatalog(
+    {
+      description: 'Am analizat 85 proiecte de acte normative si am constatat ca pentru 56 nu se impune agregarea unei pozitii.',
+      confidence: 'high',
+      fieldInstructions: {
+        description: 'Descrierea pastreaza cifrele din livrabil.',
+      },
+      evidence: ['Livrabilul mentioneaza 85 proiecte si 56 fara pozitie.'],
+      warnings: [],
+    },
+    catalogCandidates,
+    request,
+  );
+  assert.equal(valid.ok, true);
+
+  const invalid = validateActivityAutofillSuggestionAgainstCatalog(
+    {
+      description: 'Am analizat 70 proiecte de acte normative si am constatat ca pentru 45 nu se impune agregarea unei pozitii.',
+      confidence: 'high',
+      fieldInstructions: {
+        description: 'Descrierea schimba cifrele.',
+      },
+      evidence: ['Livrabilul mentioneaza analiza actelor normative.'],
+      warnings: [],
+    },
+    catalogCandidates,
+    request,
+  );
+  assert.equal(invalid.ok, false);
+  assert.match(invalid.error, /70, 45/);
+});
+
 test('validarea respinge cand activitatea selectata nu exista in catalog', () => {
   const result = validateActivityAutofillSuggestionAgainstCatalog(
     {

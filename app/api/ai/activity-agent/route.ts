@@ -7,6 +7,7 @@ import {
   runActivityAgent,
 } from '@/lib/agents/activity-agent';
 import { activityAgentRequestSchema } from '@/lib/agents/activity-agent-schema';
+import { validateActivityAutofillSuggestionAgainstCatalog } from '@/lib/activity-autofill';
 import { getCognitoAccessTokenFromRequest } from '@/lib/rag/cognito-auth';
 
 export const runtime = 'nodejs';
@@ -41,8 +42,24 @@ export async function POST(req: Request) {
     const authToken = getCognitoAccessTokenFromRequest(req, { allowAuthorizationHeader: true });
     try {
       const agentResponse = await runActivityAgent(parsed.data, { authToken });
+      const suggestion = mapActivityAgentResponseToAutofillSuggestion(agentResponse);
+      const validation = validateActivityAutofillSuggestionAgainstCatalog(
+        suggestion,
+        parsed.data.catalogCandidates,
+        parsed.data,
+      );
+      if (!validation.ok) {
+        return NextResponse.json(
+          {
+            error: validation.error,
+            modelAuditId: agentResponse.auditId,
+            agent: agentResponse,
+          },
+          { status: 422 },
+        );
+      }
       return NextResponse.json({
-        ...mapActivityAgentResponseToAutofillSuggestion(agentResponse),
+        ...suggestion,
         agent: agentResponse,
       });
     } catch (agentError) {
