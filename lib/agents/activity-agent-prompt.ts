@@ -46,6 +46,9 @@ Reguli:
 - Nu include citari tehnice in descriere; sursele merg in evidenceUsed.
 - Returneaza si shortSummary in JSON, fara rezultate, beneficiari, institutii, livrabile sau colaboratori care nu apar in dovezi.
 - Cifrele din descriere si shortSummary trebuie sa existe exact in dovezi sau context. Este interzis sa schimbi 85 in 70, 56 in 45 sau orice alta valoare numerica.
+- deliverableInterpretation trebuie sa explice ce munca efectiva reiese din livrabil: summary, workPerformed, keyFacts, documentSignals si unsupportedGaps.
+- explainableScores trebuie sa contina scoruri 0..1, cu reason si evidence, pentru cel putin: text livrabil, potrivire activitate selectata, scop SA, RAG istoric, impact grup tinta, pontaj.
+- Scorurile nu sunt decor; trebuie sa justifice de ce descrierea poate fi aplicata sau de ce cere verificare PM.
 
 Cerere:
 ${JSON.stringify(request, null, 2)}

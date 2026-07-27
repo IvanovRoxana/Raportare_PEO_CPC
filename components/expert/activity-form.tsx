@@ -3373,6 +3373,50 @@ export function ActivityForm({
                           </div>
                         </div>
                         <div className="rounded border border-emerald-200 bg-white p-2 text-xs text-slate-800 md:col-span-2">
+                          <div className="font-medium text-emerald-800">Interpretare livrabil</div>
+                          <div className="mt-1 space-y-2">
+                            <div>{activityAutofillSuggestion.agent.deliverableInterpretation.summary}</div>
+                            {activityAutofillSuggestion.agent.deliverableInterpretation.workPerformed.length > 0 && (
+                              <div>
+                                <span className="font-medium">Munca efectiva: </span>
+                                {activityAutofillSuggestion.agent.deliverableInterpretation.workPerformed.slice(0, 4).join(' | ')}
+                              </div>
+                            )}
+                            {activityAutofillSuggestion.agent.deliverableInterpretation.keyFacts.length > 0 && (
+                              <div>
+                                <span className="font-medium">Fapte cheie: </span>
+                                {activityAutofillSuggestion.agent.deliverableInterpretation.keyFacts.slice(0, 4).join(' | ')}
+                              </div>
+                            )}
+                            {activityAutofillSuggestion.agent.deliverableInterpretation.unsupportedGaps.length > 0 && (
+                              <ul className="list-disc space-y-1 pl-4 text-amber-700">
+                                {activityAutofillSuggestion.agent.deliverableInterpretation.unsupportedGaps.slice(0, 4).map((gap, index) => (
+                                  <li key={`activity-agent-gap-${index}`}>{gap}</li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                        </div>
+                        {activityAutofillSuggestion.agent.explainableScores.length > 0 && (
+                          <div className="rounded border border-emerald-200 bg-white p-2 text-xs text-slate-800 md:col-span-2">
+                            <div className="font-medium text-emerald-800">Scoruri explicabile</div>
+                            <div className="mt-2 grid gap-2 md:grid-cols-2">
+                              {activityAutofillSuggestion.agent.explainableScores.slice(0, 8).map((score) => (
+                                <div key={`activity-agent-score-${score.id}`} className="rounded border border-slate-200 bg-slate-50 p-2">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="font-medium">{score.label}</span>
+                                    <span className="font-semibold text-emerald-800">{Math.round(score.score * 100)}%</span>
+                                  </div>
+                                  <div className="mt-1 text-slate-700">{score.reason}</div>
+                                  {score.evidence.length > 0 && (
+                                    <div className="mt-1 text-slate-500">{score.evidence.slice(0, 2).join(' | ')}</div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        <div className="rounded border border-emerald-200 bg-white p-2 text-xs text-slate-800 md:col-span-2">
                           <div className="font-medium text-emerald-800">Checklist</div>
                           <div className="mt-1 grid gap-1 md:grid-cols-3">
                             {Object.entries(activityAutofillSuggestion.agent.checks).map(([key, value]) => (

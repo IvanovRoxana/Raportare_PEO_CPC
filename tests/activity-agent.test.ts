@@ -5,6 +5,7 @@ import {
   activityAgentResponseSchema,
   type ActivityAgentRequest,
 } from '../lib/agents/activity-agent-schema.ts';
+import { buildActivityAgentPrompt } from '../lib/agents/activity-agent-prompt.ts';
 import {
   evaluateTargetGroupImpactValue,
   getExpertAiInstructionsValue,
@@ -65,6 +66,13 @@ test('activity agent response schema accepts the structured output contract', ()
     proposedSaCode: 'SA3.2',
     proposedActivityName: 'Monitorizare legislativa regionala si informare membri',
     deliverableSummary: 'Raport de monitorizare legislativa regionala',
+    deliverableInterpretation: {
+      summary: 'Livrabilul indica monitorizare legislativa si informare pentru membri.',
+      workPerformed: ['Am analizat surse legislative regionale.', 'Am structurat informatii pentru membri.'],
+      keyFacts: ['Livrabilul mentioneaza informarea membrilor CPC.'],
+      documentSignals: ['Titlu: Raport de monitorizare legislativa regionala'],
+      unsupportedGaps: [],
+    },
     resultSummary: 'Membrii au primit informatie structurata.',
     beneficiaries: ['Membrii CPC'],
     targetGroupImpact: {
@@ -77,6 +85,13 @@ test('activity agent response schema accepts the structured output contract', ()
       chunkId: 'deliv-1',
       score: 0.91,
       relevantExcerpt: 'informarea membrilor CPC',
+    }],
+    explainableScores: [{
+      id: 'selected-activity-fit',
+      label: 'Potrivire cu activitatea selectata',
+      score: 0.92,
+      reason: 'Livrabilul si catalogul mentioneaza monitorizare legislativa si informare membri.',
+      evidence: ['SA3.2', 'informarea membrilor CPC'],
     }],
     warnings: [],
     expertInstructionAudit: {
@@ -101,6 +116,16 @@ test('activity agent response schema accepts the structured output contract', ()
   assert.equal(parsed.confidence, 'high');
   assert.equal(parsed.shortSummary, 'Am analizat livrabilul atasat pentru raportarea activitatii selectate.');
   assert.equal(parsed.targetGroupImpact.type, 'direct');
+  assert.equal(parsed.explainableScores[0].score, 0.92);
+  assert.match(parsed.deliverableInterpretation.summary, /monitorizare legislativa/);
+});
+
+test('activity agent prompt requests deliverable interpretation and explainable scores', () => {
+  const prompt = buildActivityAgentPrompt(baseRequest);
+
+  assert.match(prompt, /deliverableInterpretation/);
+  assert.match(prompt, /explainableScores/);
+  assert.match(prompt, /scoruri 0\.\.1/);
 });
 
 test('getExpertAiInstructions returns inactive preference context when instructions are missing', () => {

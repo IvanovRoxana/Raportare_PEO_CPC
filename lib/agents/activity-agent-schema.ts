@@ -65,12 +65,29 @@ export const activityAgentEvidenceSchema = z.object({
   relevantExcerpt: z.string().optional(),
 });
 
+export const activityAgentDeliverableInterpretationSchema = z.object({
+  summary: z.string(),
+  workPerformed: z.array(z.string()).default([]),
+  keyFacts: z.array(z.string()).default([]),
+  documentSignals: z.array(z.string()).default([]),
+  unsupportedGaps: z.array(z.string()).default([]),
+});
+
+export const activityAgentExplainableScoreSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  score: z.number().min(0).max(1),
+  reason: z.string(),
+  evidence: z.array(z.string()).default([]),
+});
+
 export const activityAgentResponseSchema = z.object({
   description: z.string().min(20),
   shortSummary: z.string().min(20).max(360),
   proposedSaCode: z.string().optional(),
   proposedActivityName: z.string().optional(),
   deliverableSummary: z.string(),
+  deliverableInterpretation: activityAgentDeliverableInterpretationSchema,
   resultSummary: z.string(),
   beneficiaries: z.array(z.string()),
   targetGroupImpact: z.object({
@@ -78,6 +95,7 @@ export const activityAgentResponseSchema = z.object({
     justification: z.string(),
   }),
   evidenceUsed: z.array(activityAgentEvidenceSchema),
+  explainableScores: z.array(activityAgentExplainableScoreSchema).default([]),
   warnings: z.array(z.string()),
   expertInstructionAudit: z.object({
     found: z.boolean(),
