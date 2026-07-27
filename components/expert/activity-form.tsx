@@ -51,6 +51,9 @@ import fallbackActivityCatalog from '@/data/import/activity-catalog.json';
 import { isGtExpertCategory, normalizePeoCategory } from '@/lib/peo-category';
 import { filterActivityCatalogForFormTab, getActiveGdprActivityCatalog, isActivityCatalogItemAvailableForForm, isEventActivityCatalogItem, normalizeActivityCatalogSaCode, resolveActivityDeliverableOptions, resolveExpertActivityCatalog } from '@/lib/activity-catalog-merge';
 import { buildDocumentS3Key, findDuplicateCandidates, getDocumentAuditTitle, hashFirstPageText, normalizeDocumentTextForFingerprint, sha256Hex } from '@/lib/document-sharing';
+import { getSecureDocumentUrl } from '@/lib/document-retrieval';
+import { extractDocxFirstPageText, extractDocxTextWithSource, extractHtmlTextWithSource, extractImageTextWithSource, extractPdfFirstPageTextWithSource, extractPdfTextWithSource, extractXlsxTextWithSource, isImageFile } from '@/lib/document-utils';
+import { applyAutomaticTitleSuggestion, formatTitleFromFilename, suggestTitleFromFirstPage, validateDeclaredTitleOnFirstPage } from '@/lib/title-suggestion';
 import {
   areActivitiesCompatibleForDeliverableGroup,
   findActivityOwningDeliverableSignature,
@@ -288,6 +291,123 @@ function mapSavedDeliverableToSlot(deliverable: Deliverable, preserveId: boolean
   };
 }
 
+function blobFromDataUrl(dataUrl: string, fallbackType: string) {
+  const [header, data] = dataUrl.split(',');
+  const contentType = header.match(/data:(.*?);base64/)?.[1] || fallbackType || 'application/octet-stream';
+  const binary = atob(data);
+  const bytes = new Uint8Array(binary.length);
+
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+
+  return new Blob([bytes], { type: contentType });
+}
+
+async function getDeliverableFileForExtraction(deliverable: DeliverableSlot) {
+  const fileName = deliverable.filename || deliverable.name || `livrabil-${deliverable.id}`;
+  const fileType = deliverable.fileType || 'application/octet-stream';
+
+  if (deliverable.fileData) {
+    return new File([blobFromDataUrl(deliverable.fileData, fileType)], fileName, { type: fileType });
+  }
+
+  if (!deliverable.s3Key) return null;
+
+  const secureDocument = await getSecureDocumentUrl({
+    s3Key: deliverable.s3Key,
+    originalFileName: fileName,
+  });
+  const response = await fetch(secureDocument.url);
+  if (!response.ok) {
+    throw new Error(`Nu am putut descarca livrabilul pentru citire (${response.status}).`);
+  }
+
+  return new File([await response.blob()], fileName, { type: fileType });
+}
+
+async function extractDeliverableTextForActivityAutofill(deliverable: DeliverableSlot): Promise<Partial<DeliverableSlot> | null> {
+  if (deliverable.docText || deliverable.firstPageText) return null;
+
+  const file = await getDeliverableFileForExtraction(deliverable);
+  if (!file) return null;
+
+  const fileName = file.name || deliverable.filename || deliverable.name || '';
+  const lowerFileName = fileName.toLowerCase();
+  const isPhoto = isImageFile(fileName) || file.type.startsWith('image/');
+  const isPdf = lowerFileName.endsWith('.pdf') || file.type === 'application/pdf';
+  const isWordDocument = lowerFileName.endsWith('.docx') || lowerFileName.endsWith('.doc');
+  const isSpreadsheet = lowerFileName.endsWith('.xlsx') || lowerFileName.endsWith('.xls');
+  const isHtml = lowerFileName.endsWith('.html') || lowerFileName.endsWith('.htm');
+
+  let docTitle: string | null = null;
+  let docText: string | null = null;
+  let firstPageText: string | null = null;
+  let textExtractionSource: DeliverableSlot['textExtractionSource'];
+  let titleSuggestion = suggestTitleFromFirstPage(null);
+
+  if (isPhoto) {
+    const ocrResult = await extractImageTextWithSource(file);
+    firstPageText = ocrResult.text;
+    docText = ocrResult.text;
+    textExtractionSource = ocrResult.source;
+  } else if (isWordDocument) {
+    firstPageText = await extractDocxFirstPageText(file);
+    const docxResult = await extractDocxTextWithSource(file);
+    docText = docxResult.text || firstPageText;
+    textExtractionSource = docxResult.source || (firstPageText ? 'native' : undefined);
+  } else if (isPdf) {
+    const pdfResult = await extractPdfFirstPageTextWithSource(file);
+    const fullPdfResult = await extractPdfTextWithSource(file);
+    firstPageText = pdfResult.text || fullPdfResult.text?.slice(0, 5000) || null;
+    docText = fullPdfResult.text || firstPageText;
+    textExtractionSource = fullPdfResult.source || pdfResult.source;
+  } else if (isSpreadsheet) {
+    const spreadsheetResult = await extractXlsxTextWithSource(file);
+    firstPageText = spreadsheetResult.text?.slice(0, 5000) || null;
+    docText = spreadsheetResult.text;
+    textExtractionSource = spreadsheetResult.source;
+  } else if (isHtml) {
+    const htmlResult = await extractHtmlTextWithSource(file);
+    firstPageText = htmlResult.text?.slice(0, 5000) || null;
+    docText = htmlResult.text;
+    textExtractionSource = htmlResult.source;
+  }
+
+  titleSuggestion = suggestTitleFromFirstPage(firstPageText || docText);
+  docTitle = titleSuggestion.suggestedTitle || formatTitleFromFilename(fileName) || null;
+  const automaticTitle = applyAutomaticTitleSuggestion({
+    currentDeclaredTitle: deliverable.declaredTitle,
+    suggestedTitle: docTitle,
+  });
+  const titleValidation = isPhoto || !automaticTitle.declaredTitle
+    ? null
+    : validateDeclaredTitleOnFirstPage({
+      firstPageText: firstPageText || docText,
+      declaredTitle: automaticTitle.declaredTitle,
+      titleSource: automaticTitle.titleSource,
+    });
+
+  return {
+    docTitle,
+    docText,
+    firstPageText,
+    textExtractionSource,
+    suggestedTitle: docTitle,
+    titleSuggestionConfidence: titleSuggestion.confidence,
+    titleSuggestionAlternatives: titleSuggestion.alternatives,
+    titleSuggestionReason: titleSuggestion.reason,
+    declaredTitle: automaticTitle.declaredTitle,
+    titleSource: automaticTitle.titleSource,
+    titleMatch: titleValidation?.titleMatch ?? null,
+    titleCheckStatus: titleValidation?.titleCheckStatus,
+    titleCheckMessage: titleValidation?.titleCheckMessage,
+    firstPageTextHash: await hashFirstPageText(firstPageText || docText),
+    contentFingerprint: normalizeDocumentTextForFingerprint(firstPageText || docText).slice(0, 500),
+    duplicateStatus: firstPageText || docText ? 'fingerprinted' : deliverable.duplicateStatus,
+  };
+}
+
 function isStaleMultipartUploadError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error || '');
   return (
@@ -434,6 +554,7 @@ export function ActivityForm({
   const [activityKeywords, setActivityKeywords] = useState(activitySeed?.activityKeywords || '');
   const [location, setLocation] = useState(activitySeed?.location || 'Birou');
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [isPreparingActivityAutofill, setIsPreparingActivityAutofill] = useState(false);
   const [duplicateConfirmation, setDuplicateConfirmation] = useState<{
     identity: string;
     dates: string[];
@@ -736,6 +857,25 @@ export function ActivityForm({
     const firstDate = selectedDates[0];
     return Number(normalizePontajHoursValue(normalizedSelectedHours[firstDate], defaultHours));
   }, [defaultHours, normalizedSelectedHours, selectedDates]);
+  const currentDeliverablesForEligibility = deliverables.filter((d) => d.uploaded && !d.isPhoto);
+  const deliverablesForEligibility = useMemo(() => {
+    if (!initialActivity) return currentDeliverablesForEligibility;
+    const groupId = getActivityEditGroupId(initialActivity);
+    if (!groupId) return currentDeliverablesForEligibility;
+
+    const savedGroupDeliverables = allActivities
+      .filter((activity) => activity.expertId === expertId)
+      .filter((activity) => activity.id !== initialActivity.id)
+      .filter((activity) => getActivityEditGroupId(activity) === groupId)
+      .filter((activity) => isSameEditableActivity(initialActivity, activity))
+      .flatMap((activity) => activity.deliverables ?? [])
+      .map((deliverable) => mapSavedDeliverableToSlot(deliverable, true));
+
+    return dedupeDeliverableSlotsBySignature([
+      ...currentDeliverablesForEligibility,
+      ...savedGroupDeliverables,
+    ]).filter((deliverable) => deliverable.uploaded && !deliverable.isPhoto);
+  }, [allActivities, currentDeliverablesForEligibility, expertId, initialActivity]);
   const {
     error: activityAutofillError,
     suggestion: activityAutofillSuggestion,
@@ -746,7 +886,7 @@ export function ActivityForm({
     dismiss: dismissActivityAutofillSuggestion,
   } = useActivityAutofill({
     catalog: filteredCatalog,
-    deliverables,
+    deliverables: deliverablesForEligibility.length > 0 ? deliverablesForEligibility : deliverables,
     expert,
     expertId,
     expertName,
@@ -769,6 +909,56 @@ export function ActivityForm({
       }
     },
   });
+  const activityAutofillDeliverables = deliverablesForEligibility.length > 0 ? deliverablesForEligibility : deliverables;
+  const canExtractActivityAutofillText = activityAutofillDeliverables.some((deliverable) => (
+    deliverable.uploaded
+    && !deliverable.docText
+    && !deliverable.firstPageText
+    && Boolean(deliverable.fileData || deliverable.s3Key)
+  ));
+  const isActivityAutofillActionBusy = isAutofillingActivity || isPreparingActivityAutofill;
+  const handlePrepareAndSuggestActivityDescription = useCallback(async () => {
+    const missingTextDeliverables = activityAutofillDeliverables.filter((deliverable) => (
+      deliverable.uploaded
+      && !deliverable.docText
+      && !deliverable.firstPageText
+      && Boolean(deliverable.fileData || deliverable.s3Key)
+    ));
+
+    if (missingTextDeliverables.length === 0) {
+      await handleSuggestActivityFromDeliverables();
+      return;
+    }
+
+    setIsPreparingActivityAutofill(true);
+    try {
+      const extractedById = new Map<string, DeliverableSlot>();
+      let nextAutofillDeliverables = activityAutofillDeliverables;
+
+      for (const deliverable of missingTextDeliverables) {
+        const extractionPatch = await extractDeliverableTextForActivityAutofill(deliverable);
+        if (!extractionPatch) continue;
+        const updatedDeliverable = { ...deliverable, ...extractionPatch };
+        extractedById.set(deliverable.id, updatedDeliverable);
+        nextAutofillDeliverables = nextAutofillDeliverables.map((item) => (
+          item.id === deliverable.id ? updatedDeliverable : item
+        ));
+      }
+
+      if (extractedById.size > 0) {
+        setDeliverables((prev) => prev.map((deliverable) => (
+          extractedById.get(deliverable.id) || deliverable
+        )));
+      }
+
+      await handleSuggestActivityFromDeliverables(nextAutofillDeliverables);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Nu am putut citi livrabilul atasat.';
+      setValidationError(message);
+    } finally {
+      setIsPreparingActivityAutofill(false);
+    }
+  }, [activityAutofillDeliverables, handleSuggestActivityFromDeliverables]);
 
   useEffect(() => {
     if (initialActivity?.id || prefillActivity?.description?.trim()) return;
@@ -1671,25 +1861,6 @@ export function ActivityForm({
   // Filter deliverables by type
   const mainDeliverables = deliverables.filter(d => !d.slotType || d.slotType === 'livrabil');
   const mainDeliverableForEligibility = mainDeliverables.find((d) => d.uploaded && !d.isPhoto);
-  const currentDeliverablesForEligibility = deliverables.filter((d) => d.uploaded && !d.isPhoto);
-  const deliverablesForEligibility = useMemo(() => {
-    if (!initialActivity) return currentDeliverablesForEligibility;
-    const groupId = getActivityEditGroupId(initialActivity);
-    if (!groupId) return currentDeliverablesForEligibility;
-
-    const savedGroupDeliverables = allActivities
-      .filter((activity) => activity.expertId === expertId)
-      .filter((activity) => activity.id !== initialActivity.id)
-      .filter((activity) => getActivityEditGroupId(activity) === groupId)
-      .filter((activity) => isSameEditableActivity(initialActivity, activity))
-      .flatMap((activity) => activity.deliverables ?? [])
-      .map((deliverable) => mapSavedDeliverableToSlot(deliverable, true));
-
-    return dedupeDeliverableSlotsBySignature([
-      ...currentDeliverablesForEligibility,
-      ...savedGroupDeliverables,
-    ]).filter((deliverable) => deliverable.uploaded && !deliverable.isPhoto);
-  }, [allActivities, currentDeliverablesForEligibility, expertId, initialActivity]);
   const eligibilityWorkingGroupId = initialActivity?.workingGroupId || initialActivity?.periodGroupId;
   const eligibilityPeriodGroupId = initialActivity?.periodGroupId;
   const eligibilityWorkingGroupActivities = useMemo(() => {
@@ -3069,16 +3240,19 @@ export function ActivityForm({
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={handleSuggestActivityFromDeliverables}
-                    disabled={isAutofillingActivity || Boolean(activityAutofillUnavailableMessage)}
+                    onClick={handlePrepareAndSuggestActivityDescription}
+                    disabled={
+                      isActivityAutofillActionBusy
+                      || (Boolean(activityAutofillUnavailableMessage) && !canExtractActivityAutofillText)
+                    }
                     title={activityAutofillUnavailableMessage || undefined}
                   >
-                    {isAutofillingActivity ? (
+                    {isActivityAutofillActionBusy ? (
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                     ) : (
                       <Sparkles className="h-4 w-4 mr-2" />
                     )}
-                    Optimizare descriere
+                    {isPreparingActivityAutofill ? 'Citire livrabil...' : 'Optimizare descriere'}
                   </Button>
                 </div>
 

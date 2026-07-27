@@ -68,6 +68,44 @@ function isServerSideAutofillFailure(response: Response, data: unknown) {
   return response.status >= 500 && code !== 'OPENAI_API_KEY_MISSING';
 }
 
+function getUnavailableMessage({
+  uploadedDeliverablesCount,
+  incompleteDeliverableSteps,
+  autofillDeliverablesCount,
+  saCode,
+  activityName,
+  collaborationContext,
+  catalogCandidatesCount,
+}: {
+  uploadedDeliverablesCount: number;
+  incompleteDeliverableSteps: string[];
+  autofillDeliverablesCount: number;
+  saCode: string;
+  activityName: string;
+  collaborationContext?: ActivityAutofillCollaborationContext;
+  catalogCandidatesCount: number;
+}) {
+  if (uploadedDeliverablesCount === 0) {
+    return 'Incarca sau ataseaza un PDF/DOC/DOCX ori o imagine scanata; aplicatia va extrage textul nativ sau OCR pentru descrierea asistata.';
+  }
+  if (incompleteDeliverableSteps.length > 0) {
+    return `Finalizeaza cei patru pasi ai livrabilului: ${incompleteDeliverableSteps.join(', ')}.`;
+  }
+  if (autofillDeliverablesCount === 0) {
+    return 'Livrabilul atasat nu are text extras/OCR disponibil pentru descrierea asistata. Reincarca documentul sau ruleaza extragerea textului.';
+  }
+  if (!saCode || !activityName) {
+    return 'Selecteaza subactivitatea si activitatea inainte de rescrierea descrierii cu AI.';
+  }
+  if (collaborationContext?.isCommonActivity && collaborationContext.collaborators.length === 0) {
+    return 'Selecteaza cel putin un colaborator pentru activitatea comuna inainte de generarea descrierii finale.';
+  }
+  if (catalogCandidatesCount === 0) {
+    return 'Nu exista activitati de catalog disponibile pentru rolul curent.';
+  }
+  return null;
+}
+
 export function useActivityAutofill({
   catalog,
   deliverables,
@@ -131,22 +169,52 @@ export function useActivityAutofill({
     () => getActivityAutofillMissingSteps(deliverables),
     [deliverables],
   );
+  const uploadedDeliverablesCount = useMemo(
+    () => deliverables.filter((deliverable) => deliverable.uploaded).length,
+    [deliverables],
+  );
 
-  const unavailableMessage = autofillDeliverables.length === 0
-    ? 'Incarca un PDF/DOC/DOCX sau o imagine scanata; aplicatia va extrage textul nativ sau OCR pentru descrierea asistata.'
-    : !saCode || !activityName
-      ? 'Selecteaza subactivitatea si activitatea inainte de rescrierea descrierii cu AI.'
-      : collaborationContext?.isCommonActivity && collaborationContext.collaborators.length === 0
-        ? 'Selecteaza cel putin un colaborator pentru activitatea comuna inainte de generarea descrierii finale.'
-        : incompleteDeliverableSteps.length > 0
-          ? `Finalizeaza cei patru pasi ai livrabilului: ${incompleteDeliverableSteps.join(', ')}.`
-          : catalogCandidates.length === 0
-            ? 'Nu exista activitati de catalog disponibile pentru rolul curent.'
-            : null;
+  const unavailableMessage = getUnavailableMessage({
+    uploadedDeliverablesCount,
+    incompleteDeliverableSteps,
+    autofillDeliverablesCount: autofillDeliverables.length,
+    saCode,
+    activityName,
+    collaborationContext,
+    catalogCandidatesCount: catalogCandidates.length,
+  });
 
-  const suggest = useCallback(async () => {
-    if (unavailableMessage) {
-      setError(unavailableMessage);
+  const suggest = useCallback(async (deliverablesOverride?: DeliverableSlot[]) => {
+    const sourceDeliverables = deliverablesOverride ?? deliverables;
+    const requestDeliverables = deliverablesOverride
+      ? buildActivityAutofillDeliverablesPayload(deliverablesOverride.map((deliverable) => ({
+        id: deliverable.id,
+        fileName: deliverable.filename || deliverable.name,
+        documentTitle: getDocumentAuditTitle({
+          ...deliverable,
+          fileName: deliverable.filename || deliverable.name,
+          originalFileName: deliverable.filename || deliverable.name,
+        }),
+        deliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
+        stadiu: deliverable.stadiu,
+        docText: deliverable.docText,
+        firstPageText: deliverable.firstPageText,
+        eligibilityStatus: deliverable.eligibilityCheck?.status,
+        eligibilitySummary: deliverable.eligibilityCheck?.summary || deliverable.aiCheck?.reason,
+      })))
+      : autofillDeliverables;
+    const requestUnavailableMessage = getUnavailableMessage({
+      uploadedDeliverablesCount: sourceDeliverables.filter((deliverable) => deliverable.uploaded).length,
+      incompleteDeliverableSteps: getActivityAutofillMissingSteps(sourceDeliverables),
+      autofillDeliverablesCount: requestDeliverables.length,
+      saCode,
+      activityName,
+      collaborationContext,
+      catalogCandidatesCount: catalogCandidates.length,
+    });
+
+    if (requestUnavailableMessage) {
+      setError(requestUnavailableMessage);
       return;
     }
 
@@ -157,7 +225,7 @@ export function useActivityAutofill({
     try {
       const headers = await getJsonAuthHeaders();
       const requestPayload = {
-        deliverables: autofillDeliverables,
+        deliverables: requestDeliverables,
         catalogCandidates,
         selectedActivityId,
         saCode,
@@ -206,7 +274,7 @@ export function useActivityAutofill({
       if (!response.ok || data.error) {
         if (isServerSideAutofillFailure(response, data)) {
           const fallback = buildFallbackActivityAutofillSuggestion({
-            deliverables: autofillDeliverables,
+            deliverables: requestDeliverables,
             catalogCandidates,
             selectedActivityId,
             saCode,
@@ -241,7 +309,7 @@ export function useActivityAutofill({
     autofillDeliverables,
     catalogCandidates,
     collaborationContext,
-    incompleteDeliverableSteps,
+    deliverables,
     expert,
     expertId,
     expertName,
@@ -252,7 +320,6 @@ export function useActivityAutofill({
     currentDescription,
     month,
     selectedDates,
-    unavailableMessage,
     year,
   ]);
 
