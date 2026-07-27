@@ -206,7 +206,7 @@ test('Mihaela Grigoras are acces la Dashboard PM si Admin', () => {
   assert.deepEqual(mihaela.cognitoGroups, ['pm', 'admin']);
   assert.deepEqual(roles, ['admin', 'pm']);
   assert.equal(getDashboardPathForRoleSet(roles), '/auth/select-dashboard');
-  assert.deepEqual(getDashboardDestinationsForRoles(roles).map((destination) => destination.path), ['/pm', '/admin']);
+  assert.deepEqual(getDashboardDestinationsForRoles(roles).map((destination) => destination.path), ['/pm', '/achizitii', '/financiar', '/admin']);
 });
 
 test('Ivanov Roxana vede selectorul de rol cu Admin inclus', () => {

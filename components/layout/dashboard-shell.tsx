@@ -91,8 +91,9 @@ export const adminNavItems: DashboardNavItem[] = [
 
 export const financialNavItems: DashboardNavItem[] = [
   { label: 'Dashboard financiar', href: '/financiar', icon: BarChart3 },
+  { label: 'Pontaje', href: '/financiar/pontaje', icon: CalendarDays },
+  { label: 'Concedii', href: '/financiar/concedii', icon: ShieldCheck },
   { label: 'Achizitii', href: '/achizitii', icon: ClipboardList },
-  { label: 'Pontaj lunar', href: '/expert', icon: CalendarDays },
   { label: 'Activitatile mele', href: '/expert/peo', icon: FileText },
   { label: 'Rapoarte', href: '/expert/peo#rapoarte', icon: FileText },
   { label: 'Livrabile', href: '/expert/peo#livrabile', icon: Upload },

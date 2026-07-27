@@ -28,6 +28,14 @@ export function isWorkBlockAiConsolidationEnabled() {
   );
 }
 
+export function isFinancialTimesheetsEnabledClient() {
+  return process.env.NEXT_PUBLIC_ENABLE_FINANCIAL_TIMESHEETS === 'true';
+}
+
+export function isFinancialLeaveEnabledClient() {
+  return process.env.NEXT_PUBLIC_ENABLE_FINANCIAL_LEAVE === 'true';
+}
+
 export function isAnexa10DeterministicDocxEnabledClient() {
   return process.env.NEXT_PUBLIC_ENABLE_ANEXA10_DETERMINISTIC_DOCX === 'true';
 }

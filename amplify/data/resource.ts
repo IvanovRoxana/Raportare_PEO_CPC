@@ -29,11 +29,79 @@ const schema = a.schema({
       reportingWorkBlocks: a.hasMany("ReportingWorkBlock", "expertId"),
       grupTintaEntries: a.hasMany("GrupTintaEntry", "expertId"),
       historicalReports: a.hasMany("MonthlyExpertReport", "expertId"),
+      normContracts: a.hasMany("ExpertNormContract", "expertId"),
+      leaveEntries: a.hasMany("LeaveEntry", "expertId"),
+
     })
     .authorization((allow) => [
       allow.authenticated().to(["read"]),
       allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
     ]),
+
+  ExpertNormContract: a
+    .model({
+      expertId: a.id().required(),
+      expert: a.belongsTo("Expert", "expertId"),
+      validFrom: a.date().required(),
+      validTo: a.date(),
+      peoNormUnit: a.string().required(),
+      peoNormValue: a.float().required(),
+      peoDailyCap: a.float().required(),
+      cimNormUnit: a.string().required(),
+      cimNormValue: a.float().required(),
+      cimDailyCap: a.float().required(),
+      leaveHoursPerDay: a.float().required(),
+      status: a.string().default("ACTIVE"),
+      justification: a.string().required(),
+      createdBy: a.string(),
+      updatedBy: a.string(),
+    })
+    .secondaryIndexes((index) => [
+      index("expertId").sortKeys(["validFrom"]),
+    ])
+    .authorization((allow) => [
+      allow.authenticated().to(["read"]),
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
+  LeaveEntry: a
+    .model({
+      owner: a.string(),
+      expertId: a.id().required(),
+      expert: a.belongsTo("Expert", "expertId"),
+      date: a.date().required(),
+      month: a.integer().required(),
+      year: a.integer().required(),
+      type: a.string().required(),
+      totalHours: a.float().required(),
+      peoHours: a.float().required(),
+      cpcHours: a.float().required(),
+      source: a.string().required(),
+      status: a.string().default("DRAFT"),
+      lockedForExpert: a.boolean().default(false),
+      normContractId: a.id(),
+      automaticSplit: a.boolean().default(true),
+      peoNormUnit: a.string(),
+      peoNormValue: a.float(),
+      peoDailyCap: a.float(),
+      cimNormUnit: a.string(),
+      cimNormValue: a.float(),
+      cimDailyCap: a.float(),
+      justification: a.string(),
+      rejectionReason: a.string(),
+      createdBy: a.string(),
+      validatedBy: a.string(),
+      validatedAt: a.datetime(),
+    })
+    .secondaryIndexes((index) => [
+      index("expertId").sortKeys(["date"]),
+      index("year").sortKeys(["month"]),
+    ])
+    .authorization((allow) => [
+      allow.ownerDefinedIn("owner"),
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
 
   Activity: a
     .model({
