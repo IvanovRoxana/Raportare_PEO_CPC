@@ -1690,6 +1690,46 @@ export function ActivityForm({
       ...savedGroupDeliverables,
     ]).filter((deliverable) => deliverable.uploaded && !deliverable.isPhoto);
   }, [allActivities, currentDeliverablesForEligibility, expertId, initialActivity]);
+  const eligibilityWorkingGroupId = initialActivity?.workingGroupId || initialActivity?.periodGroupId;
+  const eligibilityPeriodGroupId = initialActivity?.periodGroupId;
+  const eligibilityWorkingGroupActivities = useMemo(() => {
+    const groupId = initialActivity ? getActivityEditGroupId(initialActivity) : undefined;
+    if (groupId) {
+      return allActivities
+        .filter((activity) => getActivityEditGroupId(activity) === groupId)
+        .map((activity) => ({
+          id: activity.id,
+          date: activity.date,
+          activityType: activity.activityType,
+          title: activity.title,
+          saCode: activity.saCode,
+          expertId: activity.expertId,
+          expertName: activity.expertName,
+        }));
+    }
+
+    return selectedDates.map((date) => ({
+      date,
+      activityType: activityTitle,
+      title: activityTitle,
+      saCode,
+      expertId,
+      expertName,
+    }));
+  }, [activityTitle, allActivities, expertId, expertName, initialActivity, saCode, selectedDates]);
+  const eligibilityCollaborators = useMemo(() => (
+    activityCommon
+      ? collaborators
+          .map((collaboratorId) => allExperts.find((candidate) => candidate.id === collaboratorId))
+          .filter((candidate): candidate is Expert => Boolean(candidate))
+          .map((candidate) => ({
+            id: candidate.id,
+            name: candidate.name,
+            role: candidate.role,
+            positionInProject: candidate.positionInProject,
+          }))
+      : []
+  ), [activityCommon, allExperts, collaborators]);
   const prelimDeliverables = deliverables.filter(d => d.slotType === 'raport_preliminar');
   const justifDeliverables = deliverables.filter(d => d.slotType === 'justificativ');
   const eligibilityBlockedReason = !effectiveSaCode
@@ -2967,6 +3007,15 @@ export function ActivityForm({
                   projectCode={expert?.projectCode}
                   month={month}
                   year={year}
+                  expertId={expertId}
+                  expertCategory={expertCategory}
+                  expertFunction={expert?.positionInProject || expert?.role}
+                  expertProjectRole={expert?.role}
+                  workingGroupId={eligibilityWorkingGroupId}
+                  periodGroupId={eligibilityPeriodGroupId}
+                  workingGroupActivities={eligibilityWorkingGroupActivities}
+                  collaborators={eligibilityCollaborators}
+                  catalogSource={catalog.length > 0 ? 'aws-activity-catalog' : 'fallback-activity-catalog'}
                   expertName={expertName}
                   onUpdate={(patch) => updateDeliverable(mainDeliverableForEligibility.id, patch)}
                   canCheckEligibility={canCheckDeliverableEligibility}

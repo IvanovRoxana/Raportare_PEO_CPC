@@ -104,11 +104,13 @@ function normalizeActivity(activity: unknown, originalIndex: number): Normalized
   const hours = requiredNumber(record.hours, `Activitatea #${originalIndex + 1} nu are hours valid`);
   const title = requiredString(record.title ?? record.activityTitle ?? record.taskName, `Activitatea #${originalIndex + 1} nu are title`);
   const description = requiredString(record.gdprGeneratedText ?? record.description ?? record.notes ?? record.context, `Activitatea #${originalIndex + 1} nu are description`);
+  const summary = normalizeOptionalString(record.summary ?? record.activitySummary ?? record.shortSummary);
 
   return {
     date,
     hours,
     title,
+    summary,
     description,
     saCode: normalizeOptionalString(record.saCode ?? record.activityCode ?? record.wp) || UNSPECIFIED_SA,
     activityType: normalizeOptionalString(record.activityType ?? record.type),

@@ -78,6 +78,8 @@ function buildEligibilityDocumentPayload(deliverable: DeliverableSlot, activityG
     fileName: deliverable.filename || deliverable.name,
     extractedText: (deliverable.docText || deliverable.firstPageText || '').slice(0, 12000),
     deliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
+    duplicateStatus: deliverable.duplicateStatus,
+    possibleDuplicateOfDocumentId: deliverable.possibleDuplicateOfDocumentId,
     textScope: deliverable.docText && deliverable.docText !== deliverable.firstPageText
       ? 'Text extras disponibil din document'
       : 'Prima pagina / inceputul documentului',
@@ -147,6 +149,30 @@ interface DeliverableItemProps {
   projectCode?: string;
   month?: number;
   year?: number;
+  expertId?: string;
+  expertCategory?: string;
+  expertFunction?: string;
+  expertProjectRole?: string;
+  workingGroupId?: string;
+  periodGroupId?: string;
+  workBlockId?: string;
+  workingGroupActivities?: Array<{
+    id?: string;
+    date?: string;
+    activityType?: string;
+    title?: string;
+    saCode?: string;
+    expertId?: string;
+    expertName?: string;
+  }>;
+  collaborators?: Array<{
+    id?: string;
+    name?: string;
+    role?: string;
+    positionInProject?: string;
+  }>;
+  catalogSource?: string;
+  ruleVersionId?: string;
   expertName?: string;
   onUpdate: (patch: Partial<DeliverableSlot>) => void;
   onRemove?: () => void;
@@ -183,6 +209,17 @@ export function DeliverableItem({
   projectCode,
   month,
   year,
+  expertId,
+  expertCategory,
+  expertFunction,
+  expertProjectRole,
+  workingGroupId,
+  periodGroupId,
+  workBlockId,
+  workingGroupActivities,
+  collaborators,
+  catalogSource,
+  ruleVersionId,
   expertName,
   onUpdate,
   onRemove,
@@ -380,6 +417,16 @@ export function DeliverableItem({
           }),
           fileName: deliverable.filename || deliverable.name,
           extractedText,
+          deliverables: [
+            buildEligibilityDocumentPayload(deliverable, selectedActivityId || subActivity, true),
+          ],
+          primaryDeliverableId: deliverable.id,
+          activityGroupId: selectedActivityId || subActivity,
+          periodGroupId,
+          workingGroupId,
+          workBlockId,
+          workingGroupActivities,
+          collaborators,
           selectedActivityId: selectedActivityId || subActivity,
           currentSaCode: subActivity,
           selectedActivityName: activityTitle,
@@ -396,6 +443,12 @@ export function DeliverableItem({
           projectCode,
           month,
           year,
+          expertId,
+          expertCategory,
+          expertFunction,
+          expertProjectRole,
+          catalogSource,
+          ruleVersionId,
           expertName,
           textScope: deliverable.docText && deliverable.docText !== deliverable.firstPageText
             ? 'Text extras disponibil din document'
@@ -1059,6 +1112,30 @@ export interface DeliverableEligibilityControlProps {
   projectCode?: string;
   month?: number;
   year?: number;
+  expertId?: string;
+  expertCategory?: string;
+  expertFunction?: string;
+  expertProjectRole?: string;
+  workingGroupId?: string;
+  periodGroupId?: string;
+  workBlockId?: string;
+  workingGroupActivities?: Array<{
+    id?: string;
+    date?: string;
+    activityType?: string;
+    title?: string;
+    saCode?: string;
+    expertId?: string;
+    expertName?: string;
+  }>;
+  collaborators?: Array<{
+    id?: string;
+    name?: string;
+    role?: string;
+    positionInProject?: string;
+  }>;
+  catalogSource?: string;
+  ruleVersionId?: string;
   expertName?: string;
   onUpdate: (patch: Partial<DeliverableSlot>) => void;
   deliverableOptions?: string[];
@@ -1089,6 +1166,17 @@ export function DeliverableEligibilityControl({
   projectCode,
   month,
   year,
+  expertId,
+  expertCategory,
+  expertFunction,
+  expertProjectRole,
+  workingGroupId,
+  periodGroupId,
+  workBlockId,
+  workingGroupActivities,
+  collaborators,
+  catalogSource,
+  ruleVersionId,
   expertName,
   onUpdate,
   deliverableOptions,
@@ -1137,6 +1225,11 @@ export function DeliverableEligibilityControl({
           )),
           primaryDeliverableId: deliverable.id,
           activityGroupId,
+          periodGroupId,
+          workingGroupId,
+          workBlockId,
+          workingGroupActivities,
+          collaborators,
           documentTitle: getDocumentAuditTitle({
             ...deliverable,
             fileName: deliverable.filename || deliverable.name,
@@ -1160,6 +1253,12 @@ export function DeliverableEligibilityControl({
           projectCode,
           month,
           year,
+          expertId,
+          expertCategory,
+          expertFunction,
+          expertProjectRole,
+          catalogSource,
+          ruleVersionId,
           expertName,
           textScope: deliverable.docText && deliverable.docText !== deliverable.firstPageText
             ? 'Text extras disponibil din document'

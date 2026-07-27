@@ -39,6 +39,7 @@ type ReportActivityPayload = {
   saCode?: string;
   activityType?: string;
   title: string;
+  summary?: string;
   description: string;
   location?: Activity['location'];
   gdprTemplateCode?: string;
@@ -666,6 +667,7 @@ function buildReportRequestPayload({
       saCode: activity.saCode,
       activityType: activity.activityType,
       title: activity.title,
+      summary: activity.activitySummary,
       description: truncateForReport(activity.gdprGeneratedText || activity.description || activity.title),
       location: activity.location,
       gdprTemplateCode: activity.gdprTemplateCode,

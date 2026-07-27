@@ -2,8 +2,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
+  buildDeliverableEligibilitySemanticAudit,
   buildNonConclusiveAiFailure,
   CONCORDIA_PUBLICATION_ELIGIBILITY_PROMPT_RULES,
+  DEFAULT_ELIGIBILITY_RULE_VERSION_ID,
   deliverableEligibilityAiSchema,
   deliverableEligibilitySchema,
   hasSufficientDeliverableEvidenceForEligibility,
@@ -37,6 +39,7 @@ const deliverableItemSource = readFileSync(new URL('../components/expert/deliver
 const activityFormSource = readFileSync(new URL('../components/expert/activity-form.tsx', import.meta.url), 'utf8');
 const eligibilityRouteSource = readFileSync(new URL('../app/api/ai/check-deliverable-eligibility/route.ts', import.meta.url), 'utf8');
 const deliverableTypesSource = readFileSync(new URL('../lib/deliverable-types.ts', import.meta.url), 'utf8');
+const amplifyDataResourceSource = readFileSync(new URL('../amplify/data/resource.ts', import.meta.url), 'utf8');
 
 test('UI tolereaza suggestedSettings persistat fara lista changes', () => {
   assert.doesNotMatch(deliverableItemSource, /suggestedSettings\?\.changes\.includes/);
@@ -329,4 +332,96 @@ test('rezultatul eligibilitatii pastreaza metadatele livrabilelor analizate', ()
 test('cardul de eligibilitate afiseaza livrabilele analizate', () => {
   assert.match(deliverableItemSource, /Livrabile analizate:/);
   assert.match(deliverableItemSource, /item\.isPrimary \? ' \(principal\)' : ''/);
+});
+
+test('construieste audit semantic cu context expert, rubrici si risc duplicat', () => {
+  const audit = buildDeliverableEligibilitySemanticAudit({
+    result: {
+      status: 'eligibil_cu_observatii',
+      score: 82,
+      summary: 'Materialul este corelat cu activitatea si mentioneaza grupul tinta.',
+      checks: [
+        { criterion: 'Potrivire activitate', status: 'pass', explanation: 'Activitatea este corecta.' },
+        { criterion: 'Tip livrabil', status: 'pass', explanation: 'Tipul este potrivit.' },
+      ],
+      missingElements: [],
+      recommendations: ['Pastreaza linkul pentru trasabilitate.'],
+      riskFlags: [],
+      suggestedSettings: null,
+    },
+    documents: [
+      {
+        id: 'd1',
+        documentTitle: 'Articol Concordia',
+        fileName: 'articol-concordia.pdf',
+        deliverableType: 'Articole pe concordia.ro',
+        isPrimary: true,
+        extractedText: [
+          'Confederatia Patronala Concordia',
+          'Autor: Daniel Apostol',
+          '15/07/2026',
+          'https://concordia.ro/articol',
+          'Material pentru beneficiari si grup tinta.',
+        ].join('\n'),
+        duplicateStatus: 'possible_common_unmarked',
+        possibleDuplicateOfDocumentId: 'doc-existing',
+      },
+    ],
+    expertId: 'expert-1',
+    expertCategory: 'com',
+    expertFunction: 'Expert comunicare',
+    expertProjectRole: 'Expert',
+    selectedActivityId: 'cat-1',
+    selectedActivityName: 'Articol publicat pe site',
+    saCode: 'SA3.4',
+    deliverableType: 'Articole pe concordia.ro',
+    catalogBeneficiaries: 'Grup tinta si membri Concordia',
+    catalogExpectedResults: 'Material publicat',
+    catalogDeliverables: 'Articol pe site',
+    projectCode: '302141',
+    activityGroupId: 'cat-1',
+    collaborators: [{ id: 'expert-2', name: 'Expert colaborator' }],
+    workingGroupActivities: [{ id: 'a1', saCode: 'SA3.4' }],
+  });
+
+  assert.equal(audit.ruleVersionId, DEFAULT_ELIGIBILITY_RULE_VERSION_ID);
+  assert.equal(audit.categoryContextUsed.expertCategory, 'com');
+  assert.equal(audit.categoryContextUsed.collaboratorCount, 1);
+  assert.equal(audit.categoryContextUsed.workingGroupActivityCount, 1);
+  assert.equal(audit.rubricScores.activityMatch.status, 'pass');
+  assert.equal(audit.rubricScores.duplicateRisk.status, 'warning');
+  assert.ok(audit.normalizedScore > 0);
+  assert.match(audit.appliedRules.join('\n'), /concordia-publication-default/);
+  assert.match(audit.evidenceUsed.join('\n'), /link\/url\/domeniu/);
+  assert.equal(audit.documentsRead[0].duplicateStatus, 'possible_common_unmarked');
+});
+
+test('ruta de eligibilitate include audit semantic si context explicit in raspuns', () => {
+  assert.match(eligibilityRouteSource, /buildDeliverableEligibilitySemanticAudit/);
+  assert.match(eligibilityRouteSource, /expertCategory/);
+  assert.match(eligibilityRouteSource, /workingGroupActivities/);
+  assert.match(eligibilityRouteSource, /ruleVersionId/);
+  assert.match(eligibilityRouteSource, /semanticAudit/);
+  assert.match(eligibilityRouteSource, /rubricScores/);
+  assert.match(eligibilityRouteSource, /categoryContextUsed/);
+});
+
+test('controlul eligibilitatii trimite context expert, catalog si working group', () => {
+  assert.match(deliverableItemSource, /expertCategory\?: string/);
+  assert.match(deliverableItemSource, /workingGroupActivities\?: Array/);
+  assert.match(deliverableItemSource, /catalogSource\?: string/);
+  assert.match(deliverableItemSource, /duplicateStatus: deliverable\.duplicateStatus/);
+  assert.match(activityFormSource, /expertCategory=\{expertCategory\}/);
+  assert.match(activityFormSource, /catalogSource=\{catalog\.length > 0 \? 'aws-activity-catalog' : 'fallback-activity-catalog'\}/);
+  assert.match(activityFormSource, /workingGroupActivities=\{eligibilityWorkingGroupActivities\}/);
+  assert.match(activityFormSource, /collaborators=\{eligibilityCollaborators\}/);
+});
+
+test('schema AWS are fundatia pentru ruleseturi AI versionate', () => {
+  assert.match(amplifyDataResourceSource, /AiEligibilityRuleset: a/);
+  assert.match(amplifyDataResourceSource, /AiEligibilityRuleVersion: a/);
+  assert.match(amplifyDataResourceSource, /rulesJson: a\.json\(\)/);
+  assert.match(amplifyDataResourceSource, /previousRulesJson: a\.json\(\)/);
+  assert.match(amplifyDataResourceSource, /newRulesJson: a\.json\(\)/);
+  assert.match(amplifyDataResourceSource, /allow\.groups\(\["pm", "admin"\]\)\.to\(\["create", "read", "update", "delete"\]\)/);
 });
