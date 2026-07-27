@@ -402,6 +402,7 @@ export default function ExpertHomeDashboard() {
   const { activities: monthActivities } = useActivitiesByMonth(currentMonth, currentYear);
   const { documents } = useDocuments();
   const [selectedConcurrentProjectId, setSelectedConcurrentProjectId] = useState<string>('');
+  const [consolidatedTab, setConsolidatedTab] = useState('ore');
   const [draftConcurrentEntries, setDraftConcurrentEntries] = useState<Record<string, Partial<ConcurrentProjectTimesheetEntry>>>({});
 
   useEffect(() => {
@@ -601,6 +602,20 @@ export default function ExpertHomeDashboard() {
   const workedDaysProgress = percent(workedDaysCount, monthlyNormInfo.workingDays);
   const openActivitiesProgress = percent(openPeoActivitiesCount, peoActivities.length);
   const deliverablesProgress = percent(peoActivitiesWithDeliverablesCount, peoActivities.length);
+  const dashboardReadinessItems = [
+    pendingSharedAlerts.length > 0
+      ? { label: 'Livrabile comune neînregistrate', detail: `${pendingSharedAlerts.length} livrabile necesita asociere in pontaj.`, severity: 'blocking' }
+      : null,
+    pendingActivityAlerts.length > 0
+      ? { label: 'Activitati comune sugerate', detail: `${pendingActivityAlerts.length} activitati comune necesita decizie.`, severity: 'warning' }
+      : null,
+    exceededDays > 0
+      ? { label: 'Depasiri limita zilnica', detail: `${exceededDays} zile depasesc limita de 8 ore.`, severity: 'blocking' }
+      : null,
+    hasPmClarifications
+      ? { label: 'Clarificari PM', detail: `${clarificationActivities.length} activitati necesita clarificare.`, severity: 'warning' }
+      : null,
+  ].filter((item): item is { label: string; detail: string; severity: 'blocking' | 'warning' } => Boolean(item));
   const selectedConcurrentProject = activeConcurrentProjects.find((project) => project.id === selectedConcurrentProjectId) ?? activeConcurrentProjects[0];
   const selectedProjectShortcutValue =
     selectedConcurrentProjectId && activeConcurrentProjects.some((project) => project.id === selectedConcurrentProjectId)
@@ -609,11 +624,22 @@ export default function ExpertHomeDashboard() {
 
   const handleProjectShortcutChange = (projectId: string) => {
     if (projectId === 'peo') {
-      router.push(peoHref);
+      setSelectedConcurrentProjectId('');
       return;
     }
 
     setSelectedConcurrentProjectId(projectId);
+  };
+
+  const handleOpenSelectedWorkspace = () => {
+    if (!selectedMonthHasAccess) return;
+
+    if (selectedProjectShortcutValue === 'peo') {
+      router.push(`${peoHref}#calendar`);
+      return;
+    }
+
+    setConsolidatedTab('paralele');
     window.requestAnimationFrame(() => {
       document.getElementById('proiecte-paralele')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
@@ -788,30 +814,33 @@ export default function ExpertHomeDashboard() {
                 )
               )}
             </div>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                exportPontaj().catch((error) => {
-                  console.error('Eroare export pontaj:', error);
-                  alert(error instanceof Error ? error.message : 'Exportul pontajului a esuat.');
-                });
-              }}
-              disabled={!currentExpert || !selectedMonthHasAccess}
-            >
-              Export pontaj
-            </Button>
             {selectedMonthHasAccess ? (
-              <Button asChild>
-                <Link href={peoHref}>
-                  Adaugă activitate
-                  <ArrowRight className="h-4 w-4" />
-                </Link>
+              <Button type="button" onClick={handleOpenSelectedWorkspace} disabled={!currentExpert}>
+                {selectedProjectShortcutValue === 'peo' ? (
+                  <>
+                    Deschide calendarul
+                    <CalendarDays className="h-4 w-4" />
+                  </>
+                ) : (
+                  <>
+                    Deschide pontajul
+                    <ArrowRight className="h-4 w-4" />
+                  </>
+                )}
               </Button>
             ) : (
               <Button type="button" disabled>
-                Adaugă activitate
-                <ArrowRight className="h-4 w-4" />
+                {selectedProjectShortcutValue === 'peo' ? (
+                  <>
+                    Deschide calendarul
+                    <CalendarDays className="h-4 w-4" />
+                  </>
+                ) : (
+                  <>
+                    Deschide pontajul
+                  <ArrowRight className="h-4 w-4" />
+                  </>
+                )}
               </Button>
             )}
             {canOpenPmDashboard && (
@@ -823,7 +852,6 @@ export default function ExpertHomeDashboard() {
           </>
         }
         quickTabs={[
-          { label: 'Pontaj lunar', href: '#calendar-ore', icon: CalendarDays, active: true },
           { label: 'Activitățile mele', href: peoHref, icon: ClipboardList },
           { label: 'Livrabile', href: `${peoHref}#livrabile`, icon: CheckCircle2 },
           { label: 'Rapoarte', href: `${peoHref}#rapoarte`, icon: BriefcaseBusiness },
@@ -854,6 +882,60 @@ export default function ExpertHomeDashboard() {
                 Vezi detalii complete
                 <ArrowRight className="h-4 w-4" />
               </Link>
+            </RightInfoCard>
+
+            <RightInfoCard title="Submit readiness" icon={ClipboardList}>
+              <div className="space-y-3 text-sm">
+                {dashboardReadinessItems.length === 0 ? (
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-emerald-800">
+                    Nu exista blocaje sau warninguri pentru luna selectata.
+                  </div>
+                ) : (
+                  dashboardReadinessItems.map((item) => (
+                    <div key={item.label} className="rounded-lg border bg-white p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="font-semibold text-slate-900">{item.label}</p>
+                        <Badge variant={item.severity === 'blocking' ? 'destructive' : 'outline'}>
+                          {item.severity === 'blocking' ? 'Blocant' : 'Atentie'}
+                        </Badge>
+                      </div>
+                      <p className="mt-1 text-xs leading-5 text-muted-foreground">{item.detail}</p>
+                    </div>
+                  ))
+                )}
+              </div>
+              <Link href={`${peoHref}#calendar`} className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-primary">
+                Deschide calendarul PEO
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </RightInfoCard>
+
+            <RightInfoCard title="Livrabile comune neînregistrate" icon={AlertTriangle}>
+              {pendingSharedAlerts.length > 0 ? (
+                <div className="space-y-3">
+                  {pendingSharedAlerts.map((alert) => (
+                    <div key={alert.relationId} className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-950">
+                      <p className="text-sm font-semibold">{alert.title || alert.fileName || 'Document comun'}</p>
+                      <p className="mt-1 text-xs leading-5 text-amber-800">
+                        {alert.message}
+                      </p>
+                      <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                        {alert.projectId && <Badge variant="outline" className="border-amber-300 bg-white/80 text-amber-950">{alert.projectId}</Badge>}
+                        {alert.saCode && <Badge variant="outline" className="border-amber-300 bg-white/80 text-amber-950">{alert.saCode}</Badge>}
+                        {alert.activityDate && <Badge variant="outline" className="border-amber-300 bg-white/80 text-amber-950">{alert.activityDate}</Badge>}
+                        <Badge variant="secondary">{alert.status}</Badge>
+                      </div>
+                      <Button asChild size="sm" className="mt-3">
+                        <Link href={`${peoHref}&sharedDeliverableRelationId=${encodeURIComponent(alert.relationId)}`}>
+                          Asociaza in pontajul meu
+                        </Link>
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">Nu exista livrabile comune neînregistrate pentru luna selectata.</p>
+              )}
             </RightInfoCard>
 
             <RightInfoCard title="Clarificări PM" icon={AlertTriangle}>
@@ -1018,36 +1100,6 @@ export default function ExpertHomeDashboard() {
           </Tabs>
         )}
 
-        {pendingSharedAlerts.length > 0 && (
-          <section className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-950">
-            <div className="flex items-center gap-2 font-semibold">
-              <AlertTriangle className="h-4 w-4" />
-              Livrabile comune neinregistrate
-            </div>
-            <div className="mt-3 space-y-2">
-              {pendingSharedAlerts.map((alert) => (
-                <div key={alert.relationId} className="rounded-md border border-amber-200 bg-white/70 p-3 text-sm">
-                  <div className="font-medium">{alert.title || alert.fileName}</div>
-                  <div className="mt-1 text-xs text-amber-800">
-                    {alert.message}
-                  </div>
-                  <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                    {alert.projectId && <Badge variant="outline">{alert.projectId}</Badge>}
-                    {alert.saCode && <Badge variant="outline">{alert.saCode}</Badge>}
-                    {alert.activityDate && <Badge variant="outline">{alert.activityDate}</Badge>}
-                    <Badge variant="secondary">{alert.status}</Badge>
-                  </div>
-                  <Button asChild size="sm" className="mt-3 h-8 rounded-md">
-                    <Link href={`${peoHref}&sharedDeliverableRelationId=${encodeURIComponent(alert.relationId)}`}>
-                      Asociaza in pontajul meu
-                    </Link>
-                  </Button>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
-
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <StatCard
             icon={Clock3}
@@ -1120,7 +1172,7 @@ export default function ExpertHomeDashboard() {
               <CardTitle className="text-lg">Detalii pontaj consolidat</CardTitle>
             </CardHeader>
             <CardContent className="p-4">
-              <Tabs defaultValue="ore" className="w-full">
+              <Tabs value={consolidatedTab} onValueChange={setConsolidatedTab} className="w-full">
                 <TabsList className="grid h-auto w-full gap-2 bg-muted/50 p-1 sm:grid-cols-3">
                   <TabsTrigger value="ore">Ore luna selectata</TabsTrigger>
                   <TabsTrigger value="consolidat">Pontaj consolidat</TabsTrigger>
@@ -1207,6 +1259,21 @@ export default function ExpertHomeDashboard() {
                 </TabsContent>
 
               </Tabs>
+              <div className="mt-4 border-t pt-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    exportPontaj().catch((error) => {
+                      console.error('Eroare export pontaj:', error);
+                      alert(error instanceof Error ? error.message : 'Exportul pontajului a esuat.');
+                    });
+                  }}
+                  disabled={!currentExpert || !selectedMonthHasAccess}
+                >
+                  Export pontaj
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </section>
