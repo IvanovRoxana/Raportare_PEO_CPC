@@ -2165,7 +2165,7 @@ function ExpertDashboardContent() {
         navItems={expertNavItems}
         contentClassName="max-w-none"
         eyebrow="Modul Expert"
-        title={isClarificationScopedAccess ? 'Clarificare PM' : showForm ? 'Adaugă activitate' : 'Activitățile mele'}
+        title={isClarificationScopedAccess ? 'Clarificare PM' : activeTab === 'calendar' ? 'Calendar pontaj' : showForm ? 'Adaugă activitate' : 'Activitățile mele'}
         reportingMonth={`${getMonthName(currentMonth)} ${currentYear}`}
         description={
           isClarificationScopedAccess
@@ -2220,8 +2220,8 @@ function ExpertDashboardContent() {
           </>
         }
         quickTabs={[
-          { label: 'Activități', href: '#activitati', icon: ClipboardList, active: true },
-          { label: 'Calendar', href: '#calendar', icon: CalendarDays },
+          { label: 'Activități', href: '#activitati', icon: ClipboardList, active: activeTab === 'activitati' },
+          { label: 'Calendar', href: '#calendar', icon: CalendarDays, active: activeTab === 'calendar' },
           { label: 'Livrabile', href: '#livrabile', icon: Upload },
           { label: 'Rapoarte', href: exportRaHref, icon: FileText },
         ]}
@@ -2237,7 +2237,7 @@ function ExpertDashboardContent() {
           </TabsList>
 
           {/* Tab: Activitati - pentru adaugare/editare activitati */}
-          <TabsContent id="activitati" value="activitati" forceMount className="space-y-6 scroll-mt-24">
+          <TabsContent id="activitati" value="activitati" className="space-y-6 scroll-mt-24">
             {pendingSharedActivityRelationId && (
               <div className="rounded-lg border border-blue-300 bg-blue-50 p-4 text-sm text-blue-900">
                 <div className="flex items-start gap-2">
