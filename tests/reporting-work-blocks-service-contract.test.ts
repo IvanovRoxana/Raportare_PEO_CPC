@@ -143,6 +143,8 @@ test('export page wires persisted work block bundles as a read-only optional pre
   assert.match(exportPageSource, /const isLoadingDeterministicWorkBlocks = reportingWorkBlocksEnabled/);
   assert.match(exportPageSource, /isLoadingDeterministicWorkBlocks=\{isLoadingDeterministicWorkBlocks\}/);
   assert.match(exportPageSource, /workBlockBundles=\{reportingWorkBlocksEnabled \? persistedWorkBlockBundles : \[\]\}/);
+  assert.match(exportPageSource, /<MonthlyReportExport[\s\S]*workBlockBundles=\{reportingWorkBlocksEnabled \? persistedWorkBlockBundles : \[\]\}/);
+  assert.match(exportPageSource, /<MonthlyReportExport[\s\S]*workBlockBundlesLoading=\{isLoadingDeterministicWorkBlocks\}/);
   assert.match(exportPageSource, /projectCode=\{selectedExpert\.projectCode \?\? '302141'\}/);
   assert.match(reportingWorkBlocksPanelSource, /persistedBundles\?: ReportingWorkBlockBundle\[\];/);
   assert.match(reportingWorkBlocksPanelSource, /persistedBundles = \[\]/);

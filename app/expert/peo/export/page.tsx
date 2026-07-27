@@ -191,6 +191,8 @@ function ExportRaContent() {
               activities={activities}
               concurrentProjects={concurrentProjects}
               concurrentTimesheetEntries={concurrentTimesheetEntries.filter((entry) => entry.expertId === selectedExpertId)}
+              workBlockBundles={reportingWorkBlocksEnabled ? persistedWorkBlockBundles : []}
+              workBlockBundlesLoading={isLoadingDeterministicWorkBlocks}
               month={currentMonth}
               year={currentYear}
             />

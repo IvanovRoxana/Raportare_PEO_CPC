@@ -16,3 +16,13 @@ test('exportul lunar continua RA chiar daca un document anterior esueaza', () =>
   assert.match(monthlyReportExportSource, /Am descarcat documentele generate, dar unele exporturi au esuat:/);
   assert.match(monthlyReportExportSource, /whitespace-pre-line/);
 });
+
+test('exportul lunar descarca RA ca Anexa 10 DOCX determinist', () => {
+  assert.match(monthlyReportExportSource, /buildAnexa10ReportModel/);
+  assert.match(monthlyReportExportSource, /buildAnexa10DocxBlob/);
+  assert.match(monthlyReportExportSource, /triggerDownload\(blob, buildAnexa10DocxFilename\(model\)\);/);
+  assert.match(monthlyReportExportSource, /workBlockBundles: workBlockBundles\.length > 0 \? workBlockBundles : undefined/);
+  assert.match(monthlyReportExportSource, /Raport de Activitate \(Anexa 10 \.docx\)/);
+  assert.doesNotMatch(monthlyReportExportSource, /\/api\/ai\/generate-report/);
+  assert.doesNotMatch(monthlyReportExportSource, /Raport_Activitate_\$\{expert\.name\}.*\.md/);
+});
