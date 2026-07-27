@@ -559,6 +559,7 @@ export function ActivityForm({
   const [location, setLocation] = useState(activitySeed?.location || 'Birou');
   const [validationError, setValidationError] = useState<string | null>(null);
   const [isPreparingActivityAutofill, setIsPreparingActivityAutofill] = useState(false);
+  const [showActivityAutofillAuditDetails, setShowActivityAutofillAuditDetails] = useState(false);
   const [duplicateConfirmation, setDuplicateConfirmation] = useState<{
     identity: string;
     dates: string[];
@@ -913,6 +914,10 @@ export function ActivityForm({
       }
     },
   });
+  useEffect(() => {
+    setShowActivityAutofillAuditDetails(false);
+  }, [activityAutofillSuggestion?.description, activityAutofillSuggestion?.modelAuditId]);
+
   const activityAutofillDeliverables = deliverablesForEligibility.length > 0 ? deliverablesForEligibility : deliverables;
   const canExtractActivityAutofillText = activityAutofillDeliverables.some((deliverable) => (
     deliverable.uploaded
@@ -3352,7 +3357,24 @@ export function ActivityForm({
                         </div>
                       </div>
                     )}
-                    {activityAutofillSuggestion.agent && (
+                    {(activityAutofillSuggestion.agent
+                      || activityAutofillSuggestion.evidence.length > 0
+                      || activityAutofillSuggestion.warnings.length > 0
+                      || activityAutofillSuggestion.rag
+                      || activityAutofillSuggestion.saPurpose) && (
+                      <div className="flex justify-end">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 px-2 text-xs text-emerald-800"
+                          onClick={() => setShowActivityAutofillAuditDetails((value) => !value)}
+                        >
+                          {showActivityAutofillAuditDetails ? 'Ascunde audit PM' : 'Arata audit PM'}
+                        </Button>
+                      </div>
+                    )}
+                    {showActivityAutofillAuditDetails && activityAutofillSuggestion.agent && (
                       <div className="grid gap-2 md:grid-cols-2">
                         <div className="rounded border border-emerald-200 bg-white p-2 text-xs text-slate-800">
                           <div className="font-medium text-emerald-800">Verificari Agent PEO</div>
@@ -3453,7 +3475,7 @@ export function ActivityForm({
                         </div>
                       </div>
                     )}
-                    {(activityAutofillSuggestion.evidence.length > 0 || activityAutofillSuggestion.warnings.length > 0) && (
+                    {showActivityAutofillAuditDetails && (activityAutofillSuggestion.evidence.length > 0 || activityAutofillSuggestion.warnings.length > 0) && (
                       <div className="grid gap-2 md:grid-cols-2">
                         {activityAutofillSuggestion.evidence.length > 0 && (
                           <div className="rounded border border-emerald-200 bg-white p-2 text-xs text-slate-800">
@@ -3477,7 +3499,7 @@ export function ActivityForm({
                         )}
                       </div>
                     )}
-                    {activityAutofillSuggestion.rag && (
+                    {showActivityAutofillAuditDetails && activityAutofillSuggestion.rag && (
                       <div className="rounded border border-emerald-200 bg-white p-2 text-xs text-slate-800">
                         <div className="font-medium text-emerald-800">Context RAG</div>
                         {activityAutofillSuggestion.rag.warnings.length > 0 && (
@@ -3498,7 +3520,7 @@ export function ActivityForm({
                         )}
                       </div>
                     )}
-                    {activityAutofillSuggestion.saPurpose && (
+                    {showActivityAutofillAuditDetails && activityAutofillSuggestion.saPurpose && (
                       <div className={`rounded border p-2 text-xs ${
                         activityAutofillSuggestion.saPurpose.found
                           ? 'border-emerald-200 bg-white text-slate-800'

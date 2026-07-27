@@ -62,22 +62,52 @@ function lowerFirst(value: string) {
   return value ? `${value.charAt(0).toLocaleLowerCase('ro-RO')}${value.slice(1)}` : value;
 }
 
-function cleanFinalDescription(value: unknown, request: ActivityAgentRequest) {
+function normalizePolicyText(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function hasForbiddenDescriptionContent(value: string) {
   const forbiddenPatterns = [
-    /\bformular(?:ul)?\b/i,
-    /\bactivitatea selectat[ae]\b/i,
-    /\bagent(?:ul)?\s+AI\b/i,
-    /\bOCR\b/i,
-    /\bRAG\b/i,
-    /\bcontext disponibil\b/i,
-    /\bam (?:citit|extras|procesat) (?:livrabilul|documentul)\b/i,
-    /\blivrabil(?:ul|e|ele|ului)?\b/i,
-    /\bsursele?\s+(?:folosite|utilizate|disponibile|consultate)\b/i,
-    /\bam urmarit sa pastrez descrierea aliniata\b/i,
-    /\b(?:necesita|necesită) verificare PM\b/i,
-    /\bvalidare de catre PM\b/i,
-    /\bpregatit(?:a)? formularea pentru raportarea lunara\b/i,
+    /\bformular(?:ul)?\b/,
+    /\bactivitatea selectat[ae]\b/,
+    /\bagent(?:ul)?\s+(?:ai|peo)\b/,
+    /\bocr\b/,
+    /\brag\b/,
+    /\bcontext(?:ul)?\s+disponibil\b/,
+    /\b(?:am\s+)?(?:citit|extras|procesat|parcurs)\s+(?:livrabilul|documentul|textul)\b/,
+    /\blivrabil(?:ul|e|ele|ului)?\b/,
+    /\bdocument(?:ul)?\s+atasat\b/,
+    /\bsurse?(?:le)?\s+(?:folosite|utilizate|disponibile|consultate)\b/,
+    /\bam urmarit sa pastrez\b/,
+    /\b(?:necesita\s+)?verificare\s+pm\b/,
+    /\bvalidare(?:a)?\s+(?:de catre\s+)?pm\b/,
+    /\braportarea lunara\b/,
+    /\bpregatit(?:a)?\s+formularea\b/,
   ];
+  const normalized = normalizePolicyText(value);
+  return forbiddenPatterns.some((pattern) => pattern.test(normalized));
+}
+
+function buildMinimalFinalDescription(request: ActivityAgentRequest) {
+  const activity = request.activityName || request.title || 'activitatea raportata';
+  const sa = request.saCode ? ` in cadrul ${request.saCode}` : '';
+  const firstSentence = `am realizat activitati de ${activity}${sa}, prin analiza, structurarea si formularea elementelor relevante pentru obiectivele proiectului`;
+  const resultSentence = 'Activitatea a contribuit la documentarea rezultatelor obtinute si la fundamentarea unei raportari coerente, proportionale cu informatiile confirmate.';
+  const prefix = formatActivityDates(request);
+
+  if (prefix) {
+    return `${prefix}, ${firstSentence}. ${resultSentence}`;
+  }
+
+  return `Am realizat activitati de ${activity}${sa}, prin analiza, structurarea si formularea elementelor relevante pentru obiectivele proiectului. ${resultSentence}`;
+}
+
+function cleanFinalDescription(value: unknown, request: ActivityAgentRequest) {
   const normalized = String(value ?? '')
     .replace(/\s+/g, ' ')
     .replace(/\b([A-Za-zăâîșțĂÂÎȘȚ])-\s+([A-Za-zăâîșțĂÂÎȘȚ])\b/g, '$1$2')
@@ -86,15 +116,16 @@ function cleanFinalDescription(value: unknown, request: ActivityAgentRequest) {
     .split(/(?<=[.!?])\s+/)
     .map((sentence) => sentence.trim())
     .filter((sentence) => sentence.length > 0)
-    .filter((sentence) => !forbiddenPatterns.some((pattern) => pattern.test(sentence)));
-  const cleaned = sentences.join(' ').trim() || normalized;
+    .filter((sentence) => !hasForbiddenDescriptionContent(sentence));
+  const cleaned = sentences.join(' ').trim();
+  const safeCleaned = cleaned || buildMinimalFinalDescription(request);
   const prefix = formatActivityDates(request);
 
-  if (!prefix || /^În (data|zilele) de\b/i.test(cleaned)) {
-    return cleaned;
+  if (!prefix || /^În (data|zilele) de\b/i.test(safeCleaned)) {
+    return safeCleaned;
   }
 
-  return `${prefix}, ${lowerFirst(cleaned).replace(/^\s*în\s+data\s+de\s+/i, '')}`;
+  return `${prefix}, ${lowerFirst(safeCleaned).replace(/^\s*în\s+data\s+de\s+/i, '')}`;
 }
 
 function shortSummaryFromDescription(description: string, request: ActivityAgentRequest) {
