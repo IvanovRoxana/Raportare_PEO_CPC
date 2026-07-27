@@ -117,6 +117,8 @@ const SAVED_SLOT_TYPES = new Set<DeliverableSlot['slotType']>([
   'justificativ',
 ]);
 
+const MISSING_MAIN_DELIVERABLE_MESSAGE = 'Adauga un livrabil principal sau bifeaza "Incarc livrabilul principal mai tarziu" in pasul Livrabile.';
+
 function resolveSavedSlotType(deliverableType?: string, category?: string): DeliverableSlot['slotType'] {
   const savedType = category || deliverableType;
   return SAVED_SLOT_TYPES.has(savedType as DeliverableSlot['slotType'])
@@ -1116,7 +1118,7 @@ export function ActivityForm({
   ), 0);
   const eventDur = parseFloat(eventDuration) || 0;
   const needsExtendedDesc = isEvent && eventDur > 0 && totalHours > eventDur && (eventExtendedDesc || '').trim().length < 20;
-  const saveBlockers = [
+  const baseSaveBlockers = [
     selectedDates.length === 0 ? 'Selecteaza cel putin o zi din calendar.' : null,
     (!effectiveActivityTitle.trim() && !isLeave) ? 'Selecteaza tipul activitatii.' : null,
     isSaving ? 'Salvarea este deja in curs.' : null,
@@ -1128,11 +1130,6 @@ export function ActivityForm({
     needsCommonDesc ? 'Pentru activitate comuna, descrierea trebuie sa aiba minimum 30 de caractere.' : null,
     needsExtendedDesc ? 'Pentru evenimente cu ore peste durata evenimentului, completeaza descrierea extinsa.' : null,
   ].filter((message): message is string => Boolean(message));
-  const isSaveDisabled = saveBlockers.length > 0;
-  const footerValidationMessage = validationError || saveBlockers[0] || null;
-  const footerAdditionalBlockersCount = validationError
-    ? saveBlockers.length
-    : Math.max(0, saveBlockers.length - 1);
   // Update activity when SA changes
   useEffect(() => {
     if (isGdprExpert && gdprTemplateCode) return;
@@ -1391,6 +1388,28 @@ export function ActivityForm({
   ) => {
     setValidationError(null);
     const reportingWarnings: string[] = [];
+    const hasMainDeliverableForSave = deliverables.some((deliverable) => (
+      (!deliverable.slotType || deliverable.slotType === 'livrabil')
+      && deliverable.uploaded
+      && Boolean(deliverable.filename || deliverable.name)
+    ));
+    const hasEventMomForSave = isEvent && deliverables.some((deliverable) => (
+      deliverable.slotType === 'event_mom'
+      && deliverable.uploaded
+      && Boolean(deliverable.filename || deliverable.name || deliverable.declaredTitle)
+    ));
+    if (
+      showStandardActivityWorkflow
+      && !isLeave
+      && !isException
+      && !hasMainDeliverableForSave
+      && !hasEventMomForSave
+      && !skipMainDeliverableForNow
+    ) {
+      setValidationError(MISSING_MAIN_DELIVERABLE_MESSAGE);
+      setCurrentWizardStep('deliverables');
+      return;
+    }
 
     const invalidTitleDeliverable = deliverables.find((d) => (
       d.uploaded
@@ -1829,6 +1848,7 @@ export function ActivityForm({
     isBusinessHubTabActive,
     isEvent,
     isGdprExpert,
+    isException,
     isSaving,
     isLeave,
     location,
@@ -1837,6 +1857,8 @@ export function ActivityForm({
     saCode,
     selectedCatalogItem?.id,
     selectedDates,
+    showStandardActivityWorkflow,
+    skipMainDeliverableForNow,
     uploadDeliverableFile,
     year,
   ]);
@@ -1920,6 +1942,25 @@ export function ActivityForm({
     && !deliverable.isPendingConfirm
     && Boolean(deliverable.filename || deliverable.name || deliverable.declaredTitle)
   ));
+  const hasUploadedMainDeliverable = mainDeliverables.some((deliverable) => (
+    deliverable.uploaded && Boolean(deliverable.filename || deliverable.name)
+  ));
+  const isMissingRequiredMainDeliverable = (
+    showStandardActivityWorkflow
+    && !isLeave
+    && !isException
+    && !hasUploadedMainDeliverable
+    && !hasEventMomAsMainDeliverable
+    && !skipMainDeliverableForNow
+  );
+  const saveBlockers = isMissingRequiredMainDeliverable
+    ? [...baseSaveBlockers, MISSING_MAIN_DELIVERABLE_MESSAGE]
+    : baseSaveBlockers;
+  const isSaveDisabled = saveBlockers.length > 0;
+  const footerValidationMessage = validationError || saveBlockers[0] || null;
+  const footerAdditionalBlockersCount = validationError
+    ? saveBlockers.length
+    : Math.max(0, saveBlockers.length - 1);
   useEffect(() => {
     if (mainDeliverables.length > 0 && skipMainDeliverableForNow) {
       setSkipMainDeliverableForNow(false);
@@ -1947,7 +1988,7 @@ export function ActivityForm({
         : skipMainDeliverableForNow
           ? 'Incarcare mai tarziu'
           : 'Documente',
-      blocked: !canOpenDeliverablesStep,
+      blocked: !canOpenDeliverablesStep || isMissingRequiredMainDeliverable,
       disabled: !canOpenDeliverablesStep,
     },
     {
@@ -1980,6 +2021,7 @@ export function ActivityForm({
     isLeave,
     isException,
     isSaveDisabled,
+    isMissingRequiredMainDeliverable,
     mainDeliverables.length,
     needsCommonDesc,
     needsExtendedDesc,
@@ -3969,7 +4011,7 @@ export function ActivityForm({
         )}
 
         {/* Validation warnings */}
-        {(currentWizardStep === 'review' || currentWizardStep === 'deliverables' || (!isWorkspaceLayout || !showObservationRail)) && showStandardActivityWorkflow && !isLeave && !isException && mainDeliverables.length === 0 && !hasEventMomAsMainDeliverable && (
+        {(currentWizardStep === 'review' || currentWizardStep === 'deliverables' || (!isWorkspaceLayout || !showObservationRail)) && showStandardActivityWorkflow && !isLeave && !isException && !hasUploadedMainDeliverable && !hasEventMomAsMainDeliverable && (
           <div className="flex items-center gap-2 p-3 bg-amber-50 rounded-lg border border-amber-200">
             <AlertTriangle className="h-4 w-4 text-amber-600" />
             <span className="text-sm text-amber-800">
