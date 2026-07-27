@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useMemo, useCallback, type SetStateAction } from 'react';
-import { Upload, X, FileText, Loader2, Users, Plus, AlertTriangle, CheckCircle, Sparkles } from 'lucide-react';
+import { Upload, X, FileText, Loader2, Users, Plus, AlertTriangle, CheckCircle, Sparkles, Check } from 'lucide-react';
 import { uploadData } from 'aws-amplify/storage';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -129,8 +129,30 @@ type DuplicateDeliverableActivityChoice = {
   isCompatible: boolean;
 };
 
+type ActivityWizardStepId = 'type' | 'time' | 'deliverables' | 'description' | 'collaboration' | 'review';
+
+type ActivityWizardStep = {
+  id: ActivityWizardStepId;
+  label: string;
+  description: string;
+  blocked?: boolean;
+};
+
 function getActivityDuplicateChoiceLabel(activity: Pick<Activity, 'activityType' | 'title'>) {
   return activity.activityType || activity.title || 'Activitate fara titlu';
+}
+
+function getResolutionWizardStep(resolutionHint?: ActivityResolutionHint): ActivityWizardStepId {
+  if (!resolutionHint) return 'type';
+  if (resolutionHint.section === 'deliverables' || resolutionHint.deliverableId) return 'deliverables';
+  if (resolutionHint.section === 'gdpr') return 'description';
+
+  const text = `${resolutionHint.title} ${resolutionHint.detail}`.toLowerCase();
+  if (text.includes('livrabil') || text.includes('document') || text.includes('eligibil')) return 'deliverables';
+  if (text.includes('descriere') || text.includes('gdpr') || text.includes('eveniment')) return 'description';
+  if (text.includes('zi') || text.includes('ore') || text.includes('pontaj')) return 'time';
+  if (text.includes('comun') || text.includes('colabor')) return 'collaboration';
+  return 'type';
 }
 
 interface ActivityFormProps {
@@ -319,6 +341,8 @@ export function ActivityForm({
   const [activityFormTab, setActivityFormTab] = useState<'business_hub' | 'standard' | 'event'>(
     () => isBusinessHubExpert && !initialActivity?.businessHubMetaJson ? 'business_hub' : 'standard',
   );
+  const [currentWizardStep, setCurrentWizardStep] = useState<ActivityWizardStepId>(() => getResolutionWizardStep(resolutionHint));
+  const [skipMainDeliverableForNow, setSkipMainDeliverableForNow] = useState(false);
   const isBusinessHubTabActive = isWorkspaceLayout && isBusinessHubExpert && activityFormTab === 'business_hub';
   const showStandardActivityWorkflow = !isBusinessHubTabActive;
 
@@ -884,7 +908,11 @@ export function ActivityForm({
     roleConfig.defaultSaCode,
     saCode,
   ]);
-  
+
+  useEffect(() => {
+    setCurrentWizardStep(getResolutionWizardStep(resolutionHint));
+  }, [resolutionHint?.id, resolutionHint?.section, resolutionHint?.deliverableId]);
+
   // Check if leave day
   const isLeave = dayType === 'CO' || dayType === 'CM';
   
@@ -914,7 +942,6 @@ export function ActivityForm({
   const footerAdditionalBlockersCount = validationError
     ? saveBlockers.length
     : Math.max(0, saveBlockers.length - 1);
-
   // Update activity when SA changes
   useEffect(() => {
     if (isGdprExpert && gdprTemplateCode) return;
@@ -1676,6 +1703,87 @@ export function ActivityForm({
     && !deliverable.isPendingConfirm
     && Boolean(deliverable.filename || deliverable.name || deliverable.declaredTitle)
   ));
+  useEffect(() => {
+    if (mainDeliverables.length > 0 && skipMainDeliverableForNow) {
+      setSkipMainDeliverableForNow(false);
+    }
+  }, [mainDeliverables.length, skipMainDeliverableForNow]);
+  const wizardSteps = useMemo<ActivityWizardStep[]>(() => [
+    {
+      id: 'type',
+      label: 'Tip activitate',
+      description: isBusinessHubExpert ? 'Business Hub, standard sau eveniment' : 'Standard sau eveniment',
+      blocked: !effectiveActivityTitle.trim() && !isLeave,
+    },
+    {
+      id: 'time',
+      label: 'Pontaj',
+      description: selectedDates.length > 0 ? `${selectedDates.length} zile, ${totalHours}h` : 'Zile si ore',
+      blocked: selectedDates.length === 0 || (isBusinessHubTabActive && selectedDates.length !== 1),
+    },
+    {
+      id: 'deliverables',
+      label: 'Livrabile',
+      description: mainDeliverables.length > 0
+        ? `${mainDeliverables.length} principal${mainDeliverables.length === 1 ? '' : 'e'}`
+        : skipMainDeliverableForNow
+          ? 'Incarcare mai tarziu'
+          : 'Documente',
+      blocked: false,
+    },
+    {
+      id: 'description',
+      label: 'Descriere',
+      description: isGdprExpert ? 'Asistent GDPR si text' : 'Text si asistare AI',
+      blocked: (isException && (description || '').length < 15) || needsCommonDesc || needsExtendedDesc,
+    },
+    {
+      id: 'collaboration',
+      label: 'Colaborare',
+      description: activityCommon ? `${collaborators.length} colaboratori` : 'Comun si GT',
+      blocked: false,
+    },
+    {
+      id: 'review',
+      label: 'Verificare',
+      description: isSaveDisabled ? 'Blocaje active' : 'Gata de salvare',
+      blocked: isSaveDisabled,
+    },
+  ], [
+    activityCommon,
+    collaborators.length,
+    description,
+    effectiveActivityTitle,
+    isBusinessHubExpert,
+    isBusinessHubTabActive,
+    isGdprExpert,
+    isLeave,
+    isException,
+    isSaveDisabled,
+    mainDeliverables.length,
+    needsCommonDesc,
+    needsExtendedDesc,
+    selectedDates.length,
+    skipMainDeliverableForNow,
+    totalHours,
+  ]);
+  const currentWizardStepIndex = Math.max(0, wizardSteps.findIndex((step) => step.id === currentWizardStep));
+  const isLastWizardStep = currentWizardStepIndex === wizardSteps.length - 1;
+  const goToWizardStep = useCallback((stepId: ActivityWizardStepId) => {
+    setCurrentWizardStep(stepId);
+  }, []);
+  const goToPreviousWizardStep = useCallback(() => {
+    setCurrentWizardStep((stepId) => {
+      const index = wizardSteps.findIndex((step) => step.id === stepId);
+      return wizardSteps[Math.max(0, index - 1)]?.id ?? 'type';
+    });
+  }, [wizardSteps]);
+  const goToNextWizardStep = useCallback(() => {
+    setCurrentWizardStep((stepId) => {
+      const index = wizardSteps.findIndex((step) => step.id === stepId);
+      return wizardSteps[Math.min(wizardSteps.length - 1, index + 1)]?.id ?? 'review';
+    });
+  }, [wizardSteps]);
   const existingDeliverableContexts = useMemo<ExistingDeliverableSourceContext[]>(() => (
     deliverables
       .map((deliverable) => buildExistingDeliverableSourceContext({
@@ -1735,6 +1843,7 @@ export function ActivityForm({
 
   const handleObservationRailAction = useCallback((_item: ObservationRailItem, actionId: string) => {
     if (actionId.startsWith('existing-source:')) {
+      setCurrentWizardStep('deliverables');
       applyExistingDeliverableSourceAction(actionId);
     }
   }, [applyExistingDeliverableSourceAction]);
@@ -2116,7 +2225,47 @@ export function ActivityForm({
           </div>
         )}
 
-        {isWorkspaceLayout && (
+        <div className="rounded-lg border bg-white p-3 shadow-sm">
+          <div className="grid gap-2 md:grid-cols-3 xl:grid-cols-6">
+            {wizardSteps.map((step, index) => {
+              const isActive = step.id === currentWizardStep;
+              const isComplete = index < currentWizardStepIndex && !step.blocked;
+              return (
+                <button
+                  key={step.id}
+                  type="button"
+                  onClick={() => goToWizardStep(step.id)}
+                  className={`flex min-w-0 items-start gap-2 rounded-md border px-3 py-2 text-left text-xs transition-colors ${
+                    isActive
+                      ? 'border-blue-500 bg-blue-50 text-blue-950'
+                      : step.blocked
+                        ? 'border-amber-200 bg-amber-50 text-amber-900'
+                        : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                  }`}
+                  aria-current={isActive ? 'step' : undefined}
+                >
+                  <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${
+                    isActive
+                      ? 'border-blue-500 bg-blue-600 text-white'
+                      : isComplete
+                        ? 'border-emerald-500 bg-emerald-500 text-white'
+                        : step.blocked
+                          ? 'border-amber-400 bg-amber-100 text-amber-800'
+                          : 'border-slate-300 bg-white text-slate-500'
+                  }`}>
+                    {isComplete ? <Check className="h-3 w-3" /> : step.blocked ? <AlertTriangle className="h-3 w-3" /> : <span className="h-2 w-2 rounded-full bg-current" />}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium">{step.label}</span>
+                    <span className="mt-0.5 block truncate text-[11px] opacity-80">{step.description}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {isWorkspaceLayout && currentWizardStep === 'type' && (
           <Tabs
             value={activityFormTab}
             onValueChange={(value) => setActivityFormTab(value as 'business_hub' | 'standard' | 'event')}
@@ -2292,85 +2441,89 @@ export function ActivityForm({
           </Tabs>
         )}
 
-        {/* Day Type and Hours */}
-        <div id="activity-form-details-section" className="grid scroll-mt-24 gap-4 md:grid-cols-2">
-          <Field>
-            <FieldLabel htmlFor="dayType">Tip zi</FieldLabel>
-            <Select value={dayType} onValueChange={(v) => setDayType(v as typeof dayType)}>
-              <SelectTrigger id="dayType">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="lucratoare">Lucratoare</SelectItem>
-                <SelectItem value="CO">CO - Concediu odihna</SelectItem>
-                <SelectItem value="CM">CM - Concediu medical</SelectItem>
-              </SelectContent>
-            </Select>
-          </Field>
+        {currentWizardStep === 'time' && (
+          <>
+            {/* Day Type and Hours */}
+            <div id="activity-form-details-section" className="grid scroll-mt-24 gap-4 md:grid-cols-2">
+              <Field>
+                <FieldLabel htmlFor="dayType">Tip zi</FieldLabel>
+                <Select value={dayType} onValueChange={(v) => setDayType(v as typeof dayType)}>
+                  <SelectTrigger id="dayType">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="lucratoare">Lucratoare</SelectItem>
+                    <SelectItem value="CO">CO - Concediu odihna</SelectItem>
+                    <SelectItem value="CM">CM - Concediu medical</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
 
-          {!isLeave && selectedDates.length === 1 && (
-            <Field>
-              <FieldLabel htmlFor="hours">Ore lucrate (max 8h/zi, norma {expertNorma}h)</FieldLabel>
-              <Select 
-                value={normalizedSelectedHours[selectedDates[0]] || defaultHours.toString()}
-                onValueChange={(v) => updateHoursForDate(selectedDates[0], v)}
-              >
-                <SelectTrigger id="hours">
-                  <SelectValue placeholder="Selecteaza orele" />
-                </SelectTrigger>
-                <SelectContent>
-                  {hourOptions
-                    .map(h => (
-                      <SelectItem key={h} value={h.toString()}>
-                        {h} {h === 1 ? 'ora' : 'ore'}
-                      </SelectItem>
-                    ))
-                  }
-                </SelectContent>
-              </Select>
-            </Field>
-          )}
-        </div>
-
-        {/* Per-day hours when multiple days selected */}
-        {!isLeave && selectedDates.length > 1 && (
-          <div className="space-y-3">
-            <FieldLabel>Ore pentru fiecare zi (max 8h/zi, norma {expertNorma}h)</FieldLabel>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {[...selectedDates].sort().map(date => (
-                <div key={date} className="flex items-center gap-2 p-2 bg-muted/50 rounded-md">
-                  <span className="text-xs font-medium min-w-[70px]">
-                    {formatDateRo(date)}
-                  </span>
+              {!isLeave && selectedDates.length === 1 && (
+                <Field>
+                  <FieldLabel htmlFor="hours">Ore lucrate (max 8h/zi, norma {expertNorma}h)</FieldLabel>
                   <Select 
-                    value={normalizedSelectedHours[date] || defaultHours.toString()}
-                    onValueChange={(v) => updateHoursForDate(date, v)}
+                    value={normalizedSelectedHours[selectedDates[0]] || defaultHours.toString()}
+                    onValueChange={(v) => updateHoursForDate(selectedDates[0], v)}
                   >
-                    <SelectTrigger className="h-8 w-[70px]">
-                      <SelectValue />
+                    <SelectTrigger id="hours">
+                      <SelectValue placeholder="Selecteaza orele" />
                     </SelectTrigger>
                     <SelectContent>
                       {hourOptions
                         .map(h => (
                           <SelectItem key={h} value={h.toString()}>
-                            {h}h
+                            {h} {h === 1 ? 'ora' : 'ore'}
                           </SelectItem>
                         ))
                       }
                     </SelectContent>
                   </Select>
-                </div>
-              ))}
+                </Field>
+              )}
             </div>
-            <p className="text-xs text-muted-foreground">
-              Total: {selectedDates.reduce((sum, date) => sum + Number(normalizePontajHoursValue(normalizedSelectedHours[date], defaultHours)), 0)}h pentru {selectedDates.length} zile
-            </p>
-          </div>
+
+            {/* Per-day hours when multiple days selected */}
+            {!isLeave && selectedDates.length > 1 && (
+              <div className="space-y-3">
+                <FieldLabel>Ore pentru fiecare zi (max 8h/zi, norma {expertNorma}h)</FieldLabel>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {[...selectedDates].sort().map(date => (
+                    <div key={date} className="flex items-center gap-2 p-2 bg-muted/50 rounded-md">
+                      <span className="text-xs font-medium min-w-[70px]">
+                        {formatDateRo(date)}
+                      </span>
+                      <Select 
+                        value={normalizedSelectedHours[date] || defaultHours.toString()}
+                        onValueChange={(v) => updateHoursForDate(date, v)}
+                      >
+                        <SelectTrigger className="h-8 w-[70px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {hourOptions
+                            .map(h => (
+                              <SelectItem key={h} value={h.toString()}>
+                                {h}h
+                              </SelectItem>
+                            ))
+                          }
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Total: {selectedDates.reduce((sum, date) => sum + Number(normalizePontajHoursValue(normalizedSelectedHours[date], defaultHours)), 0)}h pentru {selectedDates.length} zile
+                </p>
+              </div>
+            )}
+          </>
         )}
 
         {!isLeave && (
           <>
-            {isGdprExpert && (
+            {isGdprExpert && currentWizardStep === 'description' && (
               <div id="activity-form-gdpr-section" className="space-y-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4 scroll-mt-24">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
@@ -2545,7 +2698,7 @@ export function ActivityForm({
             )}
 
             {/* Sub-activity and Activity */}
-            {showStandardActivityWorkflow && (
+            {showStandardActivityWorkflow && currentWizardStep === 'type' && (
               <div className="space-y-4">
                 <div className="grid gap-4 md:grid-cols-2">
                   <Field>
@@ -2648,7 +2801,7 @@ export function ActivityForm({
             )}
 
             {/* Main Deliverables */}
-            {showStandardActivityWorkflow && !isException && (
+            {showStandardActivityWorkflow && currentWizardStep === 'deliverables' && !isException && (
               <div className="space-y-4">
                 {/* Livrabile principale */}
                 <div id="activity-form-deliverables-section" className="bg-slate-50 rounded-lg p-4 border scroll-mt-24">
@@ -2700,8 +2853,17 @@ export function ActivityForm({
                   />
 
                   {mainDeliverables.length === 0 && (
-                    <div className="text-center py-4 text-xs text-muted-foreground border border-dashed rounded-md">
-                      Niciun livrabil. Apasa + pentru a adauga outputul activitatii.
+                    <div className="space-y-3 rounded-md border border-dashed p-4 text-xs text-muted-foreground">
+                      <div className="text-center">
+                        Niciun livrabil principal. Poti adauga acum, alege unul existent sau marca faptul ca il incarci mai tarziu.
+                      </div>
+                      <label className="flex cursor-pointer items-center justify-center gap-2 rounded-md border bg-white px-3 py-2 text-slate-700">
+                        <Checkbox
+                          checked={skipMainDeliverableForNow}
+                          onCheckedChange={(checked) => setSkipMainDeliverableForNow(checked === true)}
+                        />
+                        Incarc livrabilul principal mai tarziu
+                      </label>
                     </div>
                   )}
 
@@ -2758,7 +2920,7 @@ export function ActivityForm({
               </div>
             )}
 
-            {showStandardActivityWorkflow && mainDeliverableForEligibility && !isLeave && !isException && (
+            {showStandardActivityWorkflow && currentWizardStep === 'deliverables' && mainDeliverableForEligibility && !isLeave && !isException && (
               <div className="rounded-lg border border-indigo-100 bg-white p-3 shadow-sm">
                 <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0">
@@ -2802,7 +2964,7 @@ export function ActivityForm({
             )}
 
             {/* Description */}
-            {showStandardActivityWorkflow && (
+            {showStandardActivityWorkflow && currentWizardStep === 'description' && (
             <Field>
               <FieldLabel htmlFor="description">
                 {isException 
@@ -3131,7 +3293,7 @@ export function ActivityForm({
             </AlertDialog>
 
             {/* Event duration (for event activities) */}
-            {showStandardActivityWorkflow && isEvent && !isWorkspaceLayout && (
+            {showStandardActivityWorkflow && currentWizardStep === 'description' && isEvent && !isWorkspaceLayout && (
               <Field>
                 <FieldLabel>Durata evenimentului (ore) - optional</FieldLabel>
                 <div className="flex items-center gap-4">
@@ -3176,9 +3338,10 @@ export function ActivityForm({
             )}
 
             {/* Supporting deliverable settings */}
-            {showStandardActivityWorkflow && !isException && (
+            {showStandardActivityWorkflow && (currentWizardStep === 'deliverables' || currentWizardStep === 'collaboration') && !isException && (
               <div className="space-y-4">
                 {/* Colaborare */}
+                {currentWizardStep === 'collaboration' && (
                 <details open={activityCommon} className="bg-blue-50 rounded-lg p-4 border border-blue-200">
                   <summary className="text-sm font-medium text-blue-800 flex cursor-pointer list-none items-center gap-2">
                     <Users className="h-4 w-4" />
@@ -3316,8 +3479,10 @@ export function ActivityForm({
                     )}
                   </div>
                 </details>
+                )}
 
                 {/* Raport preliminar (optional) */}
+                {currentWizardStep === 'deliverables' && (
                 <details open={prelimDeliverables.length > 0} className="bg-purple-50 rounded-lg p-4 border border-purple-200">
                   <summary className="cursor-pointer list-none text-sm font-medium text-purple-800">
                     Raport preliminar / descriptiv
@@ -3378,8 +3543,10 @@ export function ActivityForm({
                     ))}
                   </div>
                 </details>
+                )}
 
                 {/* Alte documente justificative (optional) */}
+                {currentWizardStep === 'deliverables' && (
                 <details open={justifDeliverables.length > 0} className="bg-amber-50 rounded-lg p-4 border border-amber-200">
                   <summary className="cursor-pointer list-none text-sm font-medium text-amber-800">
                     Alte documente justificative
@@ -3442,9 +3609,10 @@ export function ActivityForm({
                     </div>
                   )}
                 </details>
+                )}
 
                 {/* Event Documents Panel */}
-                {isEvent && (
+                {currentWizardStep === 'deliverables' && isEvent && (
                   <details open className="rounded-lg border border-green-200 bg-green-50 p-4">
                     <summary className="cursor-pointer list-none text-sm font-medium text-green-800">
                       Eveniment
@@ -3474,7 +3642,7 @@ export function ActivityForm({
             )}
 
             {/* Grup Tinta Section (only for Expert Recrutare si Selectie GT) */}
-            {isGtExpert && saCode === 'SA1.1' && (
+            {currentWizardStep === 'collaboration' && isGtExpert && saCode === 'SA1.1' && (
               <div className="space-y-3 bg-teal-50 rounded-lg p-4 border border-teal-200">
                 <div className="flex items-center justify-between">
                   <div className="text-sm font-medium text-teal-800">Grup Tinta</div>
@@ -3524,24 +3692,61 @@ export function ActivityForm({
           </>
         )}
 
+        {currentWizardStep === 'review' && (
+          <div className="grid gap-3 rounded-lg border bg-white p-4 text-sm md:grid-cols-2">
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Expert</div>
+              <div className="font-medium text-foreground">{expertName}</div>
+            </div>
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pontaj</div>
+              <div className="font-medium text-foreground">{selectedDates.length} zile / {totalHours}h</div>
+            </div>
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Activitate</div>
+              <div className="font-medium text-foreground">{effectiveSaCode || 'SA neselectat'}{effectiveActivityTitle ? ` - ${effectiveActivityTitle}` : ''}</div>
+            </div>
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Livrabile</div>
+              <div className="font-medium text-foreground">
+                {mainDeliverables.length > 0
+                  ? `${mainDeliverables.length} principale`
+                  : skipMainDeliverableForNow
+                    ? 'Livrabil principal marcat pentru incarcare ulterioara'
+                    : 'Fara livrabil principal'}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Colaborare</div>
+              <div className="font-medium text-foreground">{activityCommon ? `${collaborators.length} colaboratori` : 'Activitate individuala'}</div>
+            </div>
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Documente optionale</div>
+              <div className="font-medium text-foreground">{prelimDeliverables.length} raport preliminar / {justifDeliverables.length} justificative</div>
+            </div>
+          </div>
+        )}
+
         {/* Validation warnings */}
-        {(!isWorkspaceLayout || !showObservationRail) && showStandardActivityWorkflow && !isLeave && !isException && mainDeliverables.length === 0 && !hasEventMomAsMainDeliverable && (
+        {(currentWizardStep === 'review' || currentWizardStep === 'deliverables' || (!isWorkspaceLayout || !showObservationRail)) && showStandardActivityWorkflow && !isLeave && !isException && mainDeliverables.length === 0 && !hasEventMomAsMainDeliverable && (
           <div className="flex items-center gap-2 p-3 bg-amber-50 rounded-lg border border-amber-200">
             <AlertTriangle className="h-4 w-4 text-amber-600" />
             <span className="text-sm text-amber-800">
-              Activitatea necesita cel putin un livrabil principal.
+              {skipMainDeliverableForNow
+                ? 'Livrabilul principal este marcat pentru incarcare ulterioara. Validarea finala ramane activa daca regulile cer documentul acum.'
+                : 'Activitatea necesita cel putin un livrabil principal.'}
             </span>
           </div>
         )}
 
-        {(!isWorkspaceLayout || !showObservationRail) && validationError && (
+        {(currentWizardStep === 'review' || !isWorkspaceLayout || !showObservationRail) && validationError && (
           <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
             <span>{validationError}</span>
           </div>
         )}
 
-        {(!isWorkspaceLayout || !showObservationRail) && isSaveDisabled && !isSaving && (
+        {(currentWizardStep === 'review' || !isWorkspaceLayout || !showObservationRail) && isSaveDisabled && !isSaving && (
           <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
             <div>
@@ -3577,8 +3782,26 @@ export function ActivityForm({
             </Button>
             <Button
               type="button"
+              variant="outline"
+              onClick={goToPreviousWizardStep}
+              disabled={currentWizardStepIndex === 0}
+              className={isWorkspaceLayout ? 'w-full sm:w-auto' : undefined}
+            >
+              Inapoi
+            </Button>
+            {!isLastWizardStep && (
+              <Button
+                type="button"
+                onClick={goToNextWizardStep}
+                className={isWorkspaceLayout ? 'w-full sm:w-auto' : undefined}
+              >
+                Continua
+              </Button>
+            )}
+            <Button
+              type="button"
               onClick={() => handleSave()}
-              disabled={isSaveDisabled || isSaving}
+              disabled={!isLastWizardStep || isSaveDisabled || isSaving}
               className={isWorkspaceLayout ? 'w-full sm:w-auto' : undefined}
             >
               {isSaving ? (
