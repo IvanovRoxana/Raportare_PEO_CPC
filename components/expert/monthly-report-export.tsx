@@ -22,6 +22,9 @@ import { buildPontajExportPayload } from '@/lib/pontaj-export-payload';
 import { getWorkingHoursInfo } from '@/lib/working-hours';
 import { normalizePeoCategory } from '@/lib/peo-category';
 import { compileActivitiesByPeriodGroup } from '@/lib/activity-edit';
+import { buildAnexa10ReportModel } from '@/lib/activity-report/build-report-model';
+import { buildAnexa10DocxBlob, buildAnexa10DocxFilename } from '@/lib/activity-report/docx-export';
+import type { ReportingWorkBlockBundle } from '@/lib/activity-report/work-blocks';
 import {
   buildBusinessHubAddressDocxBlob,
   buildBusinessHubAddressFilename,
@@ -38,11 +41,22 @@ interface MonthlyReportExportProps {
   activities: Activity[];
   concurrentProjects?: ConcurrentProject[];
   concurrentTimesheetEntries?: ConcurrentProjectTimesheetEntry[];
+  workBlockBundles?: ReportingWorkBlockBundle[];
+  workBlockBundlesLoading?: boolean;
   month: number;
   year: number;
 }
 
-export function MonthlyReportExport({ expert, activities, concurrentProjects = [], concurrentTimesheetEntries = [], month, year }: MonthlyReportExportProps) {
+export function MonthlyReportExport({
+  expert,
+  activities,
+  concurrentProjects = [],
+  concurrentTimesheetEntries = [],
+  workBlockBundles = [],
+  workBlockBundlesLoading = false,
+  month,
+  year,
+}: MonthlyReportExportProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [includeOPIS, setIncludeOPIS] = useState(true);
@@ -94,36 +108,19 @@ export function MonthlyReportExport({ expert, activities, concurrentProjects = [
       }
       
       if (includeRA) {
-        const reportActivities = compileActivitiesByPeriodGroup(activities);
-        // Call AI to generate report
-        const response = await fetch('/api/ai/generate-report', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            activities: reportActivities,
-            month: getMonthName(month),
-            year,
-            expertName: expert.name,
-          }),
-        });
-        
-        if (!response.ok) {
-          const contentType = response.headers.get('Content-Type') || '';
-          const message = contentType.includes('application/json')
-            ? ((await response.json().catch(() => ({}))) as { error?: string }).error
-            : await response.text().catch(() => '');
-          throw new Error(message || `Exportul RA a esuat. Status HTTP: ${response.status}`);
+        if (workBlockBundlesLoading) {
+          throw new Error('Se incarca work block-urile salvate. Asteapta finalizarea incarcarii si incearca din nou.');
         }
 
-        const data = (await response.json()) as { report?: string };
-        if (!data.report?.trim()) {
-          throw new Error('Exportul RA nu a generat continut. Incearca din nou sau contacteaza administratorul.');
-        }
-
-        docs.push({
-          name: `Raport_Activitate_${expert.name}_${getMonthName(month)}_${year}.md`,
-          content: data.report,
+        const model = buildAnexa10ReportModel({
+          expert,
+          activities,
+          month,
+          year,
+          workBlockBundles: workBlockBundles.length > 0 ? workBlockBundles : undefined,
         });
+        const blob = await buildAnexa10DocxBlob(model);
+        triggerDownload(blob, buildAnexa10DocxFilename(model));
       }
 
       if (isBusinessHubExportAvailable && (includeBusinessHubPv || includeBusinessHubAddresses)) {
@@ -433,7 +430,7 @@ export function MonthlyReportExport({ expert, activities, concurrentProjects = [
               />
               <label htmlFor="ra" className="text-sm flex items-center gap-2">
                 <FileText className="h-4 w-4 text-purple-600" />
-                Raport de Activitate (generat AI)
+                Raport de Activitate (Anexa 10 .docx)
               </label>
             </div>
           </div>

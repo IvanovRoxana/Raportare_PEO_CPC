@@ -13,7 +13,7 @@ import {
 } from '@/lib/activity-autofill';
 import { buildActivityAutofillAuditPayload, buildCompactActivityAutofillRagContext } from '@/lib/rag/activity-autofill-rag';
 import { getCognitoAccessTokenFromRequest } from '@/lib/rag/cognito-auth';
-import { retrieveActivityAutofillContext } from '@/lib/rag/retrieval';
+import { retrieveActivityAutofillContext, retrieveSaPurposeContext } from '@/lib/rag/retrieval';
 import { createActivityAutofillAudit } from '@/lib/rag/store';
 import type { RagRetrievalResult } from '@/lib/rag/types';
 
@@ -58,7 +58,7 @@ export async function POST(req: Request) {
     if (!parsed.success) {
       return NextResponse.json(
         {
-          error: 'Cererea de descriere asistata nu contine livrabile, descriere si catalog valide.',
+          error: 'Cererea de descriere asistata nu contine livrabile si catalog valide.',
           issues: parsed.error.flatten(),
         },
         { status: 400 },
@@ -84,15 +84,17 @@ export async function POST(req: Request) {
       ...request,
       category: request.category || request.catalogCandidates.find((candidate) => candidate.category)?.category,
     };
-    const retrieval = await retrieveActivityAutofillContext(ragRequest, { authToken });
+    const [retrieval, saPurpose] = await Promise.all([
+      retrieveActivityAutofillContext(ragRequest, { authToken }),
+      retrieveSaPurposeContext(ragRequest, { authToken }),
+    ]);
     const ragContext = buildCompactActivityAutofillRagContext(retrieval);
-    const contextRequest = ragContext
-      ? normalizeActivityAutofillRequest({
-          ...request,
-          category: ragRequest.category,
-          internalRagContext: ragContext,
-        })
-      : request;
+    const contextRequest = normalizeActivityAutofillRequest({
+      ...request,
+      category: ragRequest.category,
+      internalRagContext: ragContext,
+      saPurposeContext: saPurpose.context,
+    });
     const selectedCandidate = getSelectedCatalogCandidate(contextRequest);
     const promptRequest = normalizeActivityAutofillRequest({
       ...contextRequest,
@@ -110,6 +112,14 @@ export async function POST(req: Request) {
           skippedReason: retrieval.skippedReason,
           chunks: retrieval.chunks.length,
           warnings: retrieval.warnings,
+        },
+        saPurpose: {
+          found: saPurpose.found,
+          saCode: request.saCode,
+          sourceType: saPurpose.context?.sourceType,
+          documentId: saPurpose.context?.documentId,
+          chunkIds: saPurpose.context?.chunkIds || [],
+          warnings: saPurpose.warnings,
         },
         catalogCandidatesTotal: request.catalogCandidates.length,
         catalogCandidatesPrompted: promptRequest.catalogCandidates.length,
@@ -158,8 +168,20 @@ export async function POST(req: Request) {
       confidence: suggestion.data.confidence,
       fieldInstructions: suggestion.data.fieldInstructions,
       evidence: suggestion.data.evidence,
-      warnings: uniqueMessages([...suggestion.data.warnings, ...retrieval.warnings]),
+      warnings: uniqueMessages([
+        ...suggestion.data.warnings,
+        ...retrieval.warnings,
+        ...saPurpose.warnings,
+      ]),
       rag: buildRagResponse(retrieval, authToken),
+      saPurpose: {
+        found: saPurpose.found,
+        saCode: request.saCode,
+        title: saPurpose.context?.title,
+        sourceType: saPurpose.context?.sourceType,
+        documentId: saPurpose.context?.documentId,
+        warnings: saPurpose.warnings,
+      },
       modelAuditId: result.auditId,
     });
   } catch (error) {

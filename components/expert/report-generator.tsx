@@ -1,14 +1,9 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { FileText, Download, Loader2, Sparkles } from 'lucide-react';
+import { FileText, Download, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { getMonthName } from '@/lib/app-utils';
 import {
   buildLocalActivityReport,
@@ -21,6 +16,7 @@ import { buildAnexa10ReportModel } from '@/lib/activity-report/build-report-mode
 import { buildAnexa10DocxBlob, buildAnexa10DocxFilename } from '@/lib/activity-report/docx-export';
 import { getAnexa10ExportReadiness } from '@/lib/activity-report/export-readiness';
 import { combineActivityReportSections, splitActivityReportSections } from '@/lib/activity-report/sections';
+import type { ReportingWorkBlockBundle } from '@/lib/activity-report/work-blocks';
 import { getDocumentAuditTitle } from '@/lib/document-sharing';
 import type { Activity, Expert } from '@/lib/types';
 
@@ -31,6 +27,8 @@ interface ReportGeneratorProps {
   expertName: string;
   expert?: Pick<Expert, 'id' | 'name' | 'positionInProject' | 'role' | 'contractNumber' | 'contractType' | 'category' | 'projectCode' | 'projectTitle' | 'beneficiary'>;
   enableDeterministicAnexa10Docx?: boolean;
+  isLoadingDeterministicWorkBlocks?: boolean;
+  workBlockBundles?: ReportingWorkBlockBundle[];
 }
 
 type ReportSectionKind = 'table' | 'narrative';
@@ -81,6 +79,8 @@ export function ReportGenerator({
   expertName,
   expert,
   enableDeterministicAnexa10Docx = false,
+  isLoadingDeterministicWorkBlocks = false,
+  workBlockBundles,
 }: ReportGeneratorProps) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
@@ -101,6 +101,7 @@ export function ReportGenerator({
   const [isLocalFallbackDraft, setIsLocalFallbackDraft] = useState(false);
   const deterministicAnexa10Model = useMemo(() => {
     if (!enableDeterministicAnexa10Docx || activities.length === 0) return null;
+    if (isLoadingDeterministicWorkBlocks) return null;
 
     const reportExpert = expert ?? {
       id: activities[0]?.expertId || 'expert',
@@ -113,11 +114,25 @@ export function ReportGenerator({
       activities,
       month,
       year,
+      workBlockBundles: workBlockBundles && workBlockBundles.length > 0 ? workBlockBundles : undefined,
     });
-  }, [activities, enableDeterministicAnexa10Docx, expert, expertName, month, year]);
+  }, [activities, enableDeterministicAnexa10Docx, expert, expertName, isLoadingDeterministicWorkBlocks, month, workBlockBundles, year]);
+  const persistedWorkBlockCount = workBlockBundles?.length ?? 0;
   const deterministicExportReadiness = deterministicAnexa10Model
-    ? getAnexa10ExportReadiness(deterministicAnexa10Model)
+    ? getAnexa10ExportReadiness(deterministicAnexa10Model, {
+      usesPersistedWorkBlocks: persistedWorkBlockCount > 0,
+    })
     : null;
+  const deterministicWorkBlockSourceLabel = persistedWorkBlockCount > 0
+    ? `Work block-uri persistate: ${persistedWorkBlockCount}`
+    : 'Work block-uri generate din activitati (fallback)';
+  const deterministicExportButtonTitle = activities.length === 0
+    ? 'Nu exista activitati pentru export Anexa 10.'
+    : isLoadingDeterministicWorkBlocks
+      ? 'Se incarca work block-urile persistate pentru Anexa 10.'
+    : deterministicExportReadiness?.canExport
+      ? `${deterministicExportReadiness.statusLabel}. ${deterministicWorkBlockSourceLabel}.`
+      : deterministicExportReadiness?.blockingMessages[0] ?? 'Exportul Anexa 10 este blocat pentru verificare.';
 
   const generateWithAI = async () => {
     setIsGenerating(true);
@@ -359,10 +374,10 @@ export function ReportGenerator({
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <FileText className="h-5 w-5" />
-          Generare Raport
+          Export Raport de Activitate
         </CardTitle>
         <CardDescription>
-          Generează raportul de activitate pentru {getMonthName(month)} {year}
+          Verifica si descarca Raportul de Activitate in format Anexa 10 pentru {getMonthName(month)} {year}.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -381,37 +396,6 @@ export function ReportGenerator({
           </div>
         </div>
 
-
-        <div className="grid gap-4 rounded-lg border p-4 md:grid-cols-2">
-          <div className="space-y-2">
-            <Label>Nivel detaliere</Label>
-            <Select value={detailLevel} onValueChange={setDetailLevel}>
-              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="mediu">Mediu</SelectItem>
-                <SelectItem value="detaliat">Detaliat</SelectItem>
-                <SelectItem value="foarte_detaliat">Foarte detaliat</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex items-center gap-2 pt-7">
-            <Checkbox id="fine-tuned-report" checked={useFineTunedModel} onCheckedChange={(checked) => setUseFineTunedModel(Boolean(checked))} />
-            <Label htmlFor="fine-tuned-report">Folosește model fine-tuned dacă este disponibil</Label>
-          </div>
-          <div className="space-y-2">
-            <Label>Formulări preferate (separate prin virgulă)</Label>
-            <Input value={preferredPhrases} onChange={(event) => setPreferredPhrases(event.target.value)} placeholder="am elaborat, am consolidat" />
-          </div>
-          <div className="space-y-2">
-            <Label>Formulări interzise (separate prin virgulă)</Label>
-            <Input value={forbiddenPhrases} onChange={(event) => setForbiddenPhrases(event.target.value)} placeholder="conform documentului" />
-          </div>
-          <div className="space-y-2 md:col-span-2">
-            <Label>Exemple validate / fragmente de stil</Label>
-            <Textarea value={validatedExamples} onChange={(event) => setValidatedExamples(event.target.value)} rows={3} placeholder="Lipește unul sau mai multe exemple scurte, separate prin ---" />
-          </div>
-        </div>
-
         {(calculatedTotalHours !== null || generationWarnings.length > 0) && (
           <div className="rounded-lg border p-3 text-sm">
             {calculatedTotalHours !== null && <p className="font-medium">Total ore calculate: {calculatedTotalHours}</p>}
@@ -425,10 +409,23 @@ export function ReportGenerator({
 
         {enableDeterministicAnexa10Docx && deterministicExportReadiness && (
           <div className={`rounded-lg border p-3 text-sm ${deterministicReadinessClassName}`}>
-            <p className="font-medium">
-              Export Anexa 10 determinist: {deterministicExportReadiness.statusLabel}
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="font-medium">
+                Raport de Activitate: {deterministicExportReadiness.statusLabel}
+              </p>
+              <span className="rounded-md border bg-background px-2 py-1 text-xs font-medium">
+                Readiness {deterministicExportReadiness.scoreLabel}
+              </span>
+            </div>
+            <div className="mt-2 h-2 rounded-full bg-background/70">
+              <div
+                className="h-2 rounded-full bg-current"
+                style={{ width: `${deterministicExportReadiness.score}%` }}
+                aria-hidden="true"
+              />
+            </div>
             <p className="mt-1 text-muted-foreground">{deterministicExportReadiness.summary}</p>
+            <p className="mt-1 text-muted-foreground">{deterministicWorkBlockSourceLabel}</p>
             {deterministicExportReadiness.blockingMessages.length > 0 && (
               <ul className="mt-2 list-disc space-y-1 pl-5 text-destructive">
                 {deterministicExportReadiness.blockingMessages.map((message) => <li key={message}>{message}</li>)}
@@ -442,43 +439,24 @@ export function ReportGenerator({
           </div>
         )}
 
+        {enableDeterministicAnexa10Docx && isLoadingDeterministicWorkBlocks && (
+          <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm">
+            <p className="font-medium">Raport de Activitate: se incarca work block-urile persistate</p>
+            <p className="mt-1 text-muted-foreground">
+              Exportul Anexa 10 asteapta datele persistate pentru luna curenta ca sa nu foloseasca fallback-ul local.
+            </p>
+          </div>
+        )}
+
         <div className="flex flex-wrap gap-2">
-          <Button onClick={generateWithAI} disabled={isGenerating || activities.length === 0}>
-            {isGenerating ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                {generationStatus || 'Se generează...'}
-              </>
-            ) : (
-              <>
-                <Sparkles className="h-4 w-4 mr-2" />
-                Generează cu AI
-              </>
-            )}
-          </Button>
-          <Button
-            variant="outline"
-            onClick={exportToWord}
-            disabled={!generatedReport || isExporting || isExportBlocked}
-          >
-            {isExporting ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Export...
-              </>
-            ) : (
-              <>
-                <Download className="h-4 w-4 mr-2" />
-                Export Word
-              </>
-            )}
-          </Button>
           {enableDeterministicAnexa10Docx && (
             <Button
-              variant="outline"
               onClick={exportDeterministicAnexa10Docx}
+              title={deterministicExportButtonTitle}
+              aria-label={deterministicExportButtonTitle}
               disabled={
                 activities.length === 0
+                || isLoadingDeterministicWorkBlocks
                 || isExportingDeterministicDocx
                 || !deterministicExportReadiness?.canExport
               }
@@ -486,22 +464,16 @@ export function ReportGenerator({
               {isExportingDeterministicDocx ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Export Anexa 10...
+                  Export RA...
                 </>
               ) : (
                 <>
                   <Download className="h-4 w-4 mr-2" />
-                  Export Anexa 10 DOCX
+                  Exporta Raport de Activitate DOCX
                 </>
               )}
             </Button>
           )}
-          <Button variant="secondary" onClick={markAsValidatedExample} disabled={!generatedReport || isExportBlocked}>
-            Marchează acest raport ca exemplu validat
-          </Button>
-          <Button variant="outline" onClick={exportTrainingExamples}>
-            Exportă exemple pentru fine-tuning
-          </Button>
         </div>
 
         {error && (
@@ -514,61 +486,6 @@ export function ReportGenerator({
           </div>
         )}
 
-        {generatedReport && (
-          <div className="space-y-2">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <Label>Raport generat:</Label>
-              <div className="flex rounded-lg border bg-muted/40 p-1">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={activeGeneratedTab === 'full' ? 'secondary' : 'ghost'}
-                  onClick={() => setActiveGeneratedTab('full')}
-                >
-                  Complet
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={activeGeneratedTab === 'table' ? 'secondary' : 'ghost'}
-                  onClick={() => setActiveGeneratedTab('table')}
-                >
-                  Sectiunea 1
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={activeGeneratedTab === 'narrative' ? 'secondary' : 'ghost'}
-                  onClick={() => setActiveGeneratedTab('narrative')}
-                >
-                  Sectiunea 2
-                </Button>
-              </div>
-            </div>
-            <Textarea
-              value={
-                activeGeneratedTab === 'table'
-                  ? generatedTableSection
-                  : activeGeneratedTab === 'narrative'
-                    ? generatedNarrativeSection
-                    : generatedReport
-              }
-              onChange={(e) => {
-                if (activeGeneratedTab === 'table') {
-                  updateGeneratedSection('table', e.target.value);
-                  return;
-                }
-                if (activeGeneratedTab === 'narrative') {
-                  updateGeneratedSection('narrative', e.target.value);
-                  return;
-                }
-                updateGeneratedReport(e.target.value);
-              }}
-              rows={15}
-              className="font-mono text-sm"
-            />
-          </div>
-        )}
       </CardContent>
     </Card>
   );

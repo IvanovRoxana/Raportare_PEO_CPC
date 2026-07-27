@@ -6,6 +6,7 @@ import { getSignedInUser } from '@/lib/aws/auth';
 import outputs from '@/amplify_outputs.json';
 import { peoUsersAsExperts } from '@/lib/peo-users';
 import { mergeExpertLists, mergeExpertWithFallback } from '@/lib/expert-merge';
+import { listDeliverablesByActivityId } from '@/lib/aws-pagination';
 import {
   buildCollaborationExpertOptions,
   canAccessExpertId,
@@ -69,7 +70,7 @@ import { buildDefaultConcurrentProjects, mergeConcurrentProjectsWithDefaults } f
 import { normalizeTitleForMatch } from './title-suggestion';
 import { parseAwsJsonField, serializeAwsJsonField } from './aws-json';
 import { planDeliverableSync } from './activity-deliverable-sync';
-import { dedupeDeliverablesBySignature, findMonthlyDeliverableDuplicate, getDeliverableDocumentSignature } from './deliverable-deduplication';
+import { areActivitiesCompatibleForDeliverableGroup, dedupeDeliverablesBySignature, findMonthlyDeliverableDuplicate, getDeliverableDocumentSignature } from './deliverable-deduplication';
 import { buildPersistedWorkBlockBundles } from './activity-report/persisted-work-blocks';
 import {
   prepareDraftWorkBlockBundle,
@@ -124,6 +125,25 @@ function assertNoErrors<T>(result: ModelResult<T> | ModelListResult<T>, action: 
   if (result.errors) {
     throw new Error(`${action} failed: ${JSON.stringify(result.errors)}`);
   }
+}
+
+function isAwsThrottlingError(error: unknown) {
+  const serialized = error instanceof Error
+    ? `${error.name} ${error.message}`
+    : JSON.stringify(error);
+  return /ThrottlingException|ThroughputExceeded|ThrottleEvents|ProvisionedThroughput/i.test(serialized);
+}
+
+function buildActivityBatchThrottleError(createdCount: number, totalCount: number) {
+  if (createdCount === 0) {
+    return new Error(
+      'Salvarea a fost oprita de limitarea temporara DynamoDB inainte de prima scriere. Reincearca dupa cateva secunde.',
+    );
+  }
+
+  return new Error(
+    `Salvarea a fost oprita de limitarea temporara DynamoDB dupa ${createdCount}/${totalCount} activitati create. Reincarca activitatile inainte de reîncercare pentru a evita duplicatele.`,
+  );
 }
 
 function hasConditionalCheckFailedError(errors: unknown) {
@@ -241,8 +261,11 @@ async function findCurrentExpertFromBackend(client: any, user: AccessUser | null
   return backendExpert ? mergeExpertWithFallback(backendExpert, fallbackExpert) : fallbackExpert;
 }
 
-async function getCurrentDataAccessScope(client: any): Promise<DataAccessScope> {
-  const user = await getSignedInUser();
+async function getCurrentDataAccessScope(
+  client: any,
+  options: { ignoreViewAs?: boolean } = {},
+): Promise<DataAccessScope> {
+  const user = await getSignedInUser({ ignoreViewAs: options.ignoreViewAs });
   const initialScope = resolveDataAccessScope({ user, experts: [] });
   if (initialScope.canAccessAllExperts) return initialScope;
 
@@ -334,6 +357,7 @@ function withSupportedExpertFields(payload: Record<string, unknown>, expert: Par
     positionInProject: expert.positionInProject,
     projectCode: expert.projectCode,
     projectTitle: expert.projectTitle,
+    aiReportingInstructions: expert.aiReportingInstructions,
   };
 
   Object.entries(extendedFields).forEach(([field, value]) => {
@@ -477,6 +501,7 @@ function mapExpert(item: any): Expert {
     positionInProject: item.positionInProject ?? undefined,
     projectCode: item.projectCode ?? undefined,
     projectTitle: item.projectTitle ?? undefined,
+    aiReportingInstructions: item.aiReportingInstructions ?? undefined,
     saCodes: item.saCodes ?? [],
     hasPmAccess: item.hasPmAccess ?? false,
     isActive: item.isActive ?? true,
@@ -834,12 +859,13 @@ async function createDocumentMetadataForDeliverable(
 
   const duplicateMatches = await findExistingDocumentDuplicates(client, deliverable);
   const duplicate = duplicateMatches[0];
+  const duplicateIssues = Array.isArray(duplicate?.issues) ? duplicate.issues : [];
   const duplicateStatus = duplicate
-    ? duplicate.issues.includes('same_file_hash')
+    ? duplicateIssues.includes('same_file_hash')
       ? 'same_file_hash'
-      : duplicate.issues.includes('same_first_page_hash')
+      : duplicateIssues.includes('same_first_page_hash')
         ? 'same_first_page_hash'
-        : 'possible_common_unmarked'
+        : deliverable.duplicateStatus ?? 'possible_common_unmarked'
     : deliverable.duplicateStatus;
 
   const payload = {
@@ -1201,7 +1227,7 @@ async function attachSharedDocumentToTargetActivity(
 ) {
   if (!client.models.Deliverable || !client.models.Document) return;
 
-  const existingDeliverables = await listModel<any>(client.models.Deliverable, { activityId: { eq: targetActivity.id } });
+  const existingDeliverables = await listDeliverablesByActivityId<any>(client.models.Deliverable, targetActivity.id);
   if (existingDeliverables.some((deliverable) => deliverable.documentId === relation.documentId)) return;
 
   const documentResult = await client.models.Document.get({ id: relation.documentId });
@@ -1374,7 +1400,7 @@ async function hydrateSharedActivitySnapshots(
 async function attachActivityChildren(activity: any): Promise<Activity> {
   const client = getAwsDataClient() as any;
   const [deliverables, grupTinta] = await Promise.all([
-    listModel<any>(client.models.Deliverable, { activityId: { eq: activity.id } }),
+    listDeliverablesByActivityId<any>(client.models.Deliverable, activity.id),
     listModel<any>(client.models.GrupTintaEntry, { activityId: { eq: activity.id } }),
   ]);
 
@@ -1465,7 +1491,7 @@ async function listActivitiesWithDeliverablesForValidation(
   const activities = data.filter((activity) => !excluded.has(activity.id));
 
   return Promise.all(activities.map(async (activity) => {
-    const deliverables = await listModel<any>(client.models.Deliverable, { activityId: { eq: activity.id } });
+    const deliverables = await listDeliverablesByActivityId<any>(client.models.Deliverable, activity.id);
 
     return {
       id: activity.id,
@@ -1488,25 +1514,6 @@ type ActivityWithDeliverablesForValidation = Pick<
 > & {
   deliverables?: Deliverable[];
 };
-
-function normalizeActivityMatchValue(value?: string | null) {
-  return String(value ?? '').trim().toLowerCase();
-}
-
-function areActivitiesCompatibleForPeriodGroup(
-  activity: Pick<Activity, 'expertId' | 'saCode' | 'catalogActivityId' | 'activityType' | 'title'>,
-  candidate: Pick<Activity, 'expertId' | 'saCode' | 'catalogActivityId' | 'activityType' | 'title'>,
-) {
-  if (activity.expertId && candidate.expertId && activity.expertId !== candidate.expertId) return false;
-
-  if (activity.catalogActivityId || candidate.catalogActivityId) {
-    return Boolean(activity.catalogActivityId && activity.catalogActivityId === candidate.catalogActivityId);
-  }
-
-  return normalizeActivityMatchValue(activity.saCode) === normalizeActivityMatchValue(candidate.saCode)
-    && normalizeActivityMatchValue(activity.activityType || activity.title)
-      === normalizeActivityMatchValue(candidate.activityType || candidate.title);
-}
 
 function dedupeExistingDeliverablesForValidation(
   activities: ActivityWithDeliverablesForValidation[],
@@ -1619,7 +1626,7 @@ async function validateActivityBatchForWrite(
       const duplicate = monthlyDuplicate;
       const duplicateGroupId = getActivityPeriodGroupId(duplicate.activity);
       const existingGroupId = getActivityPeriodGroupId(duplicate.existingActivity);
-      const duplicateMatchesExistingActivity = areActivitiesCompatibleForPeriodGroup(
+      const duplicateMatchesExistingActivity = areActivitiesCompatibleForDeliverableGroup(
         duplicate.activity,
         duplicate.existingActivity,
       );
@@ -1798,10 +1805,7 @@ async function attachActivitiesToExistingDeliverableGroups(
       ) {
         continue;
       }
-      if (
-        !sourceWasExplicitlySelected
-        && !areActivitiesCompatibleForPeriodGroup(nextActivity, sourceActivity)
-      ) {
+      if (!areActivitiesCompatibleForDeliverableGroup(nextActivity, sourceActivity)) {
         continue;
       }
 
@@ -1924,7 +1928,7 @@ export const expertsService = {
 
   async create(expert: Omit<Expert, 'id'>): Promise<Expert> {
     const client = getAwsDataClient() as any;
-    const scope = await getCurrentDataAccessScope(client);
+    const scope = await getCurrentDataAccessScope(client, { ignoreViewAs: true });
     if (!scope.canAccessAllExperts) throw new Error(ACCESS_DENIED_MESSAGE);
 
     const result = await client.models.Expert.create(withSupportedExpertFields({
@@ -1944,7 +1948,7 @@ export const expertsService = {
 
   async update(id: string, updates: Partial<Expert>): Promise<void> {
     const client = getAwsDataClient() as any;
-    const scope = await getCurrentDataAccessScope(client);
+    const scope = await getCurrentDataAccessScope(client, { ignoreViewAs: true });
     if (!scope.canAccessAllExperts) throw new Error(ACCESS_DENIED_MESSAGE);
 
     const result = await client.models.Expert.update(withSupportedExpertFields({
@@ -2360,7 +2364,14 @@ export const activitiesService = {
 
     const created: Activity[] = [];
     for (const activity of preparedActivities) {
-      created.push(await createActivityUnchecked(client, activity));
+      try {
+        created.push(await createActivityUnchecked(client, activity));
+      } catch (error) {
+        if (isAwsThrottlingError(error)) {
+          throw buildActivityBatchThrottleError(created.length, preparedActivities.length);
+        }
+        throw error;
+      }
     }
     return created;
   },
@@ -2472,7 +2483,7 @@ export const activitiesService = {
     }
 
     if (preparedUpdates.deliverables) {
-      const existingDeliverables = await listModel<any>(client.models.Deliverable, { activityId: { eq: id } });
+      const existingDeliverables = await listDeliverablesByActivityId<any>(client.models.Deliverable, id);
       const deliverablePlan = planDeliverableSync(existingDeliverables.map(mapDeliverable), preparedUpdates.deliverables);
 
       await Promise.all(
@@ -2938,6 +2949,7 @@ export const activityCatalogService = {
     const result = await client.models.ActivityCatalog.create({
       category: input.category,
       saCode: input.saCode,
+      gdprTemplateCode: input.gdprTemplateCode,
       serviceCategory: input.serviceCategory,
       activityNumber: input.activityNumber,
       activityName: input.activityName,
@@ -2960,6 +2972,7 @@ export const activityCatalogService = {
       id,
       category: updates.category,
       saCode: updates.saCode,
+      gdprTemplateCode: updates.gdprTemplateCode,
       serviceCategory: updates.serviceCategory,
       activityNumber: updates.activityNumber,
       activityName: updates.activityName,
@@ -2992,6 +3005,7 @@ function mapActivityCatalog(item: any): ActivityCatalog {
     id: item.id,
     category: item.category,
     saCode: item.saCode,
+    gdprTemplateCode: item.gdprTemplateCode ?? undefined,
     serviceCategory: item.serviceCategory ?? '',
     activityNumber: item.activityNumber ?? 0,
     activityName: item.activityName,

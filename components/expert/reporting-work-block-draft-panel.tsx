@@ -61,6 +61,19 @@ function createEmptyDraftSessionState(): WorkBlockDraftSessionState {
   };
 }
 
+function createDraftSessionStateFromBundle(bundle: ReportingWorkBlockBundle): WorkBlockDraftSessionState {
+  return {
+    title: bundle.workBlock.title,
+    saCode: bundle.workBlock.saCode,
+    reportingFlowType: bundle.workBlock.reportingFlowType,
+    selectedActivityIds: bundle.activityLinks.map((link) => link.activityId),
+    allocatedHoursByActivityId: Object.fromEntries(
+      bundle.activityLinks.map((link) => [link.activityId, link.allocatedHours])
+    ),
+    selectedDeliverableIds: bundle.deliverableLinks.map((link) => link.deliverableId),
+  };
+}
+
 function serializeDraftSessionState(state: WorkBlockDraftSessionState) {
   return JSON.stringify(state);
 }
@@ -72,6 +85,7 @@ interface ReportingWorkBlockDraftPanelProps {
   year: number;
   activities: Activity[];
   existingBundles?: ReportingWorkBlockBundle[];
+  existingBundlesLoading?: boolean;
   editingWorkBlockId?: string;
 }
 
@@ -82,6 +96,7 @@ export function ReportingWorkBlockDraftPanel({
   year,
   activities,
   existingBundles = [],
+  existingBundlesLoading = false,
   editingWorkBlockId,
 }: ReportingWorkBlockDraftPanelProps) {
   const [title, setTitle] = useState('');
@@ -91,20 +106,29 @@ export function ReportingWorkBlockDraftPanel({
   const [allocatedHoursByActivityId, setAllocatedHoursByActivityId] = useState<Record<string, number>>({});
   const [selectedDeliverableIds, setSelectedDeliverableIds] = useState<string[]>([]);
   const [lastSavedSessionDraft, setLastSavedSessionDraft] = useState('');
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
+  const [saveDraftError, setSaveDraftError] = useState<string | null>(null);
+  const [saveDraftSuccess, setSaveDraftSuccess] = useState(false);
+  const [savedWorkBlockTitle, setSavedWorkBlockTitle] = useState<string | null>(null);
+  const [selectedWorkBlockId, setSelectedWorkBlockId] = useState(editingWorkBlockId ?? 'new');
+  const effectiveEditingWorkBlockId = selectedWorkBlockId === 'new' ? undefined : selectedWorkBlockId;
+  const selectedEditingBundle = useMemo(() => (
+    existingBundles.find((bundle) => bundle.workBlock.id === effectiveEditingWorkBlockId)
+  ), [effectiveEditingWorkBlockId, existingBundles]);
   const storageKey = useMemo(() => (
-    `reporting-work-block-draft:${expertId}:${projectCode}:${year}:${month}:${editingWorkBlockId ?? 'new'}`
-  ), [editingWorkBlockId, expertId, month, projectCode, year]);
+    `reporting-work-block-draft:${expertId}:${projectCode}:${year}:${month}:${effectiveEditingWorkBlockId ?? 'new'}`
+  ), [effectiveEditingWorkBlockId, expertId, month, projectCode, year]);
   const [hydratedStorageKey, setHydratedStorageKey] = useState<string | null>(null);
-  const { prepareDraft, prepareSaveDraft } = useReportingWorkBlockDraft();
+  const { prepareDraft, prepareSaveDraft, saveDraft } = useReportingWorkBlockDraft();
   const {
     options: activityOptions,
     unallocatedActivityCount,
     unallocatedHoursTotal,
-  } = useReportingWorkBlockActivityOptions(activities, existingBundles, editingWorkBlockId);
+  } = useReportingWorkBlockActivityOptions(activities, existingBundles, effectiveEditingWorkBlockId);
   const {
     options: deliverableOptions,
     unassociatedDeliverableCount,
-  } = useReportingWorkBlockDeliverableOptions(activities, existingBundles, editingWorkBlockId);
+  } = useReportingWorkBlockDeliverableOptions(activities, existingBundles, effectiveEditingWorkBlockId);
   const availableActivityIds = useMemo(() => (
     new Set(activityOptions.map((option) => option.activityId))
   ), [activityOptions]);
@@ -113,7 +137,7 @@ export function ReportingWorkBlockDraftPanel({
   ), [deliverableOptions]);
 
   const draftPreview = useMemo(() => prepareDraft({
-    id: editingWorkBlockId,
+    id: effectiveEditingWorkBlockId,
     expertId,
     projectCode,
     month,
@@ -128,7 +152,7 @@ export function ReportingWorkBlockDraftPanel({
   }, activities), [
     activities,
     allocatedHoursByActivityId,
-    editingWorkBlockId,
+    effectiveEditingWorkBlockId,
     existingBundles,
     expertId,
     month,
@@ -141,7 +165,7 @@ export function ReportingWorkBlockDraftPanel({
     year,
   ]);
   const saveDraftPreview = useMemo(() => prepareSaveDraft({
-    id: editingWorkBlockId,
+    id: effectiveEditingWorkBlockId,
     expertId,
     projectCode,
     month,
@@ -156,7 +180,7 @@ export function ReportingWorkBlockDraftPanel({
   }, activities), [
     activities,
     allocatedHoursByActivityId,
-    editingWorkBlockId,
+    effectiveEditingWorkBlockId,
     existingBundles,
     expertId,
     month,
@@ -196,10 +220,15 @@ export function ReportingWorkBlockDraftPanel({
     && serializedSessionDraft !== lastSavedSessionDraft;
   const isReadyForControlledSave = saveDraftPreview.canSave
     && !hasUnsavedSessionChanges;
+  const isWaitingForSelectedBundle = Boolean(
+    effectiveEditingWorkBlockId && !selectedEditingBundle && existingBundlesLoading
+  );
   const controlledSaveLabel = draftPreview.issues.length > 0
     ? 'Finalizeaza validarile'
     : hasUnsavedSessionChanges
       ? 'Sincronizare sesiune'
+      : isSavingDraft
+        ? 'Se salveaza'
       : 'Pregatit pentru salvare';
 
   useEffect(() => {
@@ -207,14 +236,16 @@ export function ReportingWorkBlockDraftPanel({
 
     const rawDraft = window.sessionStorage.getItem(storageKey);
     if (!rawDraft) {
-      const emptyDraft = createEmptyDraftSessionState();
-      setTitle(emptyDraft.title);
-      setSaCode(emptyDraft.saCode);
-      setReportingFlowType(emptyDraft.reportingFlowType);
-      setSelectedActivityIds(emptyDraft.selectedActivityIds);
-      setAllocatedHoursByActivityId(emptyDraft.allocatedHoursByActivityId);
-      setSelectedDeliverableIds(emptyDraft.selectedDeliverableIds);
-      setLastSavedSessionDraft(serializeDraftSessionState(emptyDraft));
+      const initialDraft = selectedEditingBundle
+        ? createDraftSessionStateFromBundle(selectedEditingBundle)
+        : createEmptyDraftSessionState();
+      setTitle(initialDraft.title);
+      setSaCode(initialDraft.saCode);
+      setReportingFlowType(initialDraft.reportingFlowType);
+      setSelectedActivityIds(initialDraft.selectedActivityIds);
+      setAllocatedHoursByActivityId(initialDraft.allocatedHoursByActivityId);
+      setSelectedDeliverableIds(initialDraft.selectedDeliverableIds);
+      setLastSavedSessionDraft(serializeDraftSessionState(initialDraft));
       setHydratedStorageKey(storageKey);
       return;
     }
@@ -246,7 +277,7 @@ export function ReportingWorkBlockDraftPanel({
     } finally {
       setHydratedStorageKey(storageKey);
     }
-  }, [storageKey]);
+  }, [selectedEditingBundle, storageKey]);
 
   useEffect(() => {
     if (hydratedStorageKey !== storageKey) {
@@ -307,16 +338,61 @@ export function ReportingWorkBlockDraftPanel({
     ));
   };
 
+  const applyDraftSessionState = (draft: WorkBlockDraftSessionState) => {
+    setTitle(draft.title);
+    setSaCode(draft.saCode);
+    setReportingFlowType(draft.reportingFlowType);
+    setSelectedActivityIds(draft.selectedActivityIds);
+    setAllocatedHoursByActivityId(draft.allocatedHoursByActivityId);
+    setSelectedDeliverableIds(draft.selectedDeliverableIds);
+    setLastSavedSessionDraft(serializeDraftSessionState(draft));
+    setSaveDraftError(null);
+    setSaveDraftSuccess(false);
+    setSavedWorkBlockTitle(null);
+  };
+
   const resetDraft = () => {
-    const emptyDraft = createEmptyDraftSessionState();
     window.sessionStorage.removeItem(storageKey);
-    setTitle(emptyDraft.title);
-    setSaCode(emptyDraft.saCode);
-    setReportingFlowType(emptyDraft.reportingFlowType);
-    setSelectedActivityIds(emptyDraft.selectedActivityIds);
-    setAllocatedHoursByActivityId(emptyDraft.allocatedHoursByActivityId);
-    setSelectedDeliverableIds(emptyDraft.selectedDeliverableIds);
-    setLastSavedSessionDraft(serializeDraftSessionState(emptyDraft));
+    applyDraftSessionState(createEmptyDraftSessionState());
+    setSelectedWorkBlockId('new');
+  };
+
+  const handleSaveDraft = async () => {
+    if (!isReadyForControlledSave || isSavingDraft) {
+      return;
+    }
+
+    setIsSavingDraft(true);
+    setSaveDraftError(null);
+    setSaveDraftSuccess(false);
+    setSavedWorkBlockTitle(null);
+
+    try {
+      const savedTitle = title.trim() || 'Work block';
+      const savedBundle = await saveDraft({
+        id: effectiveEditingWorkBlockId,
+        expertId,
+        projectCode,
+        month,
+        year,
+        title,
+        saCode,
+        reportingFlowType,
+        activityIds: selectedActivityIds,
+        allocatedHoursByActivityId,
+        deliverableIds: selectedDeliverableIds,
+        existingBundles,
+      }, activities);
+      window.sessionStorage.removeItem(storageKey);
+      applyDraftSessionState(createEmptyDraftSessionState());
+      setSelectedWorkBlockId(savedBundle.workBlock.id ?? 'new');
+      setSavedWorkBlockTitle(savedTitle);
+      setSaveDraftSuccess(true);
+    } catch (error) {
+      setSaveDraftError(error instanceof Error ? error.message : 'Nu am putut salva draftul work block.');
+    } finally {
+      setIsSavingDraft(false);
+    }
   };
 
   return (
@@ -324,10 +400,10 @@ export function ReportingWorkBlockDraftPanel({
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <GitBranch className="h-5 w-5" />
-          Draft work block
+          Ajustare work block
         </CardTitle>
         <CardDescription>
-          Pregateste local un flux raportabil. Draftul ramane doar in sesiunea browserului.
+          Verifica sau rafineaza work block-urile generate automat din formularul de activitate.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
@@ -337,6 +413,33 @@ export function ReportingWorkBlockDraftPanel({
           <Metric label="Livrabile neasociate" value={unassociatedDeliverableCount} />
           <Metric label="Ore in draft" value={selectedHours} />
         </div>
+
+        {existingBundles.length > 0 && (
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Work block pentru rafinare</label>
+            <Select
+              value={selectedWorkBlockId}
+              onValueChange={(value) => {
+                setSelectedWorkBlockId(value);
+                setSaveDraftError(null);
+                setSaveDraftSuccess(false);
+                setSavedWorkBlockTitle(null);
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="new">Ajustare manuala noua</SelectItem>
+                {existingBundles.map((bundle) => (
+                  <SelectItem key={bundle.workBlock.id} value={bundle.workBlock.id}>
+                    {bundle.workBlock.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
 
         <div className="grid gap-3 md:grid-cols-[1.5fr_0.8fr_1fr]">
           <div className="space-y-2">
@@ -376,7 +479,7 @@ export function ReportingWorkBlockDraftPanel({
           <section className="space-y-3">
             <div>
               <h3 className="text-sm font-semibold">Activitati</h3>
-              <p className="text-xs text-muted-foreground">Selecteaza zilele si orele alocate acestui flux.</p>
+              <p className="text-xs text-muted-foreground">Corecteaza doar daca alocarea generata automat necesita ajustari.</p>
             </div>
             <div className="max-h-[360px] space-y-2 overflow-y-auto rounded-lg border p-2">
               {activityOptions.length === 0 ? (
@@ -422,7 +525,7 @@ export function ReportingWorkBlockDraftPanel({
           <section className="space-y-3">
             <div>
               <h3 className="text-sm font-semibold">Livrabile</h3>
-              <p className="text-xs text-muted-foreground">Asociaza unul sau mai multe livrabile fluxului selectat.</p>
+              <p className="text-xs text-muted-foreground">Corecteaza doar daca livrabilele generate automat trebuie rafinate.</p>
             </div>
             <div className="max-h-[360px] space-y-2 overflow-y-auto rounded-lg border p-2">
               {deliverableOptions.length === 0 ? (
@@ -442,9 +545,13 @@ export function ReportingWorkBlockDraftPanel({
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-sm font-medium">{option.title}</span>
                         {option.saCode && <Badge variant="outline">{option.saCode}</Badge>}
+                        {option.eligibilityStatus && <Badge variant="outline">eligibilitate: {option.eligibilityStatus}</Badge>}
                         {disabled && <Badge variant="secondary">asociat</Badge>}
                       </div>
-                      <p className="mt-1 truncate text-xs text-muted-foreground">{option.fileName}</p>
+                      <p className="mt-1 truncate text-xs text-muted-foreground">
+                        {option.fileName}
+                        {option.eligibilitySummary ? ` - ${option.eligibilitySummary}` : ''}
+                      </p>
                     </div>
                   </div>
                 );
@@ -458,7 +565,11 @@ export function ReportingWorkBlockDraftPanel({
           <Textarea
             id="work-block-preview"
             readOnly
-            value={draftPreview.issues.length > 0
+            value={saveDraftSuccess
+              ? `Work block "${savedWorkBlockTitle ?? 'selectat'}" salvat in backend. Preview-ul se reimprospateaza din lista persistata.`
+              : isWaitingForSelectedBundle
+              ? 'Se reincarca work block-ul salvat.'
+              : draftPreview.issues.length > 0
               ? draftPreview.issues.map((issue) => issue.message).join('\n')
               : isReadyForControlledSave
                 ? 'Draft valid local si pregatit pentru salvarea controlata.'
@@ -469,7 +580,12 @@ export function ReportingWorkBlockDraftPanel({
 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            {draftPreview.issues.length > 0 ? (
+            {saveDraftSuccess ? (
+              <>
+                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                Work block salvat in backend
+              </>
+            ) : draftPreview.issues.length > 0 ? (
               <>
                 <AlertTriangle className="h-4 w-4 text-amber-600" />
                 {draftPreview.issues.length} validari de rezolvat
@@ -477,7 +593,9 @@ export function ReportingWorkBlockDraftPanel({
             ) : (
               <>
                 <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                {hasUnsavedSessionChanges ? 'Draft local modificat' : 'Draft salvat in sesiune'}
+                {isWaitingForSelectedBundle
+                  ? 'Se reincarca work block-ul salvat'
+                  : hasUnsavedSessionChanges ? 'Draft local modificat' : 'Draft salvat in sesiune'}
               </>
             )}
           </div>
@@ -486,7 +604,15 @@ export function ReportingWorkBlockDraftPanel({
               <RotateCcw className="h-4 w-4" />
               Reset draft
             </Button>
-            <Button type="button" disabled aria-disabled={!isReadyForControlledSave}>
+            {saveDraftError && (
+              <span className="text-sm text-destructive">{saveDraftError}</span>
+            )}
+            <Button
+              type="button"
+              disabled={!isReadyForControlledSave || isSavingDraft || isWaitingForSelectedBundle}
+              aria-disabled={!isReadyForControlledSave || isSavingDraft || isWaitingForSelectedBundle}
+              onClick={handleSaveDraft}
+            >
               <Save className="h-4 w-4" />
               {controlledSaveLabel}
             </Button>

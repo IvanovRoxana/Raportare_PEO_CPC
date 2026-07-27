@@ -11,7 +11,12 @@ import {
   splitActivityEditPayload,
 } from '../lib/activity-edit.ts';
 import { planDeliverableSync } from '../lib/activity-deliverable-sync.ts';
-import { findMonthlyDeliverableDuplicate } from '../lib/deliverable-deduplication.ts';
+import {
+  areActivitiesCompatibleForDeliverableGroup,
+  findActivityOwningDeliverableSignature,
+  findMonthlyDeliverableDuplicate,
+  getDeliverableDocumentSignature,
+} from '../lib/deliverable-deduplication.ts';
 import { getActivitiesMissingDeliverables } from '../lib/submit-readiness.ts';
 import type { Activity, Deliverable } from '../lib/types.ts';
 
@@ -113,6 +118,49 @@ test('editarea pastreaza orele din formular cand selectedHours este invechit', (
 
   assert.equal(submitted.length, 1);
   assert.equal(submitted[0].hours, 5);
+});
+
+test('editarea cu schimbare de data pastreaza id-ul si livrabilele existente', () => {
+  const existingDeliverable = deliverable('deliverable-1', {
+    titleConfirmed: true,
+    titleCheckStatus: 'verified',
+    eligibilityCheck: {
+      status: 'eligibil',
+      score: 100,
+      summary: 'Validat anterior',
+      checks: [],
+      missingElements: [],
+      recommendations: [],
+      riskFlags: [],
+    },
+  });
+  const editing = activity('activity-1', {
+    date: '2026-06-22',
+    hours: 2,
+    deliverables: [existingDeliverable],
+  });
+  const submitted = buildSubmittedActivitiesForEdit(
+    editing,
+    [activity('activity-1', {
+      date: '2026-06-27',
+      hours: 2,
+      deliverables: [existingDeliverable],
+    })],
+    ['2026-06-27'],
+    { '2026-06-27': '2' },
+    [editing],
+    'expert-1',
+    (value, fallback) => String(value ?? fallback),
+  );
+  const plan = planGroupedActivityEdit(editing, submitted, [editing], 'expert-1');
+
+  assert.equal(submitted.length, 1);
+  assert.equal(submitted[0].id, 'activity-1');
+  assert.equal(submitted[0].date, '2026-06-27');
+  assert.deepEqual(submitted[0].deliverables, [existingDeliverable]);
+  assert.deepEqual(plan.updateActivities.map((item) => item.id), ['activity-1']);
+  assert.equal(plan.newActivities.length, 0);
+  assert.equal(plan.deleteActivityIds.length, 0);
 });
 
 test('editarea unui grup actualizeaza zilele pastrate, creeaza zilele noi si sterge doar ziua scoasa', () => {
@@ -224,6 +272,69 @@ test('editarea multi-day pastreaza randul existent dar ataseaza livrabilul nou p
   assert.equal(preservedDay?.deliverables?.[0]?.documentId, 'document-1');
 });
 
+test('editarea unei singure zile o desprinde din serie si pastreaza celelalte zile neschimbate', () => {
+  const periodGroupId = 'activity-period:period-1';
+  const groupMembers = [
+    activity('activity-4', { date: '2026-06-04', hours: 4, periodGroupId, title: 'Activitate veche' }),
+    activity('activity-5', { date: '2026-06-05', hours: 6, periodGroupId, title: 'Activitate veche' }),
+  ];
+  const submitted = buildSubmittedActivitiesForEdit(
+    groupMembers[0],
+    [activity('activity-4', { date: '2026-06-04', hours: 8, periodGroupId, title: 'Activitate noua' })],
+    groupMembers.map((item) => item.date),
+    { '2026-06-04': '8', '2026-06-05': '8' },
+    groupMembers,
+    'expert-1',
+    (value, fallback) => String(value ?? fallback),
+    'single',
+  );
+
+  assert.equal(submitted.find((item) => item.id === 'activity-4')?.title, 'Activitate noua');
+  assert.notEqual(submitted.find((item) => item.id === 'activity-4')?.periodGroupId, periodGroupId);
+  assert.equal(submitted.find((item) => item.id === 'activity-5')?.title, 'Activitate veche');
+  assert.equal(submitted.find((item) => item.id === 'activity-5')?.hours, 6);
+  assert.equal(submitted.find((item) => item.id === 'activity-5')?.periodGroupId, periodGroupId);
+});
+
+test('editarea intregii serii propaga activitatea si livrabilele, pastrand datele specifice fiecarei zile', () => {
+  const periodGroupId = 'activity-period:period-1';
+  const firstDeliverable = deliverable('deliverable-1');
+  const secondDeliverable = deliverable('deliverable-2');
+  const replacementDeliverable = deliverable('deliverable-new', { documentId: 'document-new' });
+  const groupMembers = [
+    activity('activity-4', { date: '2026-06-04', hours: 4, periodGroupId, title: 'Activitate veche', deliverables: [firstDeliverable] }),
+    activity('activity-5', { date: '2026-06-05', hours: 6, periodGroupId, title: 'Activitate veche', deliverables: [secondDeliverable] }),
+  ];
+  const submitted = buildSubmittedActivitiesForEdit(
+    groupMembers[0],
+    [activity('activity-4', {
+      date: '2026-06-04',
+      hours: 8,
+      periodGroupId,
+      title: 'Activitate noua',
+      activityType: 'Activitate noua',
+      catalogActivityId: 'catalog-new',
+      deliverables: [replacementDeliverable],
+    })],
+    groupMembers.map((item) => item.date),
+    { '2026-06-04': '8', '2026-06-05': '8' },
+    groupMembers,
+    'expert-1',
+    (value, fallback) => String(value ?? fallback),
+    'series',
+  );
+
+  assert.deepEqual(submitted.map((item) => item.id), ['activity-4', 'activity-5']);
+  assert.ok(submitted.every((item) => item.title === 'Activitate noua'));
+  assert.ok(submitted.every((item) => item.catalogActivityId === 'catalog-new'));
+  assert.deepEqual(submitted.map((item) => item.hours), [4, 6]);
+  assert.deepEqual(submitted.map((item) => item.deliverables?.map((deliverable) => deliverable.id)), [
+    ['deliverable-new'],
+    ['deliverable-new'],
+  ]);
+  assert.ok(submitted.every((item) => item.periodGroupId === periodGroupId));
+});
+
 test('livrabilul atasat pe ultima zi deblocheaza toate activitatile din perioada editata', () => {
   const periodGroupId = 'activity-period:edit-activity-4';
   const sharedDeliverable = deliverable('deliverable-1', {
@@ -260,6 +371,109 @@ test('grupurile de activitati expun livrabile deduplicate pentru raportare', () 
   assert.equal(compiled[0].date, '2026-06-04, 2026-06-05');
   assert.equal(compiled[0].hours, 10);
   assert.equal(compiled[0].deliverables?.length, 1);
+});
+
+
+test('inlocuirea livrabilului pe grup multi-day elimina livrabilul vechi de pe toate zilele grupului', () => {
+  const periodGroupId = 'activity-period:period-1';
+  const oldDeliverable = deliverable('deliverable-old', { documentId: 'document-old' });
+  const newDeliverable = deliverable('deliverable-new', { documentId: 'document-new' });
+  const groupMembers = [
+    activity('activity-4', { date: '2026-06-04', periodGroupId, deliverables: [oldDeliverable] }),
+    activity('activity-5', { date: '2026-06-05', periodGroupId, deliverables: [deliverable('deliverable-old-copy', { documentId: 'document-old' })] }),
+  ];
+
+  const submitted = buildSubmittedActivitiesForEdit(
+    groupMembers[0],
+    [activity('activity-4', { date: '2026-06-04', periodGroupId, deliverables: [newDeliverable] })],
+    ['2026-06-04', '2026-06-05'],
+    { '2026-06-04': '6', '2026-06-05': '6' },
+    groupMembers,
+    'expert-1',
+    (value, fallback) => String(value ?? fallback),
+  );
+
+  assert.equal(submitted.flatMap((item) => item.deliverables ?? []).length, 1);
+  assert.equal(submitted.flatMap((item) => item.deliverables ?? [])[0].documentId, 'document-new');
+  assert.equal(submitted.find((item) => item.date === '2026-06-05')?.deliverables?.length, 0);
+});
+
+test('stergerea zilei care detine livrabilul il reataseaza pe o zi ramasa din grup', () => {
+  const periodGroupId = 'activity-period:period-1';
+  const sharedDeliverable = deliverable('deliverable-1', { documentId: 'document-1' });
+  const groupMembers = [
+    activity('activity-4', { date: '2026-06-04', periodGroupId, deliverables: [sharedDeliverable] }),
+    activity('activity-5', { date: '2026-06-05', periodGroupId, deliverables: [] }),
+  ];
+
+  const submitted = buildSubmittedActivitiesForEdit(
+    groupMembers[0],
+    [activity('activity-5', { date: '2026-06-05', periodGroupId })],
+    ['2026-06-05'],
+    { '2026-06-05': '6' },
+    groupMembers,
+    'expert-1',
+    (value, fallback) => String(value ?? fallback),
+  );
+
+  assert.equal(submitted.length, 1);
+  assert.equal(submitted[0].date, '2026-06-05');
+  assert.equal(submitted[0].deliverables?.[0]?.documentId, 'document-1');
+});
+
+test('extinderea grupului existent pastreaza un singur livrabil comun deduplicat', () => {
+  const periodGroupId = 'activity-period:period-1';
+  const sharedDeliverable = deliverable('deliverable-1', { documentId: 'document-1' });
+  const groupMembers = [
+    activity('activity-4', { date: '2026-06-04', periodGroupId, deliverables: [sharedDeliverable] }),
+    activity('activity-5', { date: '2026-06-05', periodGroupId, deliverables: [] }),
+  ];
+
+  const submitted = buildSubmittedActivitiesForEdit(
+    groupMembers[0],
+    [activity('activity-4', { date: '2026-06-04', periodGroupId, deliverables: [sharedDeliverable] })],
+    ['2026-06-04', '2026-06-05', '2026-06-06'],
+    { '2026-06-04': '6', '2026-06-05': '6', '2026-06-06': '4' },
+    groupMembers,
+    'expert-1',
+    (value, fallback) => String(value ?? fallback),
+  );
+
+  assert.equal(submitted.length, 3);
+  assert.equal(submitted.flatMap((item) => item.deliverables ?? []).length, 1);
+  assert.equal(dedupeDeliverables(submitted.flatMap((item) => item.deliverables ?? [])).length, 1);
+});
+
+test('activitatile cu acelasi periodGroupId dar identitate diferita nu sunt grupate impreuna', () => {
+  const periodGroupId = 'activity-period:period-1';
+  const activities = [
+    activity('activity-4', { date: '2026-06-04', periodGroupId, saCode: 'SA3.4', activityType: 'Analiza legislativa' }),
+    activity('activity-5', { date: '2026-06-05', periodGroupId, saCode: 'SA3.5', activityType: 'Raportare' }),
+  ];
+
+  assert.equal(getActivityGroupMembers(activities[0], activities).length, 1);
+  assert.equal(compileActivitiesByPeriodGroup(activities).length, 2);
+});
+
+test('grupurile legacy cu workingGroupId activity-period sunt editate ca grup modern', () => {
+  const legacyGroupId = 'activity-period:legacy-1';
+  const groupMembers = [
+    activity('activity-4', { date: '2026-06-04', workingGroupId: legacyGroupId, deliverables: [deliverable('deliverable-1', { documentId: 'document-1' })] }),
+    activity('activity-5', { date: '2026-06-05', workingGroupId: legacyGroupId, deliverables: [] }),
+  ];
+
+  const submitted = buildSubmittedActivitiesForEdit(
+    groupMembers[0],
+    [activity('activity-4', { date: '2026-06-04', workingGroupId: legacyGroupId })],
+    ['2026-06-04', '2026-06-05'],
+    { '2026-06-04': '6', '2026-06-05': '6' },
+    groupMembers,
+    'expert-1',
+    (value, fallback) => String(value ?? fallback),
+  );
+
+  assert.ok(submitted.every((item) => item.periodGroupId === legacyGroupId));
+  assert.equal(submitted.flatMap((item) => item.deliverables ?? []).length, 1);
 });
 
 test('sincronizarea livrabilelor actualizeaza livrabilul existent fara sa il recreeze', () => {
@@ -320,6 +534,59 @@ test('validarea lunara marcheaza acelasi document pe alta activitate ca duplicat
   assert.ok(duplicate);
   assert.equal(duplicate.existingActivity.id, 'activity-1');
   assert.equal(duplicate.activity.id, 'activity-2');
+});
+
+test('validarea lunara detecteaza duplicatul intre doua activitati noi din acelasi batch', () => {
+  const duplicate = findMonthlyDeliverableDuplicate({
+    existingActivities: [],
+    nextActivities: [
+      activity('activity-new-1', {
+        date: '2026-06-03',
+        deliverables: [deliverable('deliverable-new-1', { documentId: 'document-common' })],
+      }),
+      activity('activity-new-2', {
+        date: '2026-06-10',
+        deliverables: [deliverable('deliverable-new-2', { documentId: 'document-common' })],
+      }),
+    ],
+    expertId: 'expert-1',
+    month: 5,
+    year: 2026,
+  });
+
+  assert.ok(duplicate);
+  assert.equal(duplicate.existingActivity.id, 'activity-new-1');
+  assert.equal(duplicate.activity.id, 'activity-new-2');
+  assert.equal(duplicate.signature, 'document:document-common');
+});
+
+test('validarea lunara raporteaza duplicatul nou fata de activitatea existenta cand documentul apare de mai multe ori', () => {
+  const duplicate = findMonthlyDeliverableDuplicate({
+    existingActivities: [
+      activity('activity-existing', {
+        date: '2026-06-03',
+        deliverables: [deliverable('deliverable-existing', { documentId: 'document-common' })],
+      }),
+    ],
+    nextActivities: [
+      activity('activity-new-1', {
+        date: '2026-06-10',
+        deliverables: [deliverable('deliverable-new-1', { documentId: 'document-common' })],
+      }),
+      activity('activity-new-2', {
+        date: '2026-06-11',
+        deliverables: [deliverable('deliverable-new-2', { documentId: 'document-common' })],
+      }),
+    ],
+    expertId: 'expert-1',
+    month: 5,
+    year: 2026,
+  });
+
+  assert.ok(duplicate);
+  assert.equal(duplicate.existingActivity.id, 'activity-existing');
+  assert.equal(duplicate.activity.id, 'activity-new-1');
+  assert.equal(duplicate.signature, 'document:document-common');
 });
 
 test('validarea lunara permite acelasi document in alta luna si fisiere cu hash diferit', () => {
@@ -390,4 +657,98 @@ test('validarea lunara ignora documentId vechi cand slotul are fisier nou incarc
   });
 
   assert.equal(duplicate, null);
+});
+
+test('gruparea livrabilului accepta doar activitati cu aceeasi identitate', () => {
+  const current = activity('activity-current', {
+    catalogActivityId: 'catalog-current',
+    activityType: 'Actualizare raportare',
+  });
+  const compatible = activity('activity-compatible', {
+    catalogActivityId: 'catalog-current',
+    activityType: 'Actualizare raportare',
+  });
+  const incompatible = activity('activity-incompatible', {
+    catalogActivityId: 'catalog-other',
+    activityType: 'Activare experti in comunicare',
+  });
+
+  assert.equal(areActivitiesCompatibleForDeliverableGroup(current, compatible), true);
+  assert.equal(areActivitiesCompatibleForDeliverableGroup(current, incompatible), false);
+});
+
+test('gruparea livrabilului nu considera compatibile activitati fara identitate', () => {
+  const current = activity('activity-current', {
+    saCode: undefined,
+    catalogActivityId: undefined,
+    activityType: '',
+    title: '',
+  });
+  const candidate = activity('activity-candidate', {
+    saCode: undefined,
+    catalogActivityId: undefined,
+    activityType: '',
+    title: '',
+  });
+
+  assert.equal(areActivitiesCompatibleForDeliverableGroup(current, candidate), false);
+});
+
+test('validarea lunara ignora duplicatele exclusiv istorice fara legatura cu livrabilul curent', () => {
+  const duplicateHistory = [
+    activity('activity-old-1', {
+      deliverables: [deliverable('deliverable-old-1', { documentId: 'document-old' })],
+    }),
+    activity('activity-old-2', {
+      date: '2026-06-04',
+      deliverables: [deliverable('deliverable-old-2', { documentId: 'document-old' })],
+    }),
+  ];
+
+  const duplicate = findMonthlyDeliverableDuplicate({
+    existingActivities: duplicateHistory,
+    nextActivities: [
+      activity('activity-current', {
+        date: '2026-06-10',
+        deliverables: [deliverable('deliverable-current', { documentId: 'document-current' })],
+      }),
+    ],
+    expertId: 'expert-1',
+    month: 5,
+    year: 2026,
+  });
+
+  assert.equal(duplicate, null);
+});
+
+test('livrabilul existent rezolva activitatea care il detine chiar daca legatura salvata este orfana', () => {
+  const owner = activity('activity-owner', {
+    deliverables: [deliverable('deliverable-owner', { documentId: 'document-1' })],
+  });
+  const signature = getDeliverableDocumentSignature(
+    deliverable('selected-deliverable', { documentId: 'document-1' }),
+  );
+
+  const source = findActivityOwningDeliverableSignature(
+    [owner],
+    signature,
+    'activity-deleted',
+  );
+
+  assert.equal(source?.id, 'activity-owner');
+});
+
+test('livrabilul orfan ramane fara activitate sursa si poate fi atasat activitatii curente', () => {
+  const signature = getDeliverableDocumentSignature(
+    deliverable('selected-deliverable', { documentId: 'document-orphan' }),
+  );
+  const source = findActivityOwningDeliverableSignature(
+    [activity('activity-other', {
+      deliverables: [deliverable('deliverable-other', { documentId: 'document-other' })],
+    })],
+    signature,
+    'activity-deleted',
+  );
+
+  assert.equal(source, undefined);
 });

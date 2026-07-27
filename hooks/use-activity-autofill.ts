@@ -5,7 +5,9 @@ import { fetchAuthSession } from 'aws-amplify/auth';
 import {
   buildActivityAutofillDeliverablesPayload,
   buildFallbackActivityAutofillSuggestion,
+  getActivityAutofillMissingSteps,
   type ActivityAutofillCatalogCandidate,
+  type ActivityAutofillCollaborationContext,
   type ActivityAutofillSuggestion,
 } from '@/lib/activity-autofill';
 import { getDocumentAuditTitle } from '@/lib/document-sharing';
@@ -24,6 +26,7 @@ interface UseActivityAutofillParams {
   activityName: string;
   currentDescription: string;
   selectedDates: string[];
+  collaborationContext?: ActivityAutofillCollaborationContext;
   setDescription: (value: string) => void;
   year: number;
   onApplied?: (suggestion: ActivityAutofillSuggestion) => void;
@@ -74,6 +77,7 @@ export function useActivityAutofill({
   activityName,
   currentDescription,
   selectedDates,
+  collaborationContext,
   setDescription,
   year,
   onApplied,
@@ -118,15 +122,22 @@ export function useActivityAutofill({
     }))
   ), [catalog]);
 
+  const incompleteDeliverableSteps = useMemo(
+    () => getActivityAutofillMissingSteps(deliverables),
+    [deliverables],
+  );
+
   const unavailableMessage = autofillDeliverables.length === 0
     ? 'Incarca un PDF/DOC/DOCX sau o imagine scanata; aplicatia va extrage textul nativ sau OCR pentru descrierea asistata.'
     : !saCode || !activityName
       ? 'Selecteaza subactivitatea si activitatea inainte de rescrierea descrierii cu AI.'
-      : !currentDescription.trim()
-        ? 'Descrierea curenta este goala. Selecteaza activitatea pentru a prelua descrierea standard sau completeaza un draft.'
-        : catalogCandidates.length === 0
-          ? 'Nu exista activitati de catalog disponibile pentru rolul curent.'
-          : null;
+      : collaborationContext?.isCommonActivity && collaborationContext.collaborators.length === 0
+        ? 'Selecteaza cel putin un colaborator pentru activitatea comuna inainte de generarea descrierii finale.'
+        : incompleteDeliverableSteps.length > 0
+          ? `Finalizeaza cei patru pasi ai livrabilului: ${incompleteDeliverableSteps.join(', ')}.`
+          : catalogCandidates.length === 0
+            ? 'Nu exista activitati de catalog disponibile pentru rolul curent.'
+            : null;
 
   const suggest = useCallback(async () => {
     if (unavailableMessage) {
@@ -153,11 +164,13 @@ export function useActivityAutofill({
           expertName,
           expertId,
           expertRole: expert?.positionInProject || expert?.role,
+          expertReportingInstructions: expert?.aiReportingInstructions,
           category: expert?.category,
           projectCode: expert?.projectCode,
           month,
           year,
           selectedDates,
+          collaborationContext,
         }),
       });
 
@@ -174,11 +187,13 @@ export function useActivityAutofill({
             expertName,
             expertId,
             expertRole: expert?.positionInProject || expert?.role,
+            expertReportingInstructions: expert?.aiReportingInstructions,
             category: expert?.category,
             projectCode: expert?.projectCode,
             month,
             year,
             selectedDates,
+            collaborationContext,
           });
           if (fallback) {
             setSuggestion(fallback);
@@ -197,6 +212,8 @@ export function useActivityAutofill({
   }, [
     autofillDeliverables,
     catalogCandidates,
+    collaborationContext,
+    incompleteDeliverableSteps,
     expert,
     expertId,
     expertName,
@@ -267,6 +284,7 @@ export function useActivityAutofill({
     suggestion,
     isLoading,
     error,
+    unavailableMessage,
     suggest,
     apply,
     dismiss,

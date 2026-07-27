@@ -20,6 +20,7 @@ const schema = a.schema({
       contractType: a.string(),
       expertExperienceCategory: a.string(),
       jobDescriptionText: a.string(),
+      aiReportingInstructions: a.string(),
       beneficiary: a.string(),
       saCodes: a.string().array(),
       hasPmAccess: a.boolean().default(false),
@@ -628,6 +629,7 @@ const schema = a.schema({
     .model({
       category: a.string().required(),
       saCode: a.string().required(),
+      gdprTemplateCode: a.string(),
       serviceCategory: a.string(),
       activityNumber: a.integer(),
       activityName: a.string().required(),

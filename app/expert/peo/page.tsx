@@ -1,11 +1,10 @@
 'use client';
 
 import { Suspense, useState, useEffect, useMemo } from 'react';
-import { ArrowLeft, CalendarDays, CheckCircle, ClipboardList, Clock3, FileText, Loader2, Plus, RotateCcw, Send, Lock, AlertTriangle, Upload, X } from 'lucide-react';
+import { ArrowLeft, CalendarDays, CheckCircle, ClipboardList, FileText, Loader2, Plus, RotateCcw, Send, Lock, AlertTriangle, Upload, X } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { DashboardShell, expertNavItems } from '@/components/layout/dashboard-shell';
-import { ProgressBar, RightInfoCard } from '@/components/layout/dashboard-primitives';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -17,9 +16,20 @@ import {
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { MultiSelectCalendar } from '@/components/expert/multi-select-calendar';
 import { CalendarView } from '@/components/expert/calendar-view';
 import { ActivityForm, type ActivityResolutionHint, type ActivityResolutionSection } from '@/components/expert/activity-form';
+import type { ExistingDeliverableCandidate } from '@/components/expert/existing-deliverable-picker';
 import { ActivitiesTable } from '@/components/expert/activities-table';
 import { ExpertDeliverablesDialog } from '@/components/expert/expert-deliverables-dialog';
 import { MonthlyEvidencePanel } from '@/components/expert/monthly-evidence-panel';
@@ -27,6 +37,7 @@ import { MonthlyReportExport } from '@/components/expert/monthly-report-export';
 import { getMonthName } from '@/lib/backend-store';
 import {
   useActivitiesByMonth,
+  useActivityCatalog,
   useActivityMutations,
   useCollaborationExperts,
   useColleagueDocumentsByMonth,
@@ -37,6 +48,8 @@ import {
   useReportStatus,
   useLeaveEntries,
   useLeaveEntryMutations,
+  useReportingWorkBlockBundles,
+  useReportingWorkBlockDraft,
   useSharedActivityRegistrationContext,
   useSharedDeliverableMutations,
   useSharedDeliverables,
@@ -67,10 +80,13 @@ import {
   getActivityGroupMembersForSelectedDates,
   mergeActivityGroupForEdit,
   planGroupedActivityEdit,
+  type ActivityEditScope,
 } from '@/lib/activity-edit';
 import { filterPendingSharedDeliverablesNotCoveredByActivity, filterSharedRelationsForMonths } from '@/lib/document-sharing';
 import { buildExpertDeliverableRows } from '@/lib/expert-deliverables';
 import { isCurrentOrPreviousMonth } from '@/lib/pm-clarifications';
+import { isReportingWorkBlocksEnabledClient } from '@/lib/feature-flags';
+import { buildActivitySaveWorkBlockInput } from '@/lib/activity-report/activity-save-work-block';
 
 type SubmitReadinessSeverity = 'ok' | 'warning' | 'blocking';
 type SubmitReadinessKey =
@@ -108,6 +124,11 @@ interface SubmitReadinessItem {
 
 type DeletedActivityUndo = {
   activity: Activity;
+};
+
+type PendingGroupedActivitySave = {
+  activities: Activity[];
+  groupSize: number;
 };
 
 const SUBMIT_MIN_NORM_PERCENT = 80;
@@ -193,6 +214,7 @@ function ExpertDashboardContent() {
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [workBlockSaveNotice, setWorkBlockSaveNotice] = useState<string | null>(null);
   const [pendingSharedActivityRelationId, setPendingSharedActivityRelationId] = useState<string | null>(null);
   const [pendingSharedDeliverableRelationId, setPendingSharedDeliverableRelationId] = useState<string | null>(null);
   const [sharedActivityPrefill, setSharedActivityPrefill] = useState<Partial<Activity> | null>(null);
@@ -204,9 +226,11 @@ function ExpertDashboardContent() {
   const [clarificationAutoOpenedId, setClarificationAutoOpenedId] = useState<string | null>(null);
   const [selectedExistingSharedActivityId, setSelectedExistingSharedActivityId] = useState<string>('');
   const [isRegisteringExistingSharedActivity, setIsRegisteringExistingSharedActivity] = useState(false);
+  const [pendingGroupedActivitySave, setPendingGroupedActivitySave] = useState<PendingGroupedActivitySave | null>(null);
 
   // Data hooks
   const { experts, isLoading: expertsLoading } = useExperts();
+  const { catalog: activityCatalog } = useActivityCatalog();
   const { experts: collaborationExperts } = useCollaborationExperts();
   const { activities: allMonthActivities, isLoading: activitiesLoading, mutate: refreshActivities } = useActivitiesByMonth(currentMonth, currentYear);
   const { leaveEntries, mutate: refreshLeaveEntries } = useLeaveEntries(currentMonth, currentYear);
@@ -221,6 +245,9 @@ function ExpertDashboardContent() {
   const { status: nextMonthStatus } = useReportStatus(selectedExpertId, nextMonthDate.getMonth(), nextMonthDate.getFullYear());
   const { projects: concurrentProjects } = useConcurrentProjects(selectedExpertId);
   const { entries: concurrentTimesheetEntries } = useConcurrentProjectTimesheetByMonth(currentMonth, currentYear);
+  const reportingWorkBlocksEnabled = isReportingWorkBlocksEnabledClient();
+  const { bundles: reportingWorkBlockBundles } = useReportingWorkBlockBundles(selectedExpertId, currentMonth, currentYear);
+  const { saveDraft: saveReportingWorkBlockDraft } = useReportingWorkBlockDraft();
   const { sharedDeliverables, isLoading: sharedDeliverablesLoading, mutate: refreshSharedDeliverables } = useSharedDeliverables(selectedExpertId || undefined);
   const visibleSharedDeliverables = useMemo(() => filterSharedRelationsForMonths({
     sharedDeliverables,
@@ -565,21 +592,75 @@ function ExpertDashboardContent() {
       ? 'Luna anterioara si luna viitoare se activeaza dupa acordul PM.'
       : undefined;
 
-  const handleSaveActivities = async (newActivities: Activity[]) => {
+  const saveAutomaticReportingWorkBlock = async ({
+    savedActivities,
+    deletedActivityIds = [],
+    sourceActivityId,
+    editScope,
+  }: {
+    savedActivities: Activity[];
+    deletedActivityIds?: string[];
+    sourceActivityId?: string;
+    editScope?: ActivityEditScope;
+  }): Promise<boolean> => {
+    if (!reportingWorkBlocksEnabled || isClarificationScopedAccess || savedActivities.length === 0 || !selectedExpertId) {
+      return false;
+    }
+
+    const savedIds = new Set(savedActivities.map((activity) => activity.id));
+    const deletedIds = new Set(deletedActivityIds);
+    const nextActivities = [
+      ...activities.filter((activity) => !savedIds.has(activity.id) && !deletedIds.has(activity.id)),
+      ...savedActivities,
+    ];
+    const input = buildActivitySaveWorkBlockInput({
+      savedActivities,
+      sourceActivityId,
+      editScope,
+      expertId: selectedExpertId,
+      projectCode: selectedExpert.projectCode ?? '302141',
+      month: currentMonth,
+      year: currentYear,
+      existingBundles: reportingWorkBlockBundles,
+    });
+
+    if (!input) return false;
+
+    try {
+      await saveReportingWorkBlockDraft(input, nextActivities);
+      return true;
+    } catch (error) {
+      console.error('Error auto-saving reporting work block:', error);
+      setSaveError('Activitatea a fost salvata, dar work block-ul Anexa 10 nu a putut fi actualizat automat. Verifica sectiunea Export.');
+      return false;
+    }
+  };
+
+  const handleSaveActivities = async (newActivities: Activity[], editScope?: ActivityEditScope) => {
     if (reportStatus?.status === 'approved') return;
 
+    if (editingActivity && !editScope && !isClarificationScopedAccess) {
+      const groupMembers = getActivityGroupMembers(editingActivity, activities);
+      if (groupMembers.length > 1) {
+        setPendingGroupedActivitySave({ activities: newActivities, groupSize: groupMembers.length });
+        return;
+      }
+    }
+
     setSaveError(null);
+    setWorkBlockSaveNotice(null);
     setIsSaving(true);
     try {
+      const safeSelectedDates = Array.isArray(selectedDates) ? selectedDates : [];
       if (!selectedExpertId) {
         throw new Error('Selecteaza un expert inainte de salvare.');
       }
-      if (selectedDates.length === 0) {
+      if (safeSelectedDates.length === 0) {
         throw new Error('Selecteaza cel putin o zi din calendar inainte de salvare.');
       }
 
       const editingGroupMembers = editingActivity
-        ? getActivityGroupMembersForSelectedDates(editingActivity, activities, selectedDates)
+        ? getActivityGroupMembersForSelectedDates(editingActivity, activities, safeSelectedDates)
         : [];
       const editingGroupMemberIds = new Set(editingGroupMembers.map((activity) => activity.id));
       if (isClarificationScopedAccess) {
@@ -675,11 +756,12 @@ function ExpertDashboardContent() {
         ? buildSubmittedActivitiesForEdit(
             editingActivity,
             newActivities,
-            selectedDates,
+            safeSelectedDates,
             selectedHours,
             editingGroupMembers,
             selectedExpertId,
             normalizePontajHoursValue,
+            editScope,
           )
         : newActivities;
       const submittedActivityIds = new Set(submittedActivities.map((activity) => activity.id));
@@ -736,6 +818,9 @@ function ExpertDashboardContent() {
         throw new Error(validation.message || 'Activitatea nu respecta regulile de pontaj.');
       }
 
+      let savedActivitiesForWorkBlock: Activity[] = [];
+      let deletedActivityIdsForWorkBlock: string[] = [];
+
       if (editingActivity) {
         const { updateActivities, newActivities: activitiesToCreate, deleteActivityIds } = planGroupedActivityEdit(
           editingActivity,
@@ -744,10 +829,12 @@ function ExpertDashboardContent() {
           selectedExpertId,
         );
         await Promise.all(updateActivities.map((activity) => updateActivity(activity.id, activity)));
-        if (activitiesToCreate.length > 0) {
-          await createBatch(activitiesToCreate);
-        }
+        const createdActivities = activitiesToCreate.length > 0
+          ? await createBatch(activitiesToCreate)
+          : [];
         await Promise.all(deleteActivityIds.map((activityId) => removeActivity(activityId)));
+        savedActivitiesForWorkBlock = [...updateActivities, ...createdActivities];
+        deletedActivityIdsForWorkBlock = deleteActivityIds;
       } else {
         const existingActivityIds = new Set(activities.map((activity) => activity.id));
         const activitiesToUpdate = submittedActivities.filter((activity) => existingActivityIds.has(activity.id));
@@ -765,6 +852,7 @@ function ExpertDashboardContent() {
             })))
           : [];
         const savedActivities = [...activitiesToUpdate, ...createdActivities];
+        savedActivitiesForWorkBlock = savedActivities;
 
         const activityTargetId = savedActivities[0]?.id;
         const deliverableTargetId = pendingSharedActivityRelationId
@@ -789,6 +877,15 @@ function ExpertDashboardContent() {
           await refreshSharedDeliverables();
           resetSharedRegistrationFlow();
         }
+      }
+      const didSaveReportingWorkBlock = await saveAutomaticReportingWorkBlock({
+        savedActivities: savedActivitiesForWorkBlock,
+        deletedActivityIds: deletedActivityIdsForWorkBlock,
+        sourceActivityId: editingActivity?.id ?? savedActivitiesForWorkBlock[0]?.id,
+        editScope,
+      });
+      if (didSaveReportingWorkBlock) {
+        setWorkBlockSaveNotice('Work block-ul Anexa 10 a fost actualizat automat din formularul de activitate.');
       }
       await refreshActivities();
       setShowForm(false);
@@ -942,6 +1039,68 @@ function ExpertDashboardContent() {
     }
   };
 
+  const handleDeleteBrokenExistingDeliverable = async (candidate: ExistingDeliverableCandidate) => {
+    if (reportStatus?.status === 'approved') return false;
+    if (isClarificationScopedAccess) {
+      setSaveError('In modul clarificari nu poti sterge livrabile.');
+      return false;
+    }
+    if (candidate.source !== 'mine' || candidate.isCommonDeliverable) {
+      setSaveError('Livrabilele comune sau ale colegilor nu pot fi sterse de aici.');
+      return false;
+    }
+    if (!candidate.sourceActivityId || !candidate.deliverableId) {
+      setSaveError('Nu pot identifica activitatea sursa a livrabilului. Deschide activitatea originala pentru curatare.');
+      return false;
+    }
+
+    const sourceActivity = allMonthActivities.find((activity) => activity.id === candidate.sourceActivityId);
+    if (!sourceActivity || sourceActivity.expertId !== selectedExpertId) {
+      setSaveError('Livrabilul nu apartine expertului selectat sau activitatea sursa nu este disponibila.');
+      return false;
+    }
+
+    const deliverable = sourceActivity.deliverables?.find((item) => (
+      item.id === candidate.deliverableId
+      || (candidate.documentId && item.documentId === candidate.documentId)
+      || (candidate.s3Key && (item.s3Key === candidate.s3Key || item.filePath === candidate.s3Key))
+    ));
+    if (!deliverable) {
+      setSaveError('Livrabilul nu mai exista in activitatea sursa.');
+      return false;
+    }
+    if (deliverable.isCommonDeliverable || (deliverable.sharedWithExpertIds?.length ?? 0) > 0) {
+      setSaveError('Livrabilul este comun/partajat si nu poate fi sters automat din lista.');
+      return false;
+    }
+
+    const isReferencedElsewhere = allMonthActivities.some((activity) => (
+      activity.id !== sourceActivity.id
+      && activity.deliverables?.some((item) => (
+        (candidate.documentId && item.documentId === candidate.documentId)
+        || (candidate.s3Key && (item.s3Key === candidate.s3Key || item.filePath === candidate.s3Key))
+        || (candidate.fileHash && item.fileHash === candidate.fileHash)
+      ))
+    ));
+    if (isReferencedElsewhere) {
+      setSaveError('Livrabilul este referentiat si in alta activitate. Nu il sterg automat.');
+      return false;
+    }
+
+    try {
+      await updateActivity(sourceActivity.id, {
+        deliverables: (sourceActivity.deliverables ?? []).filter((item) => item.id !== deliverable.id),
+      });
+      await refreshActivities();
+      setSaveError(null);
+      return true;
+    } catch (error) {
+      console.error('Error deleting broken deliverable:', error);
+      setSaveError(error instanceof Error ? error.message : 'Livrabilul nu a putut fi sters.');
+      return false;
+    }
+  };
+
   const handleUndoDeleteActivity = async () => {
     if (!deletedActivityUndo || reportStatus?.status === 'approved') return;
 
@@ -997,6 +1156,7 @@ function ExpertDashboardContent() {
     const missingWorkingDays = workingDays.filter((date) => !activityDates.has(date));
     const activitiesMissingDeliverables = getActivitiesMissingDeliverables(activities, {
       expertCategory: selectedExpert.category,
+      activityCatalog,
     });
     const deliverableRefs = activities.flatMap((activity) =>
       (activity.deliverables ?? []).map((deliverable) => ({ activity, deliverable })),
@@ -1139,7 +1299,7 @@ function ExpertDashboardContent() {
         key: 'deliverables',
         label: 'Livrabile pe activitati',
         detail: activitiesMissingDeliverables.length === 0
-          ? 'Activitatile individuale au livrabil, iar activitatile multi-zi au livrabil final.'
+          ? 'Activitatile au livrabil sau sunt configurate ca eligibile fara livrabil.'
           : `${activitiesMissingDeliverables.length} activitati fara livrabil.`,
         severity: activitiesMissingDeliverables.length === 0 ? 'ok' : 'blocking',
         issues: missingDeliverableIssues,
@@ -1200,7 +1360,7 @@ function ExpertDashboardContent() {
         ? 'Adauga cel putin o activitate inainte de trimitere.'
         : blockingItems[0]?.detail || '',
     };
-  }, [activities, currentMonth, currentYear, documents, monthlyBlocking, selectedExpert.category, visibleSharedDeliverables]);
+  }, [activities, activityCatalog, currentMonth, currentYear, documents, monthlyBlocking, selectedExpert.category, visibleSharedDeliverables]);
 
   const selectedReadinessItem = selectedReadinessKey
     ? submitReadiness.items.find((item) => item.key === selectedReadinessKey && item.severity !== 'ok') ?? null
@@ -1703,6 +1863,7 @@ function ExpertDashboardContent() {
       year={currentYear}
       onSave={handleSaveActivities}
       onCancel={isClarificationScopedAccess ? () => router.push(`/expert/clarificari?month=${currentMonth}&year=${currentYear}`) : closeActivityForm}
+      onDeleteBrokenExistingDeliverable={handleDeleteBrokenExistingDeliverable}
       initialActivity={editingActivity || undefined}
       prefillActivity={sharedActivityPrefill || undefined}
       resolutionHint={activityResolutionHint || undefined}
@@ -1716,6 +1877,43 @@ function ExpertDashboardContent() {
   return (
     <>
       <AdminViewAsBanner />
+      <AlertDialog
+        open={Boolean(pendingGroupedActivitySave)}
+        onOpenChange={(open) => {
+          if (!open) setPendingGroupedActivitySave(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Modifici o activitate dintr-o serie</AlertDialogTitle>
+            <AlertDialogDescription>
+              Aceasta activitate face parte dintr-o serie de {pendingGroupedActivitySave?.groupSize ?? 0} zile.
+              Alege daca modificarea se aplica doar zilei selectate sau intregii serii.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Anuleaza</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                const pendingSave = pendingGroupedActivitySave;
+                setPendingGroupedActivitySave(null);
+                if (pendingSave) void handleSaveActivities(pendingSave.activities, 'single');
+              }}
+            >
+              Modifica doar ziua aleasa
+            </AlertDialogAction>
+            <AlertDialogAction
+              onClick={() => {
+                const pendingSave = pendingGroupedActivitySave;
+                setPendingGroupedActivitySave(null);
+                if (pendingSave) void handleSaveActivities(pendingSave.activities, 'series');
+              }}
+            >
+              Modifica intreaga serie
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <DashboardShell
         activeHref="/expert/peo"
         navItems={expertNavItems}
@@ -1781,57 +1979,6 @@ function ExpertDashboardContent() {
           { label: 'Livrabile', href: '#livrabile', icon: Upload },
           { label: 'Rapoarte', href: exportRaHref, icon: FileText },
         ]}
-        aside={showForm ? undefined : (
-          <>
-            <RightInfoCard title="Rezumat zi" icon={Clock3}>
-              <p className="text-sm font-semibold text-muted-foreground">Luni, 12 mai 2026</p>
-              <div className="mt-5 flex items-end justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Total ore introduse</p>
-                  <p className="mt-1 text-4xl font-bold text-slate-950">
-                    {selectedDates.reduce((sum, date) => sum + Number(normalizePontajHoursValue(selectedHours[date], getDefaultHours())), 0)}h
-                  </p>
-                </div>
-                <span className="text-sm text-muted-foreground">din 8h disponibile</span>
-              </div>
-              <ProgressBar value={Math.min(100, selectedDates.reduce((sum, date) => sum + Number(normalizePontajHoursValue(selectedHours[date], getDefaultHours())), 0) * 12.5)} className="mt-4" />
-              <Link href="#calendar" className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-primary">
-                Vezi detaliile zilei
-              </Link>
-            </RightInfoCard>
-
-            {!showForm && (
-            <RightInfoCard title="Status raportare" icon={ClipboardList}>
-              <div className="space-y-4 text-sm">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                  <span className="text-muted-foreground">Luna curentă</span>
-                  <Badge variant="conform">Deschisă</Badge>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Pontaj</span>
-                  <Badge variant={isApproved ? 'conform' : 'in_lucru'}>{isApproved ? 'Aprobat' : 'În lucru'}</Badge>
-                </div>
-              </div>
-            </RightInfoCard>
-            )}
-
-            <RightInfoCard title="Sfaturi completare" icon={CheckCircle}>
-              <div className="space-y-3 text-sm leading-6">
-                {[
-                  'Completează date, titlu și descrierea activității.',
-                  'Atașează documente relevante, dacă este cazul.',
-                  'Asigură-te că activitatea se încadrează în subactivitatea selectată.',
-                  'Maximum 8 ore raportate pe zi.',
-                ].map((tip) => (
-                  <div key={tip} className="flex items-start gap-2 text-muted-foreground">
-                    <CheckCircle className="mt-1 h-4 w-4 shrink-0 text-[#36c2a0]" />
-                    {tip}
-                  </div>
-                ))}
-              </div>
-            </RightInfoCard>
-          </>
-        )}
       >
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-4">
           <div className="space-y-1">
@@ -2158,6 +2305,18 @@ function ExpertDashboardContent() {
               <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                 <p>{saveError}</p>
+              </div>
+            )}
+
+            {workBlockSaveNotice && (
+              <div className="flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
+                <CheckCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                <p>
+                  {workBlockSaveNotice}{' '}
+                  <Link href={exportRaHref} className="font-semibold underline underline-offset-2">
+                    Verifica in Export
+                  </Link>
+                </p>
               </div>
             )}
 

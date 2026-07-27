@@ -1,11 +1,13 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { fetchAuthSession } from 'aws-amplify/auth';
 import {
   CheckCircle2,
   Edit2,
   Filter,
   Lock,
+  MessageSquare,
   MoreHorizontal,
   RotateCcw,
   SearchIcon,
@@ -37,6 +39,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { StatusBadge } from '@/components/ui/status-badge';
+import { Textarea } from '@/components/ui/textarea';
 import { expertIdentityKey } from '@/lib/expert-merge';
 import { syncOrInviteCognitoGroupsForUser } from '@/lib/admin-cognito';
 import { cognitoGroupsForRole } from '@/lib/cognito-roles';
@@ -53,6 +56,7 @@ type EditFormState = {
   beneficiary: string;
   projectCode: string;
   positionInProject: string;
+  aiReportingInstructions: string;
   hasPmAccess: boolean;
   isActive: boolean;
 };
@@ -122,9 +126,20 @@ function buildEditForm(expert: Expert): EditFormState {
     beneficiary: expert.beneficiary || '',
     projectCode: expert.projectCode || '',
     positionInProject: expert.positionInProject || '',
+    aiReportingInstructions: expert.aiReportingInstructions || '',
     hasPmAccess: expert.hasPmAccess ?? (role.includes('PM') || role === 'Admin'),
     isActive: expert.isActive ?? true,
   };
+}
+
+function shouldSyncCognitoGroupsForProfileSave(expert: Expert, form: EditFormState) {
+  const currentRole = normalizeRole(expert.role);
+  const currentHasPmAccess = expert.hasPmAccess ?? (currentRole.includes('PM') || currentRole === 'Admin');
+  const nextHasPmAccess = form.hasPmAccess || form.role === 'Admin';
+  const currentEmail = String(expert.email || '').trim().toLowerCase();
+  const nextEmail = form.email.trim().toLowerCase();
+
+  return currentRole !== form.role || currentHasPmAccess !== nextHasPmAccess || currentEmail !== nextEmail;
 }
 
 function buildExpertCreateInput(expert: Expert, updates: Partial<Expert>): Omit<Expert, 'id'> {
@@ -144,6 +159,7 @@ function buildExpertCreateInput(expert: Expert, updates: Partial<Expert>): Omit<
     positionInProject: updates.positionInProject ?? expert.positionInProject,
     projectCode: updates.projectCode ?? expert.projectCode,
     projectTitle: updates.projectTitle ?? expert.projectTitle,
+    aiReportingInstructions: updates.aiReportingInstructions ?? expert.aiReportingInstructions,
     beneficiary: updates.beneficiary ?? expert.beneficiary,
     saCodes: updates.saCodes ?? expert.saCodes ?? [],
     hasPmAccess: updates.hasPmAccess ?? expert.hasPmAccess ?? false,
@@ -163,6 +179,7 @@ function auditProfileValue(expert: Expert | (Partial<Expert> & { name?: string; 
     beneficiary: expert.beneficiary || '',
     projectCode: expert.projectCode || '',
     positionInProject: expert.positionInProject || '',
+    aiReportingInstructions: expert.aiReportingInstructions || '',
     hasPmAccess: expert.hasPmAccess ?? false,
     isActive: expert.isActive ?? true,
   });
@@ -193,6 +210,65 @@ async function createUserAudit(input: {
   });
 }
 
+async function tryCreateUserAudit(input: Parameters<typeof createUserAudit>[0]) {
+  try {
+    await createUserAudit(input);
+  } catch (error) {
+    console.warn('Auditul actiunii de administrare nu a putut fi salvat.', error);
+  }
+}
+
+async function refreshAdminAuthSession() {
+  await fetchAuthSession({ forceRefresh: true });
+}
+
+async function callAdminExpertWrite(
+  action: 'create' | 'update',
+  input: Partial<Expert> | Omit<Expert, 'id'>,
+  id?: string,
+) {
+  const token = (await fetchAuthSession({ forceRefresh: true })).tokens?.accessToken?.toString();
+  if (!token) {
+    throw new Error('Nu am gasit sesiunea Cognito a administratorului curent.');
+  }
+
+  const response = await fetch('/api/admin/experts', {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${token}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ action, id, input }),
+  });
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(body?.error || 'Administrarea expertului a esuat.');
+  }
+
+  return body?.data as Expert;
+}
+
+function formatAdminWriteError(error: unknown, fallback: string) {
+  const message = error instanceof Error ? error.message : String(error || '');
+  if (/Doar administratorii pot administra|drept de administrare pentru experti/i.test(message)) {
+    return [
+      'Scriere refuzata de backend: utilizatorul autentificat nu are drept de administrare pentru experti.',
+      'Verifica daca esti logata cu contul de administrator si reincearca.',
+    ].join(' ');
+  }
+  if (/AccessDeniedException|not authorized to perform|access denied/i.test(message)) {
+    if (/Cognito|grupuri/i.test(message)) {
+      return [
+        'Profilul nu a putut sincroniza rolurile Cognito: backendul nu are permisiunile AWS necesare pentru administrarea grupurilor.',
+        `Detaliu tehnic: ${message}`,
+      ].join(' ');
+    }
+    return `Operatia AWS a fost refuzata de configurarea serviciului: ${message}`;
+  }
+  return message || fallback;
+}
+
 export function AdminUsersTable() {
   const [experts, setExperts] = useState<Expert[]>([]);
   const [persistedExpertsByKey, setPersistedExpertsByKey] = useState<Map<string, Expert>>(() => new Map());
@@ -204,6 +280,8 @@ export function AdminUsersTable() {
   const [roleFilter, setRoleFilter] = useState('all');
   const [organizationFilter, setOrganizationFilter] = useState('all');
   const [editingExpert, setEditingExpert] = useState<Expert | null>(null);
+  const [editingInstructionsExpert, setEditingInstructionsExpert] = useState<Expert | null>(null);
+  const [instructionsDraft, setInstructionsDraft] = useState('');
   const [form, setForm] = useState<EditFormState | null>(null);
 
   async function loadExperts() {
@@ -273,6 +351,13 @@ export function AdminUsersTable() {
     setOk(null);
   }
 
+  function openInstructionsDialog(expert: Expert) {
+    setEditingInstructionsExpert(expert);
+    setInstructionsDraft(expert.aiReportingInstructions || '');
+    setError(null);
+    setOk(null);
+  }
+
   function isPersistedExpert(expert: Expert) {
     return persistedExpertsByKey.has(expertIdentityKey(expert));
   }
@@ -314,19 +399,21 @@ export function AdminUsersTable() {
     };
     const cognitoGroups = cognitoGroupsForRole(form.role, form.hasPmAccess || form.role === 'Admin');
     updates.cognitoGroups = cognitoGroups;
+    const shouldSyncCognitoGroups = !isPersistedExpert(editingExpert)
+      || shouldSyncCognitoGroupsForProfileSave(editingExpert, form);
 
     try {
-      await syncOrInviteCognitoGroupsForUser(updates.email, cognitoGroups, updates.name);
-
-      const savedExpert = isPersistedExpert(editingExpert)
-        ? { ...editingExpert, id: getPersistedExpertId(editingExpert) }
-        : await expertsService.create(buildExpertCreateInput(editingExpert, updates));
-
-      if (isPersistedExpert(editingExpert)) {
-        await expertsService.update(savedExpert.id, updates);
+      await refreshAdminAuthSession();
+      if (shouldSyncCognitoGroups) {
+        await syncOrInviteCognitoGroupsForUser(updates.email, cognitoGroups, updates.name);
+        await refreshAdminAuthSession();
       }
 
-      await createUserAudit({
+      const savedExpert = isPersistedExpert(editingExpert)
+        ? await callAdminExpertWrite('update', updates, getPersistedExpertId(editingExpert))
+        : await callAdminExpertWrite('create', buildExpertCreateInput(editingExpert, updates));
+
+      await tryCreateUserAudit({
         actionType: 'user_profile_updated',
         expert: savedExpert,
         fieldName: 'profile',
@@ -340,7 +427,47 @@ export function AdminUsersTable() {
       setForm(null);
       await loadExperts();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Actualizarea profilului a esuat.');
+      setError(formatAdminWriteError(e, 'Actualizarea profilului a esuat.'));
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  async function handleSaveInstructions() {
+    if (!editingInstructionsExpert) return;
+
+    setSavingId(editingInstructionsExpert.id);
+    setError(null);
+    setOk(null);
+
+    const nextInstructions = instructionsDraft.trim();
+
+    try {
+      await refreshAdminAuthSession();
+      const expertIsPersisted = isPersistedExpert(editingInstructionsExpert);
+      const savedExpert = expertIsPersisted
+        ? await callAdminExpertWrite('update', {
+            aiReportingInstructions: nextInstructions,
+          }, getPersistedExpertId(editingInstructionsExpert))
+        : await callAdminExpertWrite('create', buildExpertCreateInput(editingInstructionsExpert, {
+            aiReportingInstructions: nextInstructions,
+          }));
+
+      await tryCreateUserAudit({
+        actionType: 'user_ai_reporting_instructions_updated',
+        expert: savedExpert,
+        fieldName: 'aiReportingInstructions',
+        oldValue: editingInstructionsExpert.aiReportingInstructions || '',
+        newValue: nextInstructions,
+        justification: 'Instructiuni AI pentru raportare actualizate din panoul de administrare.',
+      });
+
+      setOk(`Instructiunile AI pentru ${editingInstructionsExpert.name} au fost actualizate.`);
+      setEditingInstructionsExpert(null);
+      setInstructionsDraft('');
+      await loadExperts();
+    } catch (e) {
+      setError(formatAdminWriteError(e, 'Actualizarea instructiunilor AI a esuat.'));
     } finally {
       setSavingId(null);
     }
@@ -383,12 +510,8 @@ export function AdminUsersTable() {
 
     try {
       const savedExpert = isPersistedExpert(expert)
-        ? { ...expert, id: getPersistedExpertId(expert) }
-        : await expertsService.create(buildExpertCreateInput(expert, { isActive: nextActive }));
-
-      if (isPersistedExpert(expert)) {
-        await expertsService.update(savedExpert.id, { isActive: nextActive });
-      }
+        ? await callAdminExpertWrite('update', { isActive: nextActive }, getPersistedExpertId(expert))
+        : await callAdminExpertWrite('create', buildExpertCreateInput(expert, { isActive: nextActive }));
 
       await createUserAudit({
         actionType: nextActive ? 'user_profile_reactivated' : 'user_profile_deactivated',
@@ -421,12 +544,8 @@ export function AdminUsersTable() {
 
     try {
       const savedExpert = isPersistedExpert(expert)
-        ? { ...expert, id: getPersistedExpertId(expert) }
-        : await expertsService.create(buildExpertCreateInput(expert, { isActive: false }));
-
-      if (isPersistedExpert(expert)) {
-        await expertsService.delete(savedExpert.id);
-      }
+        ? await callAdminExpertWrite('update', { isActive: false }, getPersistedExpertId(expert))
+        : await callAdminExpertWrite('create', buildExpertCreateInput(expert, { isActive: false }));
 
       await createUserAudit({
         actionType: 'user_profile_deleted',
@@ -595,6 +714,29 @@ export function AdminUsersTable() {
 
           {form ? (
             <div className="grid gap-4 md:grid-cols-2">
+              <div className="md:col-span-2 rounded-md border border-slate-200 bg-slate-50 p-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-slate-900">Instructiuni AI pentru raportare</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {editingExpert?.aiReportingInstructions?.trim()
+                        ? 'Prompt PM/Admin configurat pentru generarea descrierilor.'
+                        : 'Nu exista instructiuni AI dedicate pentru acest expert.'}
+                    </p>
+                  </div>
+                  {editingExpert && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => openInstructionsDialog(editingExpert)}
+                    >
+                      <MessageSquare className="h-4 w-4" />
+                      Instructiuni AI pentru raportare
+                    </Button>
+                  )}
+                </div>
+              </div>
               <div className="space-y-2">
                 <Label htmlFor="admin-user-name">Nume</Label>
                 <Input
@@ -716,6 +858,61 @@ export function AdminUsersTable() {
             </Button>
             <Button onClick={handleSaveProfile} disabled={!editingExpert || savingId === editingExpert.id}>
               Salveaza modificarile
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(editingInstructionsExpert)} onOpenChange={(open) => {
+        if (!open) {
+          setEditingInstructionsExpert(null);
+          setInstructionsDraft('');
+        }
+      }}>
+        <DialogContent className="sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Instructiuni AI pentru raportare</DialogTitle>
+            <DialogDescription>
+              Configureaza promptul PM/Admin folosit la generarea descrierilor pentru expert.
+            </DialogDescription>
+          </DialogHeader>
+
+          {editingInstructionsExpert ? (
+            <div className="space-y-4">
+              <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
+                <div className="font-medium text-slate-900">{editingInstructionsExpert.name}</div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  {editingInstructionsExpert.positionInProject || editingInstructionsExpert.role}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="admin-user-ai-reporting-instructions">Prompt PM/Admin</Label>
+                <Textarea
+                  id="admin-user-ai-reporting-instructions"
+                  value={instructionsDraft}
+                  onChange={(event) => setInstructionsDraft(event.target.value)}
+                  rows={12}
+                  placeholder="Ex: Pentru acest expert, descrierile trebuie sa sublinieze analiza de politici publice, sinteza pentru membri si formularea de recomandari. Evita formulari despre organizare evenimente daca livrabilul nu sustine explicit acest lucru."
+                />
+                <p className="text-xs text-muted-foreground">
+                  Aceste instructiuni ajusteaza stilul si accentul descrierii. Nu pot suprascrie scopul SA, catalogul Admin, eligibilitatea sau continutul livrabilelor.
+                </p>
+              </div>
+            </div>
+          ) : null}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setEditingInstructionsExpert(null);
+                setInstructionsDraft('');
+              }}
+            >
+              Anuleaza
+            </Button>
+            <Button onClick={handleSaveInstructions} disabled={!editingInstructionsExpert || savingId === editingInstructionsExpert.id}>
+              Salveaza instructiunile
             </Button>
           </DialogFooter>
         </DialogContent>

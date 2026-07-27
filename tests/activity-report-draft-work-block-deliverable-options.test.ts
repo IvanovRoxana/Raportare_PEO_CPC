@@ -130,3 +130,31 @@ test('foloseste identificatori fallback pentru livrabile legacy fara id', () => 
   assert.equal(options[0].title, 'Legacy.docx');
   assert.equal(options[0].saCode, 'SA3.4');
 });
+
+test('include statusul de eligibilitate in optiunile de livrabile', () => {
+  const [option] = buildDraftWorkBlockDeliverableOptions({
+    activities: [
+      activity({
+        id: 'a1',
+        deliverables: [{
+          id: 'd1',
+          fileName: 'eligibil.docx',
+          fileType: 'docx',
+          fileSize: 10,
+          eligibilityCheck: {
+            status: 'eligibil_cu_observatii',
+            score: 82,
+            summary: 'Livrabilul sustine activitatea, cu verificari manuale.',
+            checks: [],
+            missingElements: [],
+            recommendations: [],
+            riskFlags: [],
+          },
+        }],
+      }),
+    ],
+  });
+
+  assert.equal(option.eligibilityStatus, 'eligibil_cu_observatii');
+  assert.equal(option.eligibilitySummary, 'Livrabilul sustine activitatea, cu verificari manuale.');
+});

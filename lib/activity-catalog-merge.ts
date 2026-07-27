@@ -46,6 +46,23 @@ export function filterActivityCatalogForFormTab(catalog: ActivityCatalog[], tab:
   return catalog;
 }
 
+export function resolveActivityDeliverableOptions(
+  catalogDeliverables: string | undefined,
+  fallbackOptions: string[],
+  currentOptions: Array<string | undefined> = [],
+) {
+  const configuredOptions = (catalogDeliverables || '')
+    .split(/\s*\|\s*|\r?\n|\s*;\s*/)
+    .map((option) => option.replace(/^[-*\u2022]\s*/, '').trim())
+    .filter(Boolean);
+  const preservedOptions = currentOptions
+    .map((option) => option?.trim())
+    .filter((option): option is string => Boolean(option));
+
+  const baseOptions = configuredOptions.length > 0 ? configuredOptions : fallbackOptions;
+  return Array.from(new Set([...baseOptions, ...preservedOptions]));
+}
+
 export function activityCatalogMergeKey(item: ActivityCatalogMergeKeyInput) {
   const category = normalizePeoCategory(item.category) || item.category?.trim().toLowerCase();
   const saCode = normalizeActivityCatalogSaCode(item.saCode);
@@ -90,4 +107,16 @@ export function resolveExpertActivityCatalog({
   expertCategory?: string;
 }) {
   return mergeActivityCatalogs(fallbackCatalog, backendCatalog);
+}
+
+export function getActiveGdprActivityCatalog(
+  catalog: ActivityCatalog[],
+  allowedSaCodes: string[] = [],
+) {
+  const allowed = new Set(allowedSaCodes.map(normalizeActivityCatalogSaCode).filter(Boolean));
+  return sortActivityCatalog(catalog.filter((item) =>
+    item.category.trim().toLowerCase() === 'gdpr'
+    && isActiveActivityCatalogItem(item)
+    && (allowed.size === 0 || allowed.has(normalizeActivityCatalogSaCode(item.saCode)))
+  ));
 }

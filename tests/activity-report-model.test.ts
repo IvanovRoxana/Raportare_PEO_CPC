@@ -153,3 +153,40 @@ test('avertizeaza cand acelasi livrabil este folosit in doua work block-uri', ()
 
   assert.equal(model.warnings.some((warning) => /asociat in mai multe work block-uri/.test(warning)), true);
 });
+
+test('adauga avertizari non-blocante pentru statusul eligibilitatii livrabilelor', () => {
+  const activities = [
+    activity({
+      id: 'a1',
+      date: '2026-06-02',
+      deliverables: [{
+        id: 'd1',
+        fileName: 'observatii.docx',
+        fileType: 'docx',
+        fileSize: 10,
+        declaredTitle: 'Observatii acte normative',
+        eligibilityCheck: {
+          status: 'eligibil_cu_observatii',
+          score: 80,
+          summary: 'Necesita verificare manuala.',
+          checks: [],
+          missingElements: [],
+          recommendations: [],
+          riskFlags: [],
+        },
+      }, {
+        id: 'd2',
+        fileName: 'neverificat.docx',
+        fileType: 'docx',
+        fileSize: 10,
+      }],
+    }),
+  ];
+  const bundles = buildWorkBlocks(activities);
+
+  const model = buildAnexa10ReportModel({ expert, activities, month: 5, year: 2026, workBlockBundles: bundles });
+
+  assert.equal(model.problems.length, 0);
+  assert.equal(model.warnings.some((warning) => /eligibil cu observatii/.test(warning)), true);
+  assert.equal(model.warnings.some((warning) => /nu are eligibilitatea verificata/.test(warning)), true);
+});

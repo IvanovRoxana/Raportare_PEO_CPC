@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ALL_DELIVERABLE_TYPES, DOCUMENT_STADIU_OPTIONS, type DeliverableSlot } from '@/lib/deliverable-types';
 import { extractDocxFirstPageText, extractDocxTextWithSource, extractHtmlTextWithSource, extractImageTextWithSource, extractPdfFirstPageTextWithSource, extractPdfTextWithSource, extractXlsxTextWithSource, isImageFile } from '@/lib/document-utils';
 import { DELIVERABLE_ELIGIBILITY_UI_MESSAGE, isDeliverableEligibilityCheckEnabledClient } from '@/lib/feature-flags';
+import { hasSufficientDeliverableEvidenceForEligibility } from '@/lib/deliverable-eligibility';
 import { applyAutomaticTitleSuggestion, formatTitleFromFilename, suggestTitleFromFirstPage, validateDeclaredTitleOnFirstPage } from '@/lib/title-suggestion';
 import { getDocumentAuditTitle, hashFirstPageText, normalizeDocumentTextForFingerprint, sha256Hex, type DuplicateIssueType } from '@/lib/document-sharing';
 import type { ActivityCatalog } from '@/lib/types';
@@ -26,14 +27,31 @@ export interface DeliverableDuplicateInfo {
 
 type EligibilitySuggestedSettings = NonNullable<NonNullable<DeliverableSlot['eligibilityCheck']>['suggestedSettings']>;
 type EligibilitySuggestedSettingsChange = 'activity' | 'deliverableType';
-const MIN_ELIGIBILITY_TEXT_LENGTH = 80;
-
 function hasEnoughExtractedTextForEligibility(deliverable: DeliverableSlot) {
-  return (deliverable.docText || deliverable.firstPageText || '').replace(/\s+/g, ' ').trim().length >= MIN_ELIGIBILITY_TEXT_LENGTH;
+  return hasSufficientDeliverableEvidenceForEligibility({
+    extractedText: deliverable.docText,
+    firstPageText: deliverable.firstPageText,
+    documentTitle: deliverable.declaredTitle || deliverable.suggestedTitle,
+    titleConfirmed: deliverable.titleConfirmed,
+    fileName: deliverable.filename || deliverable.name,
+    fileType: deliverable.fileType,
+    deliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
+  });
 }
 
-function getTextExtractionGateReason(deliverable: DeliverableSlot) {
-  if (hasEnoughExtractedTextForEligibility(deliverable)) return null;
+function getEligibilityDeliverables(deliverable: DeliverableSlot, relatedDeliverables?: DeliverableSlot[]) {
+  return (relatedDeliverables && relatedDeliverables.length > 0
+    ? relatedDeliverables
+    : [deliverable]
+  ).filter((item) => item.uploaded && !item.isPhoto);
+}
+
+function getTextExtractionGateReason(deliverable: DeliverableSlot, relatedDeliverables?: DeliverableSlot[]) {
+  const eligibilityDeliverables = getEligibilityDeliverables(deliverable, relatedDeliverables);
+  if (eligibilityDeliverables.some(hasEnoughExtractedTextForEligibility)) return null;
+  if (eligibilityDeliverables.length > 1) {
+    return 'Textul extras din livrabilele incarcate pentru grupul activitatii este prea scurt pentru verificarea AI. Reincarca documentele ca PDF/DOCX cu text selectabil sau exporta-le cu OCR.';
+  }
   const hasConfirmedTitle = Boolean(deliverable.titleConfirmed || deliverable.declaredTitle || deliverable.suggestedTitle);
   if (hasConfirmedTitle) {
     return 'Titlul a fost identificat, dar textul extras din livrabil este prea scurt pentru verificarea AI. Reincarca documentul ca PDF/DOCX cu text selectabil sau exporta-l cu OCR.';
@@ -45,6 +63,25 @@ function getTextExtractionGateReason(deliverable: DeliverableSlot) {
     return 'Nu exista text extras suficient din prezentare. Exporta prezentarea in PDF pentru verificare AI.';
   }
   return 'Nu exista text extras suficient din livrabil. Reincarca documentul ca PDF/DOCX cu text selectabil sau cu imagini clare pentru OCR.';
+}
+
+function buildEligibilityDocumentPayload(deliverable: DeliverableSlot, activityGroupId: string, isPrimary: boolean) {
+  return {
+    id: deliverable.id,
+    activityGroupId,
+    isPrimary,
+    documentTitle: getDocumentAuditTitle({
+      ...deliverable,
+      fileName: deliverable.filename || deliverable.name,
+      originalFileName: deliverable.filename || deliverable.name,
+    }),
+    fileName: deliverable.filename || deliverable.name,
+    extractedText: (deliverable.docText || deliverable.firstPageText || '').slice(0, 12000),
+    deliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
+    textScope: deliverable.docText && deliverable.docText !== deliverable.firstPageText
+      ? 'Text extras disponibil din document'
+      : 'Prima pagina / inceputul documentului',
+  };
 }
 
 function normalizeEligibilityContextValue(value?: string | null) {
@@ -79,7 +116,7 @@ function isEligibilityCheckObsoleteForCurrentActivity(
   }
 
   const suggestedSettings = check?.suggestedSettings;
-  if (!suggestedSettings?.changes.includes('activity')) return false;
+  if (!suggestedSettings?.changes?.includes('activity')) return false;
   if (check?.status !== 'neeligibil' && check?.status !== 'neconcludent') return false;
 
   const suggestedIdMatches = Boolean(
@@ -175,6 +212,8 @@ export function DeliverableItem({
     selectedActivityId,
     deliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
   }) ? null : deliverable.eligibilityCheck;
+  const hasReusableEligibilityCheck = Boolean(visibleEligibilityCheck);
+  const metadataLocked = Boolean(deliverable.lockedExistingMetadata);
 
   const readFileAsDataUrl = (file: File) =>
     new Promise<string>((resolve, reject) => {
@@ -377,6 +416,7 @@ export function DeliverableItem({
           checkedActivityName: activityTitle,
           checkedDeliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
           modelAuditId: result.modelAuditId,
+          analyzedDeliverables: result.analyzedDeliverables,
         },
         aiCheck: {
           eligible: result.status === 'eligibil' || result.status === 'eligibil_cu_observatii'
@@ -535,7 +575,7 @@ export function DeliverableItem({
       : !deliverable.stadiu
         ? 'Selecteaza stadiul documentului inainte de verificarea eligibilitatii.'
         : eligibilityBlockedReason);
-  const canRunEligibilityCheck = canCheckEligibility && !eligibilityGateReason;
+  const canRunEligibilityCheck = canCheckEligibility && !eligibilityGateReason && !hasReusableEligibilityCheck;
   const allOk = step1ok && step2ok && step3ok && step4ok;
   const auditTitle = getDocumentAuditTitle({
     ...deliverable,
@@ -588,6 +628,10 @@ export function DeliverableItem({
               {required && <span className="text-xs text-red-600 ml-1">obligatoriu</span>}
             </div>
             {hint && <div className="text-[10px] text-slate-500 mt-0.5">{hint}</div>}
+          </div>
+        ) : metadataLocked ? (
+          <div className="flex-1 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
+            {deliverable.type || deliverable.deliverableType || 'Livrabil existent'}
           </div>
         ) : (
           <Select
@@ -858,7 +902,7 @@ export function DeliverableItem({
           variant="outline"
           size="sm"
           onClick={handleConfirmTitle}
-          disabled={deliverable.titleCheckStatus === 'mismatch'}
+          disabled={metadataLocked || deliverable.titleCheckStatus === 'mismatch'}
           className={`justify-self-start border-green-400 text-xs text-green-700 hover:bg-green-50 disabled:border-amber-300 disabled:text-amber-700 ${renderInlineNotes ? 'xl:col-start-1' : ''}`}
         >
           {deliverable.titleCheckStatus === 'mismatch' || deliverable.titleCheckStatus === 'extraction_failed' ? (
@@ -872,27 +916,33 @@ export function DeliverableItem({
 
       {deliverable.uploaded && !deliverable.isPhoto && (
         <div className={renderInlineNotes ? 'xl:col-start-1' : ''}>
-          <Select
-            value={deliverable.stadiu}
-            onValueChange={(value: string) => onUpdate({ stadiu: value })}
-          >
-            <SelectTrigger className="text-xs">
-              <SelectValue placeholder="Stadiu document" />
-            </SelectTrigger>
-            <SelectContent>
-              {DOCUMENT_STADIU_OPTIONS.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value} className="text-xs">
-                  {opt.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {metadataLocked ? (
+            <div className="rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
+              {DOCUMENT_STADIU_OPTIONS.find((opt) => opt.value === deliverable.stadiu)?.label || 'Stadiu existent'}
+            </div>
+          ) : (
+            <Select
+              value={deliverable.stadiu}
+              onValueChange={(value: string) => onUpdate({ stadiu: value })}
+            >
+              <SelectTrigger className="text-xs">
+                <SelectValue placeholder="Stadiu document" />
+              </SelectTrigger>
+              <SelectContent>
+                {DOCUMENT_STADIU_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </div>
       )}
 
       {showEligibilityControl && renderInlineNotes && deliverable.uploaded && !deliverable.isPhoto && (
         <div className="space-y-2 xl:col-start-2">
-          {eligibilityCheckEnabled && canRunEligibilityCheck ? (
+          {eligibilityCheckEnabled && hasReusableEligibilityCheck ? null : eligibilityCheckEnabled && canRunEligibilityCheck ? (
             <Button
               variant="outline"
               size="sm"
@@ -957,7 +1007,7 @@ export function DeliverableItem({
           {aiLoading ? 'Se verifică...' : 'Verifică eligibilitatea livrabilului'}
         </Button>
       )}
-      {showEligibilityControl && !renderInlineNotes && deliverable.uploaded && !deliverable.isPhoto && eligibilityCheckEnabled && !canRunEligibilityCheck && (
+      {showEligibilityControl && !renderInlineNotes && deliverable.uploaded && !deliverable.isPhoto && eligibilityCheckEnabled && !hasReusableEligibilityCheck && !canRunEligibilityCheck && (
         <div className="w-fit max-w-full rounded border border-amber-200 bg-amber-50 p-2 text-[10px] text-amber-800">
           <div className="flex items-start gap-1.5">
             <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
@@ -995,6 +1045,7 @@ export function DeliverableItem({
 
 export interface DeliverableEligibilityControlProps {
   deliverable: DeliverableSlot;
+  relatedDeliverables?: DeliverableSlot[];
   subActivity: string;
   activityTitle: string;
   selectedActivityId?: string;
@@ -1024,6 +1075,7 @@ export interface DeliverableEligibilityControlProps {
 
 export function DeliverableEligibilityControl({
   deliverable,
+  relatedDeliverables,
   subActivity,
   activityTitle,
   selectedActivityId,
@@ -1055,17 +1107,18 @@ export function DeliverableEligibilityControl({
     selectedActivityId,
     deliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
   }) ? null : deliverable.eligibilityCheck;
+  const hasReusableEligibilityCheck = Boolean(visibleEligibilityCheck);
 
   if (!deliverable.uploaded || deliverable.isPhoto) return null;
 
-  const textExtractionGateReason = visibleEligibilityCheck ? null : getTextExtractionGateReason(deliverable);
+  const textExtractionGateReason = visibleEligibilityCheck ? null : getTextExtractionGateReason(deliverable, relatedDeliverables);
   const eligibilityGateReason = textExtractionGateReason
     || (!deliverable.titleConfirmed
       ? 'Confirma titlul livrabilului inainte de verificarea eligibilitatii.'
       : !deliverable.stadiu
         ? 'Selecteaza stadiul documentului inainte de verificarea eligibilitatii.'
         : eligibilityBlockedReason);
-  const canRunEligibilityCheck = canCheckEligibility && !eligibilityGateReason;
+  const canRunEligibilityCheck = canCheckEligibility && !eligibilityGateReason && !hasReusableEligibilityCheck;
 
   const handleAiCheck = async () => {
     if (!eligibilityCheckEnabled) return;
@@ -1073,10 +1126,17 @@ export function DeliverableEligibilityControl({
     setAiLoading(true);
     try {
       const extractedText = (deliverable.docText || deliverable.firstPageText || '').slice(0, 12000);
+      const activityGroupId = selectedActivityId || subActivity;
+      const eligibilityDeliverables = getEligibilityDeliverables(deliverable, relatedDeliverables);
       const response = await fetch('/api/ai/check-deliverable-eligibility', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          deliverables: eligibilityDeliverables.map((item) => (
+            buildEligibilityDocumentPayload(item, activityGroupId, item.id === deliverable.id)
+          )),
+          primaryDeliverableId: deliverable.id,
+          activityGroupId,
           documentTitle: getDocumentAuditTitle({
             ...deliverable,
             fileName: deliverable.filename || deliverable.name,
@@ -1120,6 +1180,7 @@ export function DeliverableEligibilityControl({
           checkedActivityName: activityTitle,
           checkedDeliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
           modelAuditId: result.modelAuditId,
+          analyzedDeliverables: result.analyzedDeliverables,
         },
         aiCheck: {
           eligible: result.status === 'eligibil' || result.status === 'eligibil_cu_observatii'
@@ -1173,21 +1234,28 @@ export function DeliverableEligibilityControl({
 
   return (
     <div className={className}>
-      {eligibilityCheckEnabled && canRunEligibilityCheck ? (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleAiCheck}
-          disabled={aiLoading}
-          className="w-fit border-indigo-300 text-xs text-indigo-700 hover:bg-indigo-50"
-        >
-          {aiLoading ? (
-            <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-          ) : (
-            <Sparkles className="h-3 w-3 mr-1" />
+      {eligibilityCheckEnabled && hasReusableEligibilityCheck ? null : eligibilityCheckEnabled && canRunEligibilityCheck ? (
+        <div className="space-y-1">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleAiCheck}
+            disabled={aiLoading}
+            className="w-fit border-indigo-300 text-xs text-indigo-700 hover:bg-indigo-50"
+          >
+            {aiLoading ? (
+              <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+            ) : (
+              <Sparkles className="h-3 w-3 mr-1" />
+            )}
+            {aiLoading ? 'Se verifica...' : 'Verifica eligibilitatea livrabilelor'}
+          </Button>
+          {relatedDeliverables && relatedDeliverables.length > 1 && (
+            <p className="text-xs text-muted-foreground">
+              Verifica {relatedDeliverables.length} livrabile incarcate pentru grupul activitatii.
+            </p>
           )}
-          {aiLoading ? 'Se verifica...' : 'Verifica eligibilitatea livrabilului'}
-        </Button>
+        </div>
       ) : eligibilityCheckEnabled ? (
         <div className="w-fit max-w-full rounded border border-amber-200 bg-amber-50 p-2 text-[10px] text-amber-800">
           <div className="flex items-start gap-1.5">
@@ -1284,13 +1352,13 @@ function EligibilityResultCard({
   const warning = check.status === 'neeligibil' || check.status === 'neconcludent';
   const suggestedSettings = check.suggestedSettings;
   const canApplyActivity = Boolean(
-    suggestedSettings?.changes.includes('activity')
+    suggestedSettings?.changes?.includes('activity')
     && suggestedSettings.saCode
     && suggestedSettings.activityName
     && onApplySuggestedSettings,
   );
   const canApplyDeliverableType = Boolean(
-    suggestedSettings?.changes.includes('deliverableType')
+    suggestedSettings?.changes?.includes('deliverableType')
     && suggestedSettings.deliverableType
     && onApplySuggestedSettings,
   );
@@ -1302,6 +1370,14 @@ function EligibilityResultCard({
         <div className="font-medium">Scor: {check.score}/100</div>
       </div>
       <div className="mt-1">{check.summary}</div>
+      {check.analyzedDeliverables && check.analyzedDeliverables.length > 0 && (
+        <div className="mt-1">
+          <span className="font-medium">Livrabile analizate:</span>{' '}
+          {check.analyzedDeliverables.map((item) => (
+            `${item.documentTitle || item.fileName || item.id || 'livrabil'}${item.isPrimary ? ' (principal)' : ''}`
+          )).join('; ')}
+        </div>
+      )}
       {warning && (
         <div className="mt-1 font-medium">
           Verifică manual livrabilul înainte de validare.

@@ -174,7 +174,7 @@ test('workbookul Date membrii CPC poate fi normalizat fara duplicate CUI in dire
   const cpcAllCount = normalized.filter((item) => item.sourceSheet === 'CPC ALL').length;
   const canonicalCuis = organizations.filter((item) => item.cui).map((item) => item.cui);
 
-  assert.equal(cpcAllCount, 19);
+  assert.equal(cpcAllCount, 20);
   assert.equal(new Set(canonicalCuis).size, canonicalCuis.length);
   assert.ok(duplicates.length > 0);
   assert.ok(organizations.length >= 4241);

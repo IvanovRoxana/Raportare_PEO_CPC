@@ -1,4 +1,5 @@
 import type { DeliverableSlot } from './deliverable-types';
+import type { ActivityCatalog } from './types';
 
 export type GdprTemplateCode =
   | 'GDPR_GT_MON'
@@ -601,12 +602,56 @@ export const GDPR_TEMPLATES: GdprTemplate[] = [
 
 const templateMap = new Map(GDPR_TEMPLATES.map((template) => [template.code, template]));
 
+function normalizeGdprCatalogActivityName(value?: string | null) {
+  return (value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+const gdprTemplateCodeByCatalogActivityName = new Map<string, GdprTemplateCode>([
+  ['Monitorizare GDPR Grup Tinta', 'GDPR_GT_MON'],
+  ['Verificare documente inscriere GT', 'GDPR_DOC_GT'],
+  ['Verificare GDPR publicare online', 'GDPR_PUBLICARE'],
+  ['Verificare GDPR intalniri online', 'GDPR_ONLINE_MEET'],
+  ['Verificare GDPR Business HUB', 'GDPR_BUSINESS_HUB'],
+  ['Verificare GDPR lansare achizitie', 'GDPR_ACH_LANSARE'],
+  ['Verificare GDPR evaluare oferte', 'GDPR_ACH_EVAL'],
+  ['Verificare GDPR incheiere contract', 'GDPR_ACH_CONTRACT'],
+  ['Verificare GDPR facturare plata receptie', 'GDPR_FACT_PLATA'],
+  ['Checklist GDPR organizare eveniment', 'GDPR_EVENT_CHECK'],
+  ['Nota interna pre-eveniment GDPR', 'GDPR_EVENT_PRE'],
+  ['Monitorizare implementare eveniment GDPR', 'GDPR_EVENT_IMPL'],
+  ['Sedinta status PEO GDPR', 'GDPR_STATUS_PEO'],
+  ['Elaborare raport lunar GDPR', 'GDPR_RAPORT_LUNAR'],
+].map(([name, code]) => [normalizeGdprCatalogActivityName(name), code as GdprTemplateCode]));
+
 export function isGdprTemplateCode(value?: string | null): value is GdprTemplateCode {
   return Boolean(value && templateMap.has(value as GdprTemplateCode));
 }
 
 export function getGdprTemplate(code?: string | null): GdprTemplate | null {
   return isGdprTemplateCode(code) ? templateMap.get(code) ?? null : null;
+}
+
+export function resolveGdprTemplateCodeForCatalogActivity(
+  activity: Pick<ActivityCatalog, 'activityName' | 'gdprTemplateCode'>,
+): GdprTemplateCode {
+  if (isGdprTemplateCode(activity.gdprTemplateCode)) {
+    return activity.gdprTemplateCode;
+  }
+
+  const normalizedName = normalizeGdprCatalogActivityName(activity.activityName);
+  const configuredCode = gdprTemplateCodeByCatalogActivityName.get(normalizedName);
+  if (configuredCode) return configuredCode;
+
+  const matchingTemplate = GDPR_TEMPLATES.find((template) =>
+    normalizeGdprCatalogActivityName(template.activityTitle) === normalizedName
+    || normalizeGdprCatalogActivityName(template.label) === normalizedName
+  );
+  return matchingTemplate?.code ?? 'GDPR_ALTE_VERIFICARI';
 }
 
 export function getGdprConclusionText(code?: string | null) {

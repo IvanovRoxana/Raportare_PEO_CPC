@@ -6,6 +6,7 @@ import {
   isEventActivityCatalogItem,
   mergeActivityCatalogs,
   normalizeActivityCatalogSaCode,
+  resolveActivityDeliverableOptions,
   resolveExpertActivityCatalog,
   sortActivityCatalog,
 } from '../lib/activity-catalog-merge.ts';
@@ -29,6 +30,34 @@ const fallbackCatalog = [
     activityName: 'Monitorizare GT',
   },
 ] as ActivityCatalog[];
+
+test('livrabilele configurate pe activitatea din catalog devin optiunile formularului', () => {
+  assert.deepEqual(
+    resolveActivityDeliverableOptions(
+      'Raport de verificare GDPR | Nota de conformitate\n- Checklist GDPR; Raport de verificare GDPR',
+      ['Metodologie actualizata'],
+    ),
+    ['Raport de verificare GDPR', 'Nota de conformitate', 'Checklist GDPR'],
+  );
+});
+
+test('tipurile deja salvate raman disponibile cand configuratia Admin se schimba', () => {
+  assert.deepEqual(
+    resolveActivityDeliverableOptions(
+      'Raport configurat | Nota configurata',
+      ['Metodologie actualizata'],
+      ['Metodologie actualizata', 'Raport configurat', undefined],
+    ),
+    ['Raport configurat', 'Nota configurata', 'Metodologie actualizata'],
+  );
+});
+
+test('lista statica ramane fallback cand activitatea nu are livrabile configurate', () => {
+  const fallbackOptions = ['Metodologie actualizata'];
+
+  assert.deepEqual(resolveActivityDeliverableOptions('  ', fallbackOptions), fallbackOptions);
+  assert.deepEqual(resolveActivityDeliverableOptions(undefined, fallbackOptions), fallbackOptions);
+});
 
 test('catalogul backend gol pastreaza catalogul fallback complet', () => {
   const merged = mergeActivityCatalogs(fallbackCatalog, []);
@@ -222,6 +251,41 @@ test('formularul separa activitatile standard de activitatile de eveniment dupa 
   assert.deepEqual(filterActivityCatalogForFormTab(catalog, 'standard').map((item) => item.id), ['ap-standard']);
   assert.deepEqual(filterActivityCatalogForFormTab(catalog, 'event').map((item) => item.id), ['ap-event']);
   assert.deepEqual(filterActivityCatalogForFormTab(catalog, 'business_hub').map((item) => item.id), ['ap-standard', 'ap-event']);
+});
+
+test('activitatile de organizare si cele fara categorie serviciu raman in tabul standard', () => {
+  const catalog = [
+    {
+      id: 'event-preparation',
+      category: 'ap',
+      saCode: 'SA3.4',
+      activityNumber: 1,
+      serviceCategory: 'Infrastructura dialog social',
+      activityName: 'Organizare eveniment / pregatire lista potentiali invitati',
+    },
+    {
+      id: 'empty-service-category',
+      category: 'ap',
+      saCode: 'SA3.4',
+      activityNumber: 2,
+      serviceCategory: '',
+      activityName: 'Pregatire documentatie',
+    },
+    {
+      id: 'event-participation',
+      category: 'ap',
+      saCode: 'SA3.4',
+      activityNumber: 3,
+      serviceCategory: 'Reprezentare si participare la evenimente',
+      activityName: 'Participare la eveniment',
+    },
+  ] as ActivityCatalog[];
+
+  assert.deepEqual(filterActivityCatalogForFormTab(catalog, 'standard').map((item) => item.id), [
+    'event-preparation',
+    'empty-service-category',
+  ]);
+  assert.deepEqual(filterActivityCatalogForFormTab(catalog, 'event').map((item) => item.id), ['event-participation']);
 });
 
 test('categoria de eveniment este recunoscuta indiferent de diacritice', () => {

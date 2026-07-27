@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { AlertTriangle, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { formatDateRo } from '@/lib/app-utils';
@@ -17,6 +18,7 @@ export interface ExistingDeliverableCandidate {
   fileName: string;
   fileType: string;
   fileSize: number;
+  deliverableId?: string;
   documentId?: string;
   s3Bucket?: string;
   s3Key?: string;
@@ -48,6 +50,7 @@ export interface ExistingDeliverableCandidate {
   isCommonDeliverable?: boolean;
   aiStatus?: string;
   aiReason?: string;
+  uploadError?: string;
 }
 
 interface ExistingDeliverablePickerProps {
@@ -59,6 +62,7 @@ interface ExistingDeliverablePickerProps {
   excludedActivityId?: string;
   month: number;
   onAttach: (candidate: ExistingDeliverableCandidate) => void;
+  onDeleteBroken?: (candidate: ExistingDeliverableCandidate) => Promise<boolean>;
   onOpenChange: (open: boolean) => void;
   open: boolean;
   year: number;
@@ -73,12 +77,15 @@ export function ExistingDeliverablePicker({
   excludedActivityId,
   month,
   onAttach,
+  onDeleteBroken,
   onOpenChange,
   open,
   year,
 }: ExistingDeliverablePickerProps) {
   const [source, setSource] = useState<ExistingDeliverableSource>('mine');
   const [query, setQuery] = useState('');
+  const [hiddenCandidateKeys, setHiddenCandidateKeys] = useState<Set<string>>(() => new Set());
+  const [deletingCandidateKey, setDeletingCandidateKey] = useState<string | null>(null);
 
   const currentMonthKey = `${year}-${String(month + 1).padStart(2, '0')}`;
   const attachedDeliverableKeys = useMemo(() => new Set(
@@ -91,15 +98,19 @@ export function ExistingDeliverablePicker({
     const nextCandidates = new Map<string, ExistingDeliverableCandidate>();
 
     const addCandidate = (candidate: ExistingDeliverableCandidate) => {
+      if (hiddenCandidateKeys.has(candidate.key)) return;
       const monthKey = (candidate.activityDate || candidate.uploadDate || '').slice(0, 7);
       if (monthKey && monthKey !== currentMonthKey) return;
       if (attachedDeliverableKeys.has(candidate.key)) return;
       if (candidate.documentId && attachedDeliverableKeys.has(candidate.documentId)) return;
       if (candidate.s3Key && attachedDeliverableKeys.has(candidate.s3Key)) return;
       if (!candidate.documentId && !candidate.s3Key && !candidate.fileName) return;
+      const uploadError = candidate.uploadError || (!candidate.s3Key && !candidate.eligibilityCheck
+        ? 'Eroare la incarcare: fisierul livrabilului nu este disponibil. Sterge inregistrarea si reincarca documentul.'
+        : undefined);
 
       if (!nextCandidates.has(candidate.key)) {
-        nextCandidates.set(candidate.key, candidate);
+        nextCandidates.set(candidate.key, { ...candidate, uploadError });
       }
     };
 
@@ -126,6 +137,7 @@ export function ExistingDeliverablePicker({
           fileName,
           fileType: deliverable.fileType || '',
           fileSize: deliverable.fileSize || 0,
+          deliverableId: deliverable.id,
           documentId: deliverable.documentId,
           s3Bucket: deliverable.s3Bucket,
           s3Key: deliverable.s3Key || deliverable.filePath,
@@ -244,7 +256,7 @@ export function ExistingDeliverablePicker({
     return Array.from(nextCandidates.values()).sort((first, second) =>
       (second.activityDate || second.uploadDate || '').localeCompare(first.activityDate || first.uploadDate || ''),
     );
-  }, [activities, attachedDeliverableKeys, colleagueDocuments, currentExpertId, currentMonthKey, documents, excludedActivityId]);
+  }, [activities, attachedDeliverableKeys, colleagueDocuments, currentExpertId, currentMonthKey, documents, excludedActivityId, hiddenCandidateKeys]);
 
   const mineCount = candidates.filter((candidate) => candidate.source === 'mine').length;
   const sharedCount = candidates.filter((candidate) => candidate.source === 'shared').length;
@@ -267,6 +279,17 @@ export function ExistingDeliverablePicker({
     onAttach(candidate);
     setQuery('');
     onOpenChange(false);
+  };
+  const deleteBrokenCandidate = async (candidate: ExistingDeliverableCandidate) => {
+    setDeletingCandidateKey(candidate.key);
+    try {
+      const deletedFromDb = await onDeleteBroken?.(candidate);
+      if (deletedFromDb !== false) {
+        setHiddenCandidateKeys((current) => new Set(current).add(candidate.key));
+      }
+    } finally {
+      setDeletingCandidateKey(null);
+    }
   };
 
   if (!open) return null;
@@ -312,7 +335,12 @@ export function ExistingDeliverablePicker({
           </div>
         ) : (
           visibleCandidates.map((candidate) => (
-            <div key={candidate.key} className="flex flex-col gap-2 border-b px-3 py-2 last:border-b-0 sm:flex-row sm:items-center sm:justify-between">
+            <div
+              key={candidate.key}
+              className={`flex flex-col gap-2 border-b px-3 py-2 last:border-b-0 sm:flex-row sm:items-center sm:justify-between ${
+                candidate.uploadError ? 'bg-red-50' : ''
+              }`}
+            >
               <div className="min-w-0">
                 <div className="truncate text-xs font-medium text-foreground">
                   {candidate.title || candidate.fileName}
@@ -323,16 +351,36 @@ export function ExistingDeliverablePicker({
                   {candidate.saCode && <span>{candidate.saCode}</span>}
                   {candidate.uploadedByExpertName && <span>{candidate.uploadedByExpertName}</span>}
                 </div>
+                {candidate.uploadError && (
+                  <div className="mt-1 flex items-start gap-1 text-[11px] font-medium text-red-700">
+                    <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+                    <span>{candidate.uploadError}</span>
+                  </div>
+                )}
               </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-8 shrink-0"
-                onClick={() => attachCandidate(candidate)}
-              >
-                Ataseaza
-              </Button>
+              {candidate.uploadError ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={deletingCandidateKey === candidate.key}
+                  className="h-8 shrink-0 border-red-300 text-red-700 hover:bg-red-100"
+                  onClick={() => void deleteBrokenCandidate(candidate)}
+                >
+                  <X className="mr-1 h-3 w-3" />
+                  {deletingCandidateKey === candidate.key ? 'Se sterge...' : 'Sterge livrabil'}
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 shrink-0"
+                  onClick={() => attachCandidate(candidate)}
+                >
+                  Ataseaza
+                </Button>
+              )}
             </div>
           ))
         )}

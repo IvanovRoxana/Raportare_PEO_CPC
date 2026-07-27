@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const expertPeoPageSource = readFileSync(new URL('../app/expert/peo/page.tsx', import.meta.url), 'utf8');
+const expertPeoPageSource = readFileSync(
+  new URL('../app/expert/peo/page.tsx', import.meta.url), 'utf8',
+).replace(/\r\n/g, '\n');
 const formKeySource = expertPeoPageSource.match(
   /const formKey = editingActivity[\s\S]*?;\n  const activityFormElement/,
 )?.[0] ?? '';

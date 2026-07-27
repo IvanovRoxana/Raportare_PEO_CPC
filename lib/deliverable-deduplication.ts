@@ -20,6 +20,31 @@ function isActivityInMonth(date: string, month: number, year: number) {
   return !Number.isNaN(parsed.getTime()) && parsed.getMonth() === month && parsed.getFullYear() === year;
 }
 
+export function areActivitiesCompatibleForDeliverableGroup(
+  activity: Pick<Activity, 'expertId' | 'saCode' | 'catalogActivityId' | 'activityType' | 'title'>,
+  candidate: Pick<Activity, 'expertId' | 'saCode' | 'catalogActivityId' | 'activityType' | 'title'>,
+) {
+  if (activity.expertId && candidate.expertId && activity.expertId !== candidate.expertId) return false;
+
+  if (activity.catalogActivityId || candidate.catalogActivityId) {
+    return Boolean(activity.catalogActivityId && activity.catalogActivityId === candidate.catalogActivityId);
+  }
+
+  const activitySaCode = normalizeSignaturePart(activity.saCode);
+  const candidateSaCode = normalizeSignaturePart(candidate.saCode);
+  const activityLabel = normalizeSignaturePart(activity.activityType || activity.title);
+  const candidateLabel = normalizeSignaturePart(candidate.activityType || candidate.title);
+
+  return Boolean(
+    activitySaCode
+    && candidateSaCode
+    && activitySaCode === candidateSaCode
+    && activityLabel
+    && candidateLabel
+    && activityLabel === candidateLabel,
+  );
+}
+
 export function getDeliverableDocumentSignature(deliverable: Pick<
   Deliverable,
   'documentId' | 'fileHash' | 'firstPageTextHash' | 'contentFingerprint' | 'fileName' | 'originalFileName' | 'fileSize' | 'fileType' | 'fileData'
@@ -86,6 +111,23 @@ export function dedupeDeliverablesBySignature<T extends Deliverable>(deliverable
   return result;
 }
 
+export function findActivityOwningDeliverableSignature<T extends ActivityWithDeliverables>(
+  activities: T[],
+  signature: string | null,
+  preferredActivityId?: string,
+) {
+  if (!signature) return undefined;
+
+  const ownsDeliverable = (activity: T) => activity.deliverables?.some((deliverable) => (
+    getDeliverableDocumentSignature(deliverable) === signature
+  ));
+  const preferredActivity = preferredActivityId
+    ? activities.find((activity) => activity.id === preferredActivityId && ownsDeliverable(activity))
+    : undefined;
+
+  return preferredActivity ?? activities.find(ownsDeliverable);
+}
+
 export function findMonthlyDeliverableDuplicate(args: {
   existingActivities: ActivityWithDeliverables[];
   nextActivities: ActivityWithDeliverables[];
@@ -96,12 +138,19 @@ export function findMonthlyDeliverableDuplicate(args: {
 }) {
   const excluded = new Set(args.excludedActivityIds ?? []);
   const seen = new Map<string, { deliverable: Deliverable; activity: ActivityWithDeliverables }>();
-  const activities = [
-    ...args.existingActivities.filter((activity) => !activity.id || !excluded.has(activity.id)),
-    ...args.nextActivities,
-  ];
+  const existingActivities = args.existingActivities.filter((activity) => !activity.id || !excluded.has(activity.id));
 
-  for (const activity of activities) {
+  for (const activity of existingActivities) {
+    if (activity.expertId !== args.expertId || !isActivityInMonth(activity.date, args.month, args.year)) continue;
+
+    for (const deliverable of activity.deliverables ?? []) {
+      const signature = getDeliverableDocumentSignature(deliverable);
+      if (!signature) continue;
+      if (!seen.has(signature)) seen.set(signature, { deliverable, activity });
+    }
+  }
+
+  for (const activity of args.nextActivities) {
     if (activity.expertId !== args.expertId || !isActivityInMonth(activity.date, args.month, args.year)) continue;
 
     for (const deliverable of activity.deliverables ?? []) {

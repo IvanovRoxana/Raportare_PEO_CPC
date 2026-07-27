@@ -1,11 +1,15 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
   buildNonConclusiveAiFailure,
   CONCORDIA_PUBLICATION_ELIGIBILITY_PROMPT_RULES,
   deliverableEligibilityAiSchema,
   deliverableEligibilitySchema,
+  hasSufficientDeliverableEvidenceForEligibility,
+  isConcordiaPublishedDeliverableType,
   normalizeDeliverableEligibilityAiOutput,
+  normalizeDeliverableEligibilityDocuments,
   protectConcordiaPublicationEligibility,
   validateEligibilitySuggestedSettings,
 } from '../lib/deliverable-eligibility.ts';
@@ -29,6 +33,16 @@ const deliverableOptions = [
   'Material prezentare / suport eveniment',
   'Minute intalnire / MOM',
 ];
+const deliverableItemSource = readFileSync(new URL('../components/expert/deliverable-item.tsx', import.meta.url), 'utf8');
+const activityFormSource = readFileSync(new URL('../components/expert/activity-form.tsx', import.meta.url), 'utf8');
+const eligibilityRouteSource = readFileSync(new URL('../app/api/ai/check-deliverable-eligibility/route.ts', import.meta.url), 'utf8');
+const deliverableTypesSource = readFileSync(new URL('../lib/deliverable-types.ts', import.meta.url), 'utf8');
+
+test('UI tolereaza suggestedSettings persistat fara lista changes', () => {
+  assert.doesNotMatch(deliverableItemSource, /suggestedSettings\?\.changes\.includes/);
+  assert.match(deliverableItemSource, /suggestedSettings\?\.changes\?\.includes\('activity'\)/);
+  assert.match(deliverableItemSource, /suggestedSettings\?\.changes\?\.includes\('deliverableType'\)/);
+});
 
 test('accepta sugestii de activitate si tip livrabil cand exista in listele permise', () => {
   const suggestion = validateEligibilitySuggestedSettings({
@@ -111,6 +125,32 @@ test('promptul trateaza printurile Concordia cu sursa initiala profit.ro ca dova
   assert.match(CONCORDIA_PUBLICATION_ELIGIBILITY_PROMPT_RULES, /URL-ul nu este vizibil/);
   assert.match(CONCORDIA_PUBLICATION_ELIGIBILITY_PROMPT_RULES, /profit\.ro/);
   assert.match(CONCORDIA_PUBLICATION_ELIGIBILITY_PROMPT_RULES, /nu include "dovada publicarii pe concordia\.ro" in missingElements/);
+});
+
+test('recunoaste tipul Articole tematice publicate pe concordia.ro', () => {
+  assert.equal(isConcordiaPublishedDeliverableType('Articole tematice publicate pe concordia.ro'), true);
+});
+
+test('permite verificarea unui PDF Concordia cu titlu confirmat chiar daca OCR-ul este scurt', () => {
+  assert.equal(hasSufficientDeliverableEvidenceForEligibility({
+    extractedText: 'Green Transition Forum 6.0',
+    documentTitle: 'Green Transition Forum 6.0',
+    titleConfirmed: true,
+    fileName: '20260602_Green Transition Forum 6.0.pdf',
+    fileType: 'application/pdf',
+    deliverableType: 'Articole tematice publicate pe concordia.ro',
+  }), true);
+});
+
+test('nu relaxeaza pragul pentru un PDF generic fara tip de articol Concordia', () => {
+  assert.equal(hasSufficientDeliverableEvidenceForEligibility({
+    extractedText: 'Titlu scurt',
+    documentTitle: 'Titlu scurt',
+    titleConfirmed: true,
+    fileName: 'document.pdf',
+    fileType: 'application/pdf',
+    deliverableType: 'Minute intalnire / MOM',
+  }), false);
 });
 
 test('nu respinge articol Concordia Daniel Apostol doar pentru mentiunea publicarii initiale pe profit.ro', () => {
@@ -205,4 +245,88 @@ test('schema trimisa catre AI foloseste obiect suggestedSettings fara nullable',
     parsed.success ? normalizeDeliverableEligibilityAiOutput(parsed.data).suggestedSettings : undefined,
     null,
   );
+});
+
+test('normalizeaza payload multi-livrabil doar pentru grupul de activitati curent', () => {
+  const documents = normalizeDeliverableEligibilityDocuments({
+    activityGroupId: 'group-a',
+    primaryDeliverableId: 'd2',
+    deliverables: [
+      {
+        id: 'd1',
+        activityGroupId: 'group-a',
+        documentTitle: 'Agenda reuniune',
+        fileName: 'agenda.pdf',
+        extractedText: 'Agenda reuniunii si punctele discutate.',
+        deliverableType: 'Agenda',
+      },
+      {
+        id: 'd2',
+        activityGroupId: 'group-a',
+        documentTitle: 'Minuta reuniune',
+        fileName: 'minuta.pdf',
+        extractedText: 'Minuta reuniunii cu decizii si actiuni.',
+        deliverableType: 'Minute intalnire / MOM',
+      },
+      {
+        id: 'd3',
+        activityGroupId: 'group-b',
+        documentTitle: 'Livrabil alta activitate',
+        fileName: 'alta-activitate.pdf',
+        extractedText: 'Nu trebuie inclus in verificarea grupului curent.',
+        deliverableType: 'Raport',
+      },
+    ],
+  });
+
+  assert.deepEqual(documents.map((document) => document.id), ['d2', 'd1']);
+  assert.equal(documents[0].isPrimary, true);
+  assert.equal(documents.some((document) => document.id === 'd3'), false);
+});
+
+test('pastreaza compatibilitatea cu payloadul vechi cu un singur livrabil', () => {
+  const documents = normalizeDeliverableEligibilityDocuments({
+    documentTitle: 'Material suport',
+    fileName: 'material.pdf',
+    extractedText: 'Material suport pentru activitatea selectata.',
+    deliverableType: 'Material prezentare / suport eveniment',
+    textScope: 'Text extras disponibil',
+  });
+
+  assert.equal(documents.length, 1);
+  assert.equal(documents[0].documentTitle, 'Material suport');
+  assert.equal(documents[0].isPrimary, true);
+});
+
+test('formularul trimite toate livrabilele incarcate din grupul activitatii la eligibilitate', () => {
+  assert.match(activityFormSource, /const currentDeliverablesForEligibility = deliverables\.filter\(\(d\) => d\.uploaded && !d\.isPhoto\)/);
+  assert.match(activityFormSource, /const groupId = getActivityEditGroupId\(initialActivity\)/);
+  assert.match(activityFormSource, /getActivityEditGroupId\(activity\) === groupId/);
+  assert.match(activityFormSource, /isSameEditableActivity\(initialActivity, activity\)/);
+  assert.match(activityFormSource, /mapSavedDeliverableToSlot\(deliverable, true\)/);
+  assert.match(activityFormSource, /relatedDeliverables=\{deliverablesForEligibility\}/);
+  assert.match(deliverableItemSource, /relatedDeliverables\?: DeliverableSlot\[\]/);
+  assert.match(deliverableItemSource, /deliverables: eligibilityDeliverables\.map/);
+  assert.match(deliverableItemSource, /primaryDeliverableId: deliverable\.id/);
+  assert.match(deliverableItemSource, /activityGroupId/);
+  assert.match(deliverableItemSource, /Verifica \{relatedDeliverables\.length\} livrabile incarcate pentru grupul activitatii/);
+});
+
+test('poarta de text pentru eligibilitate verifica toate livrabilele grupului activitatii', () => {
+  assert.match(deliverableItemSource, /function getEligibilityDeliverables\(deliverable: DeliverableSlot, relatedDeliverables\?: DeliverableSlot\[\]\)/);
+  assert.match(deliverableItemSource, /eligibilityDeliverables\.some\(hasEnoughExtractedTextForEligibility\)/);
+  assert.match(deliverableItemSource, /const eligibilityDeliverables = getEligibilityDeliverables\(deliverable, relatedDeliverables\)/);
+  assert.match(deliverableItemSource, /Textul extras din livrabilele incarcate pentru grupul activitatii/);
+});
+
+test('rezultatul eligibilitatii pastreaza metadatele livrabilelor analizate', () => {
+  assert.match(eligibilityRouteSource, /analyzedDeliverables: eligibilityDocuments\.map/);
+  assert.match(eligibilityRouteSource, /isPrimary: deliverable\.isPrimary/);
+  assert.match(deliverableItemSource, /analyzedDeliverables: result\.analyzedDeliverables/);
+  assert.match(deliverableTypesSource, /analyzedDeliverables\?: Array<\{/);
+});
+
+test('cardul de eligibilitate afiseaza livrabilele analizate', () => {
+  assert.match(deliverableItemSource, /Livrabile analizate:/);
+  assert.match(deliverableItemSource, /item\.isPrimary \? ' \(principal\)' : ''/);
 });

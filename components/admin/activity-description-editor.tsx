@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { FileText, Loader2, Plus, RotateCcw, Save, SearchIcon, Trash2 } from 'lucide-react';
+import { CheckCircle2, FileText, Loader2, Plus, RotateCcw, Save, SearchIcon, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -9,6 +9,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { useActivityCatalog, useActivityCatalogMutations } from '@/hooks/use-backend-data';
 import type { ActivityCatalog } from '@/lib/types';
 import { activityCatalogMergeKey, mergeActivityCatalogs } from '@/lib/activity-catalog-merge';
+import { GDPR_TEMPLATES, resolveGdprTemplateCodeForCatalogActivity } from '@/lib/gdpr-reporting';
+import {
+  isCatalogDeliverableNotApplicable,
+  NO_DELIVERABLE_CATALOG_MARKER,
+} from '@/lib/submit-readiness';
 
 const ALL = 'all';
 const ACTIVE = 'active';
@@ -46,6 +51,9 @@ function draftFromActivity(activity?: ActivityCatalog | null): ActivityCatalogDr
   return {
     category: activity?.category ?? '',
     saCode: activity?.saCode ?? '',
+    gdprTemplateCode: activity?.category?.trim().toLowerCase() === 'gdpr'
+      ? resolveGdprTemplateCodeForCatalogActivity(activity)
+      : activity?.gdprTemplateCode,
     serviceCategory: activity?.serviceCategory ?? '',
     activityNumber: activity?.activityNumber ?? 0,
     activityName: activity?.activityName ?? '',
@@ -65,6 +73,9 @@ function normalizeDraft(draft: ActivityCatalogDraft): ActivityCatalogDraft {
     ...draft,
     category: draft.category.trim().toLowerCase(),
     saCode: draft.saCode.trim().toUpperCase(),
+    gdprTemplateCode: draft.category.trim().toLowerCase() === 'gdpr'
+      ? draft.gdprTemplateCode?.trim() || 'GDPR_ALTE_VERIFICARI'
+      : undefined,
     serviceCategory: draft.serviceCategory.trim(),
     activityNumber: Number.isFinite(Number(draft.activityNumber)) ? Number(draft.activityNumber) : 0,
     activityName: draft.activityName.trim(),
@@ -459,6 +470,32 @@ export function ActivityDescriptionEditor({ fallbackCatalog = [] }: ActivityDesc
                     placeholder="Optional"
                   />
                 </div>
+
+                {draft.category.trim().toLowerCase() === 'gdpr' && (
+                  <div className="space-y-2">
+                    <label htmlFor="catalog-gdpr-template" className="text-sm font-semibold text-slate-900">
+                      Sablon formular GDPR
+                    </label>
+                    <Select
+                      value={draft.gdprTemplateCode || 'GDPR_ALTE_VERIFICARI'}
+                      onValueChange={(value) => updateDraft('gdprTemplateCode', value)}
+                    >
+                      <SelectTrigger id="catalog-gdpr-template">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {GDPR_TEMPLATES.map((template) => (
+                          <SelectItem key={template.code} value={template.code}>
+                            {template.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Activitatea ramane definita in catalog; sablonul controleaza doar campurile, validarile si DOCX-ul.
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -528,9 +565,27 @@ export function ActivityDescriptionEditor({ fallbackCatalog = [] }: ActivityDesc
                 </div>
 
                 <div className="space-y-2">
-                  <label htmlFor="catalog-deliverables" className="text-sm font-semibold text-slate-900">
-                    Livrabile
-                  </label>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <label htmlFor="catalog-deliverables" className="text-sm font-semibold text-slate-900">
+                      Livrabile
+                    </label>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={isCatalogDeliverableNotApplicable(draft.deliverables) ? 'default' : 'outline'}
+                      onClick={() => updateDraft(
+                        'deliverables',
+                        isCatalogDeliverableNotApplicable(draft.deliverables)
+                          ? ''
+                          : NO_DELIVERABLE_CATALOG_MARKER,
+                      )}
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                      {isCatalogDeliverableNotApplicable(draft.deliverables)
+                        ? 'Eligibila fara livrabil'
+                        : 'Marcheaza fara livrabil'}
+                    </Button>
+                  </div>
                   <Textarea
                     id="catalog-deliverables"
                     value={draft.deliverables ?? ''}
@@ -538,6 +593,9 @@ export function ActivityDescriptionEditor({ fallbackCatalog = [] }: ActivityDesc
                     rows={4}
                     placeholder="Livrabile asociate..."
                   />
+                  <p className="text-xs text-muted-foreground">
+                    Valoarea exacta N/A marcheaza activitatea ca eligibila fara livrabil. Exceptiile existente raman active.
+                  </p>
                 </div>
 
                 <div className="space-y-2">

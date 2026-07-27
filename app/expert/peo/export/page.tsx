@@ -60,7 +60,11 @@ function ExportRaContent() {
   const { activities: allMonthActivities, isLoading: activitiesLoading } = useActivitiesByMonth(currentMonth, currentYear);
   const { projects: concurrentProjects } = useConcurrentProjects(selectedExpertId);
   const { entries: concurrentTimesheetEntries } = useConcurrentProjectTimesheetByMonth(currentMonth, currentYear);
-  const { bundles: persistedWorkBlockBundles } = useReportingWorkBlockBundles(selectedExpertId, currentMonth, currentYear);
+  const {
+    bundles: persistedWorkBlockBundles,
+    isLoading: isLoadingPersistedWorkBlockBundles,
+    isRefreshing: isRefreshingPersistedWorkBlockBundles,
+  } = useReportingWorkBlockBundles(selectedExpertId, currentMonth, currentYear);
 
   useEffect(() => {
     let isMounted = true;
@@ -129,6 +133,8 @@ function ExportRaContent() {
   const backHref = buildPeoHref(selectedExpertId, currentMonth, currentYear);
   const reportingWorkBlocksEnabled = isReportingWorkBlocksEnabledClient();
   const deterministicAnexa10DocxEnabled = isAnexa10DeterministicDocxEnabledClient();
+  const isLoadingDeterministicWorkBlocks = reportingWorkBlocksEnabled
+    && (isLoadingPersistedWorkBlockBundles || isRefreshingPersistedWorkBlockBundles);
 
   if (isLoading && (experts.length === 0 || !selectedExpertId)) {
     return (
@@ -185,6 +191,8 @@ function ExportRaContent() {
               activities={activities}
               concurrentProjects={concurrentProjects}
               concurrentTimesheetEntries={concurrentTimesheetEntries.filter((entry) => entry.expertId === selectedExpertId)}
+              workBlockBundles={reportingWorkBlocksEnabled ? persistedWorkBlockBundles : []}
+              workBlockBundlesLoading={isLoadingDeterministicWorkBlocks}
               month={currentMonth}
               year={currentYear}
             />
@@ -221,6 +229,7 @@ function ExportRaContent() {
                 year={currentYear}
                 activities={activities}
                 existingBundles={persistedWorkBlockBundles}
+                existingBundlesLoading={isLoadingPersistedWorkBlockBundles || isRefreshingPersistedWorkBlockBundles}
               />
             </>
           )}
@@ -231,6 +240,8 @@ function ExportRaContent() {
             expertName={selectedExpert.name}
             expert={selectedExpert as Expert}
             enableDeterministicAnexa10Docx={deterministicAnexa10DocxEnabled}
+            isLoadingDeterministicWorkBlocks={isLoadingDeterministicWorkBlocks}
+            workBlockBundles={reportingWorkBlocksEnabled ? persistedWorkBlockBundles : []}
           />
         </div>
       </DashboardShell>

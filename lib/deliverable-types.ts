@@ -136,6 +136,13 @@ export interface DeliverableEligibilityCheck {
   checkedActivityName?: string;
   checkedDeliverableType?: string;
   modelAuditId?: string;
+  analyzedDeliverables?: Array<{
+    id?: string;
+    documentTitle?: string;
+    fileName?: string;
+    deliverableType?: string;
+    isPrimary?: boolean;
+  }>;
 }
 
 export interface DeliverableSlot {
@@ -192,6 +199,9 @@ export interface DeliverableSlot {
   } | null;
   eligibilityCheck?: DeliverableEligibilityCheck | null;
   common?: boolean; // If this is a shared deliverable across experts
+  attachedFromExisting?: boolean;
+  lockedExistingMetadata?: boolean;
+  uploadError?: string;
   isPendingConfirm: boolean;
 }
 

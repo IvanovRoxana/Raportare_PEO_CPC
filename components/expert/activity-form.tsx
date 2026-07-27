@@ -42,7 +42,6 @@ import {
 } from './existing-deliverable-picker';
 import { createDeliverableSlot, type DeliverableSlot } from '@/lib/deliverable-types';
 import { 
-  isEventActivity, 
   isExceptionActivity,
   getDeliverableOptions 
 } from '@/lib/peo-constants';
@@ -50,9 +49,11 @@ import { useActivityCatalog, useBusinessHubEntityDirectory } from '@/hooks/use-b
 import type { Activity, Deliverable, DocumentMetadata, GrupTintaEntry, Expert, ActivityCatalog } from '@/lib/types';
 import fallbackActivityCatalog from '@/data/import/activity-catalog.json';
 import { isGtExpertCategory, normalizePeoCategory } from '@/lib/peo-category';
-import { filterActivityCatalogForFormTab, isActivityCatalogItemAvailableForForm, normalizeActivityCatalogSaCode, resolveExpertActivityCatalog } from '@/lib/activity-catalog-merge';
+import { filterActivityCatalogForFormTab, getActiveGdprActivityCatalog, isActivityCatalogItemAvailableForForm, isEventActivityCatalogItem, normalizeActivityCatalogSaCode, resolveActivityDeliverableOptions, resolveExpertActivityCatalog } from '@/lib/activity-catalog-merge';
 import { buildDocumentS3Key, findDuplicateCandidates, getDocumentAuditTitle, hashFirstPageText, normalizeDocumentTextForFingerprint, sha256Hex } from '@/lib/document-sharing';
 import {
+  areActivitiesCompatibleForDeliverableGroup,
+  findActivityOwningDeliverableSignature,
   findMonthlyDeliverableDuplicate,
   getDeliverableDocumentSignature,
 } from '@/lib/deliverable-deduplication';
@@ -69,11 +70,11 @@ import {
 } from '@/lib/pontaj-rules';
 import {
   GDPR_CONCLUSION_OPTIONS,
-  GDPR_TEMPLATES,
   getGdprDeliverableRequirementLabel,
   getGdprMinimumEvidenceLabels,
   getGdprOptionLabel,
   getGdprOptionValue,
+  resolveGdprTemplateCodeForCatalogActivity,
   serializeGdprMeta,
   validateGdprActivityDraft,
   type GdprFieldDefinition,
@@ -128,22 +129,6 @@ type DuplicateDeliverableActivityChoice = {
   isCompatible: boolean;
 };
 
-function normalizeActivityMatchValue(value?: string | null) {
-  return String(value ?? '').trim().toLowerCase();
-}
-
-function areActivitiesCompatibleForDeliverableGroup(activity: Activity, candidate: Activity) {
-  if (activity.expertId && candidate.expertId && activity.expertId !== candidate.expertId) return false;
-
-  if (activity.catalogActivityId || candidate.catalogActivityId) {
-    return Boolean(activity.catalogActivityId && activity.catalogActivityId === candidate.catalogActivityId);
-  }
-
-  return normalizeActivityMatchValue(activity.saCode) === normalizeActivityMatchValue(candidate.saCode)
-    && normalizeActivityMatchValue(activity.activityType || activity.title)
-      === normalizeActivityMatchValue(candidate.activityType || candidate.title);
-}
-
 function getActivityDuplicateChoiceLabel(activity: Pick<Activity, 'activityType' | 'title'>) {
   return activity.activityType || activity.title || 'Activitate fara titlu';
 }
@@ -163,6 +148,7 @@ interface ActivityFormProps {
   year: number;
   onSave: (activities: Activity[]) => void | Promise<void>;
   onCancel: () => void;
+  onDeleteBrokenExistingDeliverable?: (candidate: ExistingDeliverableCandidate) => Promise<boolean>;
   initialActivity?: Activity;
   prefillActivity?: Partial<Activity>;
   resolutionHint?: ActivityResolutionHint;
@@ -225,6 +211,60 @@ function dedupeDeliverableSlotsBySignature(deliverables: DeliverableSlot[]) {
   });
 }
 
+function mapSavedDeliverableToSlot(deliverable: Deliverable, preserveId: boolean): DeliverableSlot {
+  return {
+    id: preserveId ? deliverable.id : generateId(),
+    slotType: resolveSavedSlotType(deliverable.deliverableType, deliverable.category),
+    name: deliverable.fileName,
+    filename: deliverable.fileName,
+    fileType: deliverable.fileType,
+    fileSize: deliverable.fileSize,
+    filePath: deliverable.filePath,
+    documentId: deliverable.documentId,
+    s3Bucket: deliverable.s3Bucket,
+    s3Key: deliverable.s3Key,
+    fileHash: deliverable.fileHash,
+    firstPageTextHash: deliverable.firstPageTextHash,
+    contentFingerprint: deliverable.contentFingerprint,
+    uploadedByExpertId: deliverable.uploadedByExpertId,
+    uploadedByExpertName: deliverable.uploadedByExpertName,
+    projectId: deliverable.projectId,
+    projectName: deliverable.projectName,
+    sourceActivityId: deliverable.sourceActivityId,
+    activityDate: deliverable.activityDate,
+    saCode: deliverable.saCode,
+    deliverableType: deliverable.deliverableType,
+    isCommonDeliverable: deliverable.isCommonDeliverable,
+    sharedWithExpertIds: deliverable.sharedWithExpertIds,
+    common: Boolean(deliverable.isCommonDeliverable),
+    possibleDuplicateOfDocumentId: deliverable.possibleDuplicateOfDocumentId,
+    duplicateStatus: deliverable.duplicateStatus,
+    fileData: deliverable.fileData,
+    uploadedAt: deliverable.uploadedAt,
+    uploaded: true,
+    isPhoto: deliverable.fileType?.startsWith('image/') || false,
+    declaredTitle: deliverable.declaredTitle || '',
+    titleConfirmed: deliverable.titleConfirmed ?? false,
+    stadiu: deliverable.stadiu || '',
+    aiCheck: deliverable.aiStatus || deliverable.aiReason
+      ? {
+          eligible: deliverable.aiStatus === 'eligible' ? true : deliverable.aiStatus === 'ineligible' ? false : null,
+          reason: deliverable.aiReason || '',
+          issues: [],
+        }
+      : null,
+    docTitle: deliverable.docTitle || null,
+    docText: deliverable.docText || null,
+    suggestedTitle: deliverable.suggestedTitle || null,
+    firstPageText: deliverable.firstPageText || null,
+    titleSource: deliverable.titleSource as DeliverableSlot['titleSource'],
+    titleMatch: deliverable.titleMatch ?? null,
+    titleCheckStatus: deliverable.titleCheckStatus as DeliverableSlot['titleCheckStatus'],
+    titleCheckMessage: deliverable.titleCheckMessage,
+    isPendingConfirm: false,
+  };
+}
+
 function isStaleMultipartUploadError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error || '');
   return (
@@ -250,6 +290,7 @@ export function ActivityForm({
   year,
   onSave,
   onCancel,
+  onDeleteBrokenExistingDeliverable,
   initialActivity,
   prefillActivity,
   resolutionHint,
@@ -298,6 +339,11 @@ export function ActivityForm({
       return isAvailable && matchesCategory && matchesSaCode;
     });
   }, [effectiveCatalog, expertCategory, expertSaCodes, initialActivity?.catalogActivityId]);
+
+  const gdprCatalogItems = useMemo(
+    () => getActiveGdprActivityCatalog(effectiveCatalog, expertSaCodes),
+    [effectiveCatalog, expertSaCodes],
+  );
 
   const activityTabCatalog = useMemo(
     () => filterActivityCatalogForFormTab(filteredCatalog, activityFormTab),
@@ -375,57 +421,7 @@ export function ActivityForm({
 
   // Deliverables state with slots
   const [deliverables, setDeliverables] = useState<DeliverableSlot[]>(
-    activitySeed?.deliverables?.map(d => ({
-      id: initialActivity ? d.id : generateId(),
-      slotType: resolveSavedSlotType(d.deliverableType, d.category),
-      name: d.fileName,
-      filename: d.fileName,
-      fileType: d.fileType,
-      fileSize: d.fileSize,
-      filePath: d.filePath,
-      documentId: d.documentId,
-      s3Bucket: d.s3Bucket,
-      s3Key: d.s3Key,
-      fileHash: d.fileHash,
-      firstPageTextHash: d.firstPageTextHash,
-      contentFingerprint: d.contentFingerprint,
-      uploadedByExpertId: d.uploadedByExpertId,
-      uploadedByExpertName: d.uploadedByExpertName,
-      projectId: d.projectId,
-      projectName: d.projectName,
-      sourceActivityId: d.sourceActivityId,
-      activityDate: d.activityDate,
-      saCode: d.saCode,
-      deliverableType: d.deliverableType,
-      isCommonDeliverable: d.isCommonDeliverable,
-      sharedWithExpertIds: d.sharedWithExpertIds,
-      common: Boolean(d.isCommonDeliverable),
-      possibleDuplicateOfDocumentId: d.possibleDuplicateOfDocumentId,
-      duplicateStatus: d.duplicateStatus,
-      fileData: d.fileData,
-      uploadedAt: d.uploadedAt,
-      uploaded: true,
-      isPhoto: d.fileType?.startsWith('image/') || false,
-      declaredTitle: d.declaredTitle || '',
-      titleConfirmed: d.titleConfirmed ?? false,
-      stadiu: d.stadiu || '',
-      aiCheck: d.aiStatus || d.aiReason
-        ? {
-            eligible: d.aiStatus === 'eligible' ? true : d.aiStatus === 'ineligible' ? false : null,
-            reason: d.aiReason || '',
-            issues: [],
-          }
-        : null,
-      docTitle: d.docTitle || null,
-      docText: d.docText || null,
-      suggestedTitle: d.suggestedTitle || null,
-      firstPageText: d.firstPageText || null,
-      titleSource: d.titleSource as DeliverableSlot['titleSource'],
-      titleMatch: d.titleMatch ?? null,
-      titleCheckStatus: d.titleCheckStatus as DeliverableSlot['titleCheckStatus'],
-      titleCheckMessage: d.titleCheckMessage,
-      isPendingConfirm: false,
-    })) || []
+    activitySeed?.deliverables?.map((deliverable) => mapSavedDeliverableToSlot(deliverable, Boolean(initialActivity))) || []
   );
 
   const gdprActivity = useGdprActivity({
@@ -589,17 +585,18 @@ export function ActivityForm({
 
       const candidateDate = duplicate.document.activityDate || duplicate.document.uploadDate;
       const candidateMonthKey = candidateDate?.slice(0, 7);
+      const duplicateIssues = Array.isArray(duplicate.issues) ? duplicate.issues : [];
       matches.set(deliverable.id, {
         documentId: duplicate.document.id,
         title: getDocumentAuditTitle(duplicate.document),
         uploadedByExpertName: duplicate.document.uploadedByExpertName,
         activityDate: duplicate.document.activityDate || duplicate.document.uploadDate,
-        status: duplicate.issues.includes('same_file_hash')
+        status: duplicateIssues.includes('same_file_hash')
           ? 'same_file_hash'
-          : duplicate.issues.includes('same_first_page_hash')
+          : duplicateIssues.includes('same_first_page_hash')
             ? 'same_first_page_hash'
             : 'possible_common_unmarked',
-        issues: duplicate.issues,
+        issues: duplicateIssues,
         isPreviousPeriod: Boolean(candidateMonthKey && candidateMonthKey < referenceMonthKey),
         isOtherExpert: Boolean(duplicate.document.uploadedByExpertId && duplicate.document.uploadedByExpertId !== expertId),
       });
@@ -662,6 +659,17 @@ export function ActivityForm({
     ) || null;
   }, [activityTitle, availableActivityItems, saCode, selectedCatalogActivityId]);
 
+  const selectedGdprCatalogItem = useMemo(() => {
+    return gdprCatalogItems.find((item) => item.id === selectedCatalogActivityId)
+      || gdprCatalogItems.find((item) => item.activityName === activityTitle)
+      || (gdprTemplateCode && gdprTemplateCode !== 'GDPR_ALTE_VERIFICARI'
+        ? gdprCatalogItems.find((item) =>
+            resolveGdprTemplateCodeForCatalogActivity(item) === gdprTemplateCode
+          )
+        : null)
+      || null;
+  }, [activityTitle, gdprCatalogItems, gdprTemplateCode, selectedCatalogActivityId]);
+
   const selectedActivitySelectValue = selectedCatalogItem?.id || '';
 
   const handleActivitySelectionChange = useCallback((catalogActivityId: string) => {
@@ -670,12 +678,37 @@ export function ActivityForm({
     setActivityTitle(catalogItem?.activityName || '');
   }, [availableActivityItems]);
 
+  const handleGdprCatalogActivityChange = useCallback((catalogActivityId: string) => {
+    const catalogItem = gdprCatalogItems.find((item) => item.id === catalogActivityId);
+    if (!catalogItem) return;
+
+    handleGdprTemplateChange(resolveGdprTemplateCodeForCatalogActivity(catalogItem));
+    setSelectedCatalogActivityId(catalogItem.id);
+    setSaCode(catalogItem.saCode);
+    setActivityTitle(catalogItem.activityName);
+  }, [gdprCatalogItems, handleGdprTemplateChange]);
+
   const lastAutoDescriptionRef = useRef('');
+  const activityAutofillCollaborationContext = useMemo(() => ({
+    isCommonActivity: activityCommon,
+    collaborators: activityCommon
+      ? collaborators
+          .map((collaboratorId) => allExperts.find((candidate) => candidate.id === collaboratorId))
+          .filter((candidate): candidate is Expert => Boolean(candidate))
+          .map((candidate) => ({
+            id: candidate.id,
+            name: candidate.name,
+            role: candidate.role,
+            positionInProject: candidate.positionInProject,
+          }))
+      : [],
+  }), [activityCommon, allExperts, collaborators]);
   const {
     error: activityAutofillError,
     suggestion: activityAutofillSuggestion,
     apply: applyActivityAutofillSuggestion,
     isLoading: isAutofillingActivity,
+    unavailableMessage: activityAutofillUnavailableMessage,
     suggest: handleSuggestActivityFromDeliverables,
     dismiss: dismissActivityAutofillSuggestion,
   } = useActivityAutofill({
@@ -690,6 +723,7 @@ export function ActivityForm({
     activityName: activityTitle,
     currentDescription: description,
     selectedDates,
+    collaborationContext: activityAutofillCollaborationContext,
     setDescription,
     year,
     onApplied: () => {
@@ -769,8 +803,12 @@ export function ActivityForm({
   }, [allActivities, allExperts, activityTitle, expertId, initialCollaborators, saCode, selectedDates]);
   
   const deliverableOptions = useMemo(() => {
-    return getDeliverableOptions(expertCategory || 'ap');
-  }, [expertCategory]);
+    return resolveActivityDeliverableOptions(
+      selectedCatalogItem?.deliverables,
+      getDeliverableOptions(expertCategory || 'ap'),
+      deliverables.map((deliverable) => deliverable.type || deliverable.deliverableType),
+    );
+  }, [deliverables, expertCategory, selectedCatalogItem?.deliverables]);
 
   const businessHubMetaDate = selectedDates[0] || initialActivity?.date || '';
   const businessHubMetaDraft = useMemo(() => ({
@@ -791,12 +829,12 @@ export function ActivityForm({
   ]);
 
   const effectiveActivityTitle = isGdprExpert && selectedGdprTemplate
-    ? selectedGdprTemplate.activityTitle
+    ? selectedGdprCatalogItem?.activityName || activityTitle || selectedGdprTemplate.activityTitle
     : isBusinessHubTabActive
       ? businessHubRegistryActivityTitle
       : activityTitle;
   const effectiveSaCode = isGdprExpert && selectedGdprTemplate
-    ? selectedGdprTemplate.saCode
+    ? selectedGdprCatalogItem?.saCode || saCode || selectedGdprTemplate.saCode
     : isBusinessHubTabActive
       ? roleConfig.defaultSaCode || saCode
       : saCode;
@@ -804,15 +842,17 @@ export function ActivityForm({
   // Check if current activity is exception (no deliverable required)
   const isException = isExceptionActivity(effectiveActivityTitle);
   
-  // Check if current activity is event
-  const isEvent = isEventActivity(effectiveActivityTitle);
+  // Event documents are required exclusively for the event service category.
+  // Titles such as "organizare eveniment" may describe preparatory work only.
+  const isEvent = activityFormTab === 'event';
 
   useEffect(() => {
-    if (activityFormTab === 'business_hub') return;
-    if (isEvent && activityFormTab !== 'event') {
+    if (!initialActivity?.catalogActivityId) return;
+    const initialCatalogItem = filteredCatalog.find((item) => item.id === initialActivity.catalogActivityId);
+    if (initialCatalogItem && isEventActivityCatalogItem(initialCatalogItem)) {
       setActivityFormTab('event');
     }
-  }, [activityFormTab, isEvent]);
+  }, [filteredCatalog, initialActivity?.catalogActivityId]);
 
   useEffect(() => {
     if (!isBusinessHubExpert || activityFormTab !== 'business_hub') return;
@@ -1157,9 +1197,10 @@ export function ActivityForm({
       }
     }
 
+    const safeSelectedDates = Array.isArray(selectedDates) ? selectedDates : [];
     const activityDatesForSave = initialActivity
-      ? (selectedDates.length > 0 ? selectedDates : [initialActivity.date])
-      : selectedDates;
+      ? (safeSelectedDates.length > 0 ? safeSelectedDates : [initialActivity.date])
+      : safeSelectedDates;
     const editedActivityDate = initialActivity
       ? activityDatesForSave.includes(initialActivity.date)
         ? initialActivity.date
@@ -1205,7 +1246,9 @@ export function ActivityForm({
       saCode: effectiveSaCode,
       catalogActivityId: isBusinessHubTabActive
         ? businessHubRegistryCatalogItem?.id
-        : selectedCatalogItem?.id,
+        : isGdprExpert
+          ? selectedGdprCatalogItem?.id
+          : selectedCatalogItem?.id,
       activityType: effectiveActivityTitle,
       title: effectiveActivityTitle,
       description,
@@ -1302,7 +1345,9 @@ export function ActivityForm({
         saCode: effectiveSaCode,
         catalogActivityId: isBusinessHubTabActive
           ? businessHubRegistryCatalogItem?.id
-          : selectedCatalogItem?.id,
+          : isGdprExpert
+            ? selectedGdprCatalogItem?.id
+            : selectedCatalogItem?.id,
         title: effectiveActivityTitle,
         description,
         activityKeywords: activityKeywords.trim() || undefined,
@@ -1421,10 +1466,6 @@ export function ActivityForm({
       const compatibleSourceActivity = duplicateSourceActivities.find((activity) => (
         activities.some((nextActivity) => areActivitiesCompatibleForDeliverableGroup(nextActivity, activity))
       ));
-      const defaultSourceActivityId = selectedDuplicateSourceActivityId
-        || compatibleSourceActivity?.id
-        || monthlyDuplicate.existingActivity.id
-        || duplicateSourceActivities[0]?.id;
       const duplicateChoices = duplicateSourceActivities.map((activity) => ({
         id: activity.id,
         date: activity.date,
@@ -1432,12 +1473,34 @@ export function ActivityForm({
         saCode: activity.saCode,
         isCompatible: activities.some((nextActivity) => areActivitiesCompatibleForDeliverableGroup(nextActivity, activity)),
       }));
+      const compatibleChoices = duplicateChoices.filter((choice) => choice.isCompatible);
+      const selectedCompatibleSourceActivityId = selectedDuplicateSourceActivityId
+        && compatibleChoices.some((choice) => choice.id === selectedDuplicateSourceActivityId)
+        ? selectedDuplicateSourceActivityId
+        : undefined;
+      const defaultSourceActivityId = selectedCompatibleSourceActivityId
+        || compatibleSourceActivity?.id
+        || compatibleChoices[0]?.id;
+      const duplicateMessage = compatibleChoices.length > 0
+        ? message
+        : `${message} Nu exista o activitate compatibila pentru reutilizarea acestui fisier in aceeasi luna. Anuleaza si incarca un livrabil diferit sau alege aceeasi activitate/SA.`;
 
-      if (!confirmedMonthlyDeliverableDuplicate) {
+      if (!confirmedMonthlyDeliverableDuplicate || !defaultSourceActivityId) {
         setMonthlyDeliverableDuplicateConfirmation({
-          message,
+          message: duplicateMessage,
           confirmedActivityDuplicate: confirmedDuplicate,
           sourceActivityId: defaultSourceActivityId,
+          choices: duplicateChoices,
+        });
+        return;
+      }
+
+      const selectedDuplicateChoice = duplicateChoices.find((choice) => choice.id === defaultSourceActivityId);
+      if (!selectedDuplicateChoice?.isCompatible) {
+        setMonthlyDeliverableDuplicateConfirmation({
+          message: `${message} Activitatea aleasa nu este compatibila cu activitatea curenta. Alege o activitate recomandata sau incarca un livrabil diferit.`,
+          confirmedActivityDuplicate: confirmedDuplicate,
+          sourceActivityId: compatibleChoices[0]?.id,
           choices: duplicateChoices,
         });
         return;
@@ -1563,40 +1626,33 @@ export function ActivityForm({
   // Filter deliverables by type
   const mainDeliverables = deliverables.filter(d => !d.slotType || d.slotType === 'livrabil');
   const mainDeliverableForEligibility = mainDeliverables.find((d) => d.uploaded && !d.isPhoto);
+  const currentDeliverablesForEligibility = deliverables.filter((d) => d.uploaded && !d.isPhoto);
+  const deliverablesForEligibility = useMemo(() => {
+    if (!initialActivity) return currentDeliverablesForEligibility;
+    const groupId = getActivityEditGroupId(initialActivity);
+    if (!groupId) return currentDeliverablesForEligibility;
+
+    const savedGroupDeliverables = allActivities
+      .filter((activity) => activity.expertId === expertId)
+      .filter((activity) => activity.id !== initialActivity.id)
+      .filter((activity) => getActivityEditGroupId(activity) === groupId)
+      .filter((activity) => isSameEditableActivity(initialActivity, activity))
+      .flatMap((activity) => activity.deliverables ?? [])
+      .map((deliverable) => mapSavedDeliverableToSlot(deliverable, true));
+
+    return dedupeDeliverableSlotsBySignature([
+      ...currentDeliverablesForEligibility,
+      ...savedGroupDeliverables,
+    ]).filter((deliverable) => deliverable.uploaded && !deliverable.isPhoto);
+  }, [allActivities, currentDeliverablesForEligibility, expertId, initialActivity]);
   const prelimDeliverables = deliverables.filter(d => d.slotType === 'raport_preliminar');
   const justifDeliverables = deliverables.filter(d => d.slotType === 'justificativ');
-  const descriptionTrimmed = (description || '').trim();
-  const descriptionReadyForEligibility = activityCommon
-    ? descriptionTrimmed.length >= 30
-    : descriptionTrimmed.length >= 15;
   const eligibilityBlockedReason = !effectiveSaCode
     ? 'Selecteaza subactivitatea inainte de verificarea eligibilitatii.'
     : !effectiveActivityTitle
       ? 'Selecteaza activitatea inainte de verificarea eligibilitatii.'
-      : !descriptionReadyForEligibility
-        ? activityCommon
-          ? 'Completeaza descrierea contributiei individuale, minimum 30 de caractere.'
-          : 'Completeaza descrierea activitatii, minimum 15 caractere.'
-        : undefined;
+      : undefined;
   const canCheckDeliverableEligibility = !eligibilityBlockedReason;
-  const scrollToDeliverables = useCallback(() => {
-    window.setTimeout(() => {
-      document.getElementById('activity-form-deliverables-section')?.scrollIntoView({
-        behavior: 'smooth',
-        block: 'start',
-      });
-    }, 0);
-  }, []);
-  const startDeliverableFlow = useCallback(() => {
-    if (mainDeliverables.length === 0) {
-      addDeliverableSlot('livrabil');
-    }
-    scrollToDeliverables();
-  }, [addDeliverableSlot, mainDeliverables.length, scrollToDeliverables]);
-  const openExistingDeliverableFlow = useCallback(() => {
-    setExistingDeliverablePickerOpen(true);
-    scrollToDeliverables();
-  }, [scrollToDeliverables]);
   const hasEventMomAsMainDeliverable = isEvent && deliverables.some((deliverable) => (
     deliverable.slotType === 'event_mom'
     && deliverable.uploaded
@@ -1694,7 +1750,28 @@ export function ActivityForm({
     },
   });
   const attachExistingDeliverable = useCallback((candidate: ExistingDeliverableCandidate) => {
-    const aiCheck = candidate.aiStatus
+    const savedEligibilityCheck = candidate.eligibilityCheck;
+    const hasReusableEligibility = Boolean(
+      savedEligibilityCheck
+      && ['eligibil', 'eligibil_cu_observatii'].includes(savedEligibilityCheck.status),
+    );
+    const reusableTitleCheckStatus = hasReusableEligibility && (
+      !candidate.titleCheckStatus
+      || candidate.titleCheckStatus === 'extraction_failed'
+    )
+      ? 'admin_overridden'
+      : candidate.titleCheckStatus;
+    const aiCheck = savedEligibilityCheck
+      ? {
+          eligible: savedEligibilityCheck.status === 'eligibil' || savedEligibilityCheck.status === 'eligibil_cu_observatii'
+            ? true
+            : savedEligibilityCheck.status === 'neeligibil'
+              ? false
+              : null,
+          reason: savedEligibilityCheck.summary || 'Verificare eligibilitate existenta.',
+          issues: [...(savedEligibilityCheck.missingElements || []), ...(savedEligibilityCheck.riskFlags || [])],
+        }
+      : candidate.aiStatus
       ? {
           eligible: candidate.aiStatus === 'eligible'
             ? true
@@ -1705,10 +1782,22 @@ export function ActivityForm({
           issues: [],
         }
       : null;
-    const sourceActivity = candidate.sourceActivityId
-      ? allActivities.find((activity) => activity.id === candidate.sourceActivityId)
-      : undefined;
-    const sourceSaCode = candidate.saCode || sourceActivity?.saCode;
+    const candidateSignature = getDeliverableDocumentSignature({
+      documentId: candidate.documentId,
+      fileHash: candidate.fileHash,
+      firstPageTextHash: candidate.firstPageTextHash,
+      contentFingerprint: candidate.contentFingerprint,
+      fileName: candidate.fileName,
+      originalFileName: candidate.fileName,
+      fileSize: candidate.fileSize,
+      fileType: candidate.fileType,
+    });
+    const sourceActivity = findActivityOwningDeliverableSignature(
+      allActivities,
+      candidateSignature,
+      candidate.sourceActivityId,
+    );
+    const sourceSaCode = sourceActivity?.saCode || candidate.saCode;
     const sourceActivityName = sourceActivity?.activityType || sourceActivity?.title;
     const sourceCatalogMatch = filteredCatalog.find((item) => (
       item.saCode === sourceSaCode
@@ -1737,9 +1826,9 @@ export function ActivityForm({
       contentFingerprint: candidate.contentFingerprint,
       uploadedByExpertId: candidate.uploadedByExpertId,
       uploadedByExpertName: candidate.uploadedByExpertName,
-      sourceActivityId: candidate.sourceActivityId,
-      activityDate: candidate.activityDate,
-      saCode: candidate.saCode,
+      sourceActivityId: sourceActivity?.id,
+      activityDate: sourceActivity?.date ?? candidate.activityDate,
+      saCode: sourceActivity?.saCode ?? candidate.saCode,
       type: existingDeliverableType,
       deliverableType: existingDeliverableType,
       isCommonDeliverable: candidate.source !== 'mine' || candidate.isCommonDeliverable === true,
@@ -1756,16 +1845,21 @@ export function ActivityForm({
       titleSuggestionAlternatives: candidate.titleSuggestionAlternatives || [],
       titleSuggestionReason: candidate.titleSuggestionReason,
       titleSource: candidate.titleSource as DeliverableSlot['titleSource'],
-      titleMatch: candidate.titleMatch ?? null,
-      titleConfirmed: candidate.titleConfirmed ?? candidate.titleCheckStatus === 'matched',
-      titleCheckStatus: candidate.titleCheckStatus as DeliverableSlot['titleCheckStatus'],
-      titleCheckMessage: candidate.titleCheckMessage || (candidate.source === 'colleagues'
-        ? 'Livrabil atasat direct din documentele colegilor.'
-        : 'Livrabil selectat din documentele existente.'),
+      titleMatch: candidate.titleMatch ?? (hasReusableEligibility ? true : null),
+      titleConfirmed: candidate.titleConfirmed ?? (hasReusableEligibility || candidate.titleCheckStatus === 'matched'),
+      titleCheckStatus: reusableTitleCheckStatus as DeliverableSlot['titleCheckStatus'],
+      titleCheckMessage: hasReusableEligibility
+        ? 'Livrabil existent reutilizat cu eligibilitate verificata anterior.'
+        : candidate.titleCheckMessage || (candidate.source === 'colleagues'
+          ? 'Livrabil atasat direct din documentele colegilor.'
+          : 'Livrabil selectat din documentele existente.'),
       aiCheck,
-      eligibilityCheck: candidate.eligibilityCheck,
+      eligibilityCheck: savedEligibilityCheck,
       stadiu: inferredStadiu,
       common: false,
+      attachedFromExisting: true,
+      lockedExistingMetadata: Boolean(savedEligibilityCheck || candidate.source !== 'mine'),
+      uploadError: candidate.uploadError,
       isPendingConfirm: false,
     };
 
@@ -2181,35 +2275,6 @@ export function ActivityForm({
           </Tabs>
         )}
 
-        {isWorkspaceLayout && showStandardActivityWorkflow && !isLeave && !isException && (
-          <div className="rounded-lg border border-indigo-200 bg-white p-4 shadow-sm">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 text-sm font-semibold text-slate-950">
-                  <Sparkles className="h-4 w-4 text-indigo-600" />
-                  Porneste de la livrabil
-                </div>
-                <p className="mt-1 text-xs text-slate-600">
-                  Incarca sau ataseaza un livrabil existent, apoi selecteaza activitatea si foloseste AI-ul de descriere din formular.
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button type="button" variant="outline" size="sm" onClick={openExistingDeliverableFlow}>
-                  <FileText className="h-4 w-4 mr-1" />
-                  Alege existent
-                </Button>
-                <Button type="button" variant="outline" size="sm" onClick={startDeliverableFlow}>
-                  <Plus className="h-4 w-4 mr-1" />
-                  Adauga livrabil
-                </Button>
-              </div>
-            </div>
-            {!isWorkspaceLayout && activityAutofillError && (
-              <p className="mt-3 text-xs text-amber-700">{activityAutofillError}</p>
-            )}
-          </div>
-        )}
-
         {/* Day Type and Hours */}
         <div id="activity-form-details-section" className="grid scroll-mt-24 gap-4 md:grid-cols-2">
           <Field>
@@ -2306,14 +2371,17 @@ export function ActivityForm({
 
                 <Field>
                   <FieldLabel htmlFor="gdprTemplate">Ce tip de activitate GDPR ai desfasurat?</FieldLabel>
-                  <Select value={gdprTemplateCode} onValueChange={handleGdprTemplateChange}>
+                  <Select
+                    value={selectedGdprCatalogItem?.id || ''}
+                    onValueChange={handleGdprCatalogActivityChange}
+                  >
                     <SelectTrigger id="gdprTemplate" className="bg-white">
                       <SelectValue placeholder="Selecteaza activitatea GDPR" />
                     </SelectTrigger>
                     <SelectContent>
-                      {GDPR_TEMPLATES.map((template) => (
-                        <SelectItem key={template.code} value={template.code}>
-                          {template.label}
+                      {gdprCatalogItems.map((activity) => (
+                        <SelectItem key={activity.id} value={activity.id}>
+                          {activity.activityName}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -2459,6 +2527,109 @@ export function ActivityForm({
               </div>
             )}
 
+            {/* Sub-activity and Activity */}
+            {showStandardActivityWorkflow && (
+              <div className="space-y-4">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <Field>
+                    <FieldLabel htmlFor="saCode">Subactivitate (Rol: {expert?.role})</FieldLabel>
+                    {isGdprExpert ? (
+                      <Input id="saCode" value={saCode || selectedGdprTemplate?.saCode || 'SA1.1'} disabled />
+                    ) : (
+                      <Select value={saCode} onValueChange={setSaCode} disabled={catalogLoading && catalog.length === 0}>
+                        <SelectTrigger id="saCode">
+                          <SelectValue placeholder={catalogLoading && catalog.length === 0 ? "Se incarca..." : "Selecteaza SA"} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableSaCodes.length === 0 ? (
+                            <div className="px-2 py-1.5 text-sm text-muted-foreground">Nicio subactivitate disponibila</div>
+                          ) : (
+                            availableSaCodes.map((sa) => (
+                              <SelectItem key={sa} value={sa}>{sa}</SelectItem>
+                            ))
+                          )}
+                        </SelectContent>
+                      </Select>
+                    )}
+                    {availableSaCodes.length === 0 && !catalogLoading && (
+                      <p className="text-xs text-amber-600 mt-1">
+                        Nu exista subactivitati alocate pentru rolul tau. Contacteaza PM.
+                      </p>
+                    )}
+                  </Field>
+
+                  {!isGdprExpert ? (
+                    <Field>
+                      <FieldLabel htmlFor="activity">Activitate</FieldLabel>
+                      <Select value={selectedActivitySelectValue} onValueChange={handleActivitySelectionChange} disabled={!saCode || availableActivityItems.length === 0}>
+                        <SelectTrigger id="activity">
+                          <SelectValue placeholder={!saCode ? "Selecteaza SA mai intai" : "Selecteaza activitatea"} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableActivityItems.length === 0 ? (
+                            <div className="px-2 py-1.5 text-sm text-muted-foreground">Nicio activitate pentru acest SA</div>
+                          ) : (
+                            availableActivityItems.map((item) => (
+                              <SelectItem key={item.id} value={item.id}>{item.activityName}</SelectItem>
+                            ))
+                          )}
+                        </SelectContent>
+                      </Select>
+                      {selectedCatalogItem && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {selectedCatalogItem.serviceCategory} - {selectedCatalogItem.description}
+                        </p>
+                      )}
+                    </Field>
+                  ) : (
+                    <Field>
+                      <FieldLabel htmlFor="location">Locatie</FieldLabel>
+                      <Select value={location} onValueChange={setLocation}>
+                        <SelectTrigger id="location">
+                          <SelectValue placeholder="Selecteaza locatia" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Birou">Birou</SelectItem>
+                          <SelectItem value="Teren">Teren</SelectItem>
+                          <SelectItem value="Online">Online</SelectItem>
+                          <SelectItem value="Sediu CPC">Sediu CPC</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                  )}
+                </div>
+
+                {!isGdprExpert && (
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <Field>
+                      <FieldLabel htmlFor="location">Locatie</FieldLabel>
+                      <Select value={location} onValueChange={setLocation}>
+                        <SelectTrigger id="location">
+                          <SelectValue placeholder="Selecteaza locatia" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Birou">Birou</SelectItem>
+                          <SelectItem value="Teren">Teren</SelectItem>
+                          <SelectItem value="Online">Online</SelectItem>
+                          <SelectItem value="Sediu CPC">Sediu CPC</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor="activityKeywords">Cheie interna optionala</FieldLabel>
+                      <Input
+                        id="activityKeywords"
+                        value={activityKeywords}
+                        onChange={(event) => setActivityKeywords(event.target.value)}
+                        placeholder="ex: monitorizare iulie"
+                        maxLength={120}
+                      />
+                    </Field>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Main Deliverables */}
             {showStandardActivityWorkflow && !isException && (
               <div className="space-y-4">
@@ -2505,6 +2676,7 @@ export function ActivityForm({
                     excludedActivityId={initialActivity?.id}
                     month={month}
                     onAttach={attachExistingDeliverable}
+                    onDeleteBroken={onDeleteBrokenExistingDeliverable}
                     onOpenChange={setExistingDeliverablePickerOpen}
                     open={existingDeliverablePickerOpen}
                     year={year}
@@ -2569,92 +2741,49 @@ export function ActivityForm({
               </div>
             )}
 
-            {/* Sub-activity and Activity */}
-            {showStandardActivityWorkflow && (
-              <>
-                <div className="grid grid-cols-2 gap-4">
-                  <Field>
-                    <FieldLabel htmlFor="saCode">Subactivitate (Rol: {expert?.role})</FieldLabel>
-                    {isGdprExpert ? (
-                      <Input id="saCode" value={saCode || selectedGdprTemplate?.saCode || 'SA1.1'} disabled />
-                    ) : (
-                      <Select value={saCode} onValueChange={setSaCode} disabled={catalogLoading && catalog.length === 0}>
-                        <SelectTrigger id="saCode">
-                          <SelectValue placeholder={catalogLoading && catalog.length === 0 ? "Se incarca..." : "Selecteaza SA"} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {availableSaCodes.length === 0 ? (
-                            <div className="px-2 py-1.5 text-sm text-muted-foreground">Nicio subactivitate disponibila</div>
-                          ) : (
-                            availableSaCodes.map((sa) => (
-                              <SelectItem key={sa} value={sa}>{sa}</SelectItem>
-                            ))
-                          )}
-                        </SelectContent>
-                      </Select>
-                    )}
-                    {availableSaCodes.length === 0 && !catalogLoading && (
-                      <p className="text-xs text-amber-600 mt-1">
-                        Nu exista subactivitati alocate pentru rolul tau. Contacteaza PM.
-                      </p>
-                    )}
-                  </Field>
-
-                  <Field>
-                    <FieldLabel htmlFor="location">Locatie</FieldLabel>
-                    <Select value={location} onValueChange={setLocation}>
-                      <SelectTrigger id="location">
-                        <SelectValue placeholder="Selecteaza locatia" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Birou">Birou</SelectItem>
-                        <SelectItem value="Teren">Teren</SelectItem>
-                        <SelectItem value="Online">Online</SelectItem>
-                        <SelectItem value="Sediu CPC">Sediu CPC</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </Field>
-                </div>
-
-                {/* Activity from catalog */}
-                {!isGdprExpert && (
-                  <div className="grid gap-4 lg:grid-cols-[minmax(0,0.72fr)_minmax(220px,0.28fr)]">
-                    <Field>
-                      <FieldLabel htmlFor="activity">Activitate</FieldLabel>
-                      <Select value={selectedActivitySelectValue} onValueChange={handleActivitySelectionChange} disabled={!saCode || availableActivityItems.length === 0}>
-                        <SelectTrigger id="activity">
-                          <SelectValue placeholder={!saCode ? "Selecteaza SA mai intai" : "Selecteaza activitatea"} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {availableActivityItems.length === 0 ? (
-                            <div className="px-2 py-1.5 text-sm text-muted-foreground">Nicio activitate pentru acest SA</div>
-                          ) : (
-                            availableActivityItems.map((item) => (
-                              <SelectItem key={item.id} value={item.id}>{item.activityName}</SelectItem>
-                            ))
-                          )}
-                        </SelectContent>
-                      </Select>
-                      {selectedCatalogItem && (
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {selectedCatalogItem.serviceCategory} - {selectedCatalogItem.description}
-                        </p>
-                      )}
-                    </Field>
-                    <Field>
-                      <FieldLabel htmlFor="activityKeywords">Cheie interna optionala</FieldLabel>
-                      <Input
-                        id="activityKeywords"
-                        value={activityKeywords}
-                        onChange={(event) => setActivityKeywords(event.target.value)}
-                        placeholder="ex: monitorizare iulie"
-                        maxLength={120}
-                      />
-                    </Field>
+            {showStandardActivityWorkflow && mainDeliverableForEligibility && !isLeave && !isException && (
+              <div className="rounded-lg border border-indigo-100 bg-white p-3 shadow-sm">
+                <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 text-sm font-medium text-slate-950">
+                      <Sparkles className="h-4 w-4 text-indigo-600" />
+                      Eligibilitate livrabil principal
+                    </div>
+                    <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                      {mainDeliverableForEligibility.declaredTitle
+                        || mainDeliverableForEligibility.docTitle
+                        || mainDeliverableForEligibility.filename
+                        || mainDeliverableForEligibility.name}
+                    </div>
                   </div>
-                )}
-              </>
+                </div>
+                <DeliverableEligibilityControl
+                  deliverable={mainDeliverableForEligibility}
+                  relatedDeliverables={deliverablesForEligibility}
+                  subActivity={saCode}
+                  activityTitle={activityTitle}
+                  selectedActivityId={selectedCatalogItem?.id}
+                  catalogDescription={selectedCatalogItem?.description}
+                  catalogObjectives={selectedCatalogItem?.objectives}
+                  catalogComponent={selectedCatalogItem?.serviceComponent}
+                  catalogBeneficiaries={selectedCatalogItem?.beneficiaries}
+                  catalogExpectedResults={selectedCatalogItem?.expectedResults}
+                  catalogDeliverables={selectedCatalogItem?.deliverables}
+                  catalogIndicators={selectedCatalogItem?.indicators}
+                  activityCatalogCandidates={filteredCatalog}
+                  deliverableOptions={deliverableOptions}
+                  projectCode={expert?.projectCode}
+                  month={month}
+                  year={year}
+                  expertName={expertName}
+                  onUpdate={(patch) => updateDeliverable(mainDeliverableForEligibility.id, patch)}
+                  canCheckEligibility={canCheckDeliverableEligibility}
+                  eligibilityBlockedReason={eligibilityBlockedReason}
+                  onApplyEligibilitySuggestion={applyEligibilitySuggestion}
+                />
+              </div>
             )}
+
             {/* Description */}
             {showStandardActivityWorkflow && (
             <Field>
@@ -2692,7 +2821,7 @@ export function ActivityForm({
                   <div>
                     <div className="text-sm font-medium text-slate-900">Descriere asistata AI</div>
                     <div className="text-xs text-slate-600">
-                      Foloseste descrierea curenta, activitatea selectata si livrabilele citite.
+                      Dupa cei patru pasi, foloseste scopul oficial al SA, catalogul Admin si toate livrabilele citite.
                     </div>
                   </div>
                   <Button
@@ -2700,16 +2829,23 @@ export function ActivityForm({
                     variant="outline"
                     size="sm"
                     onClick={handleSuggestActivityFromDeliverables}
-                    disabled={isAutofillingActivity}
+                    disabled={isAutofillingActivity || Boolean(activityAutofillUnavailableMessage)}
+                    title={activityAutofillUnavailableMessage || undefined}
                   >
                     {isAutofillingActivity ? (
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                     ) : (
                       <Sparkles className="h-4 w-4 mr-2" />
                     )}
-                    Rescrie descrierea
+                    Optimizare descriere
                   </Button>
                 </div>
+
+                {activityAutofillUnavailableMessage && (
+                  <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-2 text-xs text-slate-700">
+                    {activityAutofillUnavailableMessage}
+                  </div>
+                )}
 
                 {!isWorkspaceLayout && activityAutofillError && (
                   <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
@@ -2781,6 +2917,22 @@ export function ActivityForm({
                         )}
                       </div>
                     )}
+                    {activityAutofillSuggestion.saPurpose && (
+                      <div className={`rounded border p-2 text-xs ${
+                        activityAutofillSuggestion.saPurpose.found
+                          ? 'border-emerald-200 bg-white text-slate-800'
+                          : 'border-amber-200 bg-amber-50 text-amber-900'
+                      }`}>
+                        <div className="font-medium">
+                          Scop oficial {activityAutofillSuggestion.saPurpose.saCode}
+                        </div>
+                        <div className="mt-1">
+                          {activityAutofillSuggestion.saPurpose.found
+                            ? `Sectiune identificata${activityAutofillSuggestion.saPurpose.title ? `: ${activityAutofillSuggestion.saPurpose.title}` : '.'}`
+                            : activityAutofillSuggestion.saPurpose.warnings.join(' ')}
+                        </div>
+                      </div>
+                    )}
                     <div className="flex justify-end gap-2">
                       <Button type="button" variant="outline" size="sm" onClick={dismissActivityAutofillSuggestion}>
                         Renunta
@@ -2842,12 +2994,13 @@ export function ActivityForm({
                         <Label
                           key={choice.id}
                           htmlFor={`duplicate-source-${choice.id}`}
-                          className="flex cursor-pointer items-start gap-3 rounded-md border border-slate-200 p-3 text-sm hover:bg-slate-50"
+                          className={`flex items-start gap-3 rounded-md border border-slate-200 p-3 text-sm ${choice.isCompatible ? 'cursor-pointer hover:bg-slate-50' : 'cursor-not-allowed bg-slate-50 text-muted-foreground'}`}
                         >
                           <RadioGroupItem
                             id={`duplicate-source-${choice.id}`}
                             value={choice.id}
                             className="mt-0.5"
+                            disabled={!choice.isCompatible}
                           />
                           <span className="min-w-0 space-y-1">
                             <span className="block font-medium text-slate-950">
@@ -2860,7 +3013,11 @@ export function ActivityForm({
                               <span className="inline-flex text-xs font-medium text-emerald-700">
                                 Recomandata pentru activitatea curenta
                               </span>
-                            ) : null}
+                            ) : (
+                              <span className="inline-flex text-xs font-medium text-amber-700">
+                                Incompatibila cu activitatea curenta
+                              </span>
+                            )}
                           </span>
                         </Label>
                       ))}
@@ -2872,7 +3029,12 @@ export function ActivityForm({
                   <AlertDialogAction
                     disabled={Boolean(
                       monthlyDeliverableDuplicateConfirmation?.choices.length
-                      && !monthlyDeliverableDuplicateConfirmation?.sourceActivityId,
+                      && (
+                        !monthlyDeliverableDuplicateConfirmation?.sourceActivityId
+                        || !monthlyDeliverableDuplicateConfirmation.choices.some((choice) => (
+                          choice.id === monthlyDeliverableDuplicateConfirmation.sourceActivityId && choice.isCompatible
+                        ))
+                      ),
                     )}
                     onClick={() => handleSave(
                       monthlyDeliverableDuplicateConfirmation?.confirmedActivityDuplicate ?? false,
@@ -2885,48 +3047,6 @@ export function ActivityForm({
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
-
-            {showStandardActivityWorkflow && mainDeliverableForEligibility && !isLeave && !isException && (
-              <div className="rounded-lg border border-indigo-100 bg-white p-3 shadow-sm">
-                <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 text-sm font-medium text-slate-950">
-                      <Sparkles className="h-4 w-4 text-indigo-600" />
-                      Eligibilitate livrabil principal
-                    </div>
-                    <div className="mt-0.5 truncate text-xs text-muted-foreground">
-                      {mainDeliverableForEligibility.declaredTitle
-                        || mainDeliverableForEligibility.docTitle
-                        || mainDeliverableForEligibility.filename
-                        || mainDeliverableForEligibility.name}
-                    </div>
-                  </div>
-                </div>
-                <DeliverableEligibilityControl
-                  deliverable={mainDeliverableForEligibility}
-                  subActivity={saCode}
-                  activityTitle={activityTitle}
-                  selectedActivityId={selectedCatalogItem?.id}
-                  catalogDescription={selectedCatalogItem?.description}
-                  catalogObjectives={selectedCatalogItem?.objectives}
-                  catalogComponent={selectedCatalogItem?.serviceComponent}
-                  catalogBeneficiaries={selectedCatalogItem?.beneficiaries}
-                  catalogExpectedResults={selectedCatalogItem?.expectedResults}
-                  catalogDeliverables={selectedCatalogItem?.deliverables}
-                  catalogIndicators={selectedCatalogItem?.indicators}
-                  activityCatalogCandidates={filteredCatalog}
-                  deliverableOptions={deliverableOptions}
-                  projectCode={expert?.projectCode}
-                  month={month}
-                  year={year}
-                  expertName={expertName}
-                  onUpdate={(patch) => updateDeliverable(mainDeliverableForEligibility.id, patch)}
-                  canCheckEligibility={canCheckDeliverableEligibility}
-                  eligibilityBlockedReason={eligibilityBlockedReason}
-                  onApplyEligibilitySuggestion={applyEligibilitySuggestion}
-                />
-              </div>
-            )}
 
             {/* Event duration (for event activities) */}
             {showStandardActivityWorkflow && isEvent && !isWorkspaceLayout && (

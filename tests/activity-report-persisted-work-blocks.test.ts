@@ -116,3 +116,35 @@ test('normalizeaza valorile persistate necunoscute inainte de modelul Anexa 10',
   assert.equal(bundles[0].deliverableLinks[0].isPrimary, false);
   assert.equal(bundles[0].deliverableLinks[0].contributionType, undefined);
 });
+
+test('deduplica linkurile persistate duplicate inainte de preview si export', () => {
+  const bundles = buildPersistedWorkBlockBundles({
+    activities,
+    workBlocks: [
+      {
+        id: 'wb-dedupe',
+        expertId: 'expert-1',
+        projectCode: '302141',
+        month: 5,
+        year: 2026,
+        title: 'Analiza documente',
+        saCode: 'SA3.4',
+        reportingFlowType: 'deliverable',
+        status: 'ready',
+      },
+    ],
+    activityLinks: [
+      { id: 'l1', workBlockId: 'wb-dedupe', activityId: 'a1', allocatedHours: 2 },
+      { id: 'l1-duplicate', workBlockId: 'wb-dedupe', activityId: 'a1', allocatedHours: 2 },
+    ],
+    deliverableLinks: [
+      { id: 'd1', workBlockId: 'wb-dedupe', deliverableId: 'deliverable-1', isPrimary: true },
+      { id: 'd1-duplicate', workBlockId: 'wb-dedupe', deliverableId: 'deliverable-1', isPrimary: true },
+    ],
+  });
+
+  assert.equal(bundles[0].activityLinks.length, 1);
+  assert.equal(bundles[0].activityLinks[0].id, 'l1');
+  assert.equal(bundles[0].deliverableLinks.length, 1);
+  assert.equal(bundles[0].deliverableLinks[0].id, 'd1');
+});
