@@ -11,7 +11,7 @@ export const storage = defineStorage({
       allow.authenticated.to(["read", "write"]),
       allow.groups(["pm", "admin"]).to(["read", "write", "delete"]),
     ],
-    "projects/*/documents/*": [
+    "projects/{project_id}/documents/*": [
       allow.authenticated.to(["read", "write"]),
       allow.groups(["pm", "admin"]).to(["read", "write", "delete"]),
     ],
