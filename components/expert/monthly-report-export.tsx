@@ -80,61 +80,77 @@ export function MonthlyReportExport({ expert, activities, concurrentProjects = [
     try {
       // Generate the selected documents
       const docs: { name: string; content: string }[] = [];
+      const failedExports: string[] = [];
+      const runExport = async (label: string, action: () => Promise<void> | void) => {
+        try {
+          await action();
+        } catch (error) {
+          console.error(`Error exporting ${label}:`, error);
+          const message = error instanceof Error ? error.message : 'Exportul a esuat.';
+          failedExports.push(`${label}: ${message}`);
+        }
+      };
       
       if (includeTimesheet) {
-        await downloadPontajExcel('peo');
+        await runExport('Pontaj PEO', () => downloadPontajExcel('peo'));
       }
 
       if (includeConsolidatedTimesheet) {
-        await downloadPontajExcel('consolidated');
+        await runExport('Pontaj final consolidat', () => downloadPontajExcel('consolidated'));
       }
       
       if (includeOPIS) {
-        docs.push(generateOPIS(expert, compileActivitiesByPeriodGroup(activities), month, year));
+        await runExport('OPIS livrabile', () => {
+          docs.push(generateOPIS(expert, compileActivitiesByPeriodGroup(activities), month, year));
+        });
       }
       
       if (includeRA) {
-        const reportActivities = compileActivitiesByPeriodGroup(activities);
-        // Call AI to generate report
-        const response = await fetch('/api/ai/generate-report', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            activities: reportActivities,
-            month: getMonthName(month),
-            year,
-            expertName: expert.name,
-          }),
-        });
-        
-        if (!response.ok) {
-          const contentType = response.headers.get('Content-Type') || '';
-          const message = contentType.includes('application/json')
-            ? ((await response.json().catch(() => ({}))) as { error?: string }).error
-            : await response.text().catch(() => '');
-          throw new Error(message || `Exportul RA a esuat. Status HTTP: ${response.status}`);
-        }
+        await runExport('Raport de Activitate', async () => {
+          const reportActivities = compileActivitiesByPeriodGroup(activities);
+          // Call AI to generate report
+          const response = await fetch('/api/ai/generate-report', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              activities: reportActivities,
+              month: getMonthName(month),
+              year,
+              expertName: expert.name,
+            }),
+          });
 
-        const data = (await response.json()) as { report?: string };
-        if (!data.report?.trim()) {
-          throw new Error('Exportul RA nu a generat continut. Incearca din nou sau contacteaza administratorul.');
-        }
+          if (!response.ok) {
+            const contentType = response.headers.get('Content-Type') || '';
+            const message = contentType.includes('application/json')
+              ? ((await response.json().catch(() => ({}))) as { error?: string }).error
+              : await response.text().catch(() => '');
+            throw new Error(message || `Exportul RA a esuat. Status HTTP: ${response.status}`);
+          }
 
-        docs.push({
-          name: `Raport_Activitate_${expert.name}_${getMonthName(month)}_${year}.md`,
-          content: data.report,
+          const data = (await response.json()) as { report?: string };
+          if (!data.report?.trim()) {
+            throw new Error('Exportul RA nu a generat continut. Incearca din nou sau contacteaza administratorul.');
+          }
+
+          docs.push({
+            name: `Raport_Activitate_${expert.name}_${getMonthName(month)}_${year}.md`,
+            content: data.report,
+          });
         });
       }
 
       if (isBusinessHubExportAvailable && (includeBusinessHubPv || includeBusinessHubAddresses)) {
-        const businessHubFiles = await generateBusinessHubMonthlyFiles({
-          includePv: includeBusinessHubPv,
-          includeAddresses: includeBusinessHubAddresses,
+        await runExport('Business Hub', async () => {
+          const businessHubFiles = await generateBusinessHubMonthlyFiles({
+            includePv: includeBusinessHubPv,
+            includeAddresses: includeBusinessHubAddresses,
+          });
+          businessHubFiles.forEach((file) => triggerDownload(file.blob, file.name));
+          if (attachBusinessHubDeliverables) {
+            await attachBusinessHubMonthlyDeliverables(businessHubFiles);
+          }
         });
-        businessHubFiles.forEach((file) => triggerDownload(file.blob, file.name));
-        if (attachBusinessHubDeliverables) {
-          await attachBusinessHubMonthlyDeliverables(businessHubFiles);
-        }
       }
 
       // For now, download as text files
@@ -151,7 +167,11 @@ export function MonthlyReportExport({ expert, activities, concurrentProjects = [
         URL.revokeObjectURL(url);
       });
 
-      setIsOpen(false);
+      if (failedExports.length > 0) {
+        setExportError(`Am descarcat documentele generate, dar unele exporturi au esuat:\n${failedExports.join('\n')}`);
+      } else {
+        setIsOpen(false);
+      }
     } catch (error) {
       console.error('Error exporting report:', error);
       setExportError(error instanceof Error ? error.message : 'Exportul a esuat.');
@@ -439,7 +459,7 @@ export function MonthlyReportExport({ expert, activities, concurrentProjects = [
           </div>
 
           {exportError && (
-            <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+            <div className="whitespace-pre-line rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
               {exportError}
             </div>
           )}
