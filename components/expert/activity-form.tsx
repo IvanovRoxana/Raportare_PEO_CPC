@@ -403,6 +403,9 @@ export function ActivityForm({
     (activitySeed?.dayType as 'lucratoare' | 'CO' | 'CM') || 'lucratoare'
   );
   const [description, setDescription] = useState(activitySeed?.description || '');
+  const [activitySummary, setActivitySummary] = useState(activitySeed?.activitySummary || '');
+  const [activitySummaryGeneratedAt, setActivitySummaryGeneratedAt] = useState(activitySeed?.activitySummaryGeneratedAt || '');
+  const [activitySummaryAuditId, setActivitySummaryAuditId] = useState(activitySeed?.activitySummaryAuditId || '');
   const [activityKeywords, setActivityKeywords] = useState(activitySeed?.activityKeywords || '');
   const [location, setLocation] = useState(activitySeed?.location || 'Birou');
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -731,9 +734,14 @@ export function ActivityForm({
     selectedDates,
     collaborationContext: activityAutofillCollaborationContext,
     setDescription,
+    setActivitySummary,
     year,
-    onApplied: () => {
+    onApplied: (suggestion) => {
       lastAutoDescriptionRef.current = '__activity_autofill_applied__';
+      if (suggestion.shortSummary?.trim()) {
+        setActivitySummaryGeneratedAt(new Date().toISOString());
+        setActivitySummaryAuditId(suggestion.modelAuditId || suggestion.agent?.auditId || '');
+      }
     },
   });
 
@@ -1356,6 +1364,9 @@ export function ActivityForm({
             : selectedCatalogItem?.id,
         title: effectiveActivityTitle,
         description,
+        activitySummary: activitySummary.trim() || undefined,
+        activitySummaryGeneratedAt: activitySummary.trim() ? (activitySummaryGeneratedAt || activitySeed?.activitySummaryGeneratedAt || new Date().toISOString()) : undefined,
+        activitySummaryAuditId: activitySummary.trim() ? (activitySummaryAuditId || activitySeed?.activitySummaryAuditId) : undefined,
         activityKeywords: activityKeywords.trim() || undefined,
         deliverables: shouldAttachDeliverables ? deliverablesForSave
           .map(d => ({
@@ -2878,6 +2889,14 @@ export function ActivityForm({
                         {activityAutofillSuggestion.description}
                       </div>
                     </div>
+                    {activityAutofillSuggestion.shortSummary && (
+                      <div>
+                        <div className="text-xs font-medium text-emerald-800">Rezumat scurt activitate</div>
+                        <div className="mt-1 whitespace-pre-wrap rounded border border-emerald-200 bg-white p-2 text-xs text-slate-800">
+                          {activityAutofillSuggestion.shortSummary}
+                        </div>
+                      </div>
+                    )}
                     {activityAutofillSuggestion.agent && (
                       <div className="grid gap-2 md:grid-cols-2">
                         <div className="rounded border border-emerald-200 bg-white p-2 text-xs text-slate-800">
@@ -3002,7 +3021,7 @@ export function ActivityForm({
                       </Button>
                       <Button type="button" size="sm" onClick={applyActivityAutofillSuggestion}>
                         <CheckCircle className="h-4 w-4 mr-2" />
-                        Aplica descrierea
+                        Aplica descrierea si rezumatul
                       </Button>
                     </div>
                   </div>

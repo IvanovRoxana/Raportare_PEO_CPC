@@ -17,6 +17,7 @@ export interface WorkBlockConsolidationActivity {
   date: string;
   hours: number;
   title?: string;
+  summary?: string;
   description?: string;
   activityType?: string;
   saCode?: string;
@@ -56,6 +57,7 @@ export function buildWorkBlockConsolidationRequest(
         date: activity.date,
         hours: Number(activity.hours) || 0,
         title: activity.title,
+        summary: activity.activitySummary,
         description: activity.description,
         activityType: activity.activityType,
         saCode: activity.saCode,
@@ -73,6 +75,7 @@ export function buildConsolidationInputsHash(request: WorkBlockConsolidationRequ
       date: activity.date,
       hours: activity.hours,
       title: normalizeWhitespace(activity.title),
+      summary: normalizeWhitespace(activity.summary),
       description: normalizeWhitespace(activity.description),
       activityType: normalizeWhitespace(activity.activityType),
       deliverables: [...new Set(activity.deliverables ?? [])].sort(),
@@ -85,7 +88,7 @@ export function buildDeterministicWorkBlockConsolidation(
   status: WorkBlockConsolidationStatus = 'deterministic_fallback',
 ): WorkBlockConsolidationResult {
   const uniqueDescriptions = uniqueNormalized(
-    request.activities.map((activity) => activity.description || activity.title || '').filter(Boolean),
+    request.activities.map((activity) => activity.summary || activity.description || activity.title || '').filter(Boolean),
   );
   const uniqueTitles = uniqueNormalized(request.activities.map((activity) => activity.title || '').filter(Boolean));
   const sourceSentences = uniqueDescriptions.length > 0 ? uniqueDescriptions : uniqueTitles;
@@ -130,6 +133,8 @@ Reguli stricte:
 - Pastreaza doar informatia concreta despre ce s-a facut, rezultatele si livrabilele.
 - Nu inventa livrabile, institutii, date sau rezultate.
 - Nu lista fiecare zi separat decat daca descrierile sunt diferite si relevante.
+- Foloseste prioritar campul summary al activitatilor cand construiesti cleanedActivitySummary, generatedTableSummary si generatedNarrative.
+- Nu duplica descrierea lunga cand summary contine deja sinteza activitatii.
 - Returneaza exclusiv JSON valid cu cheile: cleanedActivitySummary, generatedTableSummary, generatedNarrative.
 
 Work block:

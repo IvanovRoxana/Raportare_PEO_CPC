@@ -61,6 +61,7 @@ const baseRequest: ActivityAgentRequest = {
 test('activity agent response schema accepts the structured output contract', () => {
   const parsed = activityAgentResponseSchema.parse({
     description: 'Expertul a analizat livrabilul atasat si a formulat informatii relevante pentru raportarea activitatii.',
+    shortSummary: 'Am analizat livrabilul atasat pentru raportarea activitatii selectate.',
     proposedSaCode: 'SA3.2',
     proposedActivityName: 'Monitorizare legislativa regionala si informare membri',
     deliverableSummary: 'Raport de monitorizare legislativa regionala',
@@ -98,6 +99,7 @@ test('activity agent response schema accepts the structured output contract', ()
   });
 
   assert.equal(parsed.confidence, 'high');
+  assert.equal(parsed.shortSummary, 'Am analizat livrabilul atasat pentru raportarea activitatii selectate.');
   assert.equal(parsed.targetGroupImpact.type, 'direct');
 });
 

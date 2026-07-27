@@ -77,6 +77,7 @@ export const activityAutofillRequestSchema = z.object({
 
 export const activityAutofillSuggestionSchema = z.object({
   description: z.string().min(20),
+  shortSummary: z.string().optional(),
   confidence: z.enum(['high', 'medium', 'low']),
   fieldInstructions: z.object({
     description: z.string().min(1),
@@ -363,6 +364,10 @@ export function buildFallbackActivityAutofillSuggestion(input: ActivityAutofillR
   const collaborationSentence = collaboratorNames.length > 0
     ? `Activitatea a fost desfasurata in colaborare cu ${collaboratorNames.join(', ')}, iar descrierea trebuie revizuita astfel incat sa ramana centrata pe contributia proprie.`
     : '';
+  const shortSummary = [
+    `Am lucrat la ${candidate.activityName} (${candidate.saCode}) pe baza ${deliverableSummary}.`,
+    collaboratorNames.length > 0 ? `Activitatea a fost realizata in colaborare cu ${collaboratorNames.join(', ')}.` : '',
+  ].filter(Boolean).join(' ');
 
   return {
     description: [
@@ -371,6 +376,7 @@ export function buildFallbackActivityAutofillSuggestion(input: ActivityAutofillR
       collaborationSentence,
       'Descrierea poate fi ajustata manual cu detalii suplimentare despre participanti, concluzii sau etape de lucru, numai daca acestea reies din documentul incarcat.',
     ].filter(Boolean).join(' '),
+    shortSummary,
     confidence: 'low',
     fieldInstructions: {
       description: 'Revizuieste descrierea si completeaza numai cu informatii sustinute de livrabil.',

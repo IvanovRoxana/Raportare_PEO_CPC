@@ -72,7 +72,7 @@ function truncateText(value: string, maxLength = 180) {
 }
 
 function getActivitySummary(activity: Activity) {
-  const description = normalizeText(activity.description || activity.gdprGeneratedText);
+  const description = normalizeText(activity.activitySummary || activity.description || activity.gdprGeneratedText);
   if (description) return truncateText(description);
   return 'Fara descriere completata.';
 }
