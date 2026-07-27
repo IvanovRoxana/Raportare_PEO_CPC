@@ -2575,6 +2575,12 @@ export const reportingWorkBlocksService = {
       expertContribution: bundle.workBlock.expertContribution,
       beneficiaries: bundle.workBlock.beneficiaries,
       indicatorContribution: bundle.workBlock.indicatorContribution,
+      cleanedActivitySummary: bundle.workBlock.cleanedActivitySummary,
+      generatedTableSummary: bundle.workBlock.generatedTableSummary,
+      generatedNarrative: bundle.workBlock.generatedNarrative,
+      generationInputsHash: bundle.workBlock.generationInputsHash,
+      aiConsolidationStatus: bundle.workBlock.aiConsolidationStatus,
+      aiConsolidationUpdatedAt: bundle.workBlock.aiConsolidationUpdatedAt,
       status: bundle.workBlock.status,
     };
     const savedWorkBlock = existing.data

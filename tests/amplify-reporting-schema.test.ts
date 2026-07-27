@@ -8,6 +8,12 @@ test('schema adauga modelele reporting work-block fara sa elimine relatia legacy
   assert.match(schemaSource, /ReportingWorkBlock:\s*a\s*\n\s*\.model/);
   assert.match(schemaSource, /WorkBlockActivityLink:\s*a\s*\n\s*\.model/);
   assert.match(schemaSource, /WorkBlockDeliverableLink:\s*a\s*\n\s*\.model/);
+  assert.match(schemaSource, /cleanedActivitySummary:\s*a\.string\(\)/);
+  assert.match(schemaSource, /generatedTableSummary:\s*a\.string\(\)/);
+  assert.match(schemaSource, /generatedNarrative:\s*a\.string\(\)/);
+  assert.match(schemaSource, /generationInputsHash:\s*a\.string\(\)/);
+  assert.match(schemaSource, /aiConsolidationStatus:\s*a\.string\(\)/);
+  assert.match(schemaSource, /aiConsolidationUpdatedAt:\s*a\.datetime\(\)/);
   assert.match(schemaSource, /ActivityMapping:\s*a\s*\n\s*\.model/);
   assert.match(schemaSource, /activityId:\s*a\.id\(\)\.required\(\)/);
   assert.match(schemaSource, /deliverables:\s*a\.hasMany\("Deliverable",\s*"activityId"\)/);
