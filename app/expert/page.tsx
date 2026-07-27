@@ -607,6 +607,7 @@ export default function ExpertHomeDashboard() {
   const workedDaysProgress = percent(workedDaysCount, monthlyNormInfo.workingDays);
   const openActivitiesProgress = percent(openPeoActivitiesCount, peoActivities.length);
   const deliverablesProgress = percent(peoActivitiesWithDeliverablesCount, peoActivities.length);
+  const hasActiveConcurrentProjects = activeConcurrentProjects.length > 0;
   const dashboardReadinessItems = [
     pendingSharedAlerts.length > 0
       ? { label: 'Livrabile comune neînregistrate', detail: `${pendingSharedAlerts.length} livrabile necesita asociere in pontaj.`, severity: 'blocking' }
@@ -749,7 +750,7 @@ export default function ExpertHomeDashboard() {
 
   const calendarToolbar = (
     <>
-      {activeConcurrentProjects.length > 0 && (
+      {hasActiveConcurrentProjects && (
         <div className="min-w-[240px] rounded-xl border border-[#dce5ef] bg-slate-50/80 p-2 shadow-sm">
           <p className="mb-1 px-1 text-xs font-semibold text-slate-600">Panou proiecte</p>
           <Select value={selectedProjectShortcutValue} onValueChange={handleProjectShortcutChange}>
@@ -886,10 +887,12 @@ export default function ExpertHomeDashboard() {
                   <span className="font-semibold">{monthlyNormInfo.monthlyNorm}h</span>
                 </div>
               </div>
-              <Link href="#pontaj-consolidat" className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-primary">
-                Vezi detalii complete
-                <ArrowRight className="h-4 w-4" />
-              </Link>
+              {hasActiveConcurrentProjects && (
+                <Link href="#pontaj-consolidat" className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-primary">
+                  Vezi detalii complete
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              )}
             </RightInfoCard>
 
             <RightInfoCard title="Submit readiness" icon={ClipboardList}>
@@ -1175,7 +1178,8 @@ export default function ExpertHomeDashboard() {
         <section className="space-y-6">
           <DashboardCalendar projects={projects} month={currentMonth} year={currentYear} toolbar={calendarToolbar} />
 
-          <Card id="pontaj-consolidat" className="h-fit rounded-lg scroll-mt-24">
+          {hasActiveConcurrentProjects && (
+            <Card id="pontaj-consolidat" className="h-fit rounded-lg scroll-mt-24">
             <CardHeader className="border-b">
               <CardTitle className="text-lg">Detalii pontaj consolidat</CardTitle>
             </CardHeader>
@@ -1283,7 +1287,8 @@ export default function ExpertHomeDashboard() {
                 </Button>
               </div>
             </CardContent>
-          </Card>
+            </Card>
+          )}
         </section>
       </DashboardShell>
     </>
