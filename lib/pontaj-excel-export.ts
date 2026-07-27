@@ -8,7 +8,7 @@ import {
   toDateKey,
 } from './non-working-days.ts';
 
-type CellInput = string | number | null | { formula: string };
+export type CellInput = string | number | null | { formula: string };
 
 export interface ExportPayload {
   kind: 'peo' | 'consolidated';
@@ -25,7 +25,7 @@ interface GeneratedWorkbook {
   filename: string;
 }
 
-interface ZipEntry {
+export interface ZipEntry {
   name: string;
   flags: number;
   method: number;
@@ -426,7 +426,7 @@ function getGoodworksDailyHours(projects: Partial<ConcurrentProject>[]) {
     .reduce((total, project) => total + (Number(project.dailyHours) || 0), 0);
 }
 
-function readXlsx(buffer: Buffer) {
+export function readXlsx(buffer: Buffer) {
   const entries = readZipEntries(buffer);
   const files = new Map(entries.map((entry) => [entry.name, inflateEntryData(entry)]));
   return { entries, files };
@@ -504,7 +504,7 @@ function readZipEntries(buffer: Buffer): ZipEntry[] {
   return entries;
 }
 
-function writeXlsx(entries: ZipEntry[], files: Map<string, Buffer>) {
+export function writeXlsx(entries: ZipEntry[], files: Map<string, Buffer>) {
   const localParts: Buffer[] = [];
   const centralParts: Buffer[] = [];
   let offset = 0;
@@ -569,7 +569,7 @@ function writeXlsx(entries: ZipEntry[], files: Map<string, Buffer>) {
   return Buffer.concat([...localParts, centralDirectory, eocd]);
 }
 
-function setCell(xml: string, ref: string, input: CellInput): string {
+export function setCell(xml: string, ref: string, input: CellInput): string {
   const rowNumber = Number(ref.match(/\d+$/)?.[0]);
   const current = matchCell(xml, ref);
   const style = current?.match(/\bs="([^"]+)"/)?.[1];
@@ -622,7 +622,7 @@ function insertCellInRow(rowBody: string, cellXml: string) {
   return `${rowBody}${cellXml}`;
 }
 
-function setFullCalcOnLoad(xml: string) {
+export function setFullCalcOnLoad(xml: string) {
   if (xml.includes('<calcPr')) {
     return xml.replace(/<calcPr\b[^>]*\/>/, '<calcPr calcMode="auto" fullCalcOnLoad="1" forceFullCalc="1"/>');
   }
@@ -642,7 +642,7 @@ function insertPeoDay31Row(xml: string) {
   return shifted;
 }
 
-function insertWorksheetRows(xml: string, insertAtRow: number, count: number) {
+export function insertWorksheetRows(xml: string, insertAtRow: number, count: number) {
   let next = xml;
   for (let index = 0; index < count; index += 1) {
     const sourceRow = insertAtRow - 1;

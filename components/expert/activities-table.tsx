@@ -30,6 +30,7 @@ import {
   parseGdprMetaJson,
   validateGdprActivityDraft,
 } from '@/lib/gdpr-reporting';
+import { getActivityEditGroupId } from '@/lib/activity-edit';
 import { cn } from '@/lib/utils';
 import type { Activity, Deliverable } from '@/lib/types';
 
@@ -41,8 +42,11 @@ interface ActivitiesTableProps {
   compact?: boolean;
 }
 
-interface ActivityDayGroup {
-  date: string;
+interface ActivityWorkingGroup {
+  id: string;
+  title: string;
+  dateLabel: string;
+  dayCount: number;
   activities: Activity[];
   totalHours: number;
 }
@@ -94,8 +98,25 @@ function getPrimaryDeliverable(activity: Activity) {
     || null;
 }
 
-function groupActivitiesByDay(activities: Activity[]): ActivityDayGroup[] {
+function getActivityGroupKey(activity: Activity) {
+  return getActivityEditGroupId(activity) || activity.id;
+}
+
+function getActivityGroupTitle(activities: Activity[]) {
+  const first = activities[0];
+  return first?.title || first?.activityType || 'Activitate fara titlu';
+}
+
+function getActivityGroupDateLabel(activities: Activity[]) {
+  const dates = [...new Set(activities.map((activity) => activity.date).filter(Boolean))].sort();
+  if (dates.length === 0) return 'Fara data';
+  if (dates.length === 1) return `${formatDateRo(dates[0])} ${getWeekdayLabel(dates[0])}`;
+  return `${formatDateRo(dates[0])} - ${formatDateRo(dates[dates.length - 1])}`;
+}
+
+function groupActivitiesByWorkingGroup(activities: Activity[]): ActivityWorkingGroup[] {
   const groups = new Map<string, Activity[]>();
+  const order: string[] = [];
 
   [...activities]
     .sort((a, b) => {
@@ -104,16 +125,24 @@ function groupActivitiesByDay(activities: Activity[]): ActivityDayGroup[] {
       return (a.title || a.activityType || '').localeCompare(b.title || b.activityType || '', 'ro');
     })
     .forEach((activity) => {
-      const dayActivities = groups.get(activity.date) ?? [];
-      dayActivities.push(activity);
-      groups.set(activity.date, dayActivities);
+      const key = getActivityGroupKey(activity);
+      const groupActivities = groups.get(key) ?? [];
+      groupActivities.push(activity);
+      groups.set(key, groupActivities);
+      if (!order.includes(key)) order.push(key);
     });
 
-  return Array.from(groups.entries()).map(([date, dayActivities]) => ({
-    date,
-    activities: dayActivities,
-    totalHours: dayActivities.reduce((sum, activity) => sum + (Number(activity.hours) || 0), 0),
-  }));
+  return order.map((id) => {
+    const groupActivities = groups.get(id) ?? [];
+    return {
+      id,
+      title: getActivityGroupTitle(groupActivities),
+      dateLabel: getActivityGroupDateLabel(groupActivities),
+      dayCount: new Set(groupActivities.map((activity) => activity.date).filter(Boolean)).size,
+      activities: groupActivities,
+      totalHours: groupActivities.reduce((sum, activity) => sum + (Number(activity.hours) || 0), 0),
+    };
+  });
 }
 
 export function ActivitiesTable({
@@ -124,7 +153,7 @@ export function ActivitiesTable({
   compact = false,
 }: ActivitiesTableProps) {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
-  const dayGroups = useMemo(() => groupActivitiesByDay(activities), [activities]);
+  const workingGroups = useMemo(() => groupActivitiesByWorkingGroup(activities), [activities]);
   const totalHours = activities.reduce((sum, activity) => sum + (Number(activity.hours) || 0), 0);
 
   const toggleRow = (id: string) => {
@@ -153,7 +182,7 @@ export function ActivitiesTable({
         <div>
           <h3 className={cn('font-semibold text-foreground', compact ? 'text-base' : 'text-lg')}>Jurnal activitati</h3>
           <p className={cn('text-muted-foreground', compact ? 'text-xs' : 'text-sm')}>
-            {activities.length} activitati grupate pe {dayGroups.length} zile pontate.
+            {activities.length} activitati grupate pe {workingGroups.length} working group-uri.
           </p>
         </div>
         <Badge variant="secondary" className={cn('rounded-lg px-3 py-1', compact ? 'text-xs' : 'text-sm')}>
@@ -162,16 +191,13 @@ export function ActivitiesTable({
       </div>
 
       <div className="space-y-3">
-        {dayGroups.map((group) => (
-          <section key={group.date} className="overflow-hidden rounded-lg border bg-card">
+        {workingGroups.map((group) => (
+          <section key={group.id} className="overflow-hidden rounded-lg border bg-card">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-muted/40 px-4 py-3">
               <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-semibold text-foreground">{formatDateRo(group.date)}</span>
-                  <span className="text-sm capitalize text-muted-foreground">{getWeekdayLabel(group.date)}</span>
-                </div>
+                <h4 className="break-words text-sm font-semibold leading-5 text-foreground">{group.title}</h4>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  {group.activities.length} {group.activities.length === 1 ? 'activitate' : 'activitati'} in aceasta zi
+                  {group.dayCount} {group.dayCount === 1 ? 'zi pontata' : 'zile pontate'} - {group.dateLabel}
                 </p>
               </div>
               <Badge variant="outline" className="rounded-lg bg-background px-3 py-1 text-sm">
@@ -207,7 +233,7 @@ export function ActivitiesTable({
                         </div>
                         <div className={cn('min-w-0', !compact && 'xl:mt-2')}>
                           <Badge variant="outline" className="max-w-full truncate text-xs">
-                            {activity.activityType || 'Tip neprecizat'}
+                            {formatDateRo(activity.date)}
                           </Badge>
                         </div>
                       </div>
@@ -222,6 +248,9 @@ export function ActivitiesTable({
                               {activity.activityKeywords}
                             </p>
                           )}
+                          <Badge variant="outline" className="max-w-full truncate text-xs">
+                            {activity.activityType || 'Tip neprecizat'}
+                          </Badge>
                           <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
                             <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                               Livrabil
