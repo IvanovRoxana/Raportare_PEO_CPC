@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -204,10 +204,12 @@ function DashboardCalendar({
   projects,
   month,
   year,
+  toolbar,
 }: {
   projects: ProjectItem[];
   month: number;
   year: number;
+  toolbar?: ReactNode;
 }) {
   const dayTotals = useMemo(() => getDayTotals(projects), [projects]);
   const calendarDays = useMemo(() => getCalendarDays(year, month), [year, month]);
@@ -224,9 +226,12 @@ function DashboardCalendar({
             {getMonthName(month)} {year}
           </p>
         </div>
-        <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-800">
-          Limită 8 ore/zi
-        </Badge>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {toolbar}
+          <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-800">
+            Limită 8 ore/zi
+          </Badge>
+        </div>
       </div>
 
       <div className="p-3">
@@ -742,6 +747,97 @@ export default function ExpertHomeDashboard() {
     });
   };
 
+  const calendarToolbar = (
+    <>
+      {activeConcurrentProjects.length > 0 && (
+        <div className="min-w-[240px] rounded-xl border border-[#dce5ef] bg-slate-50/80 p-2 shadow-sm">
+          <p className="mb-1 px-1 text-xs font-semibold text-slate-600">Panou proiecte</p>
+          <Select value={selectedProjectShortcutValue} onValueChange={handleProjectShortcutChange}>
+            <SelectTrigger className="h-9 w-full bg-white">
+              <SelectValue placeholder="Selecteaza proiect" />
+            </SelectTrigger>
+            <SelectContent>
+              {projects.map((project) => (
+                <SelectItem key={project.id} value={project.id}>
+                  {project.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+      <div className="flex flex-wrap items-center gap-2">
+        <Select
+          value={`${currentMonth}-${currentYear}`}
+          onValueChange={(value) => {
+            const [month, year] = value.split('-').map(Number);
+            setCurrentMonth(month);
+            setCurrentYear(year);
+          }}
+        >
+          <SelectTrigger className="h-9 w-[160px]">
+            <SelectValue placeholder="Luna" />
+          </SelectTrigger>
+          <SelectContent>
+            {selectableYears.flatMap((year) =>
+              MONTH_OPTIONS.map((month) => (
+                <SelectItem key={`${month.value}-${year}`} value={`${month.value}-${year}`}>
+                  {month.label} {year}
+                </SelectItem>
+              ))
+            )}
+          </SelectContent>
+        </Select>
+        {!selectedMonthHasAccess && (
+          selectedMonthRequestPending ? (
+            <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-800">
+              Cerere trimisa PM
+            </Badge>
+          ) : (
+            <Button type="button" variant="outline" onClick={handleMonthAccessRequest} disabled={!currentExpert}>
+              Solicita acces PM
+            </Button>
+          )
+        )}
+      </div>
+      {selectedMonthHasAccess ? (
+        <Button type="button" onClick={handleOpenSelectedWorkspace} disabled={!currentExpert}>
+          {selectedProjectShortcutValue === 'peo' ? (
+            <>
+              Deschide calendarul
+              <CalendarDays className="h-4 w-4" />
+            </>
+          ) : (
+            <>
+              Deschide pontajul
+              <ArrowRight className="h-4 w-4" />
+            </>
+          )}
+        </Button>
+      ) : (
+        <Button type="button" disabled>
+          {selectedProjectShortcutValue === 'peo' ? (
+            <>
+              Deschide calendarul
+              <CalendarDays className="h-4 w-4" />
+            </>
+          ) : (
+            <>
+              Deschide pontajul
+              <ArrowRight className="h-4 w-4" />
+            </>
+          )}
+        </Button>
+      )}
+      {canOpenPmDashboard && (
+        <Button asChild variant="outline">
+          <Link href="/pm">Dashboard PM</Link>
+        </Button>
+      )}
+      <UserMenu />
+    </>
+  );
+
   if (isAuthLoading || !isAuthenticated) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
@@ -763,94 +859,6 @@ export default function ExpertHomeDashboard() {
         title="Pontaj lunar"
         reportingMonth={`${getMonthName(currentMonth)} ${currentYear}`}
         description={`Centralizeaza activitatile si orele raportate pentru ${getMonthName(currentMonth)} ${currentYear}.`}
-        actions={
-          <>
-            <div className="min-w-[240px] rounded-xl border border-[#dce5ef] bg-slate-50/80 p-2 shadow-sm">
-              <p className="mb-1 px-1 text-xs font-semibold text-slate-600">Panou proiecte</p>
-              <Select value={selectedProjectShortcutValue} onValueChange={handleProjectShortcutChange}>
-                <SelectTrigger className="h-9 w-full bg-white">
-                  <SelectValue placeholder="Selecteaza proiect" />
-                </SelectTrigger>
-                <SelectContent>
-                  {projects.map((project) => (
-                    <SelectItem key={project.id} value={project.id}>
-                      {project.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Select
-                value={`${currentMonth}-${currentYear}`}
-                onValueChange={(value) => {
-                  const [month, year] = value.split('-').map(Number);
-                  setCurrentMonth(month);
-                  setCurrentYear(year);
-                }}
-              >
-                <SelectTrigger className="h-9 w-[160px]">
-                  <SelectValue placeholder="Luna" />
-                </SelectTrigger>
-                <SelectContent>
-                  {selectableYears.flatMap((year) =>
-                    MONTH_OPTIONS.map((month) => (
-                      <SelectItem key={`${month.value}-${year}`} value={`${month.value}-${year}`}>
-                        {month.label} {year}
-                      </SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
-              {!selectedMonthHasAccess && (
-                selectedMonthRequestPending ? (
-                  <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-800">
-                    Cerere trimisa PM
-                  </Badge>
-                ) : (
-                  <Button type="button" variant="outline" onClick={handleMonthAccessRequest} disabled={!currentExpert}>
-                    Solicita acces PM
-                  </Button>
-                )
-              )}
-            </div>
-            {selectedMonthHasAccess ? (
-              <Button type="button" onClick={handleOpenSelectedWorkspace} disabled={!currentExpert}>
-                {selectedProjectShortcutValue === 'peo' ? (
-                  <>
-                    Deschide calendarul
-                    <CalendarDays className="h-4 w-4" />
-                  </>
-                ) : (
-                  <>
-                    Deschide pontajul
-                    <ArrowRight className="h-4 w-4" />
-                  </>
-                )}
-              </Button>
-            ) : (
-              <Button type="button" disabled>
-                {selectedProjectShortcutValue === 'peo' ? (
-                  <>
-                    Deschide calendarul
-                    <CalendarDays className="h-4 w-4" />
-                  </>
-                ) : (
-                  <>
-                    Deschide pontajul
-                  <ArrowRight className="h-4 w-4" />
-                  </>
-                )}
-              </Button>
-            )}
-            {canOpenPmDashboard && (
-              <Button asChild variant="outline">
-                <Link href="/pm">Dashboard PM</Link>
-              </Button>
-            )}
-            <UserMenu />
-          </>
-        }
         quickTabs={[
           { label: 'Activitățile mele', href: peoHref, icon: ClipboardList },
           { label: 'Livrabile', href: `${peoHref}#livrabile`, icon: CheckCircle2 },
@@ -1165,7 +1173,7 @@ export default function ExpertHomeDashboard() {
         </section>
 
         <section className="space-y-6">
-          <DashboardCalendar projects={projects} month={currentMonth} year={currentYear} />
+          <DashboardCalendar projects={projects} month={currentMonth} year={currentYear} toolbar={calendarToolbar} />
 
           <Card id="pontaj-consolidat" className="h-fit rounded-lg scroll-mt-24">
             <CardHeader className="border-b">
