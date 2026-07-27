@@ -2032,6 +2032,15 @@ export function ActivityForm({
   ]);
   const currentWizardStepIndex = Math.max(0, wizardSteps.findIndex((step) => step.id === currentWizardStep));
   const isLastWizardStep = currentWizardStepIndex === wizardSteps.length - 1;
+  const isSupportingDeliverableStep = (
+    currentWizardStep === 'deliverables'
+    || currentWizardStep === 'collaboration'
+    || currentWizardStep === 'review'
+  );
+  const showJustificativeDeliverables = (
+    (currentWizardStep === 'deliverables' && !isEvent)
+    || (currentWizardStep === 'review' && isEvent)
+  );
   const goToWizardStep = useCallback((stepId: ActivityWizardStepId) => {
     if (wizardSteps.find((step) => step.id === stepId)?.disabled) return;
     setCurrentWizardStep(stepId);
@@ -3666,7 +3675,7 @@ export function ActivityForm({
             )}
 
             {/* Supporting deliverable settings */}
-            {showStandardActivityWorkflow && (currentWizardStep === 'deliverables' || currentWizardStep === 'collaboration') && !isException && (
+            {showStandardActivityWorkflow && isSupportingDeliverableStep && !isException && (
               <div className="space-y-4">
                 {/* Colaborare */}
                 {currentWizardStep === 'collaboration' && (
@@ -3874,7 +3883,7 @@ export function ActivityForm({
                 )}
 
                 {/* Alte documente justificative (optional) */}
-                {((currentWizardStep === 'deliverables' && !isEvent) || (currentWizardStep === 'review' && isEvent)) && (
+                {showJustificativeDeliverables && (
                 <details open={justifDeliverables.length > 0} className="bg-amber-50 rounded-lg p-4 border border-amber-200">
                   <summary className="cursor-pointer list-none text-sm font-medium text-amber-800">
                     Alte documente justificative
