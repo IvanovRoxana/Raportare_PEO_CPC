@@ -278,6 +278,7 @@ test('creeaza si afiseaza sugestii de activitate comuna separate de livrabile', 
       activityType: 'Atelier comun',
       title: 'Atelier comun',
       description: 'Discutie comuna pe livrabil.',
+      activitySummary: 'Sumar scurt pentru colaborator.',
       location: 'Sala 2',
       dayType: 'lucratoare',
       saCode: 'SA1.1',
@@ -294,7 +295,7 @@ test('creeaza si afiseaza sugestii de activitate comuna separate de livrabile', 
   assert.equal(relations[0].sourceExpertName, 'Expert Unu');
   assert.equal(relations[0].sourceActivityDate, '2026-05-12');
   assert.equal(relations[0].sourceActivityTitle, 'Atelier comun');
-  assert.equal(relations[0].sourceActivityDescription, 'Discutie comuna pe livrabil.');
+  assert.equal(relations[0].sourceActivityDescription, 'Sumar scurt pentru colaborator.');
   assert.equal(relations[0].sourceActivityLocation, 'Sala 2');
   assert.equal(relations[0].sourceActivityDayType, 'lucratoare');
   assert.equal(relations[0].sourceActivityProjectCode, '302151');
@@ -307,7 +308,7 @@ test('creeaza si afiseaza sugestii de activitate comuna separate de livrabile', 
 
   assert.equal(pendingAlerts.length, 1);
   assert.match(pendingAlerts[0].message, /Expert Unu/);
-  assert.equal(pendingAlerts[0].sourceActivityDescription, 'Discutie comuna pe livrabil.');
+  assert.equal(pendingAlerts[0].sourceActivityDescription, 'Sumar scurt pentru colaborator.');
   assert.equal(pendingAlerts[0].sourceActivityLocation, 'Sala 2');
   assert.equal(pendingAlerts[0].sourceActivityDayType, 'lucratoare');
   assert.equal(pendingAlerts[0].sourceActivityProjectCode, '302151');
@@ -335,6 +336,7 @@ test('completeaza alertele de activitate comuna din activitatea sursa cand snaps
       activityType: 'Atelier comun',
       title: 'Atelier comun',
       description: 'Discutie comuna pe livrabil.',
+      activitySummary: 'Sumar scurt pentru colaborator.',
       location: 'Sala 2',
       dayType: 'lucratoare',
       saCode: 'SA1.1',
@@ -348,7 +350,7 @@ test('completeaza alertele de activitate comuna din activitatea sursa cand snaps
   assert.equal(pendingAlerts[0].sourceActivityTitle, 'Atelier comun');
   assert.equal(pendingAlerts[0].sourceActivityDate, '2026-05-12');
   assert.equal(pendingAlerts[0].sourceActivityHours, 4);
-  assert.equal(pendingAlerts[0].sourceActivityDescription, 'Discutie comuna pe livrabil.');
+  assert.equal(pendingAlerts[0].sourceActivityDescription, 'Sumar scurt pentru colaborator.');
   assert.equal(pendingAlerts[0].sourceActivityLocation, 'Sala 2');
   assert.equal(pendingAlerts[0].sourceActivitySaCode, 'SA1.1');
   assert.equal(pendingAlerts[0].sourceActivityProjectCode, '302151');
