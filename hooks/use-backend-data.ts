@@ -43,6 +43,11 @@ import {
 } from '@/lib/backend-store';
 import type { Activity, Expert, VerificationData, Neconformitate, VerificationNote, AppSettings, ActivityCatalog, WorkingGroup, ConcurrentProject, ConcurrentProjectTimesheetEntry, ReportStatus, GrupTintaEntry, BusinessHubEntityDirectoryEntry, AuditLog, ActivityAutofillAudit, AdminInterventionRequest, HistoricalImportBatch, HistoricalTimesheetDayEntry, MonthlyActivityItem, MonthlyExpertReport, UploadedReportingFile } from '@/lib/types';
 import { getContractedProcurementProjects, type ProcurementChecklist, type ProcurementContract, type ProcurementDeliverable, type ProcurementDocument, type ProcurementEvaluation, type ProcurementInvoice, type ProcurementLaunch, type ProcurementOffer, type ProcurementProject, type ProcurementReception, type ProcurementStatusHistory, type ProcurementSupplier } from '@/lib/procurement';
+import {
+  buildDeterministicWorkBlockConsolidation,
+  buildWorkBlockConsolidationRequest,
+  type WorkBlockConsolidationResult,
+} from '@/lib/activity-report/work-block-consolidation';
 import type { GTDocument, GTEntity, GTImportBatch, GTMonitoringRecord, GTPerson, Organization } from '@/lib/grup-tinta/types';
 import type { ReportingWorkBlockBundle } from '@/lib/activity-report/work-blocks';
 import type { DraftWorkBlockInput } from '@/lib/activity-report/draft-work-blocks';
@@ -212,12 +217,46 @@ export function useReportingWorkBlockDraft() {
     reportingWorkBlocksService.prepareSaveDraft(input, activities)
   );
   const saveDraft = async (input: DraftWorkBlockInput, activities: Activity[]) => {
-    const bundle = await reportingWorkBlocksService.saveDraft(input, activities);
+    const preparedDraft = reportingWorkBlocksService.prepareSaveDraft(input, activities);
+    const consolidation = preparedDraft.bundle
+      ? await consolidateWorkBlockBeforeSave(preparedDraft.bundle, activities)
+      : null;
+    const bundle = await reportingWorkBlocksService.saveDraft({
+      ...input,
+      ...(consolidation ? {
+        cleanedActivitySummary: consolidation.cleanedActivitySummary,
+        generatedTableSummary: consolidation.generatedTableSummary,
+        generatedNarrative: consolidation.generatedNarrative,
+        generationInputsHash: consolidation.generationInputsHash,
+        aiConsolidationStatus: consolidation.aiConsolidationStatus,
+        aiConsolidationUpdatedAt: consolidation.aiConsolidationUpdatedAt,
+      } : {}),
+    }, activities);
     mutate(`reporting-work-block-bundles-${input.expertId}-${input.month}-${input.year}`);
     return bundle;
   };
 
   return { prepareDraft, prepareSaveDraft, saveDraft };
+}
+
+async function consolidateWorkBlockBeforeSave(
+  bundle: ReportingWorkBlockBundle,
+  activities: Activity[],
+): Promise<WorkBlockConsolidationResult> {
+  const request = buildWorkBlockConsolidationRequest(bundle, activities);
+  try {
+    const response = await fetch('/api/ai/consolidate-work-block', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request),
+    });
+    if (!response.ok) {
+      throw new Error(`Consolidarea AI a esuat. Status HTTP: ${response.status}`);
+    }
+    return await response.json() as WorkBlockConsolidationResult;
+  } catch {
+    return buildDeterministicWorkBlockConsolidation(request, 'failed');
+  }
 }
 
 export function useReportingWorkBlockActivityOptions(

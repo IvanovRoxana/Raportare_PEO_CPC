@@ -32,6 +32,12 @@ export interface DraftWorkBlockInput {
   allocatedHoursByActivityId?: Record<string, number>;
   deliverableIds?: string[];
   existingBundles?: ReportingWorkBlockBundle[];
+  cleanedActivitySummary?: string;
+  generatedTableSummary?: string;
+  generatedNarrative?: string;
+  generationInputsHash?: string;
+  aiConsolidationStatus?: string;
+  aiConsolidationUpdatedAt?: string;
 }
 
 export interface PreparedDraftWorkBlock {
@@ -176,6 +182,12 @@ function buildDraftBundle(input: DraftWorkBlockInput, activities: Activity[]): R
       saCode: input.saCode.trim(),
       reportingFlowType: input.reportingFlowType,
       status: 'draft',
+      cleanedActivitySummary: input.cleanedActivitySummary,
+      generatedTableSummary: input.generatedTableSummary,
+      generatedNarrative: input.generatedNarrative,
+      generationInputsHash: input.generationInputsHash,
+      aiConsolidationStatus: input.aiConsolidationStatus,
+      aiConsolidationUpdatedAt: input.aiConsolidationUpdatedAt,
     },
     activityLinks: selectedActivities.map((activity) => ({
       id: `${workBlockId}:activity:${activity.id}`,
