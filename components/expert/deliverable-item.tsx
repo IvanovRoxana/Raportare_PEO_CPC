@@ -273,6 +273,12 @@ export function DeliverableItem({
     const isHtml = lowerFileName.endsWith('.html') || lowerFileName.endsWith('.htm');
     const isPresentation = lowerFileName.endsWith('.ppt') || lowerFileName.endsWith('.pptx');
 
+    if (isPresentation) {
+      alert('Prezentarile PPT/PPTX nu pot fi incarcate ca livrabile. Exporta prezentarea ca PDF cu text selectabil si reincarca fisierul.');
+      if (fileRef.current) fileRef.current.value = '';
+      return;
+    }
+
     let docTitle: string | null = null;
     let docText: string | null = null;
     let firstPageText: string | null = null;
@@ -316,13 +322,6 @@ export function DeliverableItem({
         firstPageText = htmlResult.text?.slice(0, 5000) || null;
         docText = htmlResult.text;
         textExtractionSource = htmlResult.source;
-      } else if (isPresentation) {
-        titleSuggestion = {
-          suggestedTitle: null,
-          confidence: 'low',
-          alternatives: [],
-          reason: 'Prezentarile .ppt/.pptx pot fi incarcate ca livrabile, dar nu au inca extragere automata de text. Exporta in PDF pentru verificare AI si sugestie titlu.',
-        };
       }
 
       if (!titleSuggestion.suggestedTitle && docText) {
@@ -720,7 +719,7 @@ export function DeliverableItem({
         <input
           type="file"
           ref={fileRef}
-          accept=".pdf,.doc,.docx,.html,.htm,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg,.gif"
+          accept=".pdf,.doc,.docx,.html,.htm,.xlsx,.png,.jpg,.jpeg,.gif"
           onChange={handleFile}
           className="hidden"
         />

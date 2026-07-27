@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useMemo } from 'react';
 import { Upload, X, FileText, FileSpreadsheet, File } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -32,7 +32,15 @@ export function FileUpload({
   description = 'Glisați fișierele aici sau click pentru a selecta',
 }: FileUploadProps) {
   const [isDragging, setIsDragging] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const acceptedExtensions = useMemo(
+    () => accept
+      .split(',')
+      .map((item) => item.trim().toLowerCase())
+      .filter((item) => item.startsWith('.')),
+    [accept],
+  );
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -46,9 +54,19 @@ export function FileUpload({
 
   const processFiles = useCallback(
     async (fileList: FileList) => {
+      setValidationError(null);
       const newFiles: UploadedFile[] = [];
 
       for (const file of Array.from(fileList)) {
+        const lowerName = file.name.toLowerCase();
+        const isAccepted = acceptedExtensions.length === 0
+          || acceptedExtensions.some((extension) => lowerName.endsWith(extension));
+
+        if (!isAccepted) {
+          setValidationError('Format neacceptat pentru livrabile. Incarca PDF, DOC/DOCX, XLS/XLSX sau imagini.');
+          continue;
+        }
+
         const reader = new FileReader();
 
         await new Promise<void>((resolve) => {
@@ -72,7 +90,7 @@ export function FileUpload({
         onFilesChange(newFiles.slice(0, 1));
       }
     },
-    [files, multiple, onFilesChange]
+    [acceptedExtensions, files, multiple, onFilesChange]
   );
 
   const handleDrop = useCallback(
@@ -137,6 +155,9 @@ export function FileUpload({
         <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
         <p className="text-sm font-medium text-foreground">{label}</p>
         <p className="text-xs text-muted-foreground mt-1">{description}</p>
+        {validationError && (
+          <p className="mt-2 text-xs text-destructive">{validationError}</p>
+        )}
         <input
           ref={inputRef}
           type="file"

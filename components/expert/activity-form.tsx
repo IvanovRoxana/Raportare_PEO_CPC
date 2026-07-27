@@ -1147,6 +1147,11 @@ export function ActivityForm({
     if (!files) return;
 
     for (const file of Array.from(files)) {
+      if (/\.(ppt|pptx)$/i.test(file.name)) {
+        alert('Prezentarile PPT/PPTX nu pot fi incarcate ca livrabile. Exporta prezentarea ca PDF cu text selectabil si reincarca fisierul.');
+        continue;
+      }
+
       const reader = new FileReader();
       reader.onload = () => {
         const newDeliverable: DeliverableSlot = {
@@ -3138,7 +3143,7 @@ export function ActivityForm({
                     multiple
                     className="hidden"
                     onChange={handleFileUpload}
-                    accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png"
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
                   />
                 </div>
               </div>

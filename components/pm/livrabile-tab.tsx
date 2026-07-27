@@ -91,7 +91,7 @@ export function LivrabileTab({ data, raportData, onDataChange }: LivrabileTabPro
         </CardHeader>
         <CardContent className="space-y-4">
           <FileUpload
-            accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png"
+            accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
             multiple={true}
             files={files}
             onFilesChange={handleFilesChange}
