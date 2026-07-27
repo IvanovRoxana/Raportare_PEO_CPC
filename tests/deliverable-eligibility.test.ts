@@ -134,6 +134,14 @@ test('recunoaste tipul Articole tematice publicate pe concordia.ro', () => {
   assert.equal(isConcordiaPublishedDeliverableType('Articole tematice publicate pe concordia.ro'), true);
 });
 
+test('promptul include regulile Concordia doar pentru livrabile de publicare', () => {
+  assert.match(eligibilityRouteSource, /isConcordiaPublishedDeliverableType\(currentDeliverableType\)/);
+  assert.match(eligibilityRouteSource, /const concordiaPublicationPromptRules =/);
+  assert.match(eligibilityRouteSource, /\$\{concordiaPublicationPromptRules\}/);
+  assert.doesNotMatch(eligibilityRouteSource, /\$\{CONCORDIA_PUBLICATION_ELIGIBILITY_PROMPT_RULES\}/);
+  assert.equal(isConcordiaPublishedDeliverableType('Analiza acte normative'), false);
+});
+
 test('permite verificarea unui PDF Concordia cu titlu confirmat chiar daca OCR-ul este scurt', () => {
   assert.equal(hasSufficientDeliverableEvidenceForEligibility({
     extractedText: 'Green Transition Forum 6.0',

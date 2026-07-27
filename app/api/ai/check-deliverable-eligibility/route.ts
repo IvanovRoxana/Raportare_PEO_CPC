@@ -9,6 +9,7 @@ import {
   DEFAULT_ELIGIBILITY_RULE_VERSION_ID,
   deliverableEligibilityAiSchema,
   deliverableEligibilitySchema,
+  isConcordiaPublishedDeliverableType,
   normalizeDeliverableEligibilityAiOutput,
   normalizeDeliverableEligibilityActivityCandidates,
   normalizeDeliverableEligibilityDocuments,
@@ -175,6 +176,9 @@ export async function POST(req: Request) {
     const allActivityCatalogCandidates = normalizeDeliverableEligibilityActivityCandidates(rawActivityCatalogCandidates);
     const deliverableOptions = normalizeDeliverableEligibilityStringList(rawDeliverableOptions);
     const currentDeliverableType = primaryEligibilityDocument?.deliverableType || String(deliverableType || '').trim();
+    const concordiaPublicationPromptRules = isConcordiaPublishedDeliverableType(currentDeliverableType)
+      ? CONCORDIA_PUBLICATION_ELIGIBILITY_PROMPT_RULES
+      : '';
     const currentDocumentTitle = primaryEligibilityDocument?.documentTitle || documentTitle;
     const currentFileName = primaryEligibilityDocument?.fileName || fileName;
     const activityCatalogCandidates = shortlistActivityCandidates(
@@ -282,7 +286,7 @@ Reguli:
 - „neconcludent” dacă textul extras este insuficient sau documentul nu poate fi analizat.
 - Nu inventa conținut care nu apare în document.
 - Nu valida automat un document doar pentru că titlul pare potrivit.
-${CONCORDIA_PUBLICATION_ELIGIBILITY_PROMPT_RULES}
+${concordiaPublicationPromptRules}
 - Dacă textul extras conține secțiuni marcate ca OCR din screenshot-uri/imagini sau mențiunea că documentul conține imagini încorporate, tratează-le ca dovadă vizuală extrasă din document. Pentru livrabile de tip screenshot confirmare publicare, caută indicii de postare publicată: platformă social media, dată/oră, autor/pagină, interfață de postare, reacții, comentarii, distribuiri sau link/URL. Nu marca automat lipsă screenshot-ul dacă documentul conține imagini încorporate relevante pentru social media; folosește cel mult eligibil_cu_observatii când dovada vizuală există, dar OCR-ul nu poate confirma toate detaliile.
 - Menționează explicit în summary sau recommendations dacă analiza s-a bazat doar pe prima pagină.
 - Recomandările trebuie să fie practice și scurte.
