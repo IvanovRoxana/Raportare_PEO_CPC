@@ -171,6 +171,7 @@ export interface DeliverableSlot {
   saCode?: string;
   deliverableType?: string;
   isCommonDeliverable?: boolean;
+  requiresEventProof?: boolean;
   sharedWithExpertIds?: string[];
   possibleDuplicateOfDocumentId?: string;
   duplicateStatus?: string;
@@ -233,6 +234,7 @@ export function createDeliverableSlot(slotType: DeliverableSlotType, name: strin
     saCode: undefined,
     deliverableType: undefined,
     isCommonDeliverable: false,
+    requiresEventProof: false,
     sharedWithExpertIds: [],
     possibleDuplicateOfDocumentId: undefined,
     duplicateStatus: undefined,

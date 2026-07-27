@@ -83,6 +83,7 @@ import {
   resolveDataAccessScope,
 } from '@/lib/access-control';
 import { isEventActivity } from '@/lib/deliverable-types';
+import { getEventDocumentationStatus } from '@/lib/event-documentation';
 import { findLatestClarificationAudit, PM_CLARIFICATION_AUDIT_ACTION } from '@/lib/pm-clarifications';
 import type {
   PontajRow,
@@ -686,17 +687,7 @@ export default function PMDashboard() {
     return monthActivities.filter((activity) => {
       if (!isEventActivity(activity.activityType || activity.title || '')) return false;
       const deliverables = activity.deliverables || [];
-      const hasMom = deliverables.some((deliverable) => {
-        const kind = deliverable.category || deliverable.deliverableType;
-        const isUploaded = deliverable.uploaded ?? Boolean(deliverable.filePath || deliverable.s3Key || deliverable.fileName);
-        return kind === 'event_mom' && isUploaded;
-      });
-      const hasProof = deliverables.some((deliverable) => {
-        const kind = deliverable.category || deliverable.deliverableType;
-        const isUploaded = deliverable.uploaded ?? Boolean(deliverable.filePath || deliverable.s3Key || deliverable.fileName);
-        return kind === 'event_proof' && isUploaded;
-      });
-      return !(hasMom || hasProof);
+      return !getEventDocumentationStatus(deliverables).complete;
     });
   }, [monthActivities]);
   const titleIssues = useMemo(

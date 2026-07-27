@@ -79,7 +79,7 @@ test('activity status still requires AI eligibility when deliverable eligibility
   restoreEnv('NEXT_PUBLIC_ENABLE_DELIVERABLE_ELIGIBILITY_CHECK', previousClientFlag);
 });
 
-test('event status accepts MOM as the main deliverable when event proof exists', () => {
+test('event status accepts uploaded MOM/report as the main deliverable', () => {
   assert.equal(
     getActivityStatus({
       id: 'a-event',
@@ -100,22 +100,13 @@ test('event status accepts MOM as the main deliverable when event proof exists',
           deliverableType: 'event_mom',
           filePath: 'documents/mom-eveniment.pdf',
         },
-        {
-          id: 'proof',
-          activityId: 'a-event',
-          fileName: 'foto-eveniment.jpg',
-          fileType: 'image/jpeg',
-          fileSize: 2048,
-          deliverableType: 'event_proof',
-          uploaded: true,
-        },
       ],
     }),
     'complete'
   );
 });
 
-test('event status still requires event proof even when MOM exists', () => {
+test('event status requires proof when the event report was generated in the form', () => {
   assert.equal(
     getActivityStatus({
       id: 'a-event',
@@ -135,10 +126,48 @@ test('event status still requires event proof even when MOM exists', () => {
           fileSize: 1024,
           deliverableType: 'event_mom',
           uploaded: true,
+          requiresEventProof: true,
         },
       ],
     }),
     'missing'
+  );
+});
+
+test('event status accepts generated event report when proof is attached', () => {
+  assert.equal(
+    getActivityStatus({
+      id: 'a-event',
+      expertId: 'e1',
+      expertName: 'Expert AP',
+      date: '2026-05-15',
+      hours: 4,
+      activityType: 'Participare / reprezentare consultare publica sau dezbatere',
+      title: 'Participare / reprezentare consultare publica sau dezbatere',
+      description: 'Participare la consultare publica.',
+      deliverables: [
+        {
+          id: 'mom',
+          activityId: 'a-event',
+          fileName: 'Raport_eveniment_2026-05-15.docx',
+          fileType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          fileSize: 1024,
+          deliverableType: 'event_mom',
+          uploaded: true,
+          requiresEventProof: true,
+        },
+        {
+          id: 'proof',
+          activityId: 'a-event',
+          fileName: 'foto-eveniment.jpg',
+          fileType: 'image/jpeg',
+          fileSize: 2048,
+          deliverableType: 'event_proof',
+          uploaded: true,
+        },
+      ],
+    }),
+    'complete'
   );
 });
 

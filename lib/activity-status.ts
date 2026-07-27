@@ -2,9 +2,10 @@
 // Activity Entry Status Calculation
 // ============================================
 
-import { EXCEPTIONS, EVENT_ACTS, isEventActivity } from './peo-constants.ts';
+import { EXCEPTIONS, isEventActivity } from './peo-constants.ts';
 import { isDeliverableEligibilityCheckEnabledClient } from './feature-flags.ts';
 import { getBusinessHubMetaMissingFields, parseBusinessHubMetaJson } from './business-hub-reporting.ts';
+import { getEventDocumentationStatus } from './event-documentation.ts';
 import type { Activity, Deliverable } from './types.ts';
 
 export type ActivityStatus = 
@@ -26,6 +27,7 @@ export interface DeliverableWithStatus extends Deliverable {
   isPhoto?: boolean;
   category?: 'livrabil' | 'event_mom' | 'event_proof' | 'raport_preliminar' | 'justificativ';
   isPendingConfirm?: boolean;
+  requiresEventProof?: boolean;
   common?: boolean;
 }
 
@@ -79,14 +81,7 @@ export function getActivityStatus(entry: ActivityEntry): ActivityStatus {
       const kind = getDeliverableKind(d);
       return !kind || kind === 'livrabil' || kind === 'main';
     });
-    const hasMOM = delivs.some((d) =>
-      getDeliverableKind(d) === 'event_mom' && isUploadedDeliverable(d) && !d.isPendingConfirm
-    );
-    const hasProof = delivs.some((d) =>
-      getDeliverableKind(d) === 'event_proof' && isUploadedDeliverable(d)
-    );
-    
-    if (isEvent && (!hasMOM || !hasProof)) {
+    if (isEvent && !getEventDocumentationStatus(delivs).complete) {
       return 'missing';
     }
     

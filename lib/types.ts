@@ -401,6 +401,7 @@ export interface Deliverable {
   category?: string;
   uploaded?: boolean;
   isCommonDeliverable?: boolean;
+  requiresEventProof?: boolean;
   sharedWithExpertIds?: string[];
   possibleDuplicateOfDocumentId?: string;
   duplicateStatus?: string;

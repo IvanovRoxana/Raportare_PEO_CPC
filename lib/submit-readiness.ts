@@ -1,6 +1,7 @@
 import type { Activity, ActivityCatalog, Deliverable } from './types.ts';
-import { isExceptionActivity } from './peo-constants.ts';
+import { isEventActivity, isExceptionActivity } from './peo-constants.ts';
 import { getBusinessHubMetaMissingFields, parseBusinessHubMetaJson } from './business-hub-reporting.ts';
+import { getEventDocumentationStatus } from './event-documentation.ts';
 import { normalizePeoCategory } from './peo-category.ts';
 
 export const ACTIVITY_PERIOD_GROUP_PREFIX = 'activity-period:';
@@ -172,6 +173,22 @@ export function hasUsableDeliverable(deliverables?: Deliverable[]) {
   );
 }
 
+function isEventActivityForSubmit(activity: Activity) {
+  return isEventActivity(activity.activityType || activity.title || '')
+    || (activity.deliverables ?? []).some((deliverable) => {
+      const kind = deliverable.category || deliverable.deliverableType;
+      return kind === 'event_mom' || kind === 'event_proof';
+    });
+}
+
+function hasUsableDeliverableForActivity(activity: Activity) {
+  if (isEventActivityForSubmit(activity)) {
+    return getEventDocumentationStatus(activity.deliverables ?? []).complete;
+  }
+
+  return hasUsableDeliverable(activity.deliverables);
+}
+
 interface GetActivitiesMissingDeliverablesOptions {
   expertCategory?: string;
   activityCatalog?: ActivityCatalog[];
@@ -239,7 +256,7 @@ export function createActivityDeliverableAvailabilityResolver(activities: Activi
     if (groupId) {
       periodDeliverableAvailability.set(
         groupId,
-        (periodDeliverableAvailability.get(groupId) ?? false) || hasUsableDeliverable(activity.deliverables),
+        (periodDeliverableAvailability.get(groupId) ?? false) || hasUsableDeliverableForActivity(activity),
       );
     }
 
@@ -247,7 +264,7 @@ export function createActivityDeliverableAvailabilityResolver(activities: Activi
       monthlySocialMediaDeliverableAvailability.set(
         monthlySocialMediaSignature,
         (monthlySocialMediaDeliverableAvailability.get(monthlySocialMediaSignature) ?? false)
-          || hasUsableDeliverable(activity.deliverables),
+          || hasUsableDeliverableForActivity(activity),
       );
     }
   });
@@ -260,7 +277,7 @@ export function createActivityDeliverableAvailabilityResolver(activities: Activi
       || (monthlySocialMediaSignature
         ? monthlySocialMediaDeliverableAvailability.get(monthlySocialMediaSignature) === true
         : false)
-      || hasUsableDeliverable(activity.deliverables);
+      || hasUsableDeliverableForActivity(activity);
   };
 }
 

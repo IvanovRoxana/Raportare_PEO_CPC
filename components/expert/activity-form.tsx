@@ -41,6 +41,7 @@ import {
   type ExistingDeliverableCandidate,
 } from './existing-deliverable-picker';
 import { createDeliverableSlot, type DeliverableSlot } from '@/lib/deliverable-types';
+import { getEventDocumentationStatus } from '@/lib/event-documentation';
 import { 
   isExceptionActivity,
   getDeliverableOptions 
@@ -118,6 +119,7 @@ const SAVED_SLOT_TYPES = new Set<DeliverableSlot['slotType']>([
 ]);
 
 const MISSING_MAIN_DELIVERABLE_MESSAGE = 'Adauga un livrabil principal sau bifeaza "Incarc livrabilul principal mai tarziu" in pasul Livrabile.';
+const MISSING_EVENT_DOCUMENTATION_MESSAGE = 'Completeaza documentele de eveniment: incarca MOM/Raport eveniment sau genereaza raportul si ataseaza poza/lista de prezenta.';
 
 function resolveSavedSlotType(deliverableType?: string, category?: string): DeliverableSlot['slotType'] {
   const savedType = category || deliverableType;
@@ -1388,26 +1390,22 @@ export function ActivityForm({
   ) => {
     setValidationError(null);
     const reportingWarnings: string[] = [];
+    const eventDocumentationForSave = getEventDocumentationStatus(deliverables);
     const hasMainDeliverableForSave = deliverables.some((deliverable) => (
       (!deliverable.slotType || deliverable.slotType === 'livrabil')
       && deliverable.uploaded
       && Boolean(deliverable.filename || deliverable.name)
     ));
-    const hasEventMomForSave = isEvent && deliverables.some((deliverable) => (
-      deliverable.slotType === 'event_mom'
-      && deliverable.uploaded
-      && Boolean(deliverable.filename || deliverable.name || deliverable.declaredTitle)
-    ));
     if (
       showStandardActivityWorkflow
       && !isLeave
       && !isException
-      && !hasMainDeliverableForSave
-      && !hasEventMomForSave
-      && !skipMainDeliverableForNow
+      && (isEvent
+        ? !eventDocumentationForSave.complete
+        : (!hasMainDeliverableForSave && !skipMainDeliverableForNow))
     ) {
-      setValidationError(MISSING_MAIN_DELIVERABLE_MESSAGE);
-      setCurrentWizardStep('deliverables');
+      setValidationError(isEvent ? MISSING_EVENT_DOCUMENTATION_MESSAGE : MISSING_MAIN_DELIVERABLE_MESSAGE);
+      setCurrentWizardStep('review');
       return;
     }
 
@@ -1936,12 +1934,11 @@ export function ActivityForm({
       ? 'Selecteaza activitatea inainte de verificarea eligibilitatii.'
       : undefined;
   const canCheckDeliverableEligibility = !eligibilityBlockedReason;
-  const hasEventMomAsMainDeliverable = isEvent && deliverables.some((deliverable) => (
-    deliverable.slotType === 'event_mom'
-    && deliverable.uploaded
-    && !deliverable.isPendingConfirm
-    && Boolean(deliverable.filename || deliverable.name || deliverable.declaredTitle)
-  ));
+  const eventDocumentationStatus = useMemo(
+    () => getEventDocumentationStatus(deliverables),
+    [deliverables],
+  );
+  const hasEventMomAsMainDeliverable = isEvent && eventDocumentationStatus.complete;
   const hasUploadedMainDeliverable = mainDeliverables.some((deliverable) => (
     deliverable.uploaded && Boolean(deliverable.filename || deliverable.name)
   ));
@@ -1949,12 +1946,12 @@ export function ActivityForm({
     showStandardActivityWorkflow
     && !isLeave
     && !isException
-    && !hasUploadedMainDeliverable
-    && !hasEventMomAsMainDeliverable
-    && !skipMainDeliverableForNow
+    && (isEvent
+      ? !eventDocumentationStatus.complete
+      : (!hasUploadedMainDeliverable && !skipMainDeliverableForNow))
   );
   const saveBlockers = isMissingRequiredMainDeliverable
-    ? [...baseSaveBlockers, MISSING_MAIN_DELIVERABLE_MESSAGE]
+    ? [...baseSaveBlockers, isEvent ? MISSING_EVENT_DOCUMENTATION_MESSAGE : MISSING_MAIN_DELIVERABLE_MESSAGE]
     : baseSaveBlockers;
   const isSaveDisabled = saveBlockers.length > 0;
   const footerValidationMessage = validationError || saveBlockers[0] || null;
@@ -1983,11 +1980,13 @@ export function ActivityForm({
     {
       id: 'deliverables',
       label: 'Livrabile',
-      description: mainDeliverables.length > 0
-        ? `${mainDeliverables.length} principal${mainDeliverables.length === 1 ? '' : 'e'}`
-        : skipMainDeliverableForNow
-          ? 'Incarcare mai tarziu'
-          : 'Documente',
+      description: isEvent
+        ? (eventDocumentationStatus.complete ? 'Documente eveniment OK' : 'Documente eveniment')
+        : mainDeliverables.length > 0
+          ? `${mainDeliverables.length} principal${mainDeliverables.length === 1 ? '' : 'e'}`
+          : skipMainDeliverableForNow
+            ? 'Incarcare mai tarziu'
+            : 'Documente',
       blocked: !canOpenDeliverablesStep || isMissingRequiredMainDeliverable,
       disabled: !canOpenDeliverablesStep,
     },
@@ -2015,8 +2014,10 @@ export function ActivityForm({
     collaborators.length,
     description,
     effectiveActivityTitle,
+    eventDocumentationStatus.complete,
     isBusinessHubExpert,
     isBusinessHubTabActive,
+    isEvent,
     isGdprExpert,
     isLeave,
     isException,
@@ -3072,7 +3073,7 @@ export function ActivityForm({
             )}
 
             {/* Main Deliverables */}
-            {showStandardActivityWorkflow && currentWizardStep === 'deliverables' && !isException && (
+            {showStandardActivityWorkflow && currentWizardStep === 'deliverables' && !isException && !isEvent && (
               <div className="space-y-4">
                 {/* Livrabile principale */}
                 <div id="activity-form-deliverables-section" className="bg-slate-50 rounded-lg p-4 border scroll-mt-24">
@@ -3191,7 +3192,7 @@ export function ActivityForm({
               </div>
             )}
 
-            {showStandardActivityWorkflow && currentWizardStep === 'deliverables' && mainDeliverableForEligibility && !isLeave && !isException && (
+            {showStandardActivityWorkflow && currentWizardStep === 'deliverables' && mainDeliverableForEligibility && !isEvent && !isLeave && !isException && (
               <div className="rounded-lg border border-indigo-100 bg-white p-3 shadow-sm">
                 <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0">
@@ -3809,7 +3810,7 @@ export function ActivityForm({
                 )}
 
                 {/* Raport preliminar (optional) */}
-                {currentWizardStep === 'deliverables' && (
+                {currentWizardStep === 'deliverables' && !isEvent && (
                 <details open={prelimDeliverables.length > 0} className="bg-purple-50 rounded-lg p-4 border border-purple-200">
                   <summary className="cursor-pointer list-none text-sm font-medium text-purple-800">
                     Raport preliminar / descriptiv
@@ -3873,7 +3874,7 @@ export function ActivityForm({
                 )}
 
                 {/* Alte documente justificative (optional) */}
-                {currentWizardStep === 'deliverables' && (
+                {((currentWizardStep === 'deliverables' && !isEvent) || (currentWizardStep === 'review' && isEvent)) && (
                 <details open={justifDeliverables.length > 0} className="bg-amber-50 rounded-lg p-4 border border-amber-200">
                   <summary className="cursor-pointer list-none text-sm font-medium text-amber-800">
                     Alte documente justificative
@@ -4038,9 +4039,11 @@ export function ActivityForm({
               <div className="font-medium text-foreground">
                 {mainDeliverables.length > 0
                   ? `${mainDeliverables.length} principale`
-                  : skipMainDeliverableForNow
-                    ? 'Livrabil principal marcat pentru incarcare ulterioara'
-                    : 'Fara livrabil principal'}
+                  : hasEventMomAsMainDeliverable
+                    ? 'Raport eveniment atasat'
+                    : skipMainDeliverableForNow
+                      ? 'Livrabil principal marcat pentru incarcare ulterioara'
+                      : 'Fara livrabil principal'}
               </div>
             </div>
             <div>
@@ -4049,31 +4052,37 @@ export function ActivityForm({
             </div>
             <div>
               <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Documente optionale</div>
-              <div className="font-medium text-foreground">{prelimDeliverables.length} raport preliminar / {justifDeliverables.length} justificative</div>
+              <div className="font-medium text-foreground">
+                {isEvent
+                  ? `${justifDeliverables.length} justificative`
+                  : `${prelimDeliverables.length} raport preliminar / ${justifDeliverables.length} justificative`}
+              </div>
             </div>
           </div>
         )}
 
         {/* Validation warnings */}
-        {(currentWizardStep === 'review' || currentWizardStep === 'deliverables' || (!isWorkspaceLayout || !showObservationRail)) && showStandardActivityWorkflow && !isLeave && !isException && !hasUploadedMainDeliverable && !hasEventMomAsMainDeliverable && (
+        {currentWizardStep === 'review' && isMissingRequiredMainDeliverable && (
           <div className="flex items-center gap-2 p-3 bg-amber-50 rounded-lg border border-amber-200">
             <AlertTriangle className="h-4 w-4 text-amber-600" />
             <span className="text-sm text-amber-800">
-              {skipMainDeliverableForNow
-                ? 'Livrabilul principal este marcat pentru incarcare ulterioara. Validarea finala ramane activa daca regulile cer documentul acum.'
-                : 'Activitatea necesita cel putin un livrabil principal.'}
+              {isEvent
+                ? MISSING_EVENT_DOCUMENTATION_MESSAGE
+                : skipMainDeliverableForNow
+                  ? 'Livrabilul principal este marcat pentru incarcare ulterioara. Validarea finala ramane activa daca regulile cer documentul acum.'
+                  : 'Activitatea necesita cel putin un livrabil principal.'}
             </span>
           </div>
         )}
 
-        {(currentWizardStep === 'review' || !isWorkspaceLayout || !showObservationRail) && validationError && (
+        {currentWizardStep === 'review' && validationError && (
           <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
             <span>{validationError}</span>
           </div>
         )}
 
-        {(currentWizardStep === 'review' || !isWorkspaceLayout || !showObservationRail) && isSaveDisabled && !isSaving && (
+        {currentWizardStep === 'review' && isSaveDisabled && !isSaving && (
           <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
             <div>
@@ -4089,7 +4098,7 @@ export function ActivityForm({
 
         {/* Actions */}
         <div className={isWorkspaceLayout ? 'sticky bottom-0 z-10 -mx-4 -mb-4 flex flex-col gap-3 border-t bg-white/95 px-4 py-3 shadow-[0_-10px_24px_rgba(15,23,42,0.08)] backdrop-blur sm:-mx-6 sm:-mb-6 sm:flex-row sm:items-center sm:justify-between sm:px-6' : 'flex justify-end gap-2 pt-4 border-t'}>
-          {isWorkspaceLayout && footerValidationMessage && !isSaving ? (
+          {isWorkspaceLayout && currentWizardStep === 'review' && footerValidationMessage && !isSaving ? (
             <div className="flex min-w-0 items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 sm:max-w-[min(720px,calc(100%-220px))]">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
               <div className="min-w-0">
