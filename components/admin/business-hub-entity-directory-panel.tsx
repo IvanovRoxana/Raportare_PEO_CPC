@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Building2, Loader2, Plus, Trash2 } from 'lucide-react';
+import { Building2, Edit2, Loader2, Plus, Trash2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -31,8 +31,9 @@ const EMPTY_FORM: Omit<BusinessHubEntityDirectoryEntry, 'id' | 'createdAt' | 'up
 
 export function BusinessHubEntityDirectoryPanel() {
   const { entries, isLoading, mutate } = useBusinessHubEntityDirectory();
-  const { create, remove } = useBusinessHubEntityDirectoryMutations();
+  const { create, update, remove } = useBusinessHubEntityDirectoryMutations();
   const [form, setForm] = useState(EMPTY_FORM);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -40,7 +41,33 @@ export function BusinessHubEntityDirectoryPanel() {
     setForm((current) => ({ ...current, [field]: value }));
   };
 
-  const handleCreate = async () => {
+  const handleEdit = (entry: BusinessHubEntityDirectoryEntry) => {
+    setError(null);
+    setEditingId(entry.id);
+    setForm({
+      directoryType: entry.directoryType,
+      acronym: entry.acronym,
+      legalName: entry.legalName,
+      displayName: entry.displayName ?? '',
+      registeredAddress: entry.registeredAddress ?? '',
+      cuiOrCif: entry.cuiOrCif ?? '',
+      phone: entry.phone ?? '',
+      email: entry.email ?? '',
+      legalRepresentativeName: entry.legalRepresentativeName ?? '',
+      legalRepresentativeRole: entry.legalRepresentativeRole ?? '',
+      designatedPersonName: entry.designatedPersonName ?? '',
+      status: entry.status ?? 'active',
+      source: entry.source ?? 'manual',
+    });
+  };
+
+  const cancelEdit = () => {
+    setError(null);
+    setEditingId(null);
+    setForm(EMPTY_FORM);
+  };
+
+  const handleSave = async () => {
     setError(null);
     if (!form.acronym.trim() || !form.legalName.trim()) {
       setError('Completeaza acronimul si denumirea juridica.');
@@ -48,7 +75,7 @@ export function BusinessHubEntityDirectoryPanel() {
     }
     setIsSaving(true);
     try {
-      await create({
+      const payload = {
         ...form,
         acronym: form.acronym.trim(),
         legalName: form.legalName.trim(),
@@ -60,11 +87,17 @@ export function BusinessHubEntityDirectoryPanel() {
         legalRepresentativeName: optionalText(form.legalRepresentativeName),
         legalRepresentativeRole: optionalText(form.legalRepresentativeRole),
         designatedPersonName: optionalText(form.designatedPersonName),
-      });
+      };
+      if (editingId) {
+        await update(editingId, payload);
+      } else {
+        await create(payload);
+      }
       setForm(EMPTY_FORM);
+      setEditingId(null);
       mutate();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Nu am putut salva entitatea.');
+      setError(err instanceof Error ? err.message : 'Nu am putut salva modificarile.');
     } finally {
       setIsSaving(false);
     }
@@ -86,7 +119,7 @@ export function BusinessHubEntityDirectoryPanel() {
         <div className="mb-4 flex items-center gap-2">
           <Building2 className="h-4 w-4 text-primary" />
           <div>
-            <p className="font-semibold text-slate-950">Entitate Business Hub</p>
+            <p className="font-semibold text-slate-950">{editingId ? 'Editeaza entitate Business Hub' : 'Entitate Business Hub'}</p>
             <p className="text-xs text-muted-foreground">Date folosite la generarea adreselor lunare.</p>
           </div>
         </div>
@@ -158,10 +191,17 @@ export function BusinessHubEntityDirectoryPanel() {
 
           {error && <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{error}</div>}
 
-          <Button onClick={handleCreate} disabled={isSaving}>
-            {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-            Adauga entitate
-          </Button>
+          <div className="flex gap-2">
+            <Button onClick={handleSave} disabled={isSaving} className="flex-1">
+              {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : editingId ? <Edit2 className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+              {editingId ? 'Salveaza modificari' : 'Adauga entitate'}
+            </Button>
+            {editingId && (
+              <Button variant="outline" size="icon" onClick={cancelEdit} disabled={isSaving} aria-label="Anuleaza editarea">
+                <X className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -189,9 +229,14 @@ export function BusinessHubEntityDirectoryPanel() {
                 <p className="mt-1 text-sm text-slate-700">{entry.legalName}</p>
                 <p className="mt-1 text-xs text-muted-foreground">{[entry.cuiOrCif, entry.email, entry.phone].filter(Boolean).join(' - ')}</p>
               </div>
-              <Button variant="ghost" size="icon" onClick={() => handleDelete(entry.id)} aria-label="Sterge entitatea">
-                <Trash2 className="h-4 w-4 text-destructive" />
-              </Button>
+              <div className="flex items-center justify-end gap-1">
+                <Button variant="ghost" size="icon" onClick={() => handleEdit(entry)} aria-label="Editeaza entitatea">
+                  <Edit2 className="h-4 w-4" />
+                </Button>
+                <Button variant="ghost" size="icon" onClick={() => handleDelete(entry.id)} aria-label="Sterge entitatea">
+                  <Trash2 className="h-4 w-4 text-destructive" />
+                </Button>
+              </div>
             </div>
           ))}
         </div>

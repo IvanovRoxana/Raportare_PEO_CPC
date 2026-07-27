@@ -16,3 +16,12 @@ test('pagina export RA paseaza expertul complet catre generatorul Anexa 10', () 
   assert.match(reportGeneratorSource, /expert\?: Pick<Expert,/);
   assert.match(reportGeneratorSource, /enableDeterministicAnexa10Docx = false/);
 });
+
+test('pagina export RA blocheaza fallback-ul Anexa 10 cat timp work block-urile persistate se incarca', () => {
+  assert.match(exportPageSource, /const isLoadingDeterministicWorkBlocks = reportingWorkBlocksEnabled/);
+  assert.match(exportPageSource, /isLoadingPersistedWorkBlockBundles \|\| isRefreshingPersistedWorkBlockBundles/);
+  assert.match(exportPageSource, /isLoadingDeterministicWorkBlocks=\{isLoadingDeterministicWorkBlocks\}/);
+  assert.match(reportGeneratorSource, /isLoadingDeterministicWorkBlocks = false/);
+  assert.match(reportGeneratorSource, /if \(isLoadingDeterministicWorkBlocks\) return null;/);
+  assert.match(reportGeneratorSource, /\|\| isLoadingDeterministicWorkBlocks/);
+});

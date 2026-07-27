@@ -42,6 +42,8 @@ test('asambleaza bundle-uri din work block-uri persistate si link-uri', () => {
       title: 'Analiza documente',
       saCode: 'SA3.4',
       reportingFlowType: 'deliverable',
+      generatedTableSummary: 'Analiza comparativa pentru tabel',
+      generatedNarrative: 'Am detaliat analiza in narativul Anexa 10.',
       status: 'ready',
     },
     {
@@ -71,6 +73,8 @@ test('asambleaza bundle-uri din work block-uri persistate si link-uri', () => {
   assert.equal(bundles[1].workBlock.id, 'wb-2');
   assert.equal(bundles[1].workBlock.reportingFlowType, 'deliverable');
   assert.equal(bundles[1].workBlock.status, 'ready');
+  assert.equal(bundles[1].workBlock.generatedTableSummary, 'Analiza comparativa pentru tabel');
+  assert.equal(bundles[1].workBlock.generatedNarrative, 'Am detaliat analiza in narativul Anexa 10.');
   assert.equal(bundles[1].activityLinks[0].activityDate, '2026-06-03');
   assert.deepEqual(bundles[1].deliverableLinks, [
     {

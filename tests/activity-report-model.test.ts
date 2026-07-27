@@ -59,7 +59,7 @@ test('un work block multi-day produce un singur rand cu totalul orelor', () => {
 
   assert.equal(model.tableRows.length, 1);
   assert.equal(model.tableRows[0].hours, 5);
-  assert.match(model.tableRows[0].period, /2 și 5 iunie 2026/);
+  assert.match(model.saSections[0].items[0].heading, /2 și 5 iunie 2026/);
 });
 
 test('mai multe livrabile apar in acelasi rand cand apartin aceluiasi flux', () => {
@@ -96,7 +96,7 @@ test('narativul este grupat pe SA si pastreaza totalul fiecarei sectiuni', () =>
 
   assert.deepEqual(model.saSections.map((section) => section.saCode), ['SA3.4', 'SA3.5']);
   assert.deepEqual(model.saSections.map((section) => section.totalHours), [2, 4]);
-  assert.match(model.saSections[0].paragraphs[0], /am realizat activitatea/);
+  assert.match(model.saSections[0].items[0].body, /Am realizat activitatea/);
 });
 
 test('concediul este exclus implicit din total si poate fi inclus configurabil', () => {
