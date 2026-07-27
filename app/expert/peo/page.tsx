@@ -296,7 +296,7 @@ function OutlookMonthCalendar({
   month,
   year,
   selectedDates,
-  onSelectDay,
+  onSelectDates,
   onAddActivity,
   onEditActivity,
   onMonthChange,
@@ -308,14 +308,15 @@ function OutlookMonthCalendar({
   month: number;
   year: number;
   selectedDates: string[];
-  onSelectDay: (date: string) => void;
+  onSelectDates: (dates: string[]) => void;
   onAddActivity: () => void;
   onEditActivity: (activity: Activity) => void;
   onMonthChange: (month: number, year: number) => void;
   canGoToPreviousMonth: boolean;
   canGoToNextMonth: boolean;
 }) {
-  const [selectedDay, setSelectedDay] = useState<string | null>(selectedDates[0] ?? null);
+  const [isSelectingRange, setIsSelectingRange] = useState(false);
+  const [selectionStart, setSelectionStart] = useState<string | null>(null);
   const today = useMemo(() => new Date(), []);
   const days = useMemo(() => {
     const firstDay = new Date(year, month, 1);
@@ -340,7 +341,33 @@ function OutlookMonthCalendar({
     return grouped;
   }, [activities]);
   const norma = expert.norma || 8;
-  const selectedDateSet = new Set(selectedDates);
+  const selectedDateSet = useMemo(() => new Set(selectedDates), [selectedDates]);
+  const syncSelectedDates = (dates: string[]) => {
+    onSelectDates([...new Set(dates)].sort());
+  };
+  const getRangeDates = (startDate: string, endDate: string) => {
+    const start = new Date(`${startDate}T00:00:00`);
+    const end = new Date(`${endDate}T00:00:00`);
+    const [from, to] = start <= end ? [start, end] : [end, start];
+    const range: string[] = [];
+    const cursor = new Date(from);
+
+    while (cursor <= to) {
+      if (cursor.getMonth() === month && cursor.getFullYear() === year && !getNonWorkingDayInfo(cursor).isNonWorkingDay) {
+        range.push(formatDate(cursor));
+      }
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
+    return range;
+  };
+  const toggleDate = (date: string) => {
+    syncSelectedDates(
+      selectedDateSet.has(date)
+        ? selectedDates.filter((selectedDate) => selectedDate !== date)
+        : [...selectedDates, date],
+    );
+  };
   const goToPrevious = () => {
     const next = new Date(year, month - 1, 1);
     onMonthChange(next.getMonth(), next.getFullYear());
@@ -351,7 +378,17 @@ function OutlookMonthCalendar({
   };
 
   return (
-    <div className="flex h-full min-h-[720px] flex-col bg-white">
+    <div
+      className="flex h-full min-h-[720px] flex-col bg-white"
+      onMouseUp={() => {
+        setIsSelectingRange(false);
+        setSelectionStart(null);
+      }}
+      onMouseLeave={() => {
+        setIsSelectingRange(false);
+        setSelectionStart(null);
+      }}
+    >
       <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
         <div className="flex items-center gap-2">
           <Button type="button" variant="outline" size="sm" onClick={() => onMonthChange(today.getMonth(), today.getFullYear())}>
@@ -382,8 +419,9 @@ function OutlookMonthCalendar({
           const totalHours = dayActivities.reduce((sum, activity) => sum + (Number(activity.hours) || 0), 0);
           const nonWorking = getNonWorkingDayInfo(day.nativeDate);
           const isWeekend = nonWorking.isWeekend;
+          const isNonWorkingDay = nonWorking.isNonWorkingDay;
           const isToday = day.nativeDate.toDateString() === today.toDateString();
-          const isSelected = selectedDay === day.date || selectedDateSet.has(day.date);
+          const isSelected = selectedDateSet.has(day.date);
           const visibleActivities = dayActivities.slice(0, 4);
           const hiddenCount = Math.max(0, dayActivities.length - visibleActivities.length);
           const dayClassName = cn(
@@ -400,9 +438,18 @@ function OutlookMonthCalendar({
               key={day.date}
               type="button"
               className={dayClassName}
+              onMouseDown={() => {
+                if (isNonWorkingDay) return;
+                setIsSelectingRange(true);
+                setSelectionStart(day.date);
+              }}
+              onMouseEnter={() => {
+                if (!isSelectingRange || !selectionStart || isNonWorkingDay) return;
+                syncSelectedDates([...selectedDates, ...getRangeDates(selectionStart, day.date)]);
+              }}
               onClick={() => {
-                setSelectedDay(day.date);
-                onSelectDay(day.date);
+                if (isNonWorkingDay) return;
+                toggleDate(day.date);
               }}
             >
               <div className="mb-1 flex items-center justify-between gap-2 text-xs">
@@ -2481,25 +2528,9 @@ function ExpertDashboardContent() {
 
           {/* Tab: Calendar - vizualizare calendar cu statistici si detalii pe zi */}
           <TabsContent id="calendar" value="calendar" className="scroll-mt-24">
-            <div className="grid min-h-[calc(100dvh-15rem)] overflow-hidden rounded-2xl border bg-white lg:grid-cols-[230px_minmax(0,1fr)]">
+            <div className="grid min-h-[calc(100dvh-15rem)] overflow-hidden rounded-2xl border bg-white lg:grid-cols-[210px_minmax(0,1fr)]">
               <aside className="min-h-0 overflow-y-auto border-r bg-slate-50/70 p-3">
-                <MultiSelectCalendar
-                  selectedDates={selectedDates}
-                  onSelectDates={handleCalendarSelectDates}
-                  selectedHours={selectedHours}
-                  onSelectedHoursChange={setSelectedHours}
-                  activities={calendarDraftActivities}
-                  onMonthChange={handleMonthChange}
-                  onBlockedMonthChange={handleBlockedMonthChange}
-                  canGoToPreviousMonth={canOpenMonth(previousCalendarDate.getMonth(), previousCalendarDate.getFullYear())}
-                  canGoToNextMonth={canOpenMonth(nextCalendarDate.getMonth(), nextCalendarDate.getFullYear())}
-                  monthAccessMessage={monthAccessMessage}
-                  expertNorma={selectedExpert.norma || 8}
-                  displayMonth={currentMonth}
-                  displayYear={currentYear}
-                />
-
-                <div className="mt-3 space-y-3">
+                <div className="space-y-3">
                   <div className="rounded-xl border bg-white p-3 shadow-sm">
                     <div className="mb-2 flex items-center justify-between gap-2">
                       <p className="text-sm font-semibold text-slate-900">Status raportare</p>
@@ -2589,7 +2620,7 @@ function ExpertDashboardContent() {
                 month={currentMonth}
                 year={currentYear}
                 selectedDates={selectedDates}
-                onSelectDay={(date) => handleCalendarSelectDates([date])}
+                onSelectDates={handleCalendarSelectDates}
                 onAddActivity={handleCalendarAddActivity}
                 onEditActivity={handleCalendarEditActivity}
                 onMonthChange={handleMonthChange}
