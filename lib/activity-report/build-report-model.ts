@@ -158,6 +158,7 @@ function buildSaSections(
           bundle.workBlock.generatedNarrative
           || bundle.workBlock.cleanedActivitySummary
           || bundle.workBlock.expertContribution
+          || activities.map((activity) => activity.activitySummary).filter(Boolean).join(' ')
           || activities.map((activity) => activity.description).filter(Boolean).join(' ')
           || `Am realizat activitatea "${bundle.workBlock.title}" in cadrul ${saCode}.${deliverableText}`,
         ),
@@ -261,6 +262,7 @@ function getPerformedActivity(bundle: ReportingWorkBlockBundle, activities: Acti
     bundle.workBlock.generatedTableSummary
     || bundle.workBlock.cleanedActivitySummary
     || bundle.workBlock.expertContribution
+    || activities.map((activity) => activity.activitySummary).filter(Boolean).join(' ')
     || activities.map((activity) => activity.description).filter(Boolean).join(' ')
     || bundle.workBlock.title,
   );

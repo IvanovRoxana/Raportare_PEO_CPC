@@ -136,6 +136,7 @@ type ActivityWizardStep = {
   label: string;
   description: string;
   blocked?: boolean;
+  disabled?: boolean;
 };
 
 function getActivityDuplicateChoiceLabel(activity: Pick<Activity, 'activityType' | 'title'>) {
@@ -143,7 +144,7 @@ function getActivityDuplicateChoiceLabel(activity: Pick<Activity, 'activityType'
 }
 
 function getResolutionWizardStep(resolutionHint?: ActivityResolutionHint): ActivityWizardStepId {
-  if (!resolutionHint) return 'type';
+  if (!resolutionHint) return 'time';
   if (resolutionHint.section === 'deliverables' || resolutionHint.deliverableId) return 'deliverables';
   if (resolutionHint.section === 'gdpr') return 'description';
 
@@ -1689,6 +1690,46 @@ export function ActivityForm({
       ...savedGroupDeliverables,
     ]).filter((deliverable) => deliverable.uploaded && !deliverable.isPhoto);
   }, [allActivities, currentDeliverablesForEligibility, expertId, initialActivity]);
+  const eligibilityWorkingGroupId = initialActivity?.workingGroupId || initialActivity?.periodGroupId;
+  const eligibilityPeriodGroupId = initialActivity?.periodGroupId;
+  const eligibilityWorkingGroupActivities = useMemo(() => {
+    const groupId = initialActivity ? getActivityEditGroupId(initialActivity) : undefined;
+    if (groupId) {
+      return allActivities
+        .filter((activity) => getActivityEditGroupId(activity) === groupId)
+        .map((activity) => ({
+          id: activity.id,
+          date: activity.date,
+          activityType: activity.activityType,
+          title: activity.title,
+          saCode: activity.saCode,
+          expertId: activity.expertId,
+          expertName: activity.expertName,
+        }));
+    }
+
+    return selectedDates.map((date) => ({
+      date,
+      activityType: activityTitle,
+      title: activityTitle,
+      saCode,
+      expertId,
+      expertName,
+    }));
+  }, [activityTitle, allActivities, expertId, expertName, initialActivity, saCode, selectedDates]);
+  const eligibilityCollaborators = useMemo(() => (
+    activityCommon
+      ? collaborators
+          .map((collaboratorId) => allExperts.find((candidate) => candidate.id === collaboratorId))
+          .filter((candidate): candidate is Expert => Boolean(candidate))
+          .map((candidate) => ({
+            id: candidate.id,
+            name: candidate.name,
+            role: candidate.role,
+            positionInProject: candidate.positionInProject,
+          }))
+      : []
+  ), [activityCommon, allExperts, collaborators]);
   const prelimDeliverables = deliverables.filter(d => d.slotType === 'raport_preliminar');
   const justifDeliverables = deliverables.filter(d => d.slotType === 'justificativ');
   const eligibilityBlockedReason = !effectiveSaCode
@@ -1708,18 +1749,19 @@ export function ActivityForm({
       setSkipMainDeliverableForNow(false);
     }
   }, [mainDeliverables.length, skipMainDeliverableForNow]);
+  const canOpenDeliverablesStep = isLeave || Boolean(effectiveActivityTitle.trim());
   const wizardSteps = useMemo<ActivityWizardStep[]>(() => [
-    {
-      id: 'type',
-      label: 'Tip activitate',
-      description: isBusinessHubExpert ? 'Business Hub, standard sau eveniment' : 'Standard sau eveniment',
-      blocked: !effectiveActivityTitle.trim() && !isLeave,
-    },
     {
       id: 'time',
       label: 'Pontaj',
       description: selectedDates.length > 0 ? `${selectedDates.length} zile, ${totalHours}h` : 'Zile si ore',
       blocked: selectedDates.length === 0 || (isBusinessHubTabActive && selectedDates.length !== 1),
+    },
+    {
+      id: 'type',
+      label: 'Tip activitate',
+      description: isBusinessHubExpert ? 'Business Hub, standard sau eveniment' : 'Standard sau eveniment',
+      blocked: !effectiveActivityTitle.trim() && !isLeave,
     },
     {
       id: 'deliverables',
@@ -1729,7 +1771,8 @@ export function ActivityForm({
         : skipMainDeliverableForNow
           ? 'Incarcare mai tarziu'
           : 'Documente',
-      blocked: false,
+      blocked: !canOpenDeliverablesStep,
+      disabled: !canOpenDeliverablesStep,
     },
     {
       id: 'description',
@@ -1751,6 +1794,7 @@ export function ActivityForm({
     },
   ], [
     activityCommon,
+    canOpenDeliverablesStep,
     collaborators.length,
     description,
     effectiveActivityTitle,
@@ -1770,18 +1814,24 @@ export function ActivityForm({
   const currentWizardStepIndex = Math.max(0, wizardSteps.findIndex((step) => step.id === currentWizardStep));
   const isLastWizardStep = currentWizardStepIndex === wizardSteps.length - 1;
   const goToWizardStep = useCallback((stepId: ActivityWizardStepId) => {
+    if (wizardSteps.find((step) => step.id === stepId)?.disabled) return;
     setCurrentWizardStep(stepId);
-  }, []);
+  }, [wizardSteps]);
   const goToPreviousWizardStep = useCallback(() => {
     setCurrentWizardStep((stepId) => {
       const index = wizardSteps.findIndex((step) => step.id === stepId);
-      return wizardSteps[Math.max(0, index - 1)]?.id ?? 'type';
+      const previousStep = wizardSteps
+        .slice(0, Math.max(0, index))
+        .reverse()
+        .find((step) => !step.disabled);
+      return previousStep?.id ?? 'time';
     });
   }, [wizardSteps]);
   const goToNextWizardStep = useCallback(() => {
     setCurrentWizardStep((stepId) => {
       const index = wizardSteps.findIndex((step) => step.id === stepId);
-      return wizardSteps[Math.min(wizardSteps.length - 1, index + 1)]?.id ?? 'review';
+      const nextStep = wizardSteps.slice(index + 1).find((step) => !step.disabled);
+      return nextStep?.id ?? stepId;
     });
   }, [wizardSteps]);
   const existingDeliverableContexts = useMemo<ExistingDeliverableSourceContext[]>(() => (
@@ -2235,9 +2285,12 @@ export function ActivityForm({
                   key={step.id}
                   type="button"
                   onClick={() => goToWizardStep(step.id)}
+                  disabled={step.disabled}
                   className={`flex min-w-0 items-start gap-2 rounded-md border px-3 py-2 text-left text-xs transition-colors ${
                     isActive
                       ? 'border-blue-500 bg-blue-50 text-blue-950'
+                      : step.disabled
+                        ? 'cursor-not-allowed border-slate-200 bg-slate-50 text-slate-400'
                       : step.blocked
                         ? 'border-amber-200 bg-amber-50 text-amber-900'
                         : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
@@ -2954,6 +3007,15 @@ export function ActivityForm({
                   projectCode={expert?.projectCode}
                   month={month}
                   year={year}
+                  expertId={expertId}
+                  expertCategory={expertCategory}
+                  expertFunction={expert?.positionInProject || expert?.role}
+                  expertProjectRole={expert?.role}
+                  workingGroupId={eligibilityWorkingGroupId}
+                  periodGroupId={eligibilityPeriodGroupId}
+                  workingGroupActivities={eligibilityWorkingGroupActivities}
+                  collaborators={eligibilityCollaborators}
+                  catalogSource={catalog.length > 0 ? 'aws-activity-catalog' : 'fallback-activity-catalog'}
                   expertName={expertName}
                   onUpdate={(patch) => updateDeliverable(mainDeliverableForEligibility.id, patch)}
                   canCheckEligibility={canCheckDeliverableEligibility}
@@ -3342,13 +3404,13 @@ export function ActivityForm({
               <div className="space-y-4">
                 {/* Colaborare */}
                 {currentWizardStep === 'collaboration' && (
-                <details open={activityCommon} className="bg-blue-50 rounded-lg p-4 border border-blue-200">
-                  <summary className="text-sm font-medium text-blue-800 flex cursor-pointer list-none items-center gap-2">
+                <div className="space-y-3 rounded-lg border border-blue-200 bg-blue-50 p-4">
+                  <div className="text-sm font-medium text-blue-800 flex items-center gap-2">
                     <Users className="h-4 w-4" />
                     Colaborare
-                  </summary>
-                  
-                  <div className="mt-3 space-y-3">
+                  </div>
+
+                  <div className="space-y-3">
                     <div className="flex items-center space-x-2">
                       <Checkbox
                         id="activityCommon"
@@ -3478,7 +3540,7 @@ export function ActivityForm({
                       </div>
                     )}
                   </div>
-                </details>
+                </div>
                 )}
 
                 {/* Raport preliminar (optional) */}

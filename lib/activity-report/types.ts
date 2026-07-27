@@ -18,6 +18,7 @@ export type ActivityInput = {
   saCode?: string;
   activityType?: string;
   title: string;
+  summary?: string;
   description: string;
   location?: 'online' | 'onsite' | 'hibrid' | string;
   collaborators?: string[];
@@ -31,6 +32,7 @@ export type ActivityInput = {
 
 export type NormalizedActivity = Required<Pick<ActivityInput, 'date' | 'hours' | 'title' | 'description'>> & {
   saCode: string;
+  summary?: string;
   activityType?: string;
   location: string;
   collaborators: string[];

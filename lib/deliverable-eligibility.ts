@@ -69,7 +69,62 @@ export const deliverableEligibilityDocumentSchema = z.object({
   extractedText: z.string().optional(),
   deliverableType: z.string().optional(),
   textScope: z.string().optional(),
+  duplicateStatus: z.string().optional(),
+  possibleDuplicateOfDocumentId: z.string().optional(),
 });
+
+export const DEFAULT_ELIGIBILITY_RULE_VERSION_ID = 'default-code-rules-v1';
+
+type EligibilityStatus = z.infer<typeof deliverableEligibilitySchema>['status'];
+type EligibilityCheckStatus = z.infer<typeof deliverableEligibilityCheckSchema>['status'];
+type EligibilityResult = z.infer<typeof deliverableEligibilitySchema>;
+type EligibilityDocument = z.infer<typeof deliverableEligibilityDocumentSchema>;
+
+export type EligibilityRubricCriterion = {
+  score: number;
+  maxScore: number;
+  status: EligibilityCheckStatus;
+  evidence: string[];
+};
+
+export type EligibilitySemanticAudit = {
+  ruleVersionId: string;
+  appliedRules: string[];
+  evidenceUsed: string[];
+  documentsRead: Array<{
+    id?: string;
+    documentTitle?: string;
+    fileName?: string;
+    deliverableType?: string;
+    isPrimary?: boolean;
+    textScope?: string;
+    extractedTextLength: number;
+    duplicateStatus?: string;
+    possibleDuplicateOfDocumentId?: string;
+  }>;
+  rubricScores: Record<string, EligibilityRubricCriterion>;
+  aiScore: number;
+  rubricScore: number;
+  normalizedScore: number;
+  fallbackFlags: string[];
+  categoryContextUsed: {
+    expertId?: string;
+    expertCategory?: string;
+    expertFunction?: string;
+    expertProjectRole?: string;
+    projectCode?: string;
+    selectedActivityId?: string;
+    selectedActivityName?: string;
+    saCode?: string;
+    activityGroupId?: string;
+    periodGroupId?: string;
+    workingGroupId?: string;
+    workBlockId?: string;
+    catalogSource?: string;
+    collaboratorCount: number;
+    workingGroupActivityCount: number;
+  };
+};
 
 export const CONCORDIA_PUBLICATION_ELIGIBILITY_PROMPT_RULES = `- Pentru tipurile de livrabil "Material publicat + link", "Articole pe concordia.ro" sau "articol publicat pe site", trateaza separat: (1) dovada publicarii/republicarii pe site-ul Concordia si (2) relevanta continutului pentru activitatea selectata.
 - Un PDF salvat, tiparit sau exportat dintr-o pagina web constituie dovada de publicare pe concordia.ro chiar daca URL-ul nu este vizibil, atunci cand contine minimum doua indicii concordante precum: sigla/denumirea Confederația Patronală Concordia, meniul site-ului, categoria articolului, titlul, autorul, data, navigatia, footerul Concordia sau mentiuni institutionale specifice site-ului.
@@ -295,6 +350,262 @@ export function normalizeDeliverableEligibilityDocuments(input: {
     ))
     .sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary))
     .slice(0, 8);
+}
+
+function hasTextEvidence(value: unknown, patterns: RegExp[]) {
+  const normalized = normalizeEligibilityText(value);
+  return patterns.some((pattern) => pattern.test(normalized));
+}
+
+function criterion(
+  score: number,
+  maxScore: number,
+  status: EligibilityCheckStatus,
+  evidence: string[],
+): EligibilityRubricCriterion {
+  return {
+    score: Math.max(0, Math.min(maxScore, Math.round(score))),
+    maxScore,
+    status,
+    evidence: evidence.filter(Boolean),
+  };
+}
+
+function statusBaseScore(status: EligibilityStatus) {
+  switch (status) {
+    case 'eligibil':
+      return 90;
+    case 'eligibil_cu_observatii':
+      return 75;
+    case 'neeligibil':
+      return 35;
+    case 'neconcludent':
+    default:
+      return 20;
+  }
+}
+
+function scoreFromChecks(
+  result: EligibilityResult,
+  patterns: RegExp[],
+  maxScore: number,
+  defaultScore: number,
+) {
+  const relevantChecks = result.checks.filter((check) => hasTextEvidence(check.criterion, patterns));
+  if (relevantChecks.length === 0) return defaultScore;
+  if (relevantChecks.some((check) => check.status === 'fail')) return Math.min(defaultScore, Math.round(maxScore * 0.25));
+  if (relevantChecks.some((check) => check.status === 'warning' || check.status === 'unknown')) {
+    return Math.min(defaultScore, Math.round(maxScore * 0.65));
+  }
+  return maxScore;
+}
+
+export function buildDeliverableEligibilitySemanticAudit(input: {
+  result: EligibilityResult;
+  documents: EligibilityDocument[];
+  ruleVersionId?: string;
+  selectedActivityId?: unknown;
+  selectedActivityName?: unknown;
+  saCode?: unknown;
+  deliverableType?: unknown;
+  catalogDescription?: unknown;
+  catalogObjectives?: unknown;
+  catalogBeneficiaries?: unknown;
+  catalogExpectedResults?: unknown;
+  catalogDeliverables?: unknown;
+  catalogIndicators?: unknown;
+  expertId?: unknown;
+  expertCategory?: unknown;
+  expertFunction?: unknown;
+  expertProjectRole?: unknown;
+  projectCode?: unknown;
+  activityGroupId?: unknown;
+  periodGroupId?: unknown;
+  workingGroupId?: unknown;
+  workBlockId?: unknown;
+  catalogSource?: unknown;
+  collaborators?: unknown;
+  workingGroupActivities?: unknown;
+  fallbackFlags?: string[];
+}): EligibilitySemanticAudit {
+  const documents = input.documents;
+  const combinedText = documents.map((document) => [
+    document.documentTitle,
+    document.fileName,
+    document.deliverableType,
+    document.extractedText,
+  ].filter(Boolean).join('\n')).join('\n\n');
+  const normalizedResultText = normalizeEligibilityText([
+    input.result.summary,
+    ...input.result.missingElements,
+    ...input.result.riskFlags,
+    ...input.result.recommendations,
+  ].join('\n'));
+  const documentsWithText = documents.filter((document) => String(document.extractedText || '').trim().length >= MIN_ELIGIBILITY_TEXT_LENGTH);
+  const hasSuggestedActivityChange = input.result.suggestedSettings?.changes.includes('activity') ?? false;
+  const hasSuggestedDeliverableTypeChange = input.result.suggestedSettings?.changes.includes('deliverableType') ?? false;
+  const hasActivityMismatch = textMentionsActivityMismatch(normalizedResultText);
+  const hasMinimumEvidenceGap = hasTextEvidence(normalizedResultText, [
+    /lips[a]?\s+dove/,
+    /dovezi\s+insuficiente/,
+    /text\s+insuficient/,
+    /nu\s+poate\s+fi\s+analizat/,
+  ]);
+  const hasBeneficiaryEvidence = hasTextEvidence([combinedText, input.result.summary].join('\n'), [
+    /beneficiar/,
+    /grup\s+tinta/,
+    /participant/,
+    /organizatie/,
+    /membru/,
+  ]);
+  const hasExpectedResultEvidence = !hasTextEvidence(normalizedResultText, [
+    /rezultat.*lips/,
+    /livrabil.*lips/,
+    /nu.*rezultat/,
+  ]);
+  const hasDate = hasTextEvidence(combinedText, [
+    /\b\d{1,2}[./-]\d{1,2}[./-]\d{4}\b/,
+    /\b\d{4}-\d{2}-\d{2}\b/,
+    /\b(ianuarie|februarie|martie|aprilie|mai|iunie|iulie|august|septembrie|octombrie|noiembrie|decembrie)\b/,
+  ]);
+  const hasAuthor = hasTextEvidence(combinedText, [/\bautor\b/, /\bde\s+[a-z]+(?:\s+[a-z]+){1,3}\b/]);
+  const hasLink = hasTextEvidence(combinedText, [/https?:\/\//, /\bwww\./, /\.ro\b/, /\blink\b/, /\burl\b/]);
+  const duplicateDocuments = documents.filter((document) => document.duplicateStatus);
+  const collaborators = Array.isArray(input.collaborators) ? input.collaborators : [];
+  const workingGroupActivities = Array.isArray(input.workingGroupActivities) ? input.workingGroupActivities : [];
+
+  const rubricScores = {
+    activityMatch: criterion(
+      hasSuggestedActivityChange || hasActivityMismatch
+        ? 6
+        : scoreFromChecks(input.result, [/activitate/, /subactivitate/, /catalog/], 20, input.selectedActivityName ? 18 : 12),
+      20,
+      hasSuggestedActivityChange || hasActivityMismatch ? 'warning' : 'pass',
+      [
+        input.selectedActivityName ? `Activitate selectata: ${String(input.selectedActivityName)}` : '',
+        input.saCode ? `SA: ${String(input.saCode)}` : '',
+      ],
+    ),
+    deliverableTypeMatch: criterion(
+      hasSuggestedDeliverableTypeChange
+        ? 5
+        : scoreFromChecks(input.result, [/tip/, /livrabil/, /format/], 15, input.deliverableType ? 13 : 8),
+      15,
+      hasSuggestedDeliverableTypeChange ? 'warning' : 'pass',
+      [input.deliverableType ? `Tip livrabil: ${String(input.deliverableType)}` : 'Tip livrabil nespecificat'],
+    ),
+    minimumEvidence: criterion(
+      documentsWithText.length > 0 && !hasMinimumEvidenceGap ? 20 : documentsWithText.length > 0 ? 13 : 4,
+      20,
+      documentsWithText.length > 0 && !hasMinimumEvidenceGap ? 'pass' : 'warning',
+      [`Documente cu text suficient: ${documentsWithText.length}/${documents.length}`],
+    ),
+    beneficiaryTargetGroup: criterion(
+      input.catalogBeneficiaries
+        ? (hasBeneficiaryEvidence ? 10 : 6)
+        : (hasBeneficiaryEvidence ? 8 : 5),
+      10,
+      hasBeneficiaryEvidence ? 'pass' : 'unknown',
+      [
+        input.catalogBeneficiaries ? 'Catalogul include beneficiari.' : '',
+        hasBeneficiaryEvidence ? 'Textul sau analiza mentioneaza beneficiar/grup tinta.' : '',
+      ],
+    ),
+    expectedResult: criterion(
+      hasExpectedResultEvidence ? 10 : 4,
+      10,
+      hasExpectedResultEvidence ? 'pass' : 'warning',
+      [
+        input.catalogExpectedResults ? 'Catalogul include rezultate asteptate.' : '',
+        input.catalogDeliverables ? 'Catalogul include livrabile asteptate.' : '',
+      ],
+    ),
+    formatEvidence: criterion(
+      documents.some((document) => /\.[a-z0-9]{2,5}$/i.test(document.fileName || '')) ? 8 : 5,
+      10,
+      documents.some((document) => document.fileName) ? 'pass' : 'unknown',
+      documents.map((document) => document.fileName || document.documentTitle || document.id || '').filter(Boolean).slice(0, 4),
+    ),
+    dateAuthorLink: criterion(
+      [hasDate, hasAuthor, hasLink].filter(Boolean).length >= 2
+        ? 10
+        : [hasDate, hasAuthor, hasLink].filter(Boolean).length === 1 ? 7 : 4,
+      10,
+      [hasDate, hasAuthor, hasLink].filter(Boolean).length >= 2 ? 'pass' : 'warning',
+      [
+        hasDate ? 'Data identificata.' : '',
+        hasAuthor ? 'Autor identificat.' : '',
+        hasLink ? 'Link/URL/domeniu identificat.' : '',
+      ],
+    ),
+    duplicateRisk: criterion(
+      duplicateDocuments.length > 0 ? 2 : 5,
+      5,
+      duplicateDocuments.length > 0 ? 'warning' : 'pass',
+      duplicateDocuments.map((document) => `${document.fileName || document.documentTitle || document.id}: ${document.duplicateStatus}`),
+    ),
+  } satisfies Record<string, EligibilityRubricCriterion>;
+
+  const rubricScore = Object.values(rubricScores).reduce((sum, item) => sum + item.score, 0);
+  const statusFloor = statusBaseScore(input.result.status);
+  const normalizedScore = Math.round((rubricScore * 0.7) + (Math.min(input.result.score, statusFloor) * 0.3));
+  const appliedRules = [
+    'technical-fixed-json-output',
+    'default-general-eligibility',
+    documents.length > 1 ? 'multi-deliverable-group-context' : '',
+    isConcordiaPublishedDeliverableType(input.deliverableType) ? 'concordia-publication-default' : '',
+  ].filter(Boolean);
+  const evidenceUsed = [
+    `${documents.length} document(e) analizate`,
+    `${documentsWithText.length} document(e) cu text suficient`,
+    hasDate ? 'data' : '',
+    hasAuthor ? 'autor' : '',
+    hasLink ? 'link/url/domeniu' : '',
+    input.catalogDescription ? 'descriere catalog' : '',
+    input.catalogObjectives ? 'obiective catalog' : '',
+    input.catalogBeneficiaries ? 'beneficiari catalog' : '',
+    input.catalogExpectedResults ? 'rezultate asteptate catalog' : '',
+    input.catalogIndicators ? 'indicatori catalog' : '',
+  ].filter(Boolean);
+
+  return {
+    ruleVersionId: String(input.ruleVersionId || DEFAULT_ELIGIBILITY_RULE_VERSION_ID),
+    appliedRules,
+    evidenceUsed,
+    documentsRead: documents.map((document) => ({
+      id: document.id,
+      documentTitle: document.documentTitle,
+      fileName: document.fileName,
+      deliverableType: document.deliverableType,
+      isPrimary: document.isPrimary,
+      textScope: document.textScope,
+      extractedTextLength: String(document.extractedText || '').trim().length,
+      duplicateStatus: document.duplicateStatus,
+      possibleDuplicateOfDocumentId: document.possibleDuplicateOfDocumentId,
+    })),
+    rubricScores,
+    aiScore: input.result.score,
+    rubricScore,
+    normalizedScore: Math.max(0, Math.min(100, normalizedScore)),
+    fallbackFlags: input.fallbackFlags || [],
+    categoryContextUsed: {
+      expertId: String(input.expertId || '') || undefined,
+      expertCategory: String(input.expertCategory || '') || undefined,
+      expertFunction: String(input.expertFunction || '') || undefined,
+      expertProjectRole: String(input.expertProjectRole || '') || undefined,
+      projectCode: String(input.projectCode || '') || undefined,
+      selectedActivityId: String(input.selectedActivityId || '') || undefined,
+      selectedActivityName: String(input.selectedActivityName || '') || undefined,
+      saCode: String(input.saCode || '') || undefined,
+      activityGroupId: String(input.activityGroupId || '') || undefined,
+      periodGroupId: String(input.periodGroupId || '') || undefined,
+      workingGroupId: String(input.workingGroupId || '') || undefined,
+      workBlockId: String(input.workBlockId || '') || undefined,
+      catalogSource: String(input.catalogSource || '') || undefined,
+      collaboratorCount: collaborators.length,
+      workingGroupActivityCount: workingGroupActivities.length,
+    },
+  };
 }
 
 export function validateEligibilitySuggestedSettings(input: {

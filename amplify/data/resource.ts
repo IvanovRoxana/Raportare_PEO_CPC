@@ -689,6 +689,48 @@ const schema = a.schema({
       allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
     ]),
 
+  AiEligibilityRuleset: a
+    .model({
+      title: a.string().required(),
+      status: a.string().default("draft"),
+      version: a.integer().default(1),
+      rulesJson: a.json(),
+      schemaVersion: a.string().default("eligibility-rules-v1"),
+      activeFrom: a.datetime(),
+      publishedAt: a.datetime(),
+      publishedBy: a.string(),
+      createdBy: a.string(),
+      updatedBy: a.string(),
+      changeReason: a.string(),
+    })
+    .secondaryIndexes((index) => [
+      index("status").sortKeys(["version"]),
+      index("schemaVersion"),
+    ])
+    .authorization((allow) => [
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
+  AiEligibilityRuleVersion: a
+    .model({
+      rulesetId: a.id().required(),
+      version: a.integer().required(),
+      status: a.string().required(),
+      previousRulesJson: a.json(),
+      newRulesJson: a.json(),
+      changedBy: a.string(),
+      changeReason: a.string(),
+      publishedAt: a.datetime(),
+      archivedAt: a.datetime(),
+    })
+    .secondaryIndexes((index) => [
+      index("rulesetId").sortKeys(["version"]),
+      index("status"),
+    ])
+    .authorization((allow) => [
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
   WorkingGroup: a
     .model({
       name: a.string().required(),

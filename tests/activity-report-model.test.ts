@@ -62,6 +62,24 @@ test('un work block multi-day produce un singur rand cu totalul orelor', () => {
   assert.match(model.saSections[0].items[0].heading, /2 și 5 iunie 2026/);
 });
 
+test('modelul determinist prefera activitySummary cand nu exista consolidare work block', () => {
+  const activities = [
+    activity({
+      id: 'a1',
+      date: '2026-06-02',
+      hours: 2,
+      periodGroupId: 'summary-group',
+      activitySummary: 'Am sintetizat statusul livrabilelor pentru raportarea lunara.',
+      description: 'Descriere lunga veche, redundanta si mai putin utila pentru tabel.',
+    }),
+  ];
+
+  const model = buildAnexa10ReportModel({ expert, activities, month: 5, year: 2026 });
+
+  assert.equal(model.tableRows[0].performedActivity, 'Am sintetizat statusul livrabilelor pentru raportarea lunara.');
+  assert.equal(model.saSections[0].items[0].body, 'Am sintetizat statusul livrabilelor pentru raportarea lunara.');
+});
+
 test('mai multe livrabile apar in acelasi rand cand apartin aceluiasi flux', () => {
   const activities = [
     activity({

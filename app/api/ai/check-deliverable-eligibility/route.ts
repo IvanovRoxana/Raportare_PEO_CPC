@@ -3,8 +3,10 @@ import { NextResponse } from 'next/server';
 import { governedGenerateText, aiErrorResponse, assertAllowedAiRequest, AiGovernanceError } from '@/lib/ai-governance';
 import { isOpenAIConfigurationError, openaiModel } from '@/lib/openai';
 import {
+  buildDeliverableEligibilitySemanticAudit,
   buildNonConclusiveAiFailure,
   CONCORDIA_PUBLICATION_ELIGIBILITY_PROMPT_RULES,
+  DEFAULT_ELIGIBILITY_RULE_VERSION_ID,
   deliverableEligibilityAiSchema,
   deliverableEligibilitySchema,
   normalizeDeliverableEligibilityAiOutput,
@@ -110,7 +112,17 @@ export async function POST(req: Request) {
       deliverables: rawDeliverables,
       primaryDeliverableId,
       activityGroupId,
+      periodGroupId,
+      workingGroupId,
       workBlockId,
+      workingGroupActivities,
+      collaborators,
+      expertId,
+      expertCategory,
+      expertFunction,
+      expertProjectRole,
+      catalogSource,
+      ruleVersionId,
       selectedActivityId,
       selectedActivityName,
       currentSaCode,
@@ -190,7 +202,17 @@ export async function POST(req: Request) {
         deliverables: eligibilityDocuments,
         primaryDeliverableId,
         activityGroupId,
+        periodGroupId,
+        workingGroupId,
         workBlockId,
+        workingGroupActivities,
+        collaborators,
+        expertId,
+        expertCategory,
+        expertFunction,
+        expertProjectRole,
+        catalogSource,
+        ruleVersionId: ruleVersionId || DEFAULT_ELIGIBILITY_RULE_VERSION_ID,
         extractedText: trimmedExtractedText,
         activityCatalogCandidates,
         deliverableOptions,
@@ -208,7 +230,19 @@ Date livrabil principal:
 - Titlu document: ${currentDocumentTitle || 'Nespecificat'}
 - Tip livrabil selectat: ${currentDeliverableType || 'Nespecificat'}
 - Grup activități: ${activityGroupId || workBlockId || 'Nespecificat'}
+- Working group / perioada: ${workingGroupId || periodGroupId || 'Nespecificat'}
+- Work block: ${workBlockId || 'Nespecificat'}
 - Număr livrabile analizate din grup: ${eligibilityDocuments.length}
+
+Context expert si proiect:
+- Expert ID: ${expertId || 'Nespecificat'}
+- Categoria expertului: ${expertCategory || 'Nespecificat'}
+- Functie expert: ${expertFunction || 'Nespecificat'}
+- Rol expert in proiect: ${expertProjectRole || 'Nespecificat'}
+- Colaboratori declarati: ${Array.isArray(collaborators) ? collaborators.length : 0}
+- Activitati in working group: ${Array.isArray(workingGroupActivities) ? workingGroupActivities.length : 0}
+- Sursa catalogului: ${catalogSource || 'catalog-filtrat-aplicatie'}
+- Versiune reguli: ${ruleVersionId || DEFAULT_ELIGIBILITY_RULE_VERSION_ID}
 
 Activitate selectată:
 - ID: ${selectedActivityId || 'Nespecificat'}
@@ -284,9 +318,48 @@ suggestedSettings trebuie sa fie mereu obiect cu: hasSuggestion, saCode, activit
       fileName: currentFileName,
       extractedText: trimmedExtractedText,
     });
+    const semanticAudit = buildDeliverableEligibilitySemanticAudit({
+      result: protectedData,
+      documents: eligibilityDocuments,
+      ruleVersionId,
+      selectedActivityId,
+      selectedActivityName,
+      saCode: currentSaCode,
+      deliverableType: currentDeliverableType,
+      catalogDescription,
+      catalogObjectives,
+      catalogBeneficiaries,
+      catalogExpectedResults,
+      catalogDeliverables,
+      catalogIndicators,
+      expertId,
+      expertCategory,
+      expertFunction,
+      expertProjectRole,
+      projectCode,
+      activityGroupId,
+      periodGroupId,
+      workingGroupId,
+      workBlockId,
+      catalogSource,
+      collaborators,
+      workingGroupActivities,
+    });
 
     return NextResponse.json({
       ...protectedData,
+      score: semanticAudit.normalizedScore,
+      aiScore: semanticAudit.aiScore,
+      rubricScore: semanticAudit.rubricScore,
+      normalizedScore: semanticAudit.normalizedScore,
+      rubricScores: semanticAudit.rubricScores,
+      semanticAudit,
+      appliedRules: semanticAudit.appliedRules,
+      evidenceUsed: semanticAudit.evidenceUsed,
+      documentsRead: semanticAudit.documentsRead,
+      fallbackFlags: semanticAudit.fallbackFlags,
+      ruleVersionId: semanticAudit.ruleVersionId,
+      categoryContextUsed: semanticAudit.categoryContextUsed,
       analyzedDeliverables: eligibilityDocuments.map((deliverable) => ({
         id: deliverable.id,
         documentTitle: deliverable.documentTitle,

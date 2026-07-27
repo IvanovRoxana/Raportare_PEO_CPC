@@ -246,6 +246,7 @@ function formatGroupedActivities(groups: Record<string, NormalizedActivity[]>) {
         `Ore: ${activity.hours}`,
         `Tip: ${activity.activityType || 'tip neprecizat'}`,
         `Titlu: ${activity.title}`,
+        activity.summary ? `Rezumat scurt verificat: ${truncatePromptText(activity.summary, MAX_PROMPT_DESCRIPTION_CHARS)}` : null,
         `Descriere: ${truncatePromptText(activity.description, MAX_PROMPT_DESCRIPTION_CHARS)}`,
         activity.gdprTemplateCode ? `Cod GDPR: ${activity.gdprTemplateCode}` : null,
         activity.gdprConclusionCode ? `Concluzie GDPR: ${activity.gdprConclusionCode}` : null,

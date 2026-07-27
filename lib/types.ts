@@ -220,6 +220,58 @@ export interface DeliverableEligibilityCheck {
   checkedActivityName?: string;
   checkedDeliverableType?: string;
   modelAuditId?: string;
+  ruleVersionId?: string;
+  aiScore?: number;
+  rubricScore?: number;
+  normalizedScore?: number;
+  rubricScores?: Record<string, {
+    score: number;
+    maxScore: number;
+    status: 'pass' | 'warning' | 'fail' | 'unknown' | string;
+    evidence: string[];
+  }>;
+  semanticAudit?: {
+    ruleVersionId: string;
+    appliedRules: string[];
+    evidenceUsed: string[];
+    documentsRead: Array<{
+      id?: string;
+      documentTitle?: string;
+      fileName?: string;
+      deliverableType?: string;
+      isPrimary?: boolean;
+      textScope?: string;
+      extractedTextLength: number;
+      duplicateStatus?: string;
+      possibleDuplicateOfDocumentId?: string;
+    }>;
+    rubricScores: Record<string, {
+      score: number;
+      maxScore: number;
+      status: 'pass' | 'warning' | 'fail' | 'unknown' | string;
+      evidence: string[];
+    }>;
+    aiScore: number;
+    rubricScore: number;
+    normalizedScore: number;
+    fallbackFlags: string[];
+    categoryContextUsed: Record<string, unknown>;
+  };
+  appliedRules?: string[];
+  evidenceUsed?: string[];
+  documentsRead?: Array<{
+    id?: string;
+    documentTitle?: string;
+    fileName?: string;
+    deliverableType?: string;
+    isPrimary?: boolean;
+    textScope?: string;
+    extractedTextLength: number;
+    duplicateStatus?: string;
+    possibleDuplicateOfDocumentId?: string;
+  }>;
+  fallbackFlags?: string[];
+  categoryContextUsed?: Record<string, unknown>;
   analyzedDeliverables?: Array<{
     id?: string;
     documentTitle?: string;
@@ -227,6 +279,38 @@ export interface DeliverableEligibilityCheck {
     deliverableType?: string;
     isPrimary?: boolean;
   }>;
+}
+
+export interface AiEligibilityRuleset {
+  id: string;
+  title: string;
+  status: 'draft' | 'active' | 'archived' | string;
+  version: number;
+  rulesJson?: unknown;
+  schemaVersion?: string;
+  activeFrom?: string;
+  publishedAt?: string;
+  publishedBy?: string;
+  createdBy?: string;
+  updatedBy?: string;
+  changeReason?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface AiEligibilityRuleVersion {
+  id: string;
+  rulesetId: string;
+  version: number;
+  status: 'draft' | 'active' | 'archived' | string;
+  previousRulesJson?: unknown;
+  newRulesJson?: unknown;
+  changedBy?: string;
+  changeReason?: string;
+  publishedAt?: string;
+  archivedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Deliverable {
