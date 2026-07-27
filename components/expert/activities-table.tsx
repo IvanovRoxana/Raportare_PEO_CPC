@@ -30,7 +30,6 @@ import {
   parseGdprMetaJson,
   validateGdprActivityDraft,
 } from '@/lib/gdpr-reporting';
-import { getActivityEditGroupId } from '@/lib/activity-edit';
 import { cn } from '@/lib/utils';
 import type { Activity, Deliverable } from '@/lib/types';
 
@@ -99,7 +98,9 @@ function getPrimaryDeliverable(activity: Activity) {
 }
 
 function getActivityGroupKey(activity: Activity) {
-  return getActivityEditGroupId(activity) || activity.id;
+  if (activity.periodGroupId) return `period:${activity.periodGroupId}`;
+  if (activity.workingGroupId) return `working:${activity.workingGroupId}`;
+  return `activity:${activity.id}`;
 }
 
 function getActivityGroupTitle(activities: Activity[]) {
