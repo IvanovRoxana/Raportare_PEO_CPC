@@ -178,6 +178,7 @@ interface DeliverableItemProps {
   ruleVersionId?: string;
   expertName?: string;
   onUpdate: (patch: Partial<DeliverableSlot>) => void;
+  onAddDeliverables?: (patches: Partial<DeliverableSlot>[]) => void;
   onRemove?: () => void;
   showSteps?: boolean;
   required?: boolean;
@@ -225,6 +226,7 @@ export function DeliverableItem({
   ruleVersionId,
   expertName,
   onUpdate,
+  onAddDeliverables,
   onRemove,
   showSteps = true,
   required = false,
@@ -263,10 +265,7 @@ export function DeliverableItem({
       reader.readAsDataURL(file);
     });
 
-  const handleFile = async (ev: React.ChangeEvent<HTMLInputElement>) => {
-    const file = ev.target.files?.[0];
-    if (!file) return;
-
+  const buildFilePatch = async (file: File, currentDeclaredTitle: string): Promise<Partial<DeliverableSlot> | null> => {
     const raw = file.name.replace(/\.[^.]+$/, '');
     const isPhoto = isImageFile(file.name);
     const lowerFileName = file.name.toLowerCase();
@@ -278,8 +277,7 @@ export function DeliverableItem({
 
     if (isPresentation) {
       alert('Prezentarile PPT/PPTX nu pot fi incarcate ca livrabile. Exporta prezentarea ca PDF cu text selectabil si reincarca fisierul.');
-      if (fileRef.current) fileRef.current.value = '';
-      return;
+      return null;
     }
 
     let docTitle: string | null = null;
@@ -342,23 +340,23 @@ export function DeliverableItem({
         };
       }
 
-      const suggestion = applyAutomaticTitleSuggestion({
-        currentDeclaredTitle: deliverable.declaredTitle,
+      const titleSuggestionPatch = applyAutomaticTitleSuggestion({
+        currentDeclaredTitle,
         suggestedTitle: docTitle,
       });
-      const validation = isPhoto || !suggestion.declaredTitle
+      const validation = isPhoto || !titleSuggestionPatch.declaredTitle
         ? null
         : validateDeclaredTitleOnFirstPage({
             firstPageText: firstPageText || docText,
-            declaredTitle: suggestion.declaredTitle,
-            titleSource: suggestion.titleSource,
+            declaredTitle: titleSuggestionPatch.declaredTitle,
+            titleSource: titleSuggestionPatch.titleSource,
           });
       const fileData = await readFileAsDataUrl(file);
       const fileHash = await sha256Hex(await file.arrayBuffer());
       const firstPageTextHash = await hashFirstPageText(firstPageText || docText);
       const contentFingerprint = normalizeDocumentTextForFingerprint(firstPageText || docText).slice(0, 500);
 
-      onUpdate({
+      return {
         documentId: undefined,
         filename: file.name,
         rawFilename: raw,
@@ -382,20 +380,49 @@ export function DeliverableItem({
         titleSuggestionConfidence: titleSuggestion.confidence,
         titleSuggestionAlternatives: titleSuggestion.alternatives,
         titleSuggestionReason: titleSuggestion.reason,
-        titleSource: suggestion.titleSource,
+        titleSource: titleSuggestionPatch.titleSource,
         titleMatch: validation?.titleMatch ?? null,
         titleCheckStatus: validation?.titleCheckStatus,
         titleCheckMessage: validation?.titleCheckMessage,
         aiCheck: null,
         eligibilityCheck: null,
         titleConfirmed: false,
-        declaredTitle: suggestion.declaredTitle,
+        declaredTitle: titleSuggestionPatch.declaredTitle,
         duplicateStatus: firstPageTextHash ? 'fingerprinted' : undefined,
         possibleDuplicateOfDocumentId: undefined,
-      });
+      };
     } catch (error) {
       console.error('Error reading deliverable file:', error);
-      alert('Nu am putut citi fisierul. Reincarca documentul sau incearca un alt format.');
+      alert(`Nu am putut citi fisierul ${file.name}. Reincarca documentul sau incearca un alt format.`);
+      return null;
+    }
+  };
+
+  const handleFile = async (ev: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = Array.from(ev.target.files || []);
+    if (selectedFiles.length === 0) return;
+
+    setExtractingText(true);
+    try {
+      const patches: Partial<DeliverableSlot>[] = [];
+
+      for (const [index, file] of selectedFiles.entries()) {
+        const patch = await buildFilePatch(file, index === 0 ? deliverable.declaredTitle : '');
+        if (patch) patches.push(patch);
+      }
+
+      if (patches.length === 0) return;
+
+      onUpdate(patches[0]);
+      if (patches.length > 1) {
+        onAddDeliverables?.(patches.slice(1).map((patch) => ({
+          slotType: deliverable.slotType,
+          type: deliverable.type,
+          deliverableType: deliverable.deliverableType,
+          stadiu: deliverable.stadiu,
+          ...patch,
+        })));
+      }
     } finally {
       setExtractingText(false);
       if (fileRef.current) fileRef.current.value = '';
@@ -722,6 +749,7 @@ export function DeliverableItem({
         <input
           type="file"
           ref={fileRef}
+          multiple
           accept=".pdf,.doc,.docx,.html,.htm,.xlsx,.png,.jpg,.jpeg,.gif"
           onChange={handleFile}
           className="hidden"

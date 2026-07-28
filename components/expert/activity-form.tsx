@@ -548,13 +548,22 @@ export function ActivityForm({
     return hoursByDate;
   }, [activitySeed?.date, activitySeed?.hours, availablePontajHoursByDate, defaultDailyHours, selectedDates]);
   const getDefaultHoursForDate = useCallback(
-    (date: string) => defaultHoursByDate[date] || String(defaultDailyHours),
+    (date: string) => Object.prototype.hasOwnProperty.call(defaultHoursByDate, date)
+      ? defaultHoursByDate[date]
+      : String(defaultDailyHours),
     [defaultDailyHours, defaultHoursByDate],
   );
   const defaultHours = Number(getDefaultHoursForDate(selectedDates[0] || activitySeed?.date || '') || defaultDailyHours);
   const getHourOptionsForDate = useCallback(
     (date: string) => getAvailablePontajHourOptions(availablePontajHoursByDate[date] ?? defaultDailyHours),
     [availablePontajHoursByDate, defaultDailyHours],
+  );
+  const getAvailableHoursForDate = useCallback(
+    (date: string) => {
+      const options = getHourOptionsForDate(date);
+      return options[options.length - 1] ?? 0;
+    },
+    [getHourOptionsForDate],
   );
   const normalizedSelectedHours = useMemo(
     () => {
@@ -1281,6 +1290,17 @@ export function ActivityForm({
   const addDeliverableSlot = useCallback((type: 'livrabil' | 'raport_preliminar' | 'justificativ') => {
     const newSlot = createDeliverableSlot(type, '');
     setDeliverables(prev => [...prev, newSlot]);
+  }, []);
+
+  const addDeliverablesFromUpload = useCallback((patches: Partial<DeliverableSlot>[]) => {
+    if (patches.length === 0) return;
+    setDeliverables(prev => [
+      ...prev,
+      ...patches.map((patch) => ({
+        ...createDeliverableSlot(patch.slotType || 'livrabil', ''),
+        ...patch,
+      })),
+    ]);
   }, []);
 
   const addEventProofSlot = useCallback(() => {
@@ -2817,9 +2837,11 @@ export function ActivityForm({
 
               {!isLeave && selectedDates.length === 1 && (
                 <Field>
-                  <FieldLabel htmlFor="hours">Ore lucrate (max 8h/zi, norma {expertNorma}h)</FieldLabel>
+                  <FieldLabel htmlFor="hours">
+                    Ore lucrate (max {getAvailableHoursForDate(selectedDates[0])}h disponibile, norma {expertNorma}h)
+                  </FieldLabel>
                   <Select 
-                    value={normalizedSelectedHours[selectedDates[0]] || defaultHours.toString()}
+                    value={normalizedSelectedHours[selectedDates[0]] ?? defaultHours.toString()}
                     onValueChange={(v) => updateHoursForDate(selectedDates[0], v)}
                   >
                     <SelectTrigger id="hours">
@@ -2842,15 +2864,18 @@ export function ActivityForm({
             {/* Per-day hours when multiple days selected */}
             {!isLeave && selectedDates.length > 1 && (
               <div className="space-y-3">
-                <FieldLabel>Ore pentru fiecare zi (max 8h/zi, norma {expertNorma}h)</FieldLabel>
+                <FieldLabel>Ore pentru fiecare zi (max disponibil pe zi, norma {expertNorma}h)</FieldLabel>
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
                   {[...selectedDates].sort().map(date => (
                     <div key={date} className="flex items-center gap-2 p-2 bg-muted/50 rounded-md">
                       <span className="text-xs font-medium min-w-[70px]">
                         {formatDateRo(date)}
                       </span>
+                      <span className="text-[10px] text-muted-foreground">
+                        max {getAvailableHoursForDate(date)}h
+                      </span>
                       <Select 
-                        value={normalizedSelectedHours[date] || defaultHours.toString()}
+                        value={normalizedSelectedHours[date] ?? getDefaultHoursForDate(date)}
                         onValueChange={(v) => updateHoursForDate(date, v)}
                       >
                         <SelectTrigger className="h-8 w-[70px]">
@@ -3251,6 +3276,7 @@ export function ActivityForm({
                             year={year}
                             expertName={expertName}
                             onUpdate={(patch) => updateDeliverable(d.id, patch)}
+                            onAddDeliverables={addDeliverablesFromUpload}
                             onRemove={() => removeDeliverable(d.id)}
                             duplicateInfo={duplicateInfoByDeliverableId.get(d.id)}
                             canCheckEligibility={canCheckDeliverableEligibility}
@@ -3961,6 +3987,7 @@ export function ActivityForm({
                         year={year}
                         expertName={expertName}
                         onUpdate={(patch) => updateDeliverable(d.id, patch)}
+                        onAddDeliverables={addDeliverablesFromUpload}
                         onRemove={() => removeDeliverable(d.id)}
                         required={false}
                         duplicateInfo={duplicateInfoByDeliverableId.get(d.id)}
@@ -4026,6 +4053,7 @@ export function ActivityForm({
                           year={year}
                           expertName={expertName}
                           onUpdate={(patch) => updateDeliverable(d.id, patch)}
+                          onAddDeliverables={addDeliverablesFromUpload}
                           onRemove={() => removeDeliverable(d.id)}
                           required={false}
                           duplicateInfo={duplicateInfoByDeliverableId.get(d.id)}
