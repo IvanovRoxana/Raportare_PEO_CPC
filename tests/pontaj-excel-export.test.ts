@@ -164,6 +164,42 @@ describe('export pontaj Excel', () => {
     assert.match(cellXml(sheet, 'H45'), /COUNTIF\(H14:H44,&quot;CO&quot;\)\*8/);
   });
 
+  it('completeaza metadatele PEO din profil si data finala din ultima zi lucrata', async () => {
+    const workbook = await generatePontajExcel({
+      kind: 'peo',
+      month: 4,
+      year: 2026,
+      expert: {
+        id: 'expert-profile',
+        name: 'Expert Profil',
+        role: 'Rol fallback',
+        category: 'com',
+        norma: 8,
+        oreZi: 4,
+        positionInProject: 'Responsabil Informare si Comunicare',
+        beneficiary: 'Organizatie Beneficiar Test',
+        hourlyRate: 77.5,
+        saCodes: ['SA1.1'],
+      },
+      activities: [
+        { date: '2026-05-21', hours: 4, activityType: 'Activitate PEO', saCode: 'SA1.1', status: 'approved' },
+        { date: '2026-05-29', hours: 2, activityType: 'Activitate PEO finala', saCode: 'SA1.1', status: 'approved' },
+      ],
+      concurrentProjects: [],
+      concurrentTimesheetEntries: [],
+    });
+
+    const files = readXlsx(workbook.buffer);
+    const sheet = files.get('xl/worksheets/sheet1.xml')!.toString('utf8');
+
+    assert.match(cellXml(sheet, 'G9'), /Responsabil Informare si Comunicare/);
+    assert.match(cellXml(sheet, 'G10'), /Responsabil Informare si Comunicare/);
+    assert.match(cellXml(sheet, 'G11'), /Organizatie Beneficiar Test/);
+    assert.match(cellXml(sheet, 'G34'), /<v>77.5<\/v>/);
+    assert.match(cellXml(sheet, 'I34'), /<v>4<\/v>/);
+    assert.match(cellXml(sheet, 'D50'), /<v>46171<\/v>/);
+  });
+
   it('exporta descrierea extinsa a evenimentului in detaliile PEO consolidate', async () => {
     const workbook = await generatePontajExcel({
       kind: 'consolidated',

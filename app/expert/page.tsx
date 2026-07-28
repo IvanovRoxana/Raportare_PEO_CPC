@@ -199,6 +199,22 @@ function triggerDownload(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
+function financialHourlyRateStorageKey(month: number, year: number) {
+  return `financial-peo-hourly-rates-${year}-${String(month + 1).padStart(2, '0')}`;
+}
+
+function getStoredFinancialHourlyRate(expert: Expert, month: number, year: number) {
+  try {
+    const storedRates = window.localStorage.getItem(financialHourlyRateStorageKey(month, year));
+    const rates = storedRates ? JSON.parse(storedRates) as Record<string, string> : {};
+    const rawValue = rates[expert.id] ?? rates[expert.name];
+    const value = Number(rawValue?.replace(',', '.'));
+    return Number.isFinite(value) && value > 0 ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 
 function DashboardCalendar({
   projects,
@@ -692,7 +708,7 @@ export default function ExpertHomeDashboard() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(buildPontajExportPayload({
         kind: 'consolidated',
-        expert: currentExpert,
+        expert: { ...currentExpert, hourlyRate: getStoredFinancialHourlyRate(currentExpert, currentMonth, currentYear) },
         activities: peoActivities,
         concurrentProjects: activeConcurrentProjects,
         concurrentTimesheetEntries: expertConcurrentEntries,

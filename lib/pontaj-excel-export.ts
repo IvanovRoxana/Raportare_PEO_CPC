@@ -160,7 +160,9 @@ async function generatePeoWorkbook(payload: ExportPayload): Promise<GeneratedWor
   const detailRows = buildPeoDetailRows(payload.year, payload.month, grouped);
   const extraRows = Math.max(0, detailRows.length - daysInMonth);
   const dailyHours = getExpertDailyHours(payload.expert);
+  const cimDailyHours = getExpertCimDailyHours(payload.expert);
   const hourlyRate = getExpertHourlyRate(payload.expert);
+  const lastPeoWorkedDateSerial = getLastPeoWorkedDateSerial(payload.activities, payload.year, payload.month) ?? monthEndSerial;
 
   if (daysInMonth === 31) {
     sheetXml = insertPeoDay31Row(sheetXml);
@@ -172,7 +174,7 @@ async function generatePeoWorkbook(payload: ExportPayload): Promise<GeneratedWor
 
   sheetXml = setCell(sheetXml, 'G8', stringValue(payload.expert.name));
   sheetXml = setCell(sheetXml, 'G9', stringValue(getExpertPosition(payload.expert)));
-  sheetXml = setCell(sheetXml, 'G10', stringValue(payload.expert.category));
+  sheetXml = setCell(sheetXml, 'G10', stringValue(getExpertCategoryForExport(payload.expert)));
   sheetXml = setCell(sheetXml, 'G11', stringValue(payload.expert.beneficiary ?? 'CONFEDERATIA PATRONALA CONCORDIA'));
   sheetXml = setCell(sheetXml, 'G12', stringValue(getProjectTitle(payload.expert)));
 
@@ -189,15 +191,15 @@ async function generatePeoWorkbook(payload: ExportPayload): Promise<GeneratedWor
     sheetXml = setCell(sheetXml, `D${row}`, (hours > 0 || leaveCode) && activity ? activitySubactivity(activity) : null);
     sheetXml = setCell(sheetXml, `G${row}`, hourlyRate && (hours > 0 || leaveCode) ? hourlyRate : null);
     sheetXml = setCell(sheetXml, `H${row}`, leaveCode ?? (hours > 0 ? hours : null));
-    sheetXml = setCell(sheetXml, `I${row}`, detail?.isWorking ? 0 : null);
+    sheetXml = setCell(sheetXml, `I${row}`, detail?.isWorking ? Math.max(0, cimDailyHours - dailyHours) : null);
   }
 
   const lastDayRow = 13 + detailRows.length;
   sheetXml = setCell(sheetXml, `A${totalRow}`, 'NR. TOTAL DE ORE');
   sheetXml = setCell(sheetXml, `H${totalRow}`, { formula: `SUM(H14:H${lastDayRow})+COUNTIF(H14:H${lastDayRow},"CO")*${dailyHours}` });
   sheetXml = setCell(sheetXml, `I${totalRow}`, { formula: `SUM(I14:I${lastDayRow})` });
-  sheetXml = setCell(sheetXml, `D${totalRow + 5}`, monthEndSerial);
-  sheetXml = setCell(sheetXml, `D${totalRow + 9}`, monthEndSerial);
+  sheetXml = setCell(sheetXml, `D${totalRow + 5}`, lastPeoWorkedDateSerial);
+  sheetXml = setCell(sheetXml, `D${totalRow + 9}`, lastPeoWorkedDateSerial);
 
   files.set(sheetPath, Buffer.from(sheetXml, 'utf8'));
   files.set('xl/workbook.xml', Buffer.from(setFullCalcOnLoad(files.get('xl/workbook.xml')!.toString('utf8')), 'utf8'));
@@ -231,8 +233,10 @@ async function generateConsolidatedWorkbook(payload: ExportPayload): Promise<Gen
   }
   const detailEnd = peoSection.totalRow - 1;
   const dailyHours = getExpertDailyHours(payload.expert);
+  const cimDailyHours = getExpertCimDailyHours(payload.expert);
   const hourlyRate = getExpertHourlyRate(payload.expert);
   const monthEndSerial = excelSerial(payload.year, payload.month, daysInMonth);
+  const lastPeoWorkedDateSerial = getLastPeoWorkedDateSerial(payload.activities, payload.year, payload.month) ?? monthEndSerial;
   const summaryRows = hasGoodworks
     ? { concordia: 15, goodworks: 16, peo: 17, total: 18 }
     : { concordia: 15, peo: 16, total: 17 };
@@ -259,7 +263,7 @@ async function generateConsolidatedWorkbook(payload: ExportPayload): Promise<Gen
 
     sheetXml = setCell(sheetXml, `${col}13`, inMonth ? day : null);
     sheetXml = setCell(sheetXml, `${col}14`, inMonth ? WEEKDAYS_EN[new Date(payload.year, payload.month, day).getDay()] : null);
-    sheetXml = setCell(sheetXml, `${col}${summaryRows.concordia}`, isWorking && !hasLeave ? { formula: `MAX(0,8-SUM(${col}${hasGoodworks ? summaryRows.goodworks : summaryRows.peo}:${col}${summaryRows.peo}))` } : null);
+    sheetXml = setCell(sheetXml, `${col}${summaryRows.concordia}`, isWorking && !hasLeave ? { formula: `MAX(0,${cimDailyHours}-SUM(${col}${hasGoodworks ? summaryRows.goodworks : summaryRows.peo}:${col}${summaryRows.peo}))` } : null);
     if (hasGoodworks) {
       const goodworksCell = goodworksLeaveCode ?? (isWorking ? { formula: `SUMIFS($E$${goodworksSection!.startRow}:$E$${goodworksSection!.totalRow - 1},$A$${goodworksSection!.startRow}:$A$${goodworksSection!.totalRow - 1},"="&DATE(${payload.year},${payload.month + 1},${col}13))` } : null);
       sheetXml = setCell(sheetXml, `${col}${summaryRows.goodworks}`, goodworksCell);
@@ -271,7 +275,7 @@ async function generateConsolidatedWorkbook(payload: ExportPayload): Promise<Gen
     );
     sheetXml = setCell(sheetXml, `${col}${summaryRows.total}`, isWorking ? { formula: `SUM(${col}${summaryRows.concordia}:${col}${summaryRows.peo})` } : null);
   }
-  sheetXml = setTimesheetSummaryTotals(sheetXml, summaryRows, dailyHours, getGoodworksDailyHours(payload.concurrentProjects ?? []));
+  sheetXml = setTimesheetSummaryTotals(sheetXml, summaryRows, dailyHours, getGoodworksDailyHours(payload.concurrentProjects ?? []), cimDailyHours);
 
   if (goodworksSection) {
     for (let index = 0; index < goodworksSection.dayRows; index += 1) {
@@ -297,7 +301,7 @@ async function generateConsolidatedWorkbook(payload: ExportPayload): Promise<Gen
 
   sheetXml = setCell(sheetXml, `G${peoSection.headerRow - 5}`, stringValue(payload.expert.name));
   sheetXml = setCell(sheetXml, `G${peoSection.headerRow - 4}`, stringValue(getExpertPosition(payload.expert)));
-  sheetXml = setCell(sheetXml, `G${peoSection.headerRow - 3}`, stringValue(payload.expert.category));
+  sheetXml = setCell(sheetXml, `G${peoSection.headerRow - 3}`, stringValue(getExpertCategoryForExport(payload.expert)));
   sheetXml = setCell(sheetXml, `G${peoSection.headerRow - 2}`, stringValue(payload.expert.beneficiary ?? 'CONFEDERATIA PATRONALA CONCORDIA'));
   sheetXml = setCell(sheetXml, `G${peoSection.headerRow - 1}`, stringValue(getProjectTitle(payload.expert)));
 
@@ -318,7 +322,7 @@ async function generateConsolidatedWorkbook(payload: ExportPayload): Promise<Gen
       `AM${row}`,
       detail?.isWorking
         ? {
-            formula: `IF(OR(AL${row}="CO",AL${row}="CM"),AL${row},IF(COUNTIF(AO:AO,A${row})=0,0,(8-SUMIF(AO:AO,A${row},AL:AL))/COUNTIF(AO:AO,A${row})))`,
+            formula: `IF(OR(AL${row}="CO",AL${row}="CM"),AL${row},IF(COUNTIF(AO:AO,A${row})=0,0,(${cimDailyHours}-SUMIF(AO:AO,A${row},AL:AL))/COUNTIF(AO:AO,A${row})))`,
           }
         : null,
     );
@@ -343,11 +347,11 @@ async function generateConsolidatedWorkbook(payload: ExportPayload): Promise<Gen
     formula: `SUM(AL${peoSection.startRow}:AL${detailEnd})+COUNTIF(AL${peoSection.startRow}:AL${detailEnd},"CO")*${dailyHours}`,
   });
   sheetXml = setCell(sheetXml, `AM${peoSection.totalRow}`, {
-    formula: `SUM(AM${peoSection.startRow}:AM${detailEnd})+COUNTIF(AM${peoSection.startRow}:AM${detailEnd},"CO")*${Math.max(0, 8 - dailyHours)}`,
+    formula: `SUM(AM${peoSection.startRow}:AM${detailEnd})+COUNTIF(AM${peoSection.startRow}:AM${detailEnd},"CO")*${Math.max(0, cimDailyHours - dailyHours)}`,
   });
   sheetXml = setCell(sheetXml, `D${peoSection.totalRow + 3}`, stringValue(payload.expert.name));
-  sheetXml = setCell(sheetXml, `D${peoSection.totalRow + 5}`, monthEndSerial);
-  sheetXml = setCell(sheetXml, `D${peoSection.totalRow + 9}`, monthEndSerial);
+  sheetXml = setCell(sheetXml, `D${peoSection.totalRow + 5}`, lastPeoWorkedDateSerial);
+  sheetXml = setCell(sheetXml, `D${peoSection.totalRow + 9}`, lastPeoWorkedDateSerial);
 
   files.set(sheetPath, Buffer.from(sheetXml, 'utf8'));
   files.set('xl/workbook.xml', Buffer.from(setFullCalcOnLoad(files.get('xl/workbook.xml')!.toString('utf8')), 'utf8'));
@@ -395,8 +399,9 @@ function setTimesheetSummaryTotals(
   rows: { concordia: number; goodworks?: number; peo: number; total: number },
   peoDailyHours: number,
   goodworksDailyHours: number,
+  cimDailyHours = 8,
 ) {
-  const concordiaDailyHours = Math.max(0, 8 - peoDailyHours - goodworksDailyHours);
+  const concordiaDailyHours = Math.max(0, cimDailyHours - peoDailyHours - goodworksDailyHours);
   sheetXml = setTimesheetRowTotals(sheetXml, rows.concordia, concordiaDailyHours);
   if (rows.goodworks) {
     sheetXml = setTimesheetRowTotals(sheetXml, rows.goodworks, goodworksDailyHours);
@@ -971,6 +976,10 @@ function getExpertDailyHours(expert: Partial<Expert>) {
   return Number(expert.oreZi ?? expert.dailyHours ?? expert.norma ?? 8) || 8;
 }
 
+function getExpertCimDailyHours(expert: Partial<Expert>) {
+  return Number(expert.norma ?? 8) || 8;
+}
+
 function getExpertHourlyRate(expert: Partial<Expert> & { hourlyRate?: number | string }) {
   const value = typeof expert.hourlyRate === 'string'
     ? Number(expert.hourlyRate.replace(',', '.'))
@@ -980,6 +989,26 @@ function getExpertHourlyRate(expert: Partial<Expert> & { hourlyRate?: number | s
 
 function getExpertPosition(expert: Partial<Expert>) {
   return expert.positionInProject || expert.role || '';
+}
+
+function getExpertCategoryForExport(expert: Partial<Expert>) {
+  return getExpertPosition(expert);
+}
+
+function getLastPeoWorkedDateSerial(activities: Partial<Activity>[], year: number, month: number) {
+  const lastDate = activities
+    .filter((activity) => {
+      if (!activity.date || (Number(activity.hours) || 0) <= 0) return false;
+      const [activityYear, activityMonth] = activity.date.split('-').map(Number);
+      return activityYear === year && activityMonth === month + 1;
+    })
+    .map((activity) => activity.date!)
+    .sort()
+    .at(-1);
+
+  if (!lastDate) return null;
+  const [dateYear, dateMonth, dateDay] = lastDate.split('-').map(Number);
+  return excelSerial(dateYear, dateMonth - 1, dateDay);
 }
 
 function getProjectTitle(expert: Partial<Expert>) {
