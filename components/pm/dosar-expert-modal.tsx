@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,6 +12,7 @@ import {
   CheckCircle,
   Download,
   Eye,
+  FileSpreadsheet,
   FileText,
   Loader2,
   MessageSquare,
@@ -22,18 +23,27 @@ import {
 } from 'lucide-react';
 import type {
   Activity,
+  ConcurrentProject,
+  ConcurrentProjectTimesheetEntry,
   Deliverable,
   DocumentMetadata,
   Expert,
   Neconformitate,
   ReportStatus,
   VerificationData,
+  PmClarificationThread,
 } from '@/lib/types';
 import { generateOpisDocument, downloadOpis } from '@/lib/opis-generator';
 import { getSecureDocumentUrl } from '@/lib/document-retrieval';
 import { getDocumentAuditTitle } from '@/lib/document-sharing';
 import { dedupeDeliverablesBySignature } from '@/lib/deliverable-deduplication';
 import { GDPR_CONCLUSION_OPTIONS, getGdprDeliverableRequirementLabel, getGdprMinimumEvidenceLabels, getGdprTemplate, parseGdprMetaJson, validateGdprActivityDraft } from '@/lib/gdpr-reporting';
+import { buildAnexa10ReportModel } from '@/lib/activity-report/build-report-model';
+import { buildAnexa10DocxBlob, buildAnexa10DocxFilename } from '@/lib/activity-report/docx-export';
+import { buildPontajExportPayload } from '@/lib/pontaj-export-payload';
+import { buildOpisXlsxBlob, buildOpisXlsxFilename } from '@/lib/opis-xls-export';
+import { buildPmDossierPdfBlob, buildPmDossierPdfFilename } from '@/lib/pm-dossier-export';
+import { clarificationStatusLabel } from '@/lib/pm-clarification-flow';
 
 interface DosarExpertModalProps {
   open: boolean;
@@ -53,6 +63,10 @@ interface DosarExpertModalProps {
   onApproveMonth?: () => Promise<void> | void;
   onApproveActivity?: (activities: Activity[]) => Promise<void> | void;
   onRequestActivityClarification?: (activities: Activity[]) => Promise<void> | void;
+  clarificationThreads?: PmClarificationThread[];
+  initialFocus?: { activityId?: string; documentId?: string; issueType?: string };
+  concurrentProjects?: ConcurrentProject[];
+  concurrentTimesheetEntries?: ConcurrentProjectTimesheetEntry[];
   projectCode?: string;
   projectTitle?: string;
 }
@@ -150,11 +164,19 @@ export function DosarExpertModal({
   onApproveMonth,
   onApproveActivity,
   onRequestActivityClarification,
+  clarificationThreads = [],
+  initialFocus,
+  concurrentProjects = [],
+  concurrentTimesheetEntries = [],
   projectCode = 'PEO',
   projectTitle = 'Program de Educatie si Ocupare',
 }: DosarExpertModalProps) {
   const [activeTab, setActiveTab] = useState('sectiunea-a');
   const [isGeneratingOpis, setIsGeneratingOpis] = useState(false);
+  const [isGeneratingOpisXls, setIsGeneratingOpisXls] = useState(false);
+  const [isGeneratingRa, setIsGeneratingRa] = useState(false);
+  const [isGeneratingPontaj, setIsGeneratingPontaj] = useState(false);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [reviewAction, setReviewAction] = useState<ReviewAction | null>(null);
   const [activityActionId, setActivityActionId] = useState<string | null>(null);
   const [documentActionId, setDocumentActionId] = useState<string | null>(null);
@@ -175,6 +197,21 @@ export function DosarExpertModal({
         minute: '2-digit',
       })
     : null;
+
+  useEffect(() => {
+    if (!open || !initialFocus) return;
+    setActiveTab('sectiunea-a');
+    window.setTimeout(() => {
+      const targetId = initialFocus.activityId
+        ? `dossier-activity-${initialFocus.activityId}`
+        : initialFocus.documentId
+          ? `dossier-document-${initialFocus.documentId}`
+          : initialFocus.issueType
+            ? 'dossier-problems'
+            : null;
+      if (targetId) document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 150);
+  }, [initialFocus, open]);
 
   // Calculate stats
   const stats = useMemo(() => {
@@ -419,6 +456,83 @@ export function DosarExpertModal({
     }
   };
 
+  const handleDownloadOpisXls = () => {
+    if (!expert) return;
+    setIsGeneratingOpisXls(true);
+    try {
+      const blob = buildOpisXlsxBlob({
+        experts: [expert],
+        activities,
+        month,
+        year,
+        projectCode,
+      });
+      saveBlob(blob, buildOpisXlsxFilename(expert.name, month, year));
+    } finally {
+      setIsGeneratingOpisXls(false);
+    }
+  };
+
+  const handleDownloadRa = async () => {
+    if (!expert) return;
+    setIsGeneratingRa(true);
+    try {
+      const model = buildAnexa10ReportModel({ expert, activities, month, year });
+      const blob = await buildAnexa10DocxBlob(model);
+      saveBlob(blob, buildAnexa10DocxFilename(model));
+    } finally {
+      setIsGeneratingRa(false);
+    }
+  };
+
+  const handleDownloadPontaj = async () => {
+    if (!expert) return;
+    setIsGeneratingPontaj(true);
+    try {
+      const response = await fetch('/api/export/pontaj', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(buildPontajExportPayload({
+          kind: 'peo',
+          expert,
+          activities,
+          concurrentProjects,
+          concurrentTimesheetEntries,
+          month,
+          year,
+        })),
+      });
+      if (!response.ok) throw new Error(`Exportul pontajului a esuat. Status HTTP: ${response.status}`);
+      const blob = await response.blob();
+      const disposition = response.headers.get('Content-Disposition') || '';
+      const match = disposition.match(/filename\*=UTF-8''([^;]+)/);
+      saveBlob(blob, match?.[1] ? decodeURIComponent(match[1]) : `Pontaj_PEO_${expert.name}_${monthName}_${year}.xlsx`);
+    } catch (error) {
+      setDocumentError(error instanceof Error ? error.message : 'Exportul pontajului a esuat.');
+    } finally {
+      setIsGeneratingPontaj(false);
+    }
+  };
+
+  const handleDownloadPdf = () => {
+    if (!expert) return;
+    setIsGeneratingPdf(true);
+    try {
+      const blob = buildPmDossierPdfBlob({
+        expert,
+        activities,
+        neconformitati,
+        clarifications: clarificationThreads,
+        month,
+        year,
+        reportStatus,
+      });
+      saveBlob(blob, buildPmDossierPdfFilename(expert, month, year));
+    } finally {
+      setIsGeneratingPdf(false);
+    }
+  };
+
   const runActivityAction = async (
     action: 'approve' | 'clarification',
     group: DossierActivityGroup,
@@ -453,6 +567,25 @@ export function DosarExpertModal({
             {monthName} {year} — {projectCode}
           </DialogDescription>
         </DialogHeader>
+
+        <div className="flex flex-wrap gap-2 rounded-lg border bg-slate-50 p-3">
+          <Button variant="outline" size="sm" onClick={handleDownloadRa} disabled={isGeneratingRa}>
+            {isGeneratingRa ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+            Descarca RA
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleDownloadPontaj} disabled={isGeneratingPontaj}>
+            {isGeneratingPontaj ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}
+            Descarca pontaj
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleDownloadPdf} disabled={isGeneratingPdf}>
+            {isGeneratingPdf ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+            Descarca PDF
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleDownloadOpisXls} disabled={isGeneratingOpisXls}>
+            {isGeneratingOpisXls ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}
+            OPIS XLS
+          </Button>
+        </div>
 
         {reportStatus && (
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
@@ -560,6 +693,45 @@ export function DosarExpertModal({
           <ScrollArea className="mt-3 min-h-0 flex-1 overflow-y-auto pr-3">
             {/* Section A - Activities */}
             <TabsContent value="sectiunea-a" className="mt-0 space-y-4">
+              <Card id="dossier-problems" className={initialFocus?.issueType === 'problems' ? 'border-amber-300' : ''}>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <AlertTriangle className="h-4 w-4 text-amber-600" />
+                    Probleme si clarificari
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {clarificationThreads.length === 0 && neconformitati.length === 0 ? (
+                    <div className="rounded-md border bg-slate-50 p-3 text-xs text-slate-500">
+                      Nu exista clarificari sau neconformitati inregistrate pentru dosarul curent.
+                    </div>
+                  ) : null}
+                  {clarificationThreads.map((thread) => (
+                    <div key={thread.id} className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-semibold">{clarificationStatusLabel(thread.status)}</span>
+                        <Badge variant={thread.status === 'resolved' ? 'secondary' : 'outline'}>{thread.targetType}</Badge>
+                      </div>
+                      <p className="mt-2 leading-5">{thread.pmMessage}</p>
+                      {thread.expertResponse ? (
+                        <p className="mt-2 rounded bg-white/70 p-2 text-amber-950">Raspuns expert: {thread.expertResponse}</p>
+                      ) : null}
+                      <div className="mt-2 text-[10px] text-amber-800">
+                        Ceruta: {thread.requestedAt ? new Date(thread.requestedAt).toLocaleString('ro-RO') : 'data lipsa'}
+                        {thread.answeredAt ? ` / raspuns: ${new Date(thread.answeredAt).toLocaleString('ro-RO')}` : ''}
+                        {thread.resolvedAt ? ` / rezolvata: ${new Date(thread.resolvedAt).toLocaleString('ro-RO')}` : ''}
+                      </div>
+                    </div>
+                  ))}
+                  {neconformitati.filter((item) => !item.resolved).map((item) => (
+                    <div key={item.id} className="rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-900">
+                      <Badge variant="destructive" className="mb-2">{item.type}</Badge>
+                      <div>{item.description}</div>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+
               {/* Activities by Type */}
               <Card>
                 <CardHeader className="pb-2">
@@ -590,7 +762,7 @@ export function DosarExpertModal({
                               const clarificationActionId = `clarification-${group.key}`;
 
                               return (
-                                <div key={group.key} className="rounded-lg border border-slate-200 bg-white p-3 text-xs shadow-sm">
+                                <div id={`dossier-activity-${group.representative.id}`} key={group.key} className="rounded-lg border border-slate-200 bg-white p-3 text-xs shadow-sm">
                                   <div className="flex justify-between items-start gap-3">
                                   <div className="min-w-0 flex-1">
                                     <div className="flex gap-2">
@@ -603,17 +775,50 @@ export function DosarExpertModal({
                                       </p>
                                     )}
                                     {(group.deliverables.length || 0) > 0 && (
-                                      <div className="mt-1 flex flex-wrap gap-1 pl-12">
-                                        {group.deliverables.slice(0, 3).map((deliverable) => (
-                                          <Badge key={deliverable.id || deliverable.fileName} variant="secondary" className="max-w-[220px] truncate text-[10px]">
-                                            {getDeliverableTitle(deliverable)}
-                                          </Badge>
-                                        ))}
-                                        {group.deliverables.length > 3 && (
-                                          <Badge variant="outline" className="text-[10px]">
-                                            +{group.deliverables.length - 3}
-                                          </Badge>
-                                        )}
+                                      <div className="mt-2 space-y-1 pl-12">
+                                        {group.deliverables.map((deliverable, deliverableIndex) => {
+                                          const dossierDeliverable = deliverable as DossierDeliverable;
+                                          const deliverableKey = getDeliverableKey(dossierDeliverable, deliverableIndex);
+                                          const hasSource = hasDeliverableSource(dossierDeliverable);
+                                          const isOpening = documentActionId === `open-${deliverableKey}`;
+                                          const isDownloading = documentActionId === `download-${deliverableKey}`;
+                                          const fileName = getDeliverableFileName(deliverable);
+
+                                          return (
+                                            <div
+                                              id={deliverable.documentId ? `dossier-document-${deliverable.documentId}` : undefined}
+                                              key={deliverable.id || deliverable.fileName || deliverableIndex}
+                                              className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-slate-50 px-2 py-1.5"
+                                            >
+                                              <div className="min-w-0">
+                                                <div className="truncate text-[11px] font-medium text-slate-800">{fileName}</div>
+                                                <div className="truncate text-[10px] text-slate-500">Titlu detectat: {getDeliverableTitle(deliverable)}</div>
+                                              </div>
+                                              <div className="flex shrink-0 gap-1">
+                                                <Button
+                                                  variant="outline"
+                                                  size="sm"
+                                                  className="h-7 px-2 text-[10px]"
+                                                  onClick={() => openDeliverable(dossierDeliverable, deliverableIndex)}
+                                                  disabled={!hasSource || documentActionId !== null}
+                                                >
+                                                  {isOpening ? <Loader2 className="h-3 w-3 animate-spin" /> : <Eye className="h-3 w-3" />}
+                                                  Deschide
+                                                </Button>
+                                                <Button
+                                                  variant="outline"
+                                                  size="sm"
+                                                  className="h-7 px-2 text-[10px]"
+                                                  onClick={() => downloadDeliverable(dossierDeliverable, deliverableIndex)}
+                                                  disabled={!hasSource || documentActionId !== null}
+                                                >
+                                                  {isDownloading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
+                                                  Descarca
+                                                </Button>
+                                              </div>
+                                            </div>
+                                          );
+                                        })}
                                       </div>
                                     )}
                                     {group.representative.gdprTemplateCode && (

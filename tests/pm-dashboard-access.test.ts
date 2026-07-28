@@ -154,14 +154,17 @@ test('summary PM calculeaza statusuri, alerte titlu, livrabile comune si cross a
     { id: 'e2', name: 'Expert 2', role: 'Expert/PM', category: 'gt', hasPmAccess: true, isActive: true },
   ] as Expert[];
   const activities = [
-    { id: 'a1', expertId: 'e1', date: '2026-05-04', title: 'Atelier GT', activityType: 'Eveniment', hours: 4 },
+    { id: 'a1', expertId: 'e1', date: '2026-05-04', title: 'Atelier GT', activityType: 'Eveniment', hours: 4, status: 'sent', pmNotes: 'Clarifica titlul livrabilului.' },
     { id: 'a2', expertId: 'e2', date: '2026-05-04', title: 'Atelier GT', activityType: 'Eveniment', hours: 4 },
   ] as Activity[];
 
   const summary = buildPmDashboardSummary({
     experts: testExperts,
     activities,
-    reportStatuses: [{ id: 's1', expertId: 'e2', month: 4, year: 2026, status: 'approved' }],
+    reportStatuses: [
+      { id: 's1', expertId: 'e1', month: 4, year: 2026, status: 'clarifications' },
+      { id: 's2', expertId: 'e2', month: 4, year: 2026, status: 'approved' },
+    ],
     documents: [{
       id: 'd1',
       s3Key: 'documents/d1.pdf',
@@ -177,11 +180,14 @@ test('summary PM calculeaza statusuri, alerte titlu, livrabile comune si cross a
   });
 
   assert.equal(summary.totalExperts, 2);
-  assert.equal(summary.statusCounts.draft, 1);
+  assert.equal(summary.statusCounts.clarifications, 1);
   assert.equal(summary.statusCounts.approved, 1);
   assert.equal(summary.titleIssues, 1);
   assert.equal(summary.pendingSharedDeliverables, 1);
   assert.equal(summary.crossAlignmentIssues, 1);
+  assert.equal(summary.documentAlertsCount, 2);
+  assert.equal(summary.openClarificationsCount, 1);
+  assert.equal(summary.problemCount, 4);
 });
 
 test('checkCrossAlignment detecteaza activitati similare intre experti diferiti', () => {
