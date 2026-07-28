@@ -68,6 +68,9 @@ export function PmMonthlyStatusTable({
                 row.hasMonthlyNormIssue ? 'norma lunara' : null,
                 row.hasProjectNormIssue ? 'norma proiect' : null,
                 row.missingActivityDays.length > 0 ? `${row.missingActivityDays.length} zile lipsa` : null,
+                row.activityCount > 0 && row.missingDeliverableActivityCount > 0
+                  ? `${row.missingDeliverableActivityCount}/${row.activityCount} activitati fara livrabil`
+                  : null,
                 row.blockedDays.length > 0 ? `${row.blockedDays.length} zile blocate` : null,
                 row.adminInterventions > 0 ? `${row.adminInterventions} interventii admin` : null,
               ].filter((issue): issue is string => Boolean(issue));

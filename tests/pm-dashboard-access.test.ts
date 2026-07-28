@@ -11,6 +11,7 @@ import {
   mergeRolesWithExpertProfile,
   resolveDashboardAccess,
 } from '../lib/pm-dashboard.ts';
+import { buildDashboardComplianceRows } from '../lib/reporting-dashboard.ts';
 import { buildPmClarificationThreads } from '../lib/pm-clarification-flow.ts';
 import {
   buildCollaborationExpertOptions,
@@ -230,6 +231,22 @@ test('clarificarile PM pentru documente title_mismatch apar ca fire document', (
   assert.equal(threads[0].targetId, 'd1');
   assert.equal(threads[0].status, 'requested');
   assert.equal(threads[0].pmMessage, 'Te rog clarifica titlul documentului.');
+});
+
+test('randul PM numara activitatile inregistrate cu livrabile lipsa', () => {
+  const rows = buildDashboardComplianceRows({
+    experts: [{ id: 'e1', name: 'Expert 1', role: 'Expert', category: 'gt', isActive: true, dailyHours: 8 }] as Expert[],
+    activities: [
+      { id: 'a1', expertId: 'e1', date: '2026-05-04', title: 'Activitate cu livrabil', activityType: 'Raport', hours: 4, deliverables: [{ id: 'd1', fileName: 'raport.pdf', deliverableType: 'Raport' }] },
+      { id: 'a2', expertId: 'e1', date: '2026-05-05', title: 'Activitate fara livrabil', activityType: 'Raport', hours: 4, deliverables: [] },
+    ] as Activity[],
+    auditLogs: [],
+    month: 4,
+    year: 2026,
+  });
+
+  assert.equal(rows[0].activityCount, 2);
+  assert.equal(rows[0].missingDeliverableActivityCount, 1);
 });
 
 test('checkCrossAlignment detecteaza activitati similare intre experti diferiti', () => {
