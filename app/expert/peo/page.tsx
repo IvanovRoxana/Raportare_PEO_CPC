@@ -76,9 +76,11 @@ import {
 } from '@/lib/pontaj-rules';
 import {
   buildSubmittedActivitiesForEdit,
+  executeGroupedActivityDeletion,
   getActivityGroupMembers,
   getActivityGroupMembersForSelectedDates,
   mergeActivityGroupForEdit,
+  planGroupedActivityDeletion,
   planGroupedActivityEdit,
   type ActivityEditScope,
 } from '@/lib/activity-edit';
@@ -125,6 +127,7 @@ interface SubmitReadinessItem {
 
 type DeletedActivityUndo = {
   activity: Activity;
+  updatedActivities: Activity[];
 };
 
 type PendingGroupedActivitySave = {
@@ -1372,10 +1375,19 @@ function ExpertDashboardContent() {
     }
 
     try {
-      await removeActivity(activityId);
+      const deletionPlan = activityToDelete
+        ? planGroupedActivityDeletion(activityToDelete, activities)
+        : { updateActivities: [], previousActivities: [] };
+      await executeGroupedActivityDeletion(
+        activityId,
+        deletionPlan,
+        updateActivity,
+        removeActivity,
+      );
       if (activityToDelete) {
         setDeletedActivityUndo({
           activity: activityToDelete,
+          updatedActivities: deletionPlan.previousActivities,
         });
       }
       if (editingActivity?.id === activityId) {
@@ -1455,6 +1467,9 @@ function ExpertDashboardContent() {
     setIsUndoingDelete(true);
     try {
       await createActivity(toRestoredActivityInput(deletedActivityUndo.activity));
+      await Promise.all(
+        deletedActivityUndo.updatedActivities.map((activity) => updateActivity(activity.id, activity)),
+      );
       setDeletedActivityUndo(null);
       await refreshActivities();
     } catch (error) {

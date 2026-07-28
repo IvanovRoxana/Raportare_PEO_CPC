@@ -89,7 +89,7 @@ function getMonthlySocialMediaDeliverableSignature(activity: Activity) {
   ].join('|');
 }
 
-function inferLegacyActivityPeriodGroups(activities: Activity[]) {
+export function inferLegacyActivityPeriodGroups(activities: Activity[]) {
   const groupedBySignature = new Map<string, Activity[]>();
 
   activities.forEach((activity) => {
