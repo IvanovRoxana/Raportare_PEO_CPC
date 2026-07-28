@@ -804,9 +804,9 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
           ) : (
             mode === 'timesheets' ? (
               <TooltipProvider delayDuration={150}>
-                <table className="w-full min-w-[1280px] table-fixed border-collapse border border-slate-300 text-[10px] leading-tight">
+                <table className="w-full min-w-[1500px] table-fixed border-collapse border border-slate-300 text-[10px] leading-tight">
                   <colgroup>
-                    {[3.5, 8, 13, 7, 6, 13, 6, 5, 12.5, 8, 5, 4.5, 5, 9.5].map((width, index) => <col key={index} style={{ width: `${width}%` }} />)}
+                    {[3.5, 14, 12, 6, 5, 12, 5.5, 4.5, 11, 7, 4.5, 4, 4.5, 6.5].map((width, index) => <col key={index} style={{ width: `${width}%` }} />)}
                   </colgroup>
                   <thead><tr className="text-center text-[9px] font-semibold uppercase leading-tight text-white">
                     <th className="border-r border-white/30 bg-emerald-800 px-1 py-2">NR. CRT.</th>
@@ -828,9 +828,9 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
                     <tr key={`${row.expertId ?? 'missing'}-${row.name}`} className={`border-b border-slate-300 align-middle hover:bg-emerald-50 ${rowIndex % 2 ? 'bg-emerald-50/40' : 'bg-white'}`}>
                       <td className="border-r border-slate-300 px-1 py-1 text-center font-semibold tabular-nums">{rowIndex + 1}</td>
                       <td className="border-r border-slate-300 px-1 py-1">
-                        <div className="flex min-w-0 items-center gap-0.5">
+                        <div className="flex min-w-0 items-start gap-0.5">
                           <ConflictDot row={row} />
-                          <span className="min-w-0 flex-1 truncate font-medium" title={row.name}>{row.name}</span>
+                          <span className="min-w-0 flex-1 whitespace-normal break-words font-medium leading-snug" title={row.name}>{row.name}</span>
                           <Button size="icon" variant="ghost" className="h-5 w-5 shrink-0" title={`Editeaza norma pentru ${row.name}`} aria-label={`Editeaza norma pentru ${row.name}`} onClick={() => editNormFromTimesheet(row)}><ShieldCheck className="h-3 w-3" /></Button>
                           <Button size="icon" variant="ghost" className="h-5 w-5 shrink-0" title={`Exportă template pentru ${row.name}`} aria-label={`Exportă template pentru ${row.name}`} disabled={!row.expertId || exporting !== null} onClick={() => exportExpertTemplate(row)}>{exporting === row.expertId ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileText className="h-3 w-3" />}</Button>
                         </div>

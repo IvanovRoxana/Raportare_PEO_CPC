@@ -11,6 +11,7 @@ import {
   mergeRolesWithExpertProfile,
   resolveDashboardAccess,
 } from '../lib/pm-dashboard.ts';
+import { buildPmClarificationThreads } from '../lib/pm-clarification-flow.ts';
 import {
   buildCollaborationExpertOptions,
   canAccessExpertId,
@@ -19,7 +20,7 @@ import {
   filterReportStatusesForScope,
   resolveDataAccessScope,
 } from '../lib/access-control.ts';
-import type { Activity, DocumentMetadata, Expert, ReportStatus } from '../lib/types.ts';
+import type { Activity, AuditLog, DocumentMetadata, Expert, ReportStatus } from '../lib/types.ts';
 
 const experts = JSON.parse(readFileSync(new URL('../data/import/experts.json', import.meta.url), 'utf8')) as Expert[];
 
@@ -162,7 +163,7 @@ test('summary PM calculeaza statusuri, alerte titlu, livrabile comune si cross a
     experts: testExperts,
     activities,
     reportStatuses: [
-      { id: 's1', expertId: 'e1', month: 4, year: 2026, status: 'clarifications' },
+      { id: 's1', expertId: 'e1', month: 4, year: 2026, status: 'clarifications', pmNotes: 'Clarifica documentul d1.' },
       { id: 's2', expertId: 'e2', month: 4, year: 2026, status: 'approved' },
     ],
     documents: [{
@@ -186,8 +187,47 @@ test('summary PM calculeaza statusuri, alerte titlu, livrabile comune si cross a
   assert.equal(summary.pendingSharedDeliverables, 1);
   assert.equal(summary.crossAlignmentIssues, 1);
   assert.equal(summary.documentAlertsCount, 2);
-  assert.equal(summary.openClarificationsCount, 1);
-  assert.equal(summary.problemCount, 4);
+  assert.equal(summary.openClarificationsCount, 2);
+  assert.equal(summary.problemCount, 5);
+});
+
+test('clarificarile PM pentru documente title_mismatch apar ca fire document', () => {
+  const threads = buildPmClarificationThreads({
+    expert: { id: 'e1', name: 'Expert 1', role: 'Expert', category: 'gt', isActive: true } as Expert,
+    activities: [],
+    documents: [{
+      id: 'd1',
+      s3Key: 'documents/d1.pdf',
+      originalFileName: 'd1.pdf',
+      mimeType: 'application/pdf',
+      fileSize: 1,
+      uploadedByExpertId: 'e1',
+      uploadDate: '2026-05-04',
+      titleMatch: false,
+      titleCheckStatus: 'mismatch',
+    }] as DocumentMetadata[],
+    auditLogs: [{
+      id: 'audit-1',
+      actionType: 'pm_clarification_requested',
+      actorId: 'pm',
+      actorName: 'PM',
+      affectedExpertId: 'e1',
+      fieldName: 'document:d1',
+      oldValue: '',
+      newValue: 'Te rog clarifica titlul documentului.',
+      month: 4,
+      year: 2026,
+      createdAt: '2026-05-05T10:00:00.000Z',
+    }] as AuditLog[],
+    month: 4,
+    year: 2026,
+  });
+
+  assert.equal(threads.length, 1);
+  assert.equal(threads[0].targetType, 'document');
+  assert.equal(threads[0].targetId, 'd1');
+  assert.equal(threads[0].status, 'requested');
+  assert.equal(threads[0].pmMessage, 'Te rog clarifica titlul documentului.');
 });
 
 test('checkCrossAlignment detecteaza activitati similare intre experti diferiti', () => {

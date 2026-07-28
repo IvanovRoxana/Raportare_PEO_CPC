@@ -4,9 +4,12 @@ import {
   buildSubmittedActivitiesForEdit,
   compileActivitiesByPeriodGroup,
   dedupeDeliverables,
+  executeGroupedActivityDeletion,
   getActivityGroupMembers,
   getActivityGroupMembersForSelectedDates,
+  mergeActivityGroupForEdit,
   prepareExistingActivityUpdate,
+  planGroupedActivityDeletion,
   planGroupedActivityEdit,
   splitActivityEditPayload,
 } from '../lib/activity-edit.ts';
@@ -474,6 +477,132 @@ test('grupurile legacy cu workingGroupId activity-period sunt editate ca grup mo
 
   assert.ok(submitted.every((item) => item.periodGroupId === legacyGroupId));
   assert.equal(submitted.flatMap((item) => item.deliverables ?? []).length, 1);
+});
+
+test('activitatile legacy fara identificator sunt deschise si normalizate ca grup la editare', () => {
+  const groupMembers = [
+    activity('legacy-day-1', {
+      date: '2026-06-04',
+      createdAt: '2026-06-20T10:00:00.000Z',
+    }),
+    activity('legacy-day-2', {
+      date: '2026-06-05',
+      createdAt: '2026-06-20T10:00:05.000Z',
+    }),
+  ];
+
+  assert.deepEqual(
+    getActivityGroupMembers(groupMembers[0], groupMembers).map((item) => item.id),
+    ['legacy-day-1', 'legacy-day-2'],
+  );
+
+  const merged = mergeActivityGroupForEdit(groupMembers[0], groupMembers);
+  assert.equal(merged.groupMembers.length, 2);
+  assert.equal(merged.activity.periodGroupId, 'activity-period:legacy-legacy-day-1');
+
+  const submitted = buildSubmittedActivitiesForEdit(
+    merged.activity,
+    [merged.activity],
+    groupMembers.map((item) => item.date),
+    { '2026-06-04': '6', '2026-06-05': '6' },
+    groupMembers,
+    'expert-1',
+    (value, fallback) => String(value ?? fallback),
+    'series',
+  );
+  assert.ok(submitted.every((item) => (
+    item.periodGroupId === 'activity-period:legacy-legacy-day-1'
+    && item.workingGroupId === 'activity-period:legacy-legacy-day-1'
+  )));
+});
+
+test('stergerea directa a holderului muta livrabilul pe prima zi ramasa', () => {
+  const periodGroupId = 'activity-period:period-delete';
+  const sharedDeliverable = deliverable('deliverable-delete', { documentId: 'document-delete' });
+  const groupMembers = [
+    activity('activity-4', {
+      date: '2026-06-04',
+      periodGroupId,
+      deliverables: [sharedDeliverable],
+    }),
+    activity('activity-5', {
+      date: '2026-06-05',
+      periodGroupId,
+      deliverables: [],
+    }),
+  ];
+
+  const plan = planGroupedActivityDeletion(groupMembers[0], groupMembers);
+
+  assert.equal(plan.updateActivities.length, 1);
+  assert.equal(plan.updateActivities[0].id, 'activity-5');
+  assert.equal(plan.updateActivities[0].deliverables?.[0]?.documentId, 'document-delete');
+  assert.deepEqual(plan.previousActivities, [groupMembers[1]]);
+});
+
+test('stergerea directa nu dubleaza livrabilul deja pastrat in grup', () => {
+  const periodGroupId = 'activity-period:period-delete';
+  const firstCopy = deliverable('deliverable-1', { documentId: 'document-shared' });
+  const secondCopy = deliverable('deliverable-2', { documentId: 'document-shared' });
+  const groupMembers = [
+    activity('activity-4', { date: '2026-06-04', periodGroupId, deliverables: [firstCopy] }),
+    activity('activity-5', { date: '2026-06-05', periodGroupId, deliverables: [secondCopy] }),
+  ];
+
+  const plan = planGroupedActivityDeletion(groupMembers[0], groupMembers);
+
+  assert.deepEqual(plan.updateActivities, []);
+  assert.deepEqual(plan.previousActivities, []);
+});
+
+test('stergerea group-aware actualizeaza holderul inainte sa stearga activitatea', async () => {
+  const events: string[] = [];
+  const previous = activity('activity-5', { deliverables: [] });
+  const updated = activity('activity-5', {
+    deliverables: [deliverable('deliverable-1', { documentId: 'document-1' })],
+  });
+
+  await executeGroupedActivityDeletion(
+    'activity-4',
+    { updateActivities: [updated], previousActivities: [previous] },
+    async (id) => {
+      events.push(`update:${id}`);
+    },
+    async (id) => {
+      events.push(`delete:${id}`);
+    },
+  );
+
+  assert.deepEqual(events, ['update:activity-5', 'delete:activity-4']);
+});
+
+test('stergerea group-aware restaureaza holderul daca stergerea esueaza', async () => {
+  const events: string[] = [];
+  const previous = activity('activity-5', { deliverables: [] });
+  const updated = activity('activity-5', {
+    deliverables: [deliverable('deliverable-1', { documentId: 'document-1' })],
+  });
+
+  await assert.rejects(
+    executeGroupedActivityDeletion(
+      'activity-4',
+      { updateActivities: [updated], previousActivities: [previous] },
+      async (id, updates) => {
+        events.push(`update:${id}:${updates.deliverables?.length ?? 0}`);
+      },
+      async (id) => {
+        events.push(`delete:${id}`);
+        throw new Error('delete failed');
+      },
+    ),
+    /delete failed/,
+  );
+
+  assert.deepEqual(events, [
+    'update:activity-5:1',
+    'delete:activity-4',
+    'update:activity-5:0',
+  ]);
 });
 
 test('sincronizarea livrabilelor actualizeaza livrabilul existent fara sa il recreeze', () => {

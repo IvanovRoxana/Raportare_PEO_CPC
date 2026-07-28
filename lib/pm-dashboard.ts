@@ -129,7 +129,12 @@ export function buildPmDashboardSummary(args: {
   const titleIssues = args.documents.filter((document) => document.titleMatch === false || document.titleCheckStatus === 'mismatch').length;
   const pendingSharedDeliverables = args.sharedDeliverables.filter((relation) => relation.status === 'pending_registration').length;
   const crossAlignmentIssues = checkCrossAlignment(args.activities).length;
-  const openClarificationsCount = args.activities.filter((activity) => activity.pmNotes?.trim() && activity.status !== 'approved').length;
+  const monthlyOpenClarificationsCount = args.reportStatuses.filter(
+    (status) => status.status === 'clarifications' && status.pmNotes?.trim(),
+  ).length;
+  const openClarificationsCount =
+    monthlyOpenClarificationsCount +
+    args.activities.filter((activity) => activity.pmNotes?.trim() && activity.status !== 'approved').length;
   const resolvedClarificationsCount = args.activities.filter((activity) => activity.pmNotes?.trim() && activity.status === 'approved').length;
   const answeredClarificationsCount = args.activities.filter((activity) => {
     if (!activity.pmNotes?.trim() || !activity.updatedAt) return false;

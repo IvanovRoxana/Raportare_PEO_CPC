@@ -1,6 +1,12 @@
 import type { Activity, Deliverable } from './types';
-import { createActivityPeriodGroupId } from './submit-readiness.ts';
-import { dedupeDeliverablesBySignature } from './deliverable-deduplication.ts';
+import {
+  createActivityPeriodGroupId,
+  inferLegacyActivityPeriodGroups,
+} from './submit-readiness.ts';
+import {
+  dedupeDeliverablesBySignature,
+  getDeliverableDocumentSignature,
+} from './deliverable-deduplication.ts';
 
 export type ActivityEditScope = 'single' | 'series';
 
@@ -15,12 +21,19 @@ export function getActivityEditGroupId(activity: Pick<Activity, 'periodGroupId' 
 
 export function getActivityGroupMembers(activity: Activity, activities: Activity[]) {
   const groupId = getActivityEditGroupId(activity);
+  const inferredLegacyGroups = groupId ? undefined : inferLegacyActivityPeriodGroups(activities);
+  const inferredGroupId = inferredLegacyGroups?.get(activity.id);
   const members = groupId
     ? activities.filter((candidate) => (
         getActivityEditGroupId(candidate) === groupId
         && isSameEditableActivity(activity, candidate)
       ))
-    : [activity];
+    : inferredGroupId
+      ? activities.filter((candidate) => (
+          inferredLegacyGroups?.get(candidate.id) === inferredGroupId
+          && isSameEditableActivity(activity, candidate)
+        ))
+      : [activity];
 
   return members.length > 0
     ? [...members].sort((first, second) => first.date.localeCompare(second.date))
@@ -64,8 +77,13 @@ export function dedupeDeliverables(deliverables: Deliverable[]) {
   return dedupeDeliverablesBySignature(deliverables);
 }
 
-function getActivityEditGroupKey(activity: Activity) {
-  const groupId = getActivityEditGroupId(activity) ?? activity.id;
+function getActivityEditGroupKey(
+  activity: Activity,
+  inferredLegacyGroups: Map<string, string>,
+) {
+  const groupId = getActivityEditGroupId(activity)
+    ?? inferredLegacyGroups.get(activity.id)
+    ?? activity.id;
   const expertKey = normalizeMatchValue(activity.expertId);
   const catalogKey = normalizeMatchValue(activity.catalogActivityId);
   const activityKey = catalogKey
@@ -77,7 +95,10 @@ function getActivityEditGroupKey(activity: Activity) {
 
 export function mergeActivityGroupForEdit(activity: Activity, activities: Activity[]) {
   const groupMembers = getActivityGroupMembers(activity, activities);
-  const groupId = getActivityEditGroupId(activity);
+  const groupId = getActivityEditGroupId(activity)
+    ?? (groupMembers.length > 1
+      ? createActivityPeriodGroupId(`legacy-${groupMembers[0].id}`)
+      : undefined);
 
   return {
     activity: {
@@ -93,9 +114,10 @@ export function mergeActivityGroupForEdit(activity: Activity, activities: Activi
 export function compileActivitiesByPeriodGroup(activities: Activity[]) {
   const grouped = new Map<string, Activity[]>();
   const order: string[] = [];
+  const inferredLegacyGroups = inferLegacyActivityPeriodGroups(activities);
 
   activities.forEach((activity) => {
-    const key = getActivityEditGroupKey(activity);
+    const key = getActivityEditGroupKey(activity, inferredLegacyGroups);
     if (!grouped.has(key)) {
       grouped.set(key, []);
       order.push(key);
@@ -117,6 +139,88 @@ export function compileActivitiesByPeriodGroup(activities: Activity[]) {
       deliverables: dedupeDeliverables(members.flatMap((activity) => activity.deliverables ?? [])),
     };
   }).filter((activity): activity is Activity => Boolean(activity));
+}
+
+export type GroupedActivityDeletionPlan = {
+  updateActivities: Activity[];
+  previousActivities: Activity[];
+};
+
+export function planGroupedActivityDeletion(
+  activityToDelete: Activity,
+  activities: Activity[],
+): GroupedActivityDeletionPlan {
+  const groupMembers = getActivityGroupMembers(activityToDelete, activities);
+  const remainingMembers = groupMembers.filter((activity) => activity.id !== activityToDelete.id);
+  if (remainingMembers.length === 0) {
+    return { updateActivities: [], previousActivities: [] };
+  }
+
+  const updatesById = new Map<string, Activity>();
+  const explicitGroupId = getActivityEditGroupId(activityToDelete);
+  const normalizedLegacyGroupId = !explicitGroupId && groupMembers.length > 1 && remainingMembers.length > 1
+    ? createActivityPeriodGroupId(`legacy-${groupMembers[0].id}`)
+    : undefined;
+
+  if (normalizedLegacyGroupId) {
+    remainingMembers.forEach((activity) => {
+      updatesById.set(activity.id, {
+        ...activity,
+        periodGroupId: normalizedLegacyGroupId,
+        workingGroupId: normalizedLegacyGroupId,
+      });
+    });
+  }
+
+  const remainingDeliverableSignatures = new Set(
+    remainingMembers
+      .flatMap((activity) => activity.deliverables ?? [])
+      .map(getDeliverableDocumentSignature)
+      .filter((signature): signature is string => Boolean(signature)),
+  );
+  const orphanedDeliverables = (activityToDelete.deliverables ?? []).filter((deliverable) => {
+    const signature = getDeliverableDocumentSignature(deliverable);
+    return !signature || !remainingDeliverableSignatures.has(signature);
+  });
+
+  if (orphanedDeliverables.length > 0) {
+    const carrier = remainingMembers[0];
+    const currentCarrier = updatesById.get(carrier.id) ?? carrier;
+    updatesById.set(carrier.id, {
+      ...currentCarrier,
+      deliverables: dedupeDeliverables([
+        ...(currentCarrier.deliverables ?? []),
+        ...orphanedDeliverables,
+      ]),
+    });
+  }
+
+  const updateActivities = [...updatesById.values()];
+  const updatedIds = new Set(updateActivities.map((activity) => activity.id));
+  return {
+    updateActivities,
+    previousActivities: remainingMembers.filter((activity) => updatedIds.has(activity.id)),
+  };
+}
+
+export async function executeGroupedActivityDeletion(
+  activityId: string,
+  plan: GroupedActivityDeletionPlan,
+  updateActivity: (id: string, updates: Partial<Activity>) => Promise<unknown>,
+  removeActivity: (id: string) => Promise<unknown>,
+) {
+  await Promise.all(
+    plan.updateActivities.map((activity) => updateActivity(activity.id, activity)),
+  );
+
+  try {
+    await removeActivity(activityId);
+  } catch (error) {
+    await Promise.all(
+      plan.previousActivities.map((activity) => updateActivity(activity.id, activity)),
+    );
+    throw error;
+  }
 }
 
 export function splitActivityEditPayload(
