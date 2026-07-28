@@ -205,11 +205,34 @@ export function isValidPontajHours(hours: unknown) {
 }
 
 export function normalizePontajHoursValue(value: unknown, fallback: number | string = MAX_PONTAJ_HOURS) {
-  const numericValue = typeof value === 'string' ? Number(value) : value;
+  const numericValue = typeof value === 'string' ? Number(value) : typeof value === 'number' ? value : Number.NaN;
   if (isValidPontajHours(numericValue)) return String(numericValue);
 
   const fallbackValue = typeof fallback === 'string' ? Number(fallback) : fallback;
   return isValidPontajHours(fallbackValue) ? String(fallbackValue) : String(MAX_PONTAJ_HOURS);
+}
+
+export function getAvailablePontajHourOptions(availableHours: number) {
+  const maxAvailableHours = Math.max(0, Math.min(MAX_PONTAJ_HOURS, Math.floor(availableHours)));
+  return Array.from({ length: maxAvailableHours }, (_, index) => index + 1);
+}
+
+export function normalizePontajHoursForAvailableCapacity(
+  value: unknown,
+  availableHours: number,
+  fallback: number | string = MAX_PONTAJ_HOURS,
+) {
+  const availableOptions = getAvailablePontajHourOptions(availableHours);
+  if (availableOptions.length === 0) return '';
+
+  const maxAvailableHours = availableOptions[availableOptions.length - 1];
+  const numericValue = typeof value === 'string' ? Number(value) : typeof value === 'number' ? value : Number.NaN;
+  if (isValidPontajHours(numericValue) && numericValue <= maxAvailableHours) return String(numericValue);
+
+  const fallbackValue = typeof fallback === 'string' ? Number(fallback) : fallback;
+  if (isValidPontajHours(fallbackValue)) return String(Math.min(fallbackValue, maxAvailableHours));
+
+  return String(maxAvailableHours);
 }
 
 export function buildSelectedHoursForDates(
