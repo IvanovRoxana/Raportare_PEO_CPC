@@ -7,6 +7,7 @@ import {
   CalendarDays,
   ClipboardList,
   Download,
+  FileSpreadsheet,
   FileText,
   Loader2,
   AlertCircle,
@@ -85,6 +86,8 @@ import {
 import { isEventActivity } from '@/lib/deliverable-types';
 import { getEventDocumentationStatus } from '@/lib/event-documentation';
 import { findLatestClarificationAudit, PM_CLARIFICATION_AUDIT_ACTION } from '@/lib/pm-clarifications';
+import { buildPmClarificationThreads } from '@/lib/pm-clarification-flow';
+import { buildOpisXlsxBlob, buildOpisXlsxFilename } from '@/lib/opis-xls-export';
 import type {
   PontajRow,
   RaportRow,
@@ -95,6 +98,7 @@ import type {
   ReportStatus,
   Expert,
   Activity,
+  DocumentMetadata,
 } from '@/lib/types';
 import { UserMenu } from '@/components/user-menu';
 import { ProgressReportTab } from '@/components/pm/progress-report-tab';
@@ -120,6 +124,17 @@ function keepCurrentListIfSame<T>(next: T[]) {
   return (current: T[]) => (listHasSameItems(current, next) ? current : next);
 }
 
+function triggerDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
 export default function PMDashboard() {
   const router = useRouter();
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
@@ -129,6 +144,9 @@ export default function PMDashboard() {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [reviewExpertId, setReviewExpertId] = useState<string | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [reviewFocus, setReviewFocus] = useState<{ activityId?: string; documentId?: string; issueType?: string } | null>(null);
+  const [activeAlertFilter, setActiveAlertFilter] = useState<'title_mismatch' | 'shared_deliverables' | 'event_documents' | 'all'>('all');
+  const [isExportingOpisTotal, setIsExportingOpisTotal] = useState(false);
   const [pmExceptionOpen, setPmExceptionOpen] = useState(false);
   const [pmExceptionType, setPmExceptionType] = useState<'CO' | 'CM' | 'Altele'>('CO');
   const [pmExceptionDate, setPmExceptionDate] = useState('');
@@ -298,10 +316,12 @@ export default function PMDashboard() {
     expert,
     note,
     activityIds,
+    fieldName,
   }: {
     expert: Pick<Expert, 'id' | 'name' | 'projectCode'>;
     note: string;
     activityIds?: string[];
+    fieldName?: string;
   }) => {
     if (!currentUser || !canManagePmReview) return;
 
@@ -316,7 +336,7 @@ export default function PMDashboard() {
         projectCode: expert.projectCode,
         month: selectedMonth,
         year: selectedYear,
-        fieldName: activityIds?.length ? `activity:${activityIds.join(',')}` : 'reportStatus.pmNotes',
+        fieldName: fieldName || (activityIds?.length ? `activity:${activityIds.join(',')}` : 'reportStatus.pmNotes'),
         oldValue: '',
         newValue: note,
         justification: `Clarificări PM solicitate pentru ${expert.name}.`,
@@ -487,6 +507,37 @@ export default function PMDashboard() {
     await refreshMonthActivities();
   };
 
+  const requestDocumentClarification = async (documentMeta: DocumentMetadata) => {
+    if (!canManagePmReview) return;
+    const note = window.prompt(`Ce clarificari soliciti pentru documentul ${documentMeta.originalFileName}?`);
+    if (note === null) return;
+    const pmNote = note.trim() || `Clarificari solicitate pentru documentul ${documentMeta.originalFileName}.`;
+    const expert = visibleExperts.find((item) => item.id === documentMeta.uploadedByExpertId);
+    const currentStatus = monthlyReportStatuses.find((item) => item.expertId === documentMeta.uploadedByExpertId);
+
+    await updateReportStatus({
+      expertId: documentMeta.uploadedByExpertId,
+      year: selectedYear,
+      month: selectedMonth,
+      status: 'clarifications',
+      sentDate: currentStatus?.sentDate,
+      approvalDate: currentStatus?.approvalDate,
+      expertAccessApproved: currentStatus?.expertAccessApproved ?? false,
+      expertAccessApprovedAt: currentStatus?.expertAccessApprovedAt,
+      pmNotes: pmNote,
+    });
+
+    await recordClarificationAudit({
+      expert: {
+        id: documentMeta.uploadedByExpertId,
+        name: expert?.name || documentMeta.uploadedByExpertName || documentMeta.uploadedByExpertId,
+        projectCode: expert?.projectCode || documentMeta.projectId,
+      },
+      note: pmNote,
+      fieldName: `document:${documentMeta.id}`,
+    });
+  };
+
   const rejectReviewMonth = async () => {
     const note = window.prompt('Motiv respingere pentru aceasta raportare:');
     if (note === null) return;
@@ -586,6 +637,20 @@ export default function PMDashboard() {
 
     return { totalHours, totalRemaining, missingDays, blockedDays, issues };
   }, [dashboardRows]);
+  const clarificationThreadsByExpertId = useMemo(() => {
+    const result = new Map<string, ReturnType<typeof buildPmClarificationThreads>>();
+    visibleExperts.forEach((expert) => {
+      result.set(expert.id, buildPmClarificationThreads({
+        expert,
+        activities: monthActivities.filter((activity) => activity.expertId === expert.id),
+        reportStatus: monthlyReportStatuses.find((status) => status.expertId === expert.id),
+        auditLogs: auditLogs.filter((log) => !log.affectedExpertId || log.affectedExpertId === expert.id),
+        month: selectedMonth,
+        year: selectedYear,
+      }));
+    });
+    return result;
+  }, [auditLogs, monthActivities, monthlyReportStatuses, selectedMonth, selectedYear, visibleExperts]);
   const pendingSharedDeliverables = useMemo(() => {
     return sharedDeliverables
       .filter((relation) => relation.status === 'pending_registration' || relation.status === 'ignored_by_target')
@@ -694,6 +759,31 @@ export default function PMDashboard() {
     () => documents.filter((document) => document.titleMatch === false || document.titleCheckStatus === 'mismatch'),
     [documents]
   );
+  const problemCountByExpertId = useMemo(() => {
+    const result = new Map<string, number>();
+    const bump = (expertId: string | undefined, count = 1) => {
+      if (!expertId) return;
+      result.set(expertId, (result.get(expertId) || 0) + count);
+    };
+
+    dashboardRows.forEach((row) => {
+      bump(row.expertId, [
+        row.hasDailyLimitIssue,
+        row.hasMonthlyNormIssue,
+        row.hasProjectNormIssue,
+        row.missingActivityDays.length > 0,
+        row.blockedDays.length > 0,
+        row.adminInterventions > 0,
+      ].filter(Boolean).length);
+    });
+    titleIssues.forEach((documentMeta) => bump(documentMeta.uploadedByExpertId));
+    eventDocumentIssues.forEach((activity) => bump(activity.expertId));
+    clarificationThreadsByExpertId.forEach((threads, expertId) => {
+      bump(expertId, threads.filter((thread) => thread.status !== 'resolved').length);
+    });
+
+    return result;
+  }, [clarificationThreadsByExpertId, dashboardRows, eventDocumentIssues, localNeconformitati, titleIssues]);
   const reviewExpertActivities = useMemo(
     () => (reviewExpertId ? monthActivities.filter((activity) => activity.expertId === reviewExpertId) : []),
     [monthActivities, reviewExpertId]
@@ -703,11 +793,48 @@ export default function PMDashboard() {
     [reportStatusByExpertId, reviewExpertId, reviewReportStatus]
   );
 
-  const openReviewReport = (expert: Expert) => {
+  const openReviewReport = (expert: Expert, options?: { activityId?: string; documentId?: string; issueType?: string }) => {
     if (!canAccessExpertId(dataAccessScope, expert.id)) return;
     setSelectedExpertId(expert.id);
     setReviewExpertId(expert.id);
+    setReviewFocus(options || null);
     setReviewOpen(true);
+  };
+  const openReviewReportById = (expertId: string, options?: { activityId?: string; documentId?: string; issueType?: string }) => {
+    const expert = visibleExperts.find((item) => item.id === expertId);
+    if (expert) openReviewReport(expert, options);
+  };
+  const scrollToPmSection = (sectionId: string) => {
+    window.setTimeout(() => document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
+  };
+  const openDocumentAlerts = () => {
+    if (titleIssues.length > 0 && pendingSharedDeliverables.length === 0 && eventDocumentIssues.length === 0) setActiveAlertFilter('title_mismatch');
+    else if (pendingSharedDeliverables.length > 0 && titleIssues.length === 0 && eventDocumentIssues.length === 0) setActiveAlertFilter('shared_deliverables');
+    else if (eventDocumentIssues.length > 0 && titleIssues.length === 0 && pendingSharedDeliverables.length === 0) setActiveAlertFilter('event_documents');
+    else setActiveAlertFilter('all');
+    scrollToPmSection('pm-document-alerts');
+  };
+  const openProblemsOverview = () => {
+    setActiveAlertFilter('all');
+    scrollToPmSection('pm-document-alerts');
+  };
+  const openClarificationsOverview = () => {
+    scrollToPmSection('pm-clarifications-overview');
+  };
+  const handleDownloadTotalOpisXls = () => {
+    setIsExportingOpisTotal(true);
+    try {
+      const blob = buildOpisXlsxBlob({
+        experts: visibleExperts,
+        activities: monthActivities,
+        month: selectedMonth,
+        year: selectedYear,
+        projectCode: '302141',
+      });
+      triggerDownload(blob, buildOpisXlsxFilename(null, selectedMonth, selectedYear));
+    } finally {
+      setIsExportingOpisTotal(false);
+    }
   };
 
   const months = Array.from({ length: 12 }, (_, i) => ({
@@ -790,6 +917,10 @@ export default function PMDashboard() {
           <Button variant="outline">
             <Download className="h-4 w-4" />
             Export situație
+          </Button>
+          <Button variant="outline" onClick={handleDownloadTotalOpisXls} disabled={isExportingOpisTotal}>
+            {isExportingOpisTotal ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}
+            OPIS total XLS
           </Button>
           <Button asChild>
             <a href="#pm-tabs">
@@ -893,6 +1024,20 @@ export default function PMDashboard() {
 
           <RightInfoCard title="Intervenții clarificări" icon={AlertTriangle}>
             <div className="space-y-4 text-sm">
+              <div id="pm-clarifications-overview" className="grid grid-cols-3 gap-2 rounded-lg border bg-muted/20 p-2 text-center">
+                <div>
+                  <div className="text-lg font-bold">{pmSummary.openClarificationsCount}</div>
+                  <div className="text-[10px] text-muted-foreground">Deschise</div>
+                </div>
+                <div>
+                  <div className="text-lg font-bold">{pmSummary.answeredClarificationsCount}</div>
+                  <div className="text-[10px] text-muted-foreground">Raspunsuri</div>
+                </div>
+                <div>
+                  <div className="text-lg font-bold">{pmSummary.resolvedClarificationsCount}</div>
+                  <div className="text-[10px] text-muted-foreground">Rezolvate</div>
+                </div>
+              </div>
               {selectedClarificationActivities.length > 0 ? (
                 selectedClarificationActivities.slice(0, 4).map((activity) => {
                   const clarificationAudit = findLatestClarificationAudit(auditLogs, activity.id)
@@ -1076,6 +1221,12 @@ export default function PMDashboard() {
           titleIssuesCount={titleIssues.length}
           pendingSharedDeliverablesCount={pendingSharedDeliverables.length}
           eventDocumentIssuesCount={eventDocumentIssues.length}
+          openClarificationsCount={pmSummary.openClarificationsCount}
+          answeredClarificationsCount={pmSummary.answeredClarificationsCount}
+          resolvedClarificationsCount={pmSummary.resolvedClarificationsCount}
+          onOpenDocumentAlerts={openDocumentAlerts}
+          onOpenProblems={openProblemsOverview}
+          onOpenClarifications={openClarificationsOverview}
         />
 
         <PmAlertsPanel
@@ -1084,6 +1235,10 @@ export default function PMDashboard() {
           eventDocumentIssues={eventDocumentIssues}
           unresolvedNeconformitati={localNeconformitati.filter((item) => !item.resolved)}
           dashboardRows={dashboardRows}
+          activeAlertFilter={activeAlertFilter}
+          onOpenDossier={openReviewReportById}
+          onRequestDocumentClarification={requestDocumentClarification}
+          onOpenProblemsForExpert={(expertId) => openReviewReportById(expertId, { issueType: 'problems' })}
         />
 
         <PmMonthlyStatusTable
@@ -1093,6 +1248,8 @@ export default function PMDashboard() {
           reportStatusByExpertId={reportStatusByExpertId}
           statusLabels={statusLabels}
           onOpenDossier={openReviewReport}
+          problemCountByExpertId={problemCountByExpertId}
+          onOpenProblems={(expert) => openReviewReport(expert, { issueType: 'problems' })}
         />
 
         <Tabs id="pm-tabs" defaultValue="pontaj" className="space-y-6 scroll-mt-24">
@@ -1215,6 +1372,10 @@ export default function PMDashboard() {
         onApproveMonth={() => setReviewMonthlyStatus('approved', activeReviewReportStatus?.pmNotes)}
         onApproveActivity={approveReviewActivities}
         onRequestActivityClarification={requestReviewActivityClarification}
+        clarificationThreads={reviewExpert ? clarificationThreadsByExpertId.get(reviewExpert.id) || [] : []}
+        initialFocus={reviewFocus || undefined}
+        concurrentProjects={concurrentProjects.filter((project) => project.expertId === reviewExpertId)}
+        concurrentTimesheetEntries={concurrentTimesheetEntries.filter((entry) => entry.expertId === reviewExpertId)}
         projectCode="302141"
         projectTitle="Consolidarea capacității Concordia pentru dialog social"
       />

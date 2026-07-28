@@ -1,4 +1,4 @@
-import { AlertTriangle, CalendarX, Clock3, FileWarning, LockKeyhole, Users } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, FileWarning, MessageSquare, ShieldCheck, Users } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import type { buildPmDashboardSummary } from '@/lib/pm-dashboard';
 
@@ -19,6 +19,12 @@ type PmDashboardKpiCardsProps = {
   titleIssuesCount: number;
   pendingSharedDeliverablesCount: number;
   eventDocumentIssuesCount: number;
+  openClarificationsCount?: number;
+  answeredClarificationsCount?: number;
+  resolvedClarificationsCount?: number;
+  onOpenDocumentAlerts?: () => void;
+  onOpenProblems?: () => void;
+  onOpenClarifications?: () => void;
 };
 
 export function PmDashboardKpiCards({
@@ -28,45 +34,74 @@ export function PmDashboardKpiCards({
   titleIssuesCount,
   pendingSharedDeliverablesCount,
   eventDocumentIssuesCount,
+  openClarificationsCount = pmSummary.openClarificationsCount,
+  answeredClarificationsCount = pmSummary.answeredClarificationsCount,
+  resolvedClarificationsCount = pmSummary.resolvedClarificationsCount,
+  onOpenDocumentAlerts,
+  onOpenProblems,
+  onOpenClarifications,
 }: PmDashboardKpiCardsProps) {
+  const documentAlertsCount = titleIssuesCount + pendingSharedDeliverablesCount + eventDocumentIssuesCount;
   const cards = [
     {
-      label: hasExtendedExpertAccess ? 'Experți monitorizați' : 'Raportare vizibilă',
+      label: hasExtendedExpertAccess ? 'Experti monitorizati' : 'Raportare vizibila',
       value: pmSummary.totalExperts,
-      helper: `Draft ${pmSummary.statusCounts.draft} / Trimis ${pmSummary.statusCounts.sent} / Aprobat ${pmSummary.statusCounts.approved}`,
+      helper: `Draft ${pmSummary.statusCounts.draft} / Trimis ${pmSummary.statusCounts.sent} / In verificare ${pmSummary.statusCounts.in_review} / Aprobat ${pmSummary.statusCounts.approved}`,
       icon: Users,
     },
     {
-      label: 'Ore pontate',
-      value: `${dashboardTotals.totalHours}h`,
-      helper: `Rămase ${dashboardTotals.totalRemaining}h • ${dashboardTotals.issues} experți cu norme de verificat`,
-      icon: Clock3,
+      label: 'Raportari de verificat',
+      value: pmSummary.statusCounts.sent + pmSummary.statusCounts.in_review,
+      helper: `Trimise ${pmSummary.statusCounts.sent} / in verificare ${pmSummary.statusCounts.in_review}`,
+      icon: ShieldCheck,
     },
     {
-      label: 'Zile fără activitate',
-      value: dashboardTotals.missingDays,
-      helper: 'Total zile lucrătoare fără pontaj în luna selectată',
-      icon: CalendarX,
+      label: 'Clarificari',
+      value: openClarificationsCount,
+      helper: `Raspunsuri ${answeredClarificationsCount} / rezolvate ${resolvedClarificationsCount}`,
+      icon: MessageSquare,
+      warning: openClarificationsCount > 0,
+      onClick: onOpenClarifications,
     },
     {
-      label: 'Zile blocate',
-      value: dashboardTotals.blockedDays,
-      helper: 'Zile cu limită zilnică atinsă sau depășită',
-      icon: LockKeyhole,
+      label: 'Aprobate',
+      value: pmSummary.statusCounts.approved,
+      helper: `${pmSummary.statusCounts.rejected} respinse / ${pmSummary.statusCounts.clarifications} cu clarificari`,
+      icon: CheckCircle2,
     },
     {
       label: 'Alerte documente',
-      value: titleIssuesCount + pendingSharedDeliverablesCount + eventDocumentIssuesCount,
+      value: documentAlertsCount,
       helper: `Titlu ${titleIssuesCount} / comune ${pendingSharedDeliverablesCount} / evenimente ${eventDocumentIssuesCount}`,
       icon: FileWarning,
-      warning: titleIssuesCount + pendingSharedDeliverablesCount + eventDocumentIssuesCount > 0,
+      warning: documentAlertsCount > 0,
+      onClick: onOpenDocumentAlerts,
+    },
+    {
+      label: 'Probleme',
+      value: pmSummary.problemCount + dashboardTotals.issues,
+      helper: `Norme ${dashboardTotals.issues} / documente ${pmSummary.documentAlertsCount} / cross ${pmSummary.crossAlignmentIssues}`,
+      icon: AlertTriangle,
+      warning: pmSummary.problemCount + dashboardTotals.issues > 0,
+      onClick: onOpenProblems,
     },
   ];
 
   return (
-    <section className="mb-6 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-      {cards.map(({ label, value, helper, icon: Icon, warning }) => (
-        <Card key={label} className="overflow-hidden py-0">
+    <section className="mb-6 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+      {cards.map(({ label, value, helper, icon: Icon, warning, onClick }) => (
+        <Card
+          key={label}
+          role={onClick ? 'button' : undefined}
+          tabIndex={onClick ? 0 : undefined}
+          onClick={onClick}
+          onKeyDown={(event) => {
+            if (!onClick || (event.key !== 'Enter' && event.key !== ' ')) return;
+            event.preventDefault();
+            onClick();
+          }}
+          className={`overflow-hidden py-0 ${onClick ? 'cursor-pointer transition-colors hover:border-primary/50 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary' : ''}`}
+        >
           <CardContent className="p-4">
             <div className="flex items-start justify-between gap-3">
               <div>

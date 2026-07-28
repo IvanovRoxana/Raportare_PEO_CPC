@@ -773,6 +773,24 @@ export interface ReportStatus {
   updatedAt?: string;
 }
 
+export type PmClarificationStatus = 'requested' | 'answered' | 'resolved' | 'rejected';
+
+export interface PmClarificationThread {
+  id: string;
+  targetType: 'activity' | 'document' | 'month';
+  targetId: string;
+  expertId: string;
+  month: number;
+  year: number;
+  status: PmClarificationStatus;
+  pmMessage: string;
+  expertResponse?: string;
+  requestedAt?: string;
+  requestedBy?: string;
+  answeredAt?: string;
+  resolvedAt?: string;
+}
+
 export interface ConcurrentProject {
   id: string;
   expertId: string;
