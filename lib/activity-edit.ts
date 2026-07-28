@@ -286,6 +286,8 @@ export function buildSubmittedActivitiesForEdit(
   const groupDeliverableCarrierDate = submittedActivities.find((activity) => (activity.deliverables?.length ?? 0) > 0)?.date
     ?? submittedActivities[0]?.date
     ?? uniqueDates[0];
+  const submittedActivityDates = new Set(submittedActivities.map((activity) => activity.date));
+  const submittedAllDates = uniqueDates.every((date) => submittedActivityDates.has(date));
 
   const resolveDeliverablesForDate = (date: string, fallback?: Deliverable[]) => {
     if (editScope === 'series') return submittedGroupDeliverables;
@@ -339,11 +341,25 @@ export function buildSubmittedActivitiesForEdit(
         : sourceActivity.id !== editingActivity.id
           ? sourceActivity.id
           : createGeneratedActivityId());
-    const hours = (preserveExistingActivity || editScope === 'series') && existingActivityForDate
-      ? existingActivityForDate.hours
-      : Number.isFinite(Number(sourceActivity.hours)) && Number(sourceActivity.hours) > 0
-        ? Number(sourceActivity.hours)
-        : Number(normalizeHours(selectedHours[date], editingActivity.hours.toString()));
+    const selectedHoursForDate = Number(normalizeHours(selectedHours[date], editingActivity.hours.toString()));
+    const submittedHoursForDate = Number(submittedActivityForDate?.hours);
+    const sourceHours = Number(sourceActivity.hours);
+    const hasSubmittedHoursForDate = Boolean(
+      submittedAllDates
+      && editScope === 'series'
+      && submittedActivityForDate
+      && Number.isFinite(submittedHoursForDate)
+      && submittedHoursForDate > 0,
+    );
+    const hours = editScope === 'series'
+      ? hasSubmittedHoursForDate
+        ? submittedHoursForDate
+        : existingActivityForDate?.hours ?? selectedHoursForDate
+      : preserveExistingActivity && existingActivityForDate
+        ? existingActivityForDate.hours
+      : Number.isFinite(sourceHours) && sourceHours > 0
+        ? sourceHours
+        : selectedHoursForDate;
 
     const isDetachedActivity = Boolean(detachedActivityGroupId && date === editingActivity.date);
 

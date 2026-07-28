@@ -123,6 +123,30 @@ test('editarea pastreaza orele din formular cand selectedHours este invechit', (
   assert.equal(submitted[0].hours, 5);
 });
 
+test('editarea seriei aplica orele selectate pe fiecare zi', () => {
+  const periodGroupId = 'activity-period:period-1';
+  const groupMembers = [
+    activity('activity-4', { date: '2026-06-15', hours: 8, periodGroupId }),
+    activity('activity-5', { date: '2026-06-16', hours: 8, periodGroupId }),
+  ];
+  const submitted = buildSubmittedActivitiesForEdit(
+    groupMembers[0],
+    [
+      activity('activity-4', { date: '2026-06-15', hours: 2, periodGroupId }),
+      activity('activity-5', { date: '2026-06-16', hours: 1, periodGroupId }),
+    ],
+    groupMembers.map((item) => item.date),
+    { '2026-06-15': '2', '2026-06-16': '1' },
+    groupMembers,
+    'expert-1',
+    (value, fallback) => String(value ?? fallback),
+    'series',
+  );
+
+  assert.equal(submitted.find((item) => item.date === '2026-06-15')?.hours, 2);
+  assert.equal(submitted.find((item) => item.date === '2026-06-16')?.hours, 1);
+});
+
 test('editarea cu schimbare de data pastreaza id-ul si livrabilele existente', () => {
   const existingDeliverable = deliverable('deliverable-1', {
     titleConfirmed: true,
