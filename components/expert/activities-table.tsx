@@ -31,6 +31,8 @@ import {
   validateGdprActivityDraft,
 } from '@/lib/gdpr-reporting';
 import { cn } from '@/lib/utils';
+import { getComCommunicationMultiGroupKey } from '@/lib/activity-multigroup-rules';
+import { inferLegacyActivityPeriodGroups } from '@/lib/submit-readiness';
 import type { Activity, Deliverable } from '@/lib/types';
 
 interface ActivitiesTableProps {
@@ -51,6 +53,7 @@ interface ActivityWorkingGroup {
 }
 
 const WEEKDAY_FORMATTER = new Intl.DateTimeFormat('ro-RO', { weekday: 'long' });
+const ACTIVITY_PERIOD_GROUP_PREFIXES = ['activity-period:', 'legacy-activity-period:'];
 
 function getDateTime(date: string) {
   const time = new Date(date).getTime();
@@ -97,9 +100,35 @@ function getPrimaryDeliverable(activity: Activity) {
     || null;
 }
 
-function getActivityGroupKey(activity: Activity) {
+function isActivityPeriodGroupId(value?: string | null) {
+  return Boolean(value && ACTIVITY_PERIOD_GROUP_PREFIXES.some((prefix) => value.startsWith(prefix)));
+}
+
+function normalizeGroupKeyPart(value?: string | null) {
+  return String(value ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+function getActivityGroupKey(activity: Activity, inferredLegacyGroups: Map<string, string>) {
+  if (activity.workingGroupId && !isActivityPeriodGroupId(activity.workingGroupId)) {
+    return `working:${activity.workingGroupId}`;
+  }
   if (activity.periodGroupId) return `period:${activity.periodGroupId}`;
   if (activity.workingGroupId) return `working:${activity.workingGroupId}`;
+
+  const inferredGroupId = inferredLegacyGroups.get(activity.id);
+  if (inferredGroupId) return `legacy:${inferredGroupId}`;
+
+  const multiGroupKey = getComCommunicationMultiGroupKey(activity);
+  if (multiGroupKey) {
+    return [
+      'multi',
+      normalizeGroupKeyPart(activity.expertId),
+      activity.date.slice(0, 7),
+      normalizeGroupKeyPart(activity.projectCode),
+      multiGroupKey,
+    ].join(':');
+  }
+
   return `activity:${activity.id}`;
 }
 
@@ -118,6 +147,7 @@ function getActivityGroupDateLabel(activities: Activity[]) {
 function groupActivitiesByWorkingGroup(activities: Activity[]): ActivityWorkingGroup[] {
   const groups = new Map<string, Activity[]>();
   const order: string[] = [];
+  const inferredLegacyGroups = inferLegacyActivityPeriodGroups(activities);
 
   [...activities]
     .sort((a, b) => {
@@ -126,7 +156,7 @@ function groupActivitiesByWorkingGroup(activities: Activity[]): ActivityWorkingG
       return (a.title || a.activityType || '').localeCompare(b.title || b.activityType || '', 'ro');
     })
     .forEach((activity) => {
-      const key = getActivityGroupKey(activity);
+      const key = getActivityGroupKey(activity, inferredLegacyGroups);
       const groupActivities = groups.get(key) ?? [];
       groupActivities.push(activity);
       groups.set(key, groupActivities);

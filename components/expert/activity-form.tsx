@@ -1689,9 +1689,6 @@ export function ActivityForm({
         ...reportingWarnings.map((warning) => `- ${warning}`),
       ].join('\n');
       setValidationError(warningMessage);
-      if (typeof window !== 'undefined') {
-        window.alert(warningMessage);
-      }
     }
 
     const deliverablesForSave = dedupeDeliverableSlotsBySignature(uploadedDeliverables);
