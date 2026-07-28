@@ -1,4 +1,5 @@
 import type { Activity, Deliverable } from './types';
+import { areComCommunicationMultiGroupActivities } from './activity-multigroup-rules.ts';
 
 type ActivityWithDeliverables = Pick<
   Activity,
@@ -25,6 +26,8 @@ export function areActivitiesCompatibleForDeliverableGroup(
   candidate: Pick<Activity, 'expertId' | 'saCode' | 'catalogActivityId' | 'activityType' | 'title'>,
 ) {
   if (activity.expertId && candidate.expertId && activity.expertId !== candidate.expertId) return false;
+
+  if (areComCommunicationMultiGroupActivities(activity, candidate)) return true;
 
   if (activity.catalogActivityId || candidate.catalogActivityId) {
     return Boolean(activity.catalogActivityId && activity.catalogActivityId === candidate.catalogActivityId);

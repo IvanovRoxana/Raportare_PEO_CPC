@@ -310,7 +310,7 @@ test('pastreaza compatibilitatea cu payloadul vechi cu un singur livrabil', () =
 });
 
 test('formularul trimite toate livrabilele incarcate din grupul activitatii la eligibilitate', () => {
-  assert.match(activityFormSource, /const currentDeliverablesForEligibility = deliverables\.filter\(\(d\) => d\.uploaded && !d\.isPhoto\)/);
+  assert.match(activityFormSource, /const currentDeliverablesForEligibility = useMemo\(\s*\(\) => deliverables\.filter\(\(d\) => d\.uploaded && !d\.isPhoto\),\s*\[deliverables\],\s*\)/);
   assert.match(activityFormSource, /const groupId = getActivityEditGroupId\(initialActivity\)/);
   assert.match(activityFormSource, /getActivityEditGroupId\(activity\) === groupId/);
   assert.match(activityFormSource, /isSameEditableActivity\(initialActivity, activity\)/);

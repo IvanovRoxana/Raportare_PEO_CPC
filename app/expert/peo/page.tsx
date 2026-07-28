@@ -452,7 +452,7 @@ function OutlookMonthCalendar({
             !isWeekend && totalHours > 0 && totalHours < norma && 'bg-emerald-50/45',
             !isWeekend && totalHours === norma && 'bg-slate-100/80',
             !isWeekend && totalHours > norma && 'bg-red-50/70',
-            isDayClosed && 'cursor-not-allowed hover:bg-slate-100/80',
+            isDayClosed && !isSelected && 'cursor-not-allowed hover:bg-slate-100/80',
             isSelected && 'outline outline-2 -outline-offset-2 outline-blue-500',
           );
 
@@ -461,9 +461,9 @@ function OutlookMonthCalendar({
               key={day.date}
               type="button"
               className={dayClassName}
-              aria-disabled={isDayClosed || isNonWorkingDay}
+              aria-disabled={(isDayClosed && !isSelected) || isNonWorkingDay}
               onMouseDown={() => {
-                if (isNonWorkingDay || isDayClosed) return;
+                if (isNonWorkingDay || (isDayClosed && !isSelected)) return;
                 setIsSelectingRange(true);
                 setSelectionStart(day.date);
               }}
@@ -472,7 +472,7 @@ function OutlookMonthCalendar({
                 syncSelectedDates([...selectedDates, ...getRangeDates(selectionStart, day.date)]);
               }}
               onClick={() => {
-                if (isNonWorkingDay || isDayClosed) return;
+                if (isNonWorkingDay || (isDayClosed && !isSelected)) return;
                 toggleDate(day.date);
               }}
             >
@@ -2246,6 +2246,7 @@ function ExpertDashboardContent() {
       key={formKey}
       selectedDates={selectedDates}
       selectedHours={selectedHours}
+      onSelectedDatesChange={syncSelectedDates}
       onSelectedHoursChange={setSelectedHours}
       expertId={selectedExpertId || ''}
       expertName={selectedExpert.name}

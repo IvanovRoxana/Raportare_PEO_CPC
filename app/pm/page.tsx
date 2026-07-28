@@ -55,6 +55,7 @@ import {
   useReportStatus,
   useReportStatusByMonth,
   useActivitiesByMonth,
+  useActivityCatalog,
   useAuditLogs,
   useAuditLogMutations,
   useDocuments,
@@ -83,8 +84,10 @@ import {
   filterSharedDeliverablesForScope,
   resolveDataAccessScope,
 } from '@/lib/access-control';
-import { isEventActivity } from '@/lib/deliverable-types';
-import { getEventDocumentationStatus } from '@/lib/event-documentation';
+import {
+  getEventDocumentationStatus,
+  isActivityEventForDocumentation,
+} from '@/lib/event-documentation';
 import { findLatestClarificationAudit, PM_CLARIFICATION_AUDIT_ACTION } from '@/lib/pm-clarifications';
 import { buildPmClarificationThreads } from '@/lib/pm-clarification-flow';
 import { buildOpisXlsxBlob, buildOpisXlsxFilename } from '@/lib/opis-xls-export';
@@ -203,6 +206,7 @@ export default function PMDashboard() {
   } = useReportStatus(reviewExpertId, selectedMonth, selectedYear);
   const { statuses: allMonthlyReportStatuses } = useReportStatusByMonth(selectedMonth, selectedYear);
   const { activities: allMonthActivities, mutate: refreshMonthActivities } = useActivitiesByMonth(selectedMonth, selectedYear);
+  const { catalog: activityCatalog } = useActivityCatalog();
   const scopedAuditExpertId = hasExtendedExpertAccess ? null : dataAccessScope.currentExpertId ?? selectedExpertId;
   const { auditLogs: allAuditLogs } = useAuditLogs(scopedAuditExpertId, selectedMonth, selectedYear);
   const { documents: allDocuments } = useDocuments();
@@ -790,11 +794,11 @@ export default function PMDashboard() {
   }, [dashboardRowByExpertId, monthActivities, monthlyReportStatuses, visibleExperts]);
   const eventDocumentIssues = useMemo(() => {
     return monthActivities.filter((activity) => {
-      if (!isEventActivity(activity.activityType || activity.title || '')) return false;
+      if (!isActivityEventForDocumentation(activity, activityCatalog)) return false;
       const deliverables = activity.deliverables || [];
       return !getEventDocumentationStatus(deliverables).complete;
     });
-  }, [monthActivities]);
+  }, [activityCatalog, monthActivities]);
   const titleIssues = useMemo(
     () => documents.filter((document) => document.titleMatch === false || document.titleCheckStatus === 'mismatch'),
     [documents]

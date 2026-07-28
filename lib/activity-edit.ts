@@ -7,6 +7,10 @@ import {
   dedupeDeliverablesBySignature,
   getDeliverableDocumentSignature,
 } from './deliverable-deduplication.ts';
+import {
+  areComCommunicationMultiGroupActivities,
+  getComCommunicationMultiGroupKey,
+} from './activity-multigroup-rules.ts';
 
 export type ActivityEditScope = 'single' | 'series';
 
@@ -48,6 +52,8 @@ export function isSameEditableActivity(activity: Activity, candidate: Activity) 
   if (activity.id === candidate.id) return true;
   if (activity.expertId && candidate.expertId && activity.expertId !== candidate.expertId) return false;
 
+  if (areComCommunicationMultiGroupActivities(activity, candidate)) return true;
+
   if (activity.catalogActivityId || candidate.catalogActivityId) {
     return Boolean(activity.catalogActivityId && activity.catalogActivityId === candidate.catalogActivityId);
   }
@@ -85,8 +91,11 @@ function getActivityEditGroupKey(
     ?? inferredLegacyGroups.get(activity.id)
     ?? activity.id;
   const expertKey = normalizeMatchValue(activity.expertId);
+  const multiGroupKey = getComCommunicationMultiGroupKey(activity);
   const catalogKey = normalizeMatchValue(activity.catalogActivityId);
-  const activityKey = catalogKey
+  const activityKey = multiGroupKey
+    ? multiGroupKey
+    : catalogKey
     ? `catalog:${catalogKey}`
     : `manual:${normalizeMatchValue(activity.saCode)}:${normalizeMatchValue(activity.activityType || activity.title)}`;
 

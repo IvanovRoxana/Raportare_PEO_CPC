@@ -514,13 +514,17 @@ export interface DocumentMetadata {
   stadiu?: string;
   declaredTitle?: string;
   suggestedTitle?: string;
+  docText?: string;
+  firstPageText?: string;
   extractedTitle?: string;
   extractedTitleNormalized?: string;
   titleSuggestionConfidence?: 'high' | 'medium' | 'low' | string;
   titleSuggestionAlternatives?: string[];
   titleSuggestionReason?: string;
+  titleSource?: string;
   titleMatch?: boolean | null;
   titleCheckStatus?: string;
+  titleCheckMessage?: string;
   eligibilityCheck?: DeliverableEligibilityCheck | null;
   isCommonDeliverable?: boolean;
   possibleDuplicateOfDocumentId?: string;

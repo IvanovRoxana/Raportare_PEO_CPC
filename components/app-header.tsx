@@ -73,6 +73,13 @@ const headerNavItems: HeaderNavItem[] = [
     active: () => false,
   },
   {
+    label: 'Indexare',
+    href: '/expert/livrabile-indexare',
+    icon: SearchIcon,
+    roles: ['expert', 'pm', 'admin'],
+    active: (pathname) => pathname === '/expert/livrabile-indexare',
+  },
+  {
     label: 'Verificari PM',
     href: '/pm',
     icon: SearchIcon,

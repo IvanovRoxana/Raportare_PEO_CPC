@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CalendarDays, CheckCircle2, Download, FileText, Loader2, Plus, Save, SearchIcon, ShieldCheck, Users, XCircle } from 'lucide-react';
+import { AlertTriangle, CalendarDays, CheckCircle2, Download, FileText, Loader2, Plus, Save, SearchIcon, ShieldCheck, Users } from 'lucide-react';
 import { DashboardShell, financialNavItems } from '@/components/layout/dashboard-shell';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -41,6 +41,16 @@ type NormPanelRow = {
   otherDailyHours: number;
   goodworksProjects: Array<{ expertProjectRole?: string; expertFunction?: string; projectName?: string; dailyHours?: number }>;
   otherProjects: Array<{ expertProjectRole?: string; expertFunction?: string; projectName?: string; dailyHours?: number }>;
+};
+
+type LeaveGridDraft = {
+  peoNorm: string;
+  peoDays: string;
+  peoHours: string;
+  cpcNorm: string;
+  cpcDays: string;
+  cpcHours: string;
+  period: string;
 };
 
 const MONTHS = [
@@ -92,6 +102,59 @@ function parseDailyHoursLabel(value: string | undefined) {
 
 function hourlyRateRowKey(row: FinancialTimesheetRow) {
   return row.expertId ?? row.name;
+}
+
+function leaveGridRowKey(row: FinancialTimesheetRow) {
+  return row.expertId ?? row.name;
+}
+
+function numericCell(value: string) {
+  const parsed = Number(String(value).replace(',', '.'));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function formatNumericCell(value: number) {
+  return value ? compactHours(value) : '0';
+}
+
+function formatLeavePeriod(dates: string[]) {
+  const days = [...new Set(dates.map((date) => Number(date.slice(8, 10))).filter(Boolean))].sort((left, right) => left - right);
+  const parts: string[] = [];
+  for (let index = 0; index < days.length; index += 1) {
+    const start = days[index];
+    let end = start;
+    while (index + 1 < days.length && days[index + 1] === end + 1) {
+      index += 1;
+      end = days[index];
+    }
+    parts.push(start === end ? String(start).padStart(2, '0') : `${String(start).padStart(2, '0')}-${String(end).padStart(2, '0')}`);
+  }
+  return parts.join('; ');
+}
+
+function parseLeavePeriod(period: string, month: number, year: number) {
+  const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  const days = new Set<number>();
+  const tokens = period
+    .replace(/\*/g, '')
+    .split(/[;,]+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  for (const token of tokens) {
+    const match = token.match(/^(\d{1,2})(?:\s*-\s*(\d{1,2}))?$/);
+    if (!match) throw new Error(`Perioada CO "${token}" nu este valida. Foloseste formatul 01-08; 29-31.`);
+    const start = Number(match[1]);
+    const end = Number(match[2] ?? match[1]);
+    if (start < 1 || end < start || end > lastDay) throw new Error(`Perioada CO "${token}" este in afara lunii selectate.`);
+    for (let day = start; day <= end; day += 1) {
+      const date = new Date(Date.UTC(year, month, day));
+      const weekday = date.getUTCDay();
+      if (weekday !== 0 && weekday !== 6) days.add(day);
+    }
+  }
+
+  return [...days].sort((left, right) => left - right).map((day) => isoDate(year, month, day));
 }
 
 function downloadResponse(response: Response, fallbackName: string) {
@@ -148,6 +211,8 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
   const [verificationMessage, setVerificationMessage] = useState('');
   const [selectedNormExpertName, setSelectedNormExpertName] = useState('');
   const [hourlyRates, setHourlyRates] = useState<Record<string, string>>({});
+  const [leaveGridDrafts, setLeaveGridDrafts] = useState<Record<string, LeaveGridDraft>>({});
+  const [savingLeaveRow, setSavingLeaveRow] = useState<string | null>(null);
   const [leaveForm, setLeaveForm] = useState({
     expertId: '',
     date: isoDate(2026, 5),
@@ -175,7 +240,7 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
   const { entries, isLoading: loadingEntries } = useConcurrentProjectTimesheetByMonth(month, year);
   const { contracts, isLoading: loadingContracts } = useAllExpertNormContracts();
   const { leaveEntries, isLoading: loadingLeave } = useLeaveEntries(month, year);
-  const { createAutomatic, createManual, updateStatus } = useLeaveEntryMutations(month, year);
+  const { createAutomatic, createManual, remove: removeLeaveEntry, updateStatus } = useLeaveEntryMutations(month, year);
   const { create: createNormContract, update: updateNormContract } = useExpertNormContractMutations();
   const enabled = mode === 'timesheets' ? isFinancialTimesheetsEnabledClient() : isFinancialLeaveEnabledClient();
   const isLoading = loadingExperts || loadingActivities || loadingProjects || loadingEntries || loadingContracts || loadingLeave;
@@ -204,7 +269,6 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
   const visibleRows = useMemo(() => {
     const query = search.trim().toLocaleLowerCase('ro-RO');
     return summary.rows.filter((row) => {
-      if (mode === 'leave' && row.peoLeave + row.medicalLeave + row.concordiaLeave === 0 && row.leaveDates.length === 0) return false;
       if (onlyConflicts && row.conflicts.length === 0) return false;
       return !query || `${row.name} ${row.role}`.toLocaleLowerCase('ro-RO').includes(query);
     });
@@ -281,6 +345,45 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
       });
     return [...appRows, ...financialOnlyRows].sort((left, right) => left.name.localeCompare(right.name, 'ro'));
   }, [contracts, experts, month, projects, search, summary.rows, year]);
+  const normPanelByExpert = useMemo(() => {
+    const lookup = new Map<string, NormPanelRow>();
+    for (const row of normPanelRows) {
+      if (row.expert?.id) lookup.set(row.expert.id, row);
+    }
+    return lookup;
+  }, [normPanelRows]);
+
+  useEffect(() => {
+    if (mode !== 'leave') return;
+    const nextDrafts: Record<string, LeaveGridDraft> = {};
+    for (const row of visibleRows) {
+      const key = leaveGridRowKey(row);
+      const normRow = row.expertId ? normPanelByExpert.get(row.expertId) : undefined;
+      const peoNorm = normRow?.peoDailyCap ?? parseDailyHoursLabel(row.peoNorm);
+      const cpcNorm = normRow?.cpcFormulaHours ?? Math.max(0, parseDailyHoursLabel(row.cimNorm) - peoNorm);
+      nextDrafts[key] = {
+        peoNorm: formatNumericCell(peoNorm),
+        peoDays: formatNumericCell(peoNorm > 0 ? row.peoLeave / peoNorm : 0),
+        peoHours: formatNumericCell(row.peoLeave),
+        cpcNorm: formatNumericCell(cpcNorm),
+        cpcDays: formatNumericCell(cpcNorm > 0 ? row.concordiaLeave / cpcNorm : 0),
+        cpcHours: formatNumericCell(row.concordiaLeave),
+        period: formatLeavePeriod(row.leaveDates),
+      };
+    }
+    setLeaveGridDrafts(nextDrafts);
+  }, [mode, normPanelByExpert, visibleRows]);
+
+  const leaveGridTotals = useMemo(() => visibleRows.reduce((totals, row) => {
+    const draft = leaveGridDrafts[leaveGridRowKey(row)];
+    return {
+      peoDays: totals.peoDays + numericCell(draft?.peoDays ?? '0'),
+      peoHours: totals.peoHours + numericCell(draft?.peoHours ?? '0'),
+      cpcDays: totals.cpcDays + numericCell(draft?.cpcDays ?? '0'),
+      cpcHours: totals.cpcHours + numericCell(draft?.cpcHours ?? '0'),
+    };
+  }, { peoDays: 0, peoHours: 0, cpcDays: 0, cpcHours: 0 }), [leaveGridDrafts, visibleRows]);
+
   const firstExpert = useMemo(() => experts.find((expert) => expert.id) ?? null, [experts]);
   const monthlyExpert = useMemo(() => {
     const monthlyContract = contracts.find((contract) => contract.peoNormUnit === 'HOURS_PER_MONTH' && contract.peoDailyCap === 6);
@@ -311,6 +414,137 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
       window.localStorage.setItem(hourlyRateStorageKey, JSON.stringify(next));
       return next;
     });
+  };
+
+  const updateLeaveGridDraft = (row: FinancialTimesheetRow, field: keyof LeaveGridDraft, value: string) => {
+    const key = leaveGridRowKey(row);
+    setLeaveGridDrafts((current) => {
+      const previous = current[key] ?? {
+        peoNorm: '0',
+        peoDays: '0',
+        peoHours: '0',
+        cpcNorm: '0',
+        cpcDays: '0',
+        cpcHours: '0',
+        period: '',
+      };
+      const next = { ...previous, [field]: value };
+      if (field === 'peoNorm' || field === 'peoDays') {
+        next.peoHours = formatNumericCell(numericCell(next.peoNorm) * numericCell(next.peoDays));
+      }
+      if (field === 'cpcNorm' || field === 'cpcDays') {
+        next.cpcHours = formatNumericCell(numericCell(next.cpcNorm) * numericCell(next.cpcDays));
+      }
+      return { ...current, [key]: next };
+    });
+  };
+
+  const saveLeaveGridRow = async (row: FinancialTimesheetRow) => {
+    if (!row.expertId) {
+      setVerificationMessage(`${row.name} nu are expert in aplicatie. Creeaza mai intai expertul ca sa poti salva CO manual.`);
+      return;
+    }
+    const key = leaveGridRowKey(row);
+    const draft = leaveGridDrafts[key];
+    if (!draft) return;
+
+    const peoNorm = numericCell(draft.peoNorm);
+    const cpcNorm = numericCell(draft.cpcNorm);
+    const peoHours = numericCell(draft.peoHours);
+    const cpcHours = numericCell(draft.cpcHours);
+    const totalHours = peoHours + cpcHours;
+    let replacementDates: string[];
+    try {
+      replacementDates = parseLeavePeriod(draft.period, month, year);
+    } catch (error) {
+      setVerificationMessage(error instanceof Error ? error.message : 'Perioada CO nu este valida.');
+      return;
+    }
+    if (totalHours > 0 && replacementDates.length === 0) {
+      setVerificationMessage(`Completeaza perioada CO pentru ${row.name}, de exemplu 01-08; 29-31.`);
+      return;
+    }
+    const preservedFinalLeaves = row.leaveEntries.filter((leave) => leave.source === 'FINANCIAL' && (leave.status === 'VALIDATED' || leave.status === 'REJECTED'));
+    if (preservedFinalLeaves.length) {
+      setVerificationMessage(`${row.name} are CO financiar validat/respins. Aceste inregistrari raman neschimbate; respinge sau corecteaza separat inainte de inlocuire completa.`);
+    }
+
+    setSavingLeaveRow(key);
+    try {
+      const validFrom = isoDate(year, month, 1);
+      const sameDateContract = contracts.find((contract) => contract.expertId === row.expertId && contract.validFrom === validFrom);
+      const cpcDailyCap = Math.max(0, cpcNorm);
+      const cimDailyCap = peoNorm + cpcDailyCap;
+      if (sameDateContract) {
+        await updateNormContract(sameDateContract.id, {
+          peoNormUnit: 'HOURS_PER_DAY',
+          peoNormValue: peoNorm,
+          peoDailyCap: peoNorm,
+          cimNormUnit: 'HOURS_PER_DAY',
+          cimNormValue: cimDailyCap,
+          cimDailyCap,
+          leaveHoursPerDay: cimDailyCap,
+          status: 'ACTIVE',
+          justification: 'Actualizare manuala CO din grila Financiar',
+          updatedBy: 'financial-session',
+        });
+      } else {
+        const openContract = contracts
+          .filter((contract) => contract.expertId === row.expertId && !contract.validTo && contract.validFrom < validFrom)
+          .sort((left, right) => right.validFrom.localeCompare(left.validFrom))[0];
+        if (openContract) {
+          await updateNormContract(openContract.id, { validTo: previousDay(validFrom), updatedBy: 'financial-session' });
+        }
+        await createNormContract({
+          expertId: row.expertId,
+          validFrom,
+          peoNormUnit: 'HOURS_PER_DAY',
+          peoNormValue: peoNorm,
+          peoDailyCap: peoNorm,
+          cimNormUnit: 'HOURS_PER_DAY',
+          cimNormValue: cimDailyCap,
+          cimDailyCap,
+          leaveHoursPerDay: cimDailyCap,
+          status: 'ACTIVE',
+          justification: 'Actualizare manuala CO din grila Financiar',
+          createdBy: 'financial-session',
+          updatedBy: 'financial-session',
+        });
+      }
+
+      const replaceableLeaves = row.leaveEntries.filter((leave) => leave.source === 'FINANCIAL' && leave.status !== 'VALIDATED' && leave.status !== 'REJECTED');
+      for (const leave of replaceableLeaves) {
+        await removeLeaveEntry(leave.id);
+      }
+
+      if (totalHours > 0) {
+        const peoPerDay = peoHours / replacementDates.length;
+        const cpcPerDay = cpcHours / replacementDates.length;
+        for (const date of replacementDates) {
+          await createManual({
+            expertId: row.expertId,
+            date,
+            month,
+            year,
+            type: 'CO',
+            totalHours: peoPerDay + cpcPerDay,
+            peoHours: peoPerDay,
+            cpcHours: cpcPerDay,
+            source: 'FINANCIAL',
+            status: 'DRAFT',
+            lockedForExpert: true,
+            automaticSplit: false,
+            justification: `Actualizare manuala CO Financiar: ${draft.period || date}`,
+            createdBy: 'financial-session',
+          });
+        }
+      }
+      setVerificationMessage(`CO pentru ${row.name} a fost salvat in formatul centralizatorului Excel.`);
+    } catch (error) {
+      setVerificationMessage(error instanceof Error ? error.message : `CO pentru ${row.name} nu a putut fi salvat.`);
+    } finally {
+      setSavingLeaveRow(null);
+    }
   };
 
   const saveFinancialLeave = async () => {
@@ -863,66 +1097,95 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
               </TooltipProvider>
             ) : (
               <TooltipProvider delayDuration={150}>
-                <table className="w-full min-w-[1380px] border-collapse text-xs">
+                <table className="w-full min-w-[1060px] table-fixed border-collapse border-t-2 border-black text-[11px] leading-tight">
+                  <colgroup>
+                    {[22, 8, 9, 9, 8, 9, 9, 18, 8].map((width, index) => <col key={index} style={{ width: `${width}%` }} />)}
+                  </colgroup>
                   <thead>
-                    <tr className="border-b bg-slate-50 text-left">
-                      <th className="p-2">Expert / dată</th>
-                      <th className="p-2">Normă PEO</th>
-                      <th className="p-2">Normă CIM</th>
-                      <th className="p-2 text-right">CO total</th>
-                      <th className="p-2 text-right">CO PEO</th>
-                      <th className="p-2 text-right">CO CPC</th>
-                      <th className="p-2 text-right">Sold PEO</th>
-                      <th className="p-2 text-right">Sold CIM</th>
-                      <th className="p-2">Sursă</th>
-                      <th className="p-2">Stare</th>
-                      <th className="p-2 text-center">Conflict</th>
-                      <th className="p-2 text-right">Acțiuni</th>
+                    <tr>
+                      <th className="border-b-2 border-r border-black bg-[#f58f93] px-2 py-3 text-left text-[11px] font-bold uppercase" colSpan={2}>
+                        {MONTHS[month].toUpperCase()} {year}
+                      </th>
+                      <th className="border-b-2 border-black bg-white" colSpan={7} />
+                    </tr>
+                    <tr className="border-b-2 border-black bg-white text-center text-[10px] font-bold uppercase">
+                      <th className="border-r border-black px-2 py-2">NUME PRENUME</th>
+                      <th className="border-r border-black px-2 py-2">NORMA<br />PEO</th>
+                      <th className="border-r border-black px-2 py-2">ZILE CO<br />PEO</th>
+                      <th className="border-r border-black bg-slate-200 px-2 py-2">ORE CO<br />PEO</th>
+                      <th className="border-r border-black px-2 py-2">NORMA<br />CPC</th>
+                      <th className="border-r border-black px-2 py-2">ZILE CO<br />CPC</th>
+                      <th className="border-r border-black bg-slate-200 px-2 py-2">ORE CO<br />CPC</th>
+                      <th className="border-r border-black px-2 py-2">PERIOADA<br />CO PEO {MONTHS[month].toUpperCase()}</th>
+                      <th className="px-2 py-2">SALVEAZA</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {visibleLeaveRows.map(({ row, leave }, index) => (
-                      <tr key={leave?.id ?? (row.name + '-legacy-' + index)} className="border-b align-middle hover:bg-slate-50/60">
-                        <td className="p-2">
-                          <div className="font-medium">{row.name}</div>
-                          <div className="text-[11px] text-muted-foreground">{leave?.date ?? (row.leaveDates.join(', ') || 'Date istorice')}</div>
-                        </td>
-                        <td className="p-2">{row.peoNorm}</td>
-                        <td className="p-2">{row.cimNorm}</td>
-                        <td className="p-2 text-right tabular-nums">{hours(leave?.totalHours ?? row.totalLeave)}</td>
-                        <td className="p-2 text-right tabular-nums">{hours(leave?.peoHours ?? row.peoLeave)}</td>
-                        <td className="p-2 text-right tabular-nums">{hours(leave?.cpcHours ?? row.concordiaLeave)}</td>
-                        <td className="p-2 text-right tabular-nums">{hours(row.peoRemaining)}</td>
-                        <td className="p-2 text-right tabular-nums">{hours(row.cimRemaining)}</td>
-                        <td className="p-2">{leave?.source === 'FINANCIAL' ? 'Financiar' : leave?.source === 'EXPERT' ? 'Expert' : 'Istoric'}</td>
-                        <td className="p-2">
-                          {leave
-                            ? <Badge variant={leave.status === 'VALIDATED' ? 'default' : leave.status === 'REJECTED' ? 'destructive' : 'secondary'}>{leave.status}</Badge>
-                            : <StatusBadge row={row} />}
-                        </td>
-                        <td className="p-2 text-center"><span className="inline-flex justify-center"><ConflictDot row={row} /></span></td>
-                        <td className="p-2 text-right">
-                          <div className="flex justify-end gap-1">
-                            {leave && leave.status !== 'VALIDATED' && leave.status !== 'REJECTED' && (
-                              <>
-                                <Button size="sm" variant="outline" disabled={validating !== null} onClick={() => setLeaveStatus(leave.id, 'VALIDATED')}>
-                                  {validating === leave.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
-                                  <span className="ml-1">Validează</span>
-                                </Button>
-                                <Button size="sm" variant="outline" disabled={validating !== null} onClick={() => setLeaveStatus(leave.id, 'REJECTED')}>
-                                  <XCircle className="h-3 w-3" /><span className="ml-1">Respinge</span>
-                                </Button>
-                              </>
-                            )}
-                            <Button size="sm" variant="outline" disabled={!row.expertId || exporting !== null} onClick={() => exportExpertTemplate(row)}>
-                              {exporting === row.expertId ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileText className="h-3 w-3" />}
-                              <span className="ml-1">Template</span>
+                    {visibleRows.map((row) => {
+                      const key = leaveGridRowKey(row);
+                      const draft = leaveGridDrafts[key] ?? {
+                        peoNorm: '0',
+                        peoDays: '0',
+                        peoHours: '0',
+                        cpcNorm: '0',
+                        cpcDays: '0',
+                        cpcHours: '0',
+                        period: '',
+                      };
+                      const hasDraftLeave = row.leaveEntries.some((leave) => leave.status !== 'VALIDATED' && leave.status !== 'REJECTED');
+                      const inputBaseClass = 'h-7 rounded-none border-0 bg-transparent px-1 text-center text-[11px] tabular-nums shadow-none focus-visible:ring-1 focus-visible:ring-primary';
+                      return (
+                        <tr key={key} className="border-b border-dashed border-black align-middle hover:bg-slate-50/70">
+                          <td className="border-r border-black px-2 py-1">
+                            <div className="flex min-w-0 items-center gap-1">
+                              <ConflictDot row={row} />
+                              <span className="min-w-0 flex-1 whitespace-normal break-words font-medium uppercase leading-snug" title={row.name}>{row.name}</span>
+                              {hasDraftLeave ? <Badge variant="secondary" className="shrink-0 text-[9px]">draft</Badge> : null}
+                            </div>
+                          </td>
+                          <td className="border-r border-black px-1 py-1">
+                            <Input className={inputBaseClass} inputMode="decimal" value={draft.peoNorm} disabled={!row.expertId} onChange={(event) => updateLeaveGridDraft(row, 'peoNorm', event.target.value)} aria-label={`Norma PEO ${row.name}`} />
+                          </td>
+                          <td className="border-r border-black px-1 py-1">
+                            <Input className={inputBaseClass} inputMode="decimal" value={draft.peoDays} disabled={!row.expertId} onChange={(event) => updateLeaveGridDraft(row, 'peoDays', event.target.value)} aria-label={`Zile CO PEO ${row.name}`} />
+                          </td>
+                          <td className="border-r border-black bg-slate-200 px-1 py-1">
+                            <Input className={`${inputBaseClass} font-bold`} inputMode="decimal" value={draft.peoHours} disabled={!row.expertId} onChange={(event) => updateLeaveGridDraft(row, 'peoHours', event.target.value)} aria-label={`Ore CO PEO ${row.name}`} />
+                          </td>
+                          <td className="border-r border-black px-1 py-1">
+                            <Input className={inputBaseClass} inputMode="decimal" value={draft.cpcNorm} disabled={!row.expertId} onChange={(event) => updateLeaveGridDraft(row, 'cpcNorm', event.target.value)} aria-label={`Norma CPC ${row.name}`} />
+                          </td>
+                          <td className="border-r border-black px-1 py-1">
+                            <Input className={inputBaseClass} inputMode="decimal" value={draft.cpcDays} disabled={!row.expertId} onChange={(event) => updateLeaveGridDraft(row, 'cpcDays', event.target.value)} aria-label={`Zile CO CPC ${row.name}`} />
+                          </td>
+                          <td className="border-r border-black bg-slate-200 px-1 py-1">
+                            <Input className={`${inputBaseClass} font-bold`} inputMode="decimal" value={draft.cpcHours} disabled={!row.expertId} onChange={(event) => updateLeaveGridDraft(row, 'cpcHours', event.target.value)} aria-label={`Ore CO CPC ${row.name}`} />
+                          </td>
+                          <td className="border-r border-black px-1 py-1">
+                            <Input className={`${inputBaseClass} text-center`} value={draft.period} disabled={!row.expertId} onChange={(event) => updateLeaveGridDraft(row, 'period', event.target.value)} placeholder="01-08; 29-31" aria-label={`Perioada CO ${row.name}`} />
+                          </td>
+                          <td className="px-1 py-1 text-center">
+                            <Button size="icon" variant="ghost" className="h-7 w-7" title={`Salveaza CO pentru ${row.name}`} aria-label={`Salveaza CO pentru ${row.name}`} disabled={!row.expertId || savingLeaveRow !== null} onClick={() => saveLeaveGridRow(row)}>
+                              {savingLeaveRow === key ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
                             </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
+                  <tfoot>
+                    <tr className="border-t-2 border-black bg-slate-200 text-[11px] font-bold uppercase">
+                      <td className="border-r border-black px-2 py-2">TOTAL</td>
+                      <td className="border-r border-black px-1 py-2" />
+                      <td className="border-r border-black px-1 py-2 text-center tabular-nums">{compactHours(leaveGridTotals.peoDays)}</td>
+                      <td className="border-r border-black px-1 py-2 text-center tabular-nums">{compactHours(leaveGridTotals.peoHours)}</td>
+                      <td className="border-r border-black px-1 py-2" />
+                      <td className="border-r border-black px-1 py-2 text-center tabular-nums">{compactHours(leaveGridTotals.cpcDays)}</td>
+                      <td className="border-r border-black px-1 py-2 text-center tabular-nums">{compactHours(leaveGridTotals.cpcHours)}</td>
+                      <td className="border-r border-black px-1 py-2" />
+                      <td className="px-1 py-2" />
+                    </tr>
+                  </tfoot>
                 </table>
               </TooltipProvider>
             )

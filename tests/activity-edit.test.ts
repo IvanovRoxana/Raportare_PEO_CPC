@@ -830,6 +830,49 @@ test('gruparea livrabilului accepta doar activitati cu aceeasi identitate', () =
   assert.equal(areActivitiesCompatibleForDeliverableGroup(current, incompatible), false);
 });
 
+test('activitatile COM de comunicare sunt compatibile multi-group in aceeasi serie', () => {
+  const aliniere = activity('com-aliniere', {
+    catalogActivityId: 'catalog-aliniere',
+    activityType: 'Aliniere experti in comunicare',
+    title: 'Aliniere experti in comunicare',
+  });
+  const articole = activity('com-articole', {
+    catalogActivityId: 'catalog-articole',
+    activityType: 'Articole pe concordia.ro',
+    title: 'Articole pe concordia.ro',
+  });
+  const some = activity('com-some', {
+    catalogActivityId: 'catalog-some',
+    activityType: 'Content digital si vizual SoMe',
+    title: 'Content digital si vizual SoMe',
+  });
+  const other = activity('com-other', {
+    catalogActivityId: 'catalog-other',
+    activityType: 'Analiza media',
+    title: 'Analiza media',
+  });
+
+  assert.equal(areActivitiesCompatibleForDeliverableGroup(aliniere, articole), true);
+  assert.equal(areActivitiesCompatibleForDeliverableGroup(articole, some), true);
+  assert.equal(areActivitiesCompatibleForDeliverableGroup(aliniere, other), false);
+  const groupedAliniere = { ...aliniere, periodGroupId: 'activity-period:com-june' };
+  assert.deepEqual(
+    getActivityGroupMembers(groupedAliniere, [
+      groupedAliniere,
+      { ...articole, periodGroupId: 'activity-period:com-june' },
+      { ...some, periodGroupId: 'activity-period:com-june' },
+      { ...other, periodGroupId: 'activity-period:com-june' },
+    ]).map((item) => item.id),
+    ['com-aliniere', 'com-articole', 'com-some'],
+  );
+  assert.equal(compileActivitiesByPeriodGroup([
+    groupedAliniere,
+    { ...articole, periodGroupId: 'activity-period:com-june' },
+    { ...some, periodGroupId: 'activity-period:com-june' },
+    { ...other, periodGroupId: 'activity-period:com-june' },
+  ]).length, 2);
+});
+
 test('gruparea livrabilului nu considera compatibile activitati fara identitate', () => {
   const current = activity('activity-current', {
     saCode: undefined,

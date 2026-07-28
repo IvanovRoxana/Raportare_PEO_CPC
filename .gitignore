@@ -23,6 +23,7 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 server.*.log
+dev-server-log/
 data/audit/*.ndjson
 rag-seed/
 

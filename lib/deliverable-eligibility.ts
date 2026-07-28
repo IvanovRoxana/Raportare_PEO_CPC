@@ -442,8 +442,9 @@ export function buildDeliverableEligibilitySemanticAudit(input: {
     ...input.result.recommendations,
   ].join('\n'));
   const documentsWithText = documents.filter((document) => String(document.extractedText || '').trim().length >= MIN_ELIGIBILITY_TEXT_LENGTH);
-  const hasSuggestedActivityChange = input.result.suggestedSettings?.changes.includes('activity') ?? false;
-  const hasSuggestedDeliverableTypeChange = input.result.suggestedSettings?.changes.includes('deliverableType') ?? false;
+  const suggestedChanges = input.result.suggestedSettings?.changes ?? [];
+  const hasSuggestedActivityChange = suggestedChanges.includes('activity');
+  const hasSuggestedDeliverableTypeChange = suggestedChanges.includes('deliverableType');
   const hasActivityMismatch = textMentionsActivityMismatch(normalizedResultText);
   const hasMinimumEvidenceGap = hasTextEvidence(normalizedResultText, [
     /lips[a]?\s+dove/,

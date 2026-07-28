@@ -1,3 +1,6 @@
+import { isEventActivityCatalogItem } from './activity-catalog-merge.ts';
+import type { Activity, ActivityCatalog } from './types.ts';
+
 export interface EventDocumentationDeliverable {
   uploaded?: boolean;
   filePath?: string;
@@ -25,6 +28,40 @@ export interface EventDocumentationStatus {
 
 function getEventDeliverableKind(deliverable: EventDocumentationDeliverable) {
   return deliverable.category || deliverable.deliverableType || deliverable.slotType || deliverable.type || '';
+}
+
+export function hasEventDocumentationSlots(
+  deliverables: EventDocumentationDeliverable[] = [],
+) {
+  return deliverables.some((deliverable) => {
+    const kind = getEventDeliverableKind(deliverable);
+    return kind === 'event_mom' || kind === 'event_proof';
+  });
+}
+
+function isLegacyEventActivity(activityType: string) {
+  const eventKeywords = [
+    'eveniment', 'atelier', 'workshop', 'conferinta', 'seminar',
+    'intalnire', 'reuniune', 'sesiune', 'forum', 'dezbatere',
+    'training', 'formare', 'instruire', 'webinar',
+  ];
+  const normalizedActivityType = activityType
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+  return eventKeywords.some((keyword) => normalizedActivityType.includes(keyword));
+}
+
+export function isActivityEventForDocumentation(
+  activity: Pick<Activity, 'catalogActivityId' | 'activityType' | 'title'>,
+  catalog: ActivityCatalog[],
+) {
+  if (activity.catalogActivityId) {
+    const catalogItem = catalog.find((item) => item.id === activity.catalogActivityId);
+    return catalogItem ? isEventActivityCatalogItem(catalogItem) : false;
+  }
+
+  return isLegacyEventActivity(activity.activityType || activity.title || '');
 }
 
 function isEventDeliverableUploaded(deliverable: EventDocumentationDeliverable) {

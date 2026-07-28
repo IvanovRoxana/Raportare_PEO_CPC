@@ -55,12 +55,12 @@ function getTextExtractionGateReason(deliverable: DeliverableSlot, relatedDelive
   if (deliverable.slotType === 'event_mom') {
     return 'Raportul de eveniment este atasat, dar textul extras este prea scurt pentru verificarea AI. Daca documentul este corect, poti continua; pentru verificare AI completa, reincarca PDF/DOCX cu text selectabil sau OCR.';
   }
+  if ((deliverable.filename || deliverable.name || '').toLowerCase().endsWith('.doc')) {
+    return 'Documentul este in format Word vechi (.doc), iar aplicatia nu poate extrage text suficient din el pentru verificarea AI. Salveaza-l din Word ca .docx sau exporta-l ca PDF cu text selectabil, apoi reincarca-l.';
+  }
   const hasConfirmedTitle = Boolean(deliverable.titleConfirmed || deliverable.declaredTitle || deliverable.suggestedTitle);
   if (hasConfirmedTitle) {
     return 'Titlul a fost identificat, dar textul extras din livrabil este prea scurt pentru verificarea AI. Reincarca documentul ca PDF/DOCX cu text selectabil sau exporta-l cu OCR.';
-  }
-  if ((deliverable.filename || deliverable.name || '').toLowerCase().endsWith('.doc')) {
-    return 'Nu s-a putut extrage text suficient din documentul .doc. Reincarca documentul ca .docx/PDF cu text selectabil sau verifica manual.';
   }
   if (/\.(ppt|pptx)$/i.test(deliverable.filename || deliverable.name || '')) {
     return 'Nu exista text extras suficient din prezentare. Exporta prezentarea in PDF pentru verificare AI.';

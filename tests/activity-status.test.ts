@@ -106,6 +106,36 @@ test('event status accepts uploaded MOM/report as the main deliverable', () => {
   );
 });
 
+test('standard event preparation with a normal deliverable does not require MOM', () => {
+  assert.equal(
+    getActivityStatus({
+      id: 'a-event-preparation',
+      expertId: 'e1',
+      expertName: 'Expert AP',
+      date: '2026-05-15',
+      hours: 4,
+      activityType: 'Organizare eveniment / pregatire lista potentiali invitati',
+      title: 'Organizare eveniment / pregatire lista potentiali invitati',
+      description: 'Pregatirea listei de invitati pentru un eveniment viitor.',
+      deliverables: [
+        {
+          id: 'invite-list',
+          activityId: 'a-event-preparation',
+          fileName: 'lista-potentiali-invitati.xlsx',
+          fileType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          fileSize: 1024,
+          deliverableType: 'main',
+          uploaded: true,
+          titleConfirmed: true,
+          stadiu: 'final',
+          aiCheck: true,
+        },
+      ],
+    }),
+    'complete'
+  );
+});
+
 test('event status requires proof when the event report was generated in the form', () => {
   assert.equal(
     getActivityStatus({

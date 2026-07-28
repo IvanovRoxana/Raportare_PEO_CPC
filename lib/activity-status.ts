@@ -5,7 +5,7 @@
 import { EXCEPTIONS, isEventActivity } from './peo-constants.ts';
 import { isDeliverableEligibilityCheckEnabledClient } from './feature-flags.ts';
 import { getBusinessHubMetaMissingFields, parseBusinessHubMetaJson } from './business-hub-reporting.ts';
-import { getEventDocumentationStatus } from './event-documentation.ts';
+import { getEventDocumentationStatus, hasEventDocumentationSlots } from './event-documentation.ts';
 import type { Activity, Deliverable } from './types.ts';
 
 export type ActivityStatus = 
@@ -73,7 +73,8 @@ export function getActivityStatus(entry: ActivityEntry): ActivityStatus {
   
   const delivs = entry.deliverables || [];
   const actLow = (entry.activityType || '').toLowerCase();
-  const isEvent = isEventActivity(actLow);
+  const hasStructuredEventSlots = hasEventDocumentationSlots(delivs);
+  const isEvent = hasStructuredEventSlots || (delivs.length === 0 && isEventActivity(actLow));
   
   if (delivs.length > 0) {
     // Check main deliverables
