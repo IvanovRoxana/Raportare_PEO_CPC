@@ -175,7 +175,7 @@ async function generatePeoWorkbook(payload: ExportPayload): Promise<GeneratedWor
   sheetXml = setCell(sheetXml, 'G8', stringValue(payload.expert.name));
   sheetXml = setCell(sheetXml, 'G9', stringValue(getExpertPosition(payload.expert)));
   sheetXml = setCell(sheetXml, 'G10', stringValue(getExpertCategoryForExport(payload.expert)));
-  sheetXml = setCell(sheetXml, 'G11', stringValue(payload.expert.beneficiary ?? 'CONFEDERATIA PATRONALA CONCORDIA'));
+  sheetXml = setCell(sheetXml, 'G11', stringValue(payload.expert.beneficiary));
   sheetXml = setCell(sheetXml, 'G12', stringValue(getProjectTitle(payload.expert)));
 
   const peoDayRows = 30 + (daysInMonth === 31 ? 1 : 0) + extraRows;
@@ -302,7 +302,7 @@ async function generateConsolidatedWorkbook(payload: ExportPayload): Promise<Gen
   sheetXml = setCell(sheetXml, `G${peoSection.headerRow - 5}`, stringValue(payload.expert.name));
   sheetXml = setCell(sheetXml, `G${peoSection.headerRow - 4}`, stringValue(getExpertPosition(payload.expert)));
   sheetXml = setCell(sheetXml, `G${peoSection.headerRow - 3}`, stringValue(getExpertCategoryForExport(payload.expert)));
-  sheetXml = setCell(sheetXml, `G${peoSection.headerRow - 2}`, stringValue(payload.expert.beneficiary ?? 'CONFEDERATIA PATRONALA CONCORDIA'));
+  sheetXml = setCell(sheetXml, `G${peoSection.headerRow - 2}`, stringValue(payload.expert.beneficiary));
   sheetXml = setCell(sheetXml, `G${peoSection.headerRow - 1}`, stringValue(getProjectTitle(payload.expert)));
 
   for (let index = 0; index < peoSection.dayRows; index += 1) {
