@@ -644,23 +644,32 @@ export default function PMDashboard() {
         expert,
         activities: monthActivities.filter((activity) => activity.expertId === expert.id),
         reportStatus: monthlyReportStatuses.find((status) => status.expertId === expert.id),
+        documents,
         auditLogs: auditLogs.filter((log) => !log.affectedExpertId || log.affectedExpertId === expert.id),
         month: selectedMonth,
         year: selectedYear,
       }));
     });
     return result;
-  }, [auditLogs, monthActivities, monthlyReportStatuses, selectedMonth, selectedYear, visibleExperts]);
+  }, [auditLogs, documents, monthActivities, monthlyReportStatuses, selectedMonth, selectedYear, visibleExperts]);
+  const clarificationThreads = useMemo(
+    () => Array.from(clarificationThreadsByExpertId.values()).flat(),
+    [clarificationThreadsByExpertId],
+  );
   const pendingSharedDeliverables = useMemo(() => {
     return sharedDeliverables
       .filter((relation) => relation.status === 'pending_registration' || relation.status === 'ignored_by_target')
-      .map((relation) => ({
-        relation,
-        document: documents.find((document) => document.id === relation.documentId),
-        sourceExpert: visibleExperts.find((expert) => expert.id === relation.sourceExpertId),
-        targetExpert: visibleExperts.find((expert) => expert.id === relation.targetExpertId),
-      }));
-  }, [documents, visibleExperts, sharedDeliverables]);
+      .map((relation) => {
+        const sourceActivityId = relation.sourceActivityId || relation.documentId.replace(/^activity:/, '');
+        return {
+          relation,
+          document: documents.find((document) => document.id === relation.documentId),
+          sourceActivity: monthActivities.find((activity) => activity.id === sourceActivityId),
+          sourceExpert: visibleExperts.find((expert) => expert.id === relation.sourceExpertId),
+          targetExpert: visibleExperts.find((expert) => expert.id === relation.targetExpertId),
+        };
+      });
+  }, [documents, monthActivities, visibleExperts, sharedDeliverables]);
   const pmSummary = useMemo(
     () =>
       buildPmDashboardSummary({
@@ -1235,6 +1244,7 @@ export default function PMDashboard() {
           eventDocumentIssues={eventDocumentIssues}
           unresolvedNeconformitati={localNeconformitati.filter((item) => !item.resolved)}
           dashboardRows={dashboardRows}
+          clarificationThreads={clarificationThreads}
           activeAlertFilter={activeAlertFilter}
           onOpenDossier={openReviewReportById}
           onRequestDocumentClarification={requestDocumentClarification}

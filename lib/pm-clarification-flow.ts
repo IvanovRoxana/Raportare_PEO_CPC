@@ -29,6 +29,7 @@ export function buildPmClarificationThreads({
   expert,
   activities,
   reportStatus,
+  documents = [],
   auditLogs,
   month,
   year,
@@ -36,6 +37,7 @@ export function buildPmClarificationThreads({
   expert: Expert;
   activities: Activity[];
   reportStatus?: ReportStatus | null;
+  documents?: DocumentMetadata[];
   auditLogs: AuditLog[];
   month: number;
   year: number;
@@ -78,6 +80,26 @@ export function buildPmClarificationThreads({
         requestedBy: audit?.actorName,
         answeredAt: answered ? activity.updatedAt : undefined,
         resolvedAt: activity.status === 'approved' ? activity.updatedAt : undefined,
+      });
+    });
+
+  documents
+    .filter((document) => document.uploadedByExpertId === expert.id)
+    .forEach((document) => {
+      const audit = findLatestClarificationAudit(auditLogs, `document:${document.id}`);
+      if (!audit?.newValue) return;
+
+      threads.push({
+        id: `document-${document.id}`,
+        targetType: 'document',
+        targetId: document.id,
+        expertId: expert.id,
+        month,
+        year,
+        status: 'requested',
+        pmMessage: String(audit.newValue),
+        requestedAt: audit.createdAt,
+        requestedBy: audit.actorName,
       });
     });
 
