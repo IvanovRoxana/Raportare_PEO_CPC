@@ -154,7 +154,7 @@ function buildSaSections(
         : ` Rezultat raportabil fara fisier: ${getResultWithoutDeliverable(bundle)}.`;
       return {
         heading: `${getPerformedActivity(bundle, activities)} (${days}, ${calculateWorkBlockHours(bundle.activityLinks)} ore lucrate)`,
-        body: normalizeWhitespace(
+        body: normalizeAnexa10ReportText(
           bundle.workBlock.generatedNarrative
           || bundle.workBlock.cleanedActivitySummary
           || bundle.workBlock.expertContribution
@@ -258,7 +258,7 @@ function getOfficialActivityTitle(bundle: ReportingWorkBlockBundle, activities: 
 }
 
 function getPerformedActivity(bundle: ReportingWorkBlockBundle, activities: Activity[]) {
-  return normalizeWhitespace(
+  return normalizeAnexa10ReportText(
     bundle.workBlock.generatedTableSummary
     || bundle.workBlock.cleanedActivitySummary
     || bundle.workBlock.expertContribution
@@ -306,4 +306,55 @@ function roundHours(value: number) {
 
 function normalizeWhitespace(value: string) {
   return value.replace(/\s+/g, ' ').trim();
+}
+
+function normalizeAnexa10ReportText(value: string) {
+  return enforceFirstPersonReportText(dedupeRepeatedReportText(value));
+}
+
+function dedupeRepeatedReportText(value: string) {
+  const normalized = normalizeWhitespace(value);
+  if (!normalized) return normalized;
+
+  const sentences = normalized.split(/(?<=[.!?])\s+(?=[A-ZĂÂÎȘȚ])/u);
+  const uniqueSentences: string[] = [];
+  const seen = new Set<string>();
+
+  for (const sentence of sentences) {
+    const cleanSentence = normalizeWhitespace(sentence);
+    if (!cleanSentence) continue;
+
+    const key = normalizeForDedupe(cleanSentence);
+    if (seen.has(key)) continue;
+
+    seen.add(key);
+    uniqueSentences.push(cleanSentence);
+  }
+
+  return uniqueSentences.join(' ');
+}
+
+function enforceFirstPersonReportText(value: string) {
+  return normalizeWhitespace(value
+    .replace(/\bActivitatea const[ăa] în\s+/giu, 'Am realizat ')
+    .replace(/\bActivitatea presupune\s+/giu, 'Am realizat ')
+    .replace(/\bActivitatea urmărește\s+/giu, 'Am urmărit ')
+    .replace(/\bActivitatea reprezintă\s+/giu, 'Am realizat ')
+    .replace(/\bProcesul presupune\s+/giu, 'În acest proces, am realizat ')
+    .replace(/\bSunt elaborate\b/giu, 'Am elaborat')
+    .replace(/\bSunt integrate\b/giu, 'Am integrat')
+    .replace(/\bSunt formulate\b/giu, 'Am formulat')
+    .replace(/\bSunt propuse\b/giu, 'Am propus')
+    .replace(/\bSunt urmărite\b/giu, 'Am urmărit')
+    .replace(/\bDocumentele elaborate sunt transmise\b/giu, 'Am transmis documentele elaborate'));
+}
+
+function normalizeForDedupe(value: string) {
+  return value
+    .toLocaleLowerCase('ro')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }

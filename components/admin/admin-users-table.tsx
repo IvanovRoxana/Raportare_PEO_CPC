@@ -53,6 +53,8 @@ type EditFormState = {
   role: RoleOption;
   norma: string;
   category: string;
+  contract: string;
+  expertExperienceCategory: string;
   beneficiary: string;
   projectCode: string;
   positionInProject: string;
@@ -123,12 +125,31 @@ function buildEditForm(expert: Expert): EditFormState {
     role,
     norma: String(expert.norma ?? 8),
     category: expert.category || '',
+    contract: formatContractDisplay(expert),
+    expertExperienceCategory: expert.expertExperienceCategory || '',
     beneficiary: expert.beneficiary || '',
     projectCode: expert.projectCode || '',
     positionInProject: expert.positionInProject || '',
     aiReportingInstructions: expert.aiReportingInstructions || '',
     hasPmAccess: expert.hasPmAccess ?? (role.includes('PM') || role === 'Admin'),
     isActive: expert.isActive ?? true,
+  };
+}
+
+function formatContractDisplay(expert: Pick<Expert, 'contractNumber' | 'contractType'>) {
+  return [expert.contractType, expert.contractNumber].filter(Boolean).join(' ').trim();
+}
+
+function parseContractDisplay(value: string) {
+  const contract = value.trim();
+  if (!contract) return { contractNumber: '', contractType: '' };
+
+  const knownTypeMatch = contract.match(/^(CIM|PFA|SRL|CPS|PS|contract(?:ul)?(?: de)? prestari servicii)\b[\s:,-]*(.*)$/i);
+  if (!knownTypeMatch) return { contractNumber: contract, contractType: '' };
+
+  return {
+    contractType: knownTypeMatch[1].trim(),
+    contractNumber: knownTypeMatch[2].trim(),
   };
 }
 
@@ -159,6 +180,9 @@ function buildExpertCreateInput(expert: Expert, updates: Partial<Expert>): Omit<
     positionInProject: updates.positionInProject ?? expert.positionInProject,
     projectCode: updates.projectCode ?? expert.projectCode,
     projectTitle: updates.projectTitle ?? expert.projectTitle,
+    contractNumber: updates.contractNumber ?? expert.contractNumber,
+    contractType: updates.contractType ?? expert.contractType,
+    expertExperienceCategory: updates.expertExperienceCategory ?? expert.expertExperienceCategory,
     aiReportingInstructions: updates.aiReportingInstructions ?? expert.aiReportingInstructions,
     beneficiary: updates.beneficiary ?? expert.beneficiary,
     saCodes: updates.saCodes ?? expert.saCodes ?? [],
@@ -176,6 +200,9 @@ function auditProfileValue(expert: Expert | (Partial<Expert> & { name?: string; 
     role: expert.role || '',
     norma: expert.norma ?? '',
     category: expert.category || '',
+    contractNumber: expert.contractNumber || '',
+    contractType: expert.contractType || '',
+    expertExperienceCategory: expert.expertExperienceCategory || '',
     beneficiary: expert.beneficiary || '',
     projectCode: expert.projectCode || '',
     positionInProject: expert.positionInProject || '',
@@ -384,6 +411,7 @@ export function AdminUsersTable() {
     setError(null);
     setOk(null);
 
+    const contractFields = parseContractDisplay(form.contract);
     const updates: Partial<Expert> = {
       name: form.name.trim(),
       email: form.email.trim(),
@@ -391,6 +419,9 @@ export function AdminUsersTable() {
       role: form.role,
       norma,
       category: form.category.trim(),
+      contractNumber: contractFields.contractNumber,
+      contractType: contractFields.contractType,
+      expertExperienceCategory: form.expertExperienceCategory.trim(),
       beneficiary: form.beneficiary.trim(),
       projectCode: form.projectCode.trim(),
       positionInProject: form.positionInProject.trim(),
@@ -803,6 +834,24 @@ export function AdminUsersTable() {
                   id="admin-user-category"
                   value={form.category}
                   onChange={(event) => setForm({ ...form, category: event.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="admin-user-contract">Nr. si tipul contractului</Label>
+                <Input
+                  id="admin-user-contract"
+                  placeholder="Ex: CIM 12/2026"
+                  value={form.contract}
+                  onChange={(event) => setForm({ ...form, contract: event.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="admin-user-expert-experience-category">Categorie expert Anexa 10</Label>
+                <Input
+                  id="admin-user-expert-experience-category"
+                  placeholder="Ex: expert senior"
+                  value={form.expertExperienceCategory}
+                  onChange={(event) => setForm({ ...form, expertExperienceCategory: event.target.value })}
                 />
               </div>
               <div className="space-y-2">

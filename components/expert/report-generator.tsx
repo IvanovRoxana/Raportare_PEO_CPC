@@ -1,7 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { FileText, Download, Loader2 } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { FileText, Download, Loader2, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { getMonthName } from '@/lib/app-utils';
@@ -15,6 +15,7 @@ import {
 import { buildAnexa10ReportModel } from '@/lib/activity-report/build-report-model';
 import { buildAnexa10DocxBlob, buildAnexa10DocxFilename } from '@/lib/activity-report/docx-export';
 import { getAnexa10ExportReadiness } from '@/lib/activity-report/export-readiness';
+import type { Anexa10PreflightReport } from '@/lib/activity-report/preflight';
 import { combineActivityReportSections, splitActivityReportSections } from '@/lib/activity-report/sections';
 import type { ReportingWorkBlockBundle } from '@/lib/activity-report/work-blocks';
 import { getDocumentAuditTitle } from '@/lib/document-sharing';
@@ -100,6 +101,8 @@ export function ReportGenerator({
   const [generatedNarrativeSection, setGeneratedNarrativeSection] = useState('');
   const [activeGeneratedTab, setActiveGeneratedTab] = useState<GeneratedReportTab>('full');
   const [isLocalFallbackDraft, setIsLocalFallbackDraft] = useState(false);
+  const [isRunningAnexa10Preflight, setIsRunningAnexa10Preflight] = useState(false);
+  const [anexa10PreflightReport, setAnexa10PreflightReport] = useState<Anexa10PreflightReport | null>(null);
   const deterministicAnexa10Model = useMemo(() => {
     if (!enableDeterministicAnexa10Docx || activities.length === 0) return null;
     if (isLoadingDeterministicWorkBlocks) return null;
@@ -134,6 +137,10 @@ export function ReportGenerator({
     : deterministicExportReadiness?.canExport
       ? `${deterministicExportReadiness.statusLabel}. ${deterministicWorkBlockSourceLabel}.`
       : deterministicExportReadiness?.blockingMessages[0] ?? 'Exportul Anexa 10 este blocat pentru verificare.';
+
+  useEffect(() => {
+    setAnexa10PreflightReport(null);
+  }, [deterministicAnexa10Model]);
 
   const generateWithAI = async () => {
     setIsGenerating(true);
@@ -345,7 +352,7 @@ export function ReportGenerator({
   };
 
   const exportDeterministicAnexa10Docx = async () => {
-    if (!deterministicAnexa10Model || !deterministicExportReadiness?.canExport) return;
+    if (!deterministicAnexa10Model || !deterministicExportReadiness?.canExport || anexa10PreflightReport?.canExport === false) return;
 
     setIsExportingDeterministicDocx(true);
     setError(null);
@@ -360,6 +367,29 @@ export function ReportGenerator({
     }
   };
 
+  const runAnexa10Preflight = async () => {
+    if (!deterministicAnexa10Model) return;
+
+    setIsRunningAnexa10Preflight(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/ai/anexa10-preflight', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ model: deterministicAnexa10Model }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(data?.error || 'Preflight-ul Anexa 10 a esuat.');
+      }
+      setAnexa10PreflightReport(data as Anexa10PreflightReport);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Preflight-ul Anexa 10 a esuat.');
+    } finally {
+      setIsRunningAnexa10Preflight(false);
+    }
+  };
+
   const totalHours = activities.reduce((sum, a) => sum + a.hours, 0);
   const uniqueDates = new Set(activities.map((a) => a.date)).size;
   const hasLocalFallbackReport = isLocalFallbackDraft || isLocalFallbackReport(generatedReport);
@@ -367,6 +397,11 @@ export function ReportGenerator({
   const deterministicReadinessClassName = deterministicExportReadiness?.severity === 'blocked'
     ? 'border-destructive/40 bg-destructive/10'
     : deterministicExportReadiness?.severity === 'warning'
+      ? 'border-amber-300 bg-amber-50'
+      : 'border-emerald-200 bg-emerald-50';
+  const preflightClassName = anexa10PreflightReport?.canExport === false
+    ? 'border-destructive/40 bg-destructive/10'
+    : anexa10PreflightReport && anexa10PreflightReport.findings.length > 0
       ? 'border-amber-300 bg-amber-50'
       : 'border-emerald-200 bg-emerald-50';
 
@@ -440,6 +475,64 @@ export function ReportGenerator({
           </div>
         )}
 
+        {enableDeterministicAnexa10Docx && deterministicAnexa10Model && (
+          <div className={`rounded-lg border p-3 text-sm ${anexa10PreflightReport ? preflightClassName : 'border-slate-200 bg-slate-50'}`}>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="font-medium">Preflight Anexa 10 cu agent AI</p>
+                <p className="mt-1 text-muted-foreground">
+                  Verifica date obligatorii, responsabilitati, repetitii, persoana I si coerenta narativa inainte de export.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={runAnexa10Preflight}
+                disabled={isRunningAnexa10Preflight || isLoadingDeterministicWorkBlocks}
+              >
+                {isRunningAnexa10Preflight ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                Ruleaza preflight AI
+              </Button>
+            </div>
+
+            {anexa10PreflightReport ? (
+              <div className="mt-3 space-y-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-md border bg-background px-2 py-1 text-xs font-medium">
+                    {anexa10PreflightReport.statusLabel}
+                  </span>
+                  <span className="rounded-md border bg-background px-2 py-1 text-xs font-medium">
+                    Scor {anexa10PreflightReport.score}/100
+                  </span>
+                  {anexa10PreflightReport.auditId ? (
+                    <span className="rounded-md border bg-background px-2 py-1 text-xs text-muted-foreground">
+                      Audit AI {anexa10PreflightReport.auditId}
+                    </span>
+                  ) : null}
+                </div>
+                <p className="text-muted-foreground">{anexa10PreflightReport.summary}</p>
+                {anexa10PreflightReport.aiSummary ? (
+                  <p className="text-muted-foreground">Agent AI: {anexa10PreflightReport.aiSummary}</p>
+                ) : null}
+                {anexa10PreflightReport.findings.length > 0 ? (
+                  <ul className="list-disc space-y-1 pl-5">
+                    {anexa10PreflightReport.findings.map((finding) => (
+                      <li key={finding.id}>
+                        <span className="font-medium">
+                          [{finding.severity}] {finding.title}:
+                        </span>{' '}
+                        {finding.detail}
+                        {finding.suggestion ? <span className="text-muted-foreground"> Recomandare: {finding.suggestion}</span> : null}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        )}
+
         {enableDeterministicAnexa10Docx && isLoadingDeterministicWorkBlocks && (
           <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm">
             <p className="font-medium">Raport de Activitate: se incarca work block-urile persistate</p>
@@ -460,6 +553,7 @@ export function ReportGenerator({
                 || isLoadingDeterministicWorkBlocks
                 || isExportingDeterministicDocx
                 || !deterministicExportReadiness?.canExport
+                || anexa10PreflightReport?.canExport === false
               }
             >
               {isExportingDeterministicDocx ? (

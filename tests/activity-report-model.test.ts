@@ -80,6 +80,62 @@ test('modelul determinist prefera activitySummary cand nu exista consolidare wor
   assert.equal(model.saSections[0].items[0].body, 'Am sintetizat statusul livrabilelor pentru raportarea lunara.');
 });
 
+test('modelul determinist elimina propozitiile repetate din sumarul work block-ului', () => {
+  const repeatedSentence = 'Am analizat propunerea legislativa si am sintetizat impactul pentru membrii CPC.';
+  const repeatedSummary = `${repeatedSentence} ${repeatedSentence} ${repeatedSentence} Am formulat concluzii si recomandari.`;
+  const activities = [
+    activity({
+      id: 'a1',
+      date: '2026-06-02',
+      hours: 6,
+      periodGroupId: 'legislative-monitoring',
+      activitySummary: repeatedSummary,
+    }),
+  ];
+  const bundles = buildWorkBlocks(activities).map((bundle) => ({
+    ...bundle,
+    workBlock: {
+      ...bundle.workBlock,
+      cleanedActivitySummary: repeatedSummary,
+      generatedTableSummary: repeatedSummary,
+      generatedNarrative: repeatedSummary,
+    },
+  }));
+
+  const model = buildAnexa10ReportModel({ expert, activities, month: 5, year: 2026, workBlockBundles: bundles });
+
+  assert.equal(
+    model.tableRows[0].performedActivity,
+    `${repeatedSentence} Am formulat concluzii si recomandari.`,
+  );
+  assert.equal(model.saSections[0].items[0].body, model.tableRows[0].performedActivity);
+});
+
+test('modelul determinist converteste formularile generice in persoana I singular', () => {
+  const genericSummary = [
+    'Activitatea constă în elaborarea documentelor de poziție pentru membrii CPC.',
+    'Sunt elaborate note de briefing și sinteze legislative.',
+    'Documentele elaborate sunt transmise autorităților competente.',
+  ].join(' ');
+  const activities = [
+    activity({
+      id: 'a1',
+      date: '2026-06-02',
+      hours: 6,
+      periodGroupId: 'first-person',
+      activitySummary: genericSummary,
+    }),
+  ];
+
+  const model = buildAnexa10ReportModel({ expert, activities, month: 5, year: 2026 });
+
+  assert.equal(
+    model.saSections[0].items[0].body,
+    'Am realizat elaborarea documentelor de poziție pentru membrii CPC. Am elaborat note de briefing și sinteze legislative. Am transmis documentele elaborate autorităților competente.',
+  );
+  assert.doesNotMatch(model.saSections[0].items[0].body, /Activitatea constă|Sunt elaborate|sunt transmise/i);
+});
+
 test('mai multe livrabile apar in acelasi rand cand apartin aceluiasi flux', () => {
   const activities = [
     activity({
