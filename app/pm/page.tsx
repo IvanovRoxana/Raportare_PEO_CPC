@@ -99,6 +99,7 @@ import type {
   Expert,
   Activity,
   DocumentMetadata,
+  PmClarificationThread,
 } from '@/lib/types';
 import { UserMenu } from '@/components/user-menu';
 import { ProgressReportTab } from '@/components/pm/progress-report-tab';
@@ -147,6 +148,7 @@ export default function PMDashboard() {
   const [reviewFocus, setReviewFocus] = useState<{ activityId?: string; documentId?: string; issueType?: string } | null>(null);
   const [activeAlertFilter, setActiveAlertFilter] = useState<'title_mismatch' | 'shared_deliverables' | 'event_documents' | 'all'>('all');
   const [isExportingOpisTotal, setIsExportingOpisTotal] = useState(false);
+  const [localDocumentClarificationThreads, setLocalDocumentClarificationThreads] = useState<PmClarificationThread[]>([]);
   const [pmExceptionOpen, setPmExceptionOpen] = useState(false);
   const [pmExceptionType, setPmExceptionType] = useState<'CO' | 'CM' | 'Altele'>('CO');
   const [pmExceptionDate, setPmExceptionDate] = useState('');
@@ -323,10 +325,10 @@ export default function PMDashboard() {
     activityIds?: string[];
     fieldName?: string;
   }) => {
-    if (!currentUser || !canManagePmReview) return;
+    if (!currentUser || !canManagePmReview) return null;
 
     try {
-      await createAuditLog({
+      return await createAuditLog({
         actionType: PM_CLARIFICATION_AUDIT_ACTION,
         actorId: currentUser.id || currentUser.email || 'pm',
         actorName: currentUser.displayName || currentUser.email || 'PM',
@@ -344,6 +346,7 @@ export default function PMDashboard() {
       });
     } catch (error) {
       console.warn('Clarification audit log was not persisted:', error);
+      return null;
     }
   };
 
@@ -515,27 +518,51 @@ export default function PMDashboard() {
     const expert = visibleExperts.find((item) => item.id === documentMeta.uploadedByExpertId);
     const currentStatus = monthlyReportStatuses.find((item) => item.expertId === documentMeta.uploadedByExpertId);
 
-    await updateReportStatus({
-      expertId: documentMeta.uploadedByExpertId,
-      year: selectedYear,
-      month: selectedMonth,
-      status: 'clarifications',
-      sentDate: currentStatus?.sentDate,
-      approvalDate: currentStatus?.approvalDate,
-      expertAccessApproved: currentStatus?.expertAccessApproved ?? false,
-      expertAccessApprovedAt: currentStatus?.expertAccessApprovedAt,
-      pmNotes: pmNote,
-    });
+    try {
+      await updateReportStatus({
+        expertId: documentMeta.uploadedByExpertId,
+        year: selectedYear,
+        month: selectedMonth,
+        status: 'clarifications',
+        sentDate: currentStatus?.sentDate,
+        approvalDate: currentStatus?.approvalDate,
+        expertAccessApproved: currentStatus?.expertAccessApproved ?? false,
+        expertAccessApprovedAt: currentStatus?.expertAccessApprovedAt,
+        pmNotes: pmNote,
+      });
 
-    await recordClarificationAudit({
-      expert: {
-        id: documentMeta.uploadedByExpertId,
-        name: expert?.name || documentMeta.uploadedByExpertName || documentMeta.uploadedByExpertId,
-        projectCode: expert?.projectCode || documentMeta.projectId,
-      },
-      note: pmNote,
-      fieldName: `document:${documentMeta.id}`,
-    });
+      const audit = await recordClarificationAudit({
+        expert: {
+          id: documentMeta.uploadedByExpertId,
+          name: expert?.name || documentMeta.uploadedByExpertName || documentMeta.uploadedByExpertId,
+          projectCode: expert?.projectCode || documentMeta.projectId,
+        },
+        note: pmNote,
+        fieldName: `document:${documentMeta.id}`,
+      });
+
+      setLocalDocumentClarificationThreads((current) => [
+        {
+          id: `document-${documentMeta.id}`,
+          targetType: 'document',
+          targetId: documentMeta.id,
+          expertId: documentMeta.uploadedByExpertId,
+          month: selectedMonth,
+          year: selectedYear,
+          status: 'requested',
+          pmMessage: pmNote,
+          requestedAt: audit?.createdAt || new Date().toISOString(),
+          requestedBy: audit?.actorName || currentUser?.displayName || currentUser?.email || 'PM',
+        },
+        ...current.filter((thread) => !(thread.targetType === 'document' && thread.targetId === documentMeta.id)),
+      ]);
+
+      if (!audit) {
+        window.alert('Clarificarea a fost salvata pe statusul lunar, dar auditul documentului nu a putut fi inregistrat. Reincearca daca badge-ul nu ramane dupa refresh.');
+      }
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Clarificarea nu a putut fi salvata.');
+    }
   };
 
   const rejectReviewMonth = async () => {
@@ -652,10 +679,14 @@ export default function PMDashboard() {
     });
     return result;
   }, [auditLogs, documents, monthActivities, monthlyReportStatuses, selectedMonth, selectedYear, visibleExperts]);
-  const clarificationThreads = useMemo(
-    () => Array.from(clarificationThreadsByExpertId.values()).flat(),
-    [clarificationThreadsByExpertId],
-  );
+  const clarificationThreads = useMemo(() => {
+    const threads = Array.from(clarificationThreadsByExpertId.values()).flat();
+    const existingKeys = new Set(threads.map((thread) => `${thread.targetType}:${thread.targetId}`));
+    const localThreads = localDocumentClarificationThreads.filter(
+      (thread) => thread.month === selectedMonth && thread.year === selectedYear && !existingKeys.has(`${thread.targetType}:${thread.targetId}`),
+    );
+    return [...localThreads, ...threads];
+  }, [clarificationThreadsByExpertId, localDocumentClarificationThreads, selectedMonth, selectedYear]);
   const pendingSharedDeliverables = useMemo(() => {
     return sharedDeliverables
       .filter((relation) => relation.status === 'pending_registration' || relation.status === 'ignored_by_target')
