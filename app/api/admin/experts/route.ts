@@ -236,7 +236,8 @@ async function assertAdminCaller(request: Request) {
     throw new AdminExpertsRouteError('Nu pot identifica utilizatorul Cognito curent.', 403);
   }
 
-  let groups = normalizeGroups(payload['cognito:groups']);
+  const tokenGroups = normalizeGroups(payload['cognito:groups']);
+  let groups = tokenGroups;
   try {
     const liveGroups = await callSignedCognito<{ Groups?: Array<{ GroupName?: string }> }>('AdminListGroupsForUser', {
       UserPoolId: userPoolId,
@@ -251,6 +252,12 @@ async function assertAdminCaller(request: Request) {
   const hasExplicitPmAdminAccess = groups.includes('pm') && EXPERT_PM_EXTENDED_ACCESS_EMAILS.includes(email);
   if (!hasAdminAccess && !hasExplicitPmAdminAccess) {
     throw new AdminExpertsRouteError('Doar administratorii pot administra profilurile expertilor.', 403);
+  }
+  if (!tokenGroups.includes('admin') && !tokenGroups.includes('pm')) {
+    throw new AdminExpertsRouteError(
+      'Sesiunea Cognito curenta nu include inca grupul admin/pm necesar pentru scrierea in AppSync. Delogheaza-te, logheaza-te din nou si reincearca salvarea.',
+      403,
+    );
   }
 
   return token;
