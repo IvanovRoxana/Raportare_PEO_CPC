@@ -167,6 +167,7 @@ function getResolutionWizardStep(resolutionHint?: ActivityResolutionHint): Activ
 interface ActivityFormProps {
   selectedDates: string[];
   selectedHours?: Record<string, string>;
+  onSelectedDatesChange?: (dates: string[], baseHours?: Record<string, string>) => void;
   onSelectedHoursChange?: (hours: Record<string, string>) => void;
   expertId: string;
   expertName: string;
@@ -423,9 +424,16 @@ function isStaleMultipartUploadError(error: unknown) {
   );
 }
 
+const EMPTY_INITIAL_COLLABORATORS: string[] = [];
+
+function areStringArraysEqual(left: string[], right: string[]) {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
 export function ActivityForm({
   selectedDates,
   selectedHours,
+  onSelectedDatesChange,
   onSelectedHoursChange,
   expertId,
   expertName,
@@ -476,6 +484,7 @@ export function ActivityForm({
     () => resolveExpertActivityCatalog({ fallbackCatalog, backendCatalog: catalog, expertCategory }),
     [catalog, expertCategory, fallbackCatalog],
   );
+  const allExpertsById = useMemo(() => new Map(allExperts.map((candidate) => [candidate.id, candidate])), [allExperts]);
   
   // Filter catalog by expert category from PEO_Experti and then by assigned SA codes.
   const filteredCatalog = useMemo(() => {
@@ -624,6 +633,12 @@ export function ActivityForm({
       ),
     });
   }, [availablePontajHoursByDate, defaultDailyHours, getDefaultHoursForDate, normalizedSelectedHours, onSelectedHoursChange]);
+
+  const removeSelectedDate = useCallback((dateToRemove: string) => {
+    const nextDates = selectedDates.filter((date) => date !== dateToRemove);
+    onSelectedDatesChange?.(nextDates, normalizedSelectedHours);
+  }, [normalizedSelectedHours, onSelectedDatesChange, selectedDates]);
+
   const [activityTitle, setActivityTitle] = useState(activitySeed?.activityType || '');
   const [selectedCatalogActivityId, setSelectedCatalogActivityId] = useState(activitySeed?.catalogActivityId || '');
   const [dayType, setDayType] = useState<'lucratoare' | 'CO' | 'CM'>(
@@ -637,6 +652,7 @@ export function ActivityForm({
   const [location, setLocation] = useState(activitySeed?.location || 'Birou');
   const [validationError, setValidationError] = useState<string | null>(null);
   const [isPreparingActivityAutofill, setIsPreparingActivityAutofill] = useState(false);
+  const [isSubmittingActivity, setIsSubmittingActivity] = useState(false);
   const [showActivityAutofillAuditDetails, setShowActivityAutofillAuditDetails] = useState(false);
   const [duplicateConfirmation, setDuplicateConfirmation] = useState<{
     identity: string;
@@ -694,11 +710,15 @@ export function ActivityForm({
   const generateGdprDeliverable = gdprActivity.generateDeliverable;
   
   const initialCollaborators = useMemo(() => {
+    if (!initialActivity) return EMPTY_INITIAL_COLLABORATORS;
+
     const ids = new Set<string>(initialActivity?.takenByExperts || []);
     initialActivity?.deliverables?.forEach((deliverable) => {
       deliverable.sharedWithExpertIds?.forEach((id) => ids.add(id));
     });
     ids.delete(expertId);
+    if (ids.size === 0) return EMPTY_INITIAL_COLLABORATORS;
+
     return Array.from(ids);
   }, [initialActivity, expertId]);
 
@@ -709,8 +729,11 @@ export function ActivityForm({
   const [collaborators, setCollaborators] = useState<string[]>(() => initialCollaborators);
 
   useEffect(() => {
-    setActivityCommon(initialActivity?.shareStatus === 'shared' || initialCollaborators.length > 0);
-    setCollaborators(initialCollaborators);
+    const nextActivityCommon = initialActivity?.shareStatus === 'shared' || initialCollaborators.length > 0;
+    setActivityCommon((current) => current === nextActivityCommon ? current : nextActivityCommon);
+    setCollaborators((current) => (
+      areStringArraysEqual(current, initialCollaborators) ? current : initialCollaborators
+    ));
   }, [initialActivity?.id, initialActivity?.shareStatus, initialCollaborators]);
   
   // Event specific fields
@@ -925,7 +948,7 @@ export function ActivityForm({
     isCommonActivity: activityCommon,
     collaborators: activityCommon
       ? collaborators
-          .map((collaboratorId) => allExperts.find((candidate) => candidate.id === collaboratorId))
+          .map((collaboratorId) => allExpertsById.get(collaboratorId))
           .filter((candidate): candidate is Expert => Boolean(candidate))
           .map((candidate) => ({
             id: candidate.id,
@@ -934,13 +957,16 @@ export function ActivityForm({
             positionInProject: candidate.positionInProject,
           }))
       : [],
-  }), [activityCommon, allExperts, collaborators]);
+  }), [activityCommon, allExpertsById, collaborators]);
   const activityAutofillHours = useMemo(() => {
     if (selectedDates.length === 0) return undefined;
     const firstDate = selectedDates[0];
     return Number(normalizePontajHoursValue(normalizedSelectedHours[firstDate], getDefaultHoursForDate(firstDate)));
   }, [getDefaultHoursForDate, normalizedSelectedHours, selectedDates]);
-  const currentDeliverablesForEligibility = deliverables.filter((d) => d.uploaded && !d.isPhoto);
+  const currentDeliverablesForEligibility = useMemo(
+    () => deliverables.filter((d) => d.uploaded && !d.isPhoto),
+    [deliverables],
+  );
   const deliverablesForEligibility = useMemo(() => {
     if (!initialActivity) return currentDeliverablesForEligibility;
     const groupId = getActivityEditGroupId(initialActivity);
@@ -1069,7 +1095,7 @@ export function ActivityForm({
 
     const addSuggestion = (id: string | undefined, score: number, reason: string) => {
       if (!id || id === expertId) return;
-      if (!allExperts.some((candidate) => candidate.id === id)) return;
+      if (!allExpertsById.has(id)) return;
       const current = suggestionScores.get(id) || { score: 0, reasons: new Set<string>() };
       current.score += score;
       current.reasons.add(reason);
@@ -1105,7 +1131,7 @@ export function ActivityForm({
 
     return Array.from(suggestionScores.entries())
       .map(([id, info]) => {
-        const expertOption = allExperts.find((candidate) => candidate.id === id);
+        const expertOption = allExpertsById.get(id);
         return expertOption
           ? {
               expert: expertOption,
@@ -1116,7 +1142,7 @@ export function ActivityForm({
       })
       .filter((item): item is { expert: Expert; score: number; reason: string } => Boolean(item))
       .sort((a, b) => b.score - a.score || a.expert.name.localeCompare(b.expert.name));
-  }, [allActivities, allExperts, activityTitle, expertId, initialCollaborators, saCode, selectedDates]);
+  }, [allActivities, allExpertsById, activityTitle, expertId, initialCollaborators, saCode, selectedDates]);
   
   const deliverableOptions = useMemo(() => {
     return resolveActivityDeliverableOptions(
@@ -1633,6 +1659,7 @@ export function ActivityForm({
       return;
     }
 
+    setIsSubmittingActivity(true);
     const deliverablesToProcess = deliverables.filter((d) => d.uploaded && (d.filename || d.name));
     const uploadedDeliverables: DeliverableSlot[] = [];
 
@@ -1843,6 +1870,7 @@ export function ActivityForm({
           sourceActivityId: defaultSourceActivityId,
           choices: duplicateChoices,
         });
+        setIsSubmittingActivity(false);
         return;
       }
 
@@ -1854,6 +1882,7 @@ export function ActivityForm({
           sourceActivityId: compatibleChoices[0]?.id,
           choices: duplicateChoices,
         });
+        setIsSubmittingActivity(false);
         return;
       }
 
@@ -1904,12 +1933,16 @@ export function ActivityForm({
     }
 
     setMonthlyDeliverableDuplicateConfirmation(null);
-    if (saveInFlightRef.current || isSaving) return;
+    if (saveInFlightRef.current || isSaving) {
+      setIsSubmittingActivity(false);
+      return;
+    }
     saveInFlightRef.current = true;
     try {
       await onSave(activities);
     } finally {
       saveInFlightRef.current = false;
+      setIsSubmittingActivity(false);
     }
   }, [
     activityCommon,
@@ -2891,6 +2924,19 @@ export function ActivityForm({
                           }
                         </SelectContent>
                       </Select>
+                      {onSelectedDatesChange && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => removeSelectedDate(date)}
+                          className="h-7 w-7 shrink-0 text-muted-foreground hover:bg-red-50 hover:text-red-600"
+                          aria-label={`Scoate ziua ${formatDateRo(date)} din serie`}
+                          title="Scoate ziua din serie"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -3391,7 +3437,7 @@ export function ActivityForm({
                   <div>
                     <div className="text-sm font-medium text-slate-900">Descriere asistata AI</div>
                     <div className="text-xs text-slate-600">
-                      Dupa cei patru pasi, foloseste scopul oficial al SA, catalogul Admin si toate livrabilele citite.
+                      Pentru o descriere asistata corecta, verifica si completeaza descrierea de mai sus cu data, obiectivul SA, activitatea realizata efectiv, livrabilele incarcate si contributia ta specifica.
                     </div>
                   </div>
                   <Button
@@ -3646,106 +3692,6 @@ export function ActivityForm({
               </div>
             </Field>
             )}
-
-            <AlertDialog open={Boolean(duplicateConfirmation)} onOpenChange={(open) => !open && setDuplicateConfirmation(null)}>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Activitate similara gasita</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    Ai mai descris aceasta activitate in zilele{' '}
-                    {duplicateConfirmation?.dates.map((date) => formatDateRo(date)).join(', ')}.
-                    Confirma ca vrei sa salvezi separat sau anuleaza si editeaza activitatea existenta.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Anuleaza</AlertDialogCancel>
-                  <AlertDialogAction onClick={() => handleSave(true)}>
-                    Confirma salvarea
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-
-            <AlertDialog
-              open={Boolean(monthlyDeliverableDuplicateConfirmation)}
-              onOpenChange={(open) => !open && setMonthlyDeliverableDuplicateConfirmation(null)}
-            >
-              <AlertDialogContent className="sm:max-w-lg">
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Livrabil deja incarcat</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    {monthlyDeliverableDuplicateConfirmation?.message}
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                {monthlyDeliverableDuplicateConfirmation?.choices.length ? (
-                  <div className="space-y-3">
-                    <Label className="text-sm font-medium text-slate-900">
-                      Alege activitatea existenta care trebuie folosita pentru grup
-                    </Label>
-                    <RadioGroup
-                      value={monthlyDeliverableDuplicateConfirmation.sourceActivityId}
-                      onValueChange={(sourceActivityId) => setMonthlyDeliverableDuplicateConfirmation((current) => (
-                        current ? { ...current, sourceActivityId } : current
-                      ))}
-                      className="space-y-2"
-                    >
-                      {monthlyDeliverableDuplicateConfirmation.choices.map((choice) => (
-                        <Label
-                          key={choice.id}
-                          htmlFor={`duplicate-source-${choice.id}`}
-                          className={`flex items-start gap-3 rounded-md border border-slate-200 p-3 text-sm ${choice.isCompatible ? 'cursor-pointer hover:bg-slate-50' : 'cursor-not-allowed bg-slate-50 text-muted-foreground'}`}
-                        >
-                          <RadioGroupItem
-                            id={`duplicate-source-${choice.id}`}
-                            value={choice.id}
-                            className="mt-0.5"
-                            disabled={!choice.isCompatible}
-                          />
-                          <span className="min-w-0 space-y-1">
-                            <span className="block font-medium text-slate-950">
-                              {choice.title}
-                            </span>
-                            <span className="block text-xs text-muted-foreground">
-                              {formatDateRo(choice.date)}{choice.saCode ? ` / ${choice.saCode}` : ''}
-                            </span>
-                            {choice.isCompatible ? (
-                              <span className="inline-flex text-xs font-medium text-emerald-700">
-                                Recomandata pentru activitatea curenta
-                              </span>
-                            ) : (
-                              <span className="inline-flex text-xs font-medium text-amber-700">
-                                Incompatibila cu activitatea curenta
-                              </span>
-                            )}
-                          </span>
-                        </Label>
-                      ))}
-                    </RadioGroup>
-                  </div>
-                ) : null}
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Anuleaza</AlertDialogCancel>
-                  <AlertDialogAction
-                    disabled={Boolean(
-                      monthlyDeliverableDuplicateConfirmation?.choices.length
-                      && (
-                        !monthlyDeliverableDuplicateConfirmation?.sourceActivityId
-                        || !monthlyDeliverableDuplicateConfirmation.choices.some((choice) => (
-                          choice.id === monthlyDeliverableDuplicateConfirmation.sourceActivityId && choice.isCompatible
-                        ))
-                      ),
-                    )}
-                    onClick={() => handleSave(
-                      monthlyDeliverableDuplicateConfirmation?.confirmedActivityDuplicate ?? false,
-                      true,
-                      monthlyDeliverableDuplicateConfirmation?.sourceActivityId,
-                    )}
-                  >
-                    Adauga la activitatea existenta
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
 
             {/* Event duration (for event activities) */}
             {showStandardActivityWorkflow && currentWizardStep === 'description' && isEvent && !isWorkspaceLayout && (
@@ -4225,9 +4171,109 @@ export function ActivityForm({
           </div>
         )}
 
+        <AlertDialog open={Boolean(duplicateConfirmation)} onOpenChange={(open) => !open && setDuplicateConfirmation(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Activitate similara gasita</AlertDialogTitle>
+              <AlertDialogDescription>
+                Ai mai descris aceasta activitate in zilele{' '}
+                {duplicateConfirmation?.dates.map((date) => formatDateRo(date)).join(', ')}.
+                Confirma ca vrei sa salvezi separat sau anuleaza si editeaza activitatea existenta.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Anuleaza</AlertDialogCancel>
+              <AlertDialogAction onClick={() => handleSave(true)}>
+                Confirma salvarea
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <AlertDialog
+          open={Boolean(monthlyDeliverableDuplicateConfirmation)}
+          onOpenChange={(open) => !open && setMonthlyDeliverableDuplicateConfirmation(null)}
+        >
+          <AlertDialogContent className="sm:max-w-lg">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Livrabil deja incarcat</AlertDialogTitle>
+              <AlertDialogDescription>
+                {monthlyDeliverableDuplicateConfirmation?.message}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            {monthlyDeliverableDuplicateConfirmation?.choices.length ? (
+              <div className="space-y-3">
+                <Label className="text-sm font-medium text-slate-900">
+                  Alege activitatea existenta care trebuie folosita pentru grup
+                </Label>
+                <RadioGroup
+                  value={monthlyDeliverableDuplicateConfirmation.sourceActivityId}
+                  onValueChange={(sourceActivityId) => setMonthlyDeliverableDuplicateConfirmation((current) => (
+                    current ? { ...current, sourceActivityId } : current
+                  ))}
+                  className="space-y-2"
+                >
+                  {monthlyDeliverableDuplicateConfirmation.choices.map((choice) => (
+                    <Label
+                      key={choice.id}
+                      htmlFor={`duplicate-source-${choice.id}`}
+                      className={`flex items-start gap-3 rounded-md border border-slate-200 p-3 text-sm ${choice.isCompatible ? 'cursor-pointer hover:bg-slate-50' : 'cursor-not-allowed bg-slate-50 text-muted-foreground'}`}
+                    >
+                      <RadioGroupItem
+                        id={`duplicate-source-${choice.id}`}
+                        value={choice.id}
+                        className="mt-0.5"
+                        disabled={!choice.isCompatible}
+                      />
+                      <span className="min-w-0 space-y-1">
+                        <span className="block font-medium text-slate-950">
+                          {choice.title}
+                        </span>
+                        <span className="block text-xs text-muted-foreground">
+                          {formatDateRo(choice.date)}{choice.saCode ? ` / ${choice.saCode}` : ''}
+                        </span>
+                        {choice.isCompatible ? (
+                          <span className="inline-flex text-xs font-medium text-emerald-700">
+                            Recomandata pentru activitatea curenta
+                          </span>
+                        ) : (
+                          <span className="inline-flex text-xs font-medium text-amber-700">
+                            Incompatibila cu activitatea curenta
+                          </span>
+                        )}
+                      </span>
+                    </Label>
+                  ))}
+                </RadioGroup>
+              </div>
+            ) : null}
+            <AlertDialogFooter>
+              <AlertDialogCancel>Anuleaza</AlertDialogCancel>
+              <AlertDialogAction
+                disabled={Boolean(
+                  monthlyDeliverableDuplicateConfirmation?.choices.length
+                  && (
+                    !monthlyDeliverableDuplicateConfirmation?.sourceActivityId
+                    || !monthlyDeliverableDuplicateConfirmation.choices.some((choice) => (
+                      choice.id === monthlyDeliverableDuplicateConfirmation.sourceActivityId && choice.isCompatible
+                    ))
+                  ),
+                )}
+                onClick={() => handleSave(
+                  monthlyDeliverableDuplicateConfirmation?.confirmedActivityDuplicate ?? false,
+                  true,
+                  monthlyDeliverableDuplicateConfirmation?.sourceActivityId,
+                )}
+              >
+                Adauga la activitatea existenta
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
         {/* Actions */}
         <div className={isWorkspaceLayout ? 'sticky bottom-0 z-10 -mx-4 -mb-4 flex flex-col gap-3 border-t bg-white/95 px-4 py-3 shadow-[0_-10px_24px_rgba(15,23,42,0.08)] backdrop-blur sm:-mx-6 sm:-mb-6 sm:flex-row sm:items-center sm:justify-between sm:px-6' : 'flex justify-end gap-2 pt-4 border-t'}>
-          {isWorkspaceLayout && currentWizardStep === 'review' && footerValidationMessage && !isSaving ? (
+          {isWorkspaceLayout && currentWizardStep === 'review' && footerValidationMessage && !isSaving && !isSubmittingActivity ? (
             <div className="flex min-w-0 items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 sm:max-w-[min(720px,calc(100%-220px))]">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
               <div className="min-w-0">
@@ -4266,10 +4312,10 @@ export function ActivityForm({
             <Button
               type="button"
               onClick={() => handleSave()}
-              disabled={!isLastWizardStep || isSaveDisabled || isSaving}
+              disabled={!isLastWizardStep || isSaveDisabled || isSaving || isSubmittingActivity}
               className={isWorkspaceLayout ? 'w-full sm:w-auto' : undefined}
             >
-              {isSaving ? (
+              {isSaving || isSubmittingActivity ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                   Se salveaza...
