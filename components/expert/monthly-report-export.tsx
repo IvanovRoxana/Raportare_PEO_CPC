@@ -21,7 +21,6 @@ import { getNonWorkingDayInfo } from '@/lib/non-working-days';
 import { buildPontajExportPayload } from '@/lib/pontaj-export-payload';
 import { getWorkingHoursInfo } from '@/lib/working-hours';
 import { normalizePeoCategory } from '@/lib/peo-category';
-import { compileActivitiesByPeriodGroup } from '@/lib/activity-edit';
 import { buildAnexa10ReportModel } from '@/lib/activity-report/build-report-model';
 import { buildAnexa10DocxBlob, buildAnexa10DocxFilename } from '@/lib/activity-report/docx-export';
 import type { ReportingWorkBlockBundle } from '@/lib/activity-report/work-blocks';
@@ -59,9 +58,7 @@ export function MonthlyReportExport({
 }: MonthlyReportExportProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [includeOPIS, setIncludeOPIS] = useState(true);
   const [includeTimesheet, setIncludeTimesheet] = useState(true);
-  const [includeConsolidatedTimesheet, setIncludeConsolidatedTimesheet] = useState(true);
   const [includeRA, setIncludeRA] = useState(true);
   const [includeBusinessHubPv, setIncludeBusinessHubPv] = useState(true);
   const [includeBusinessHubAddresses, setIncludeBusinessHubAddresses] = useState(false);
@@ -78,8 +75,6 @@ export function MonthlyReportExport({
 
   const openBusinessHubExportDialog = (mode?: 'pv' | 'addresses') => {
     setIncludeTimesheet(false);
-    setIncludeConsolidatedTimesheet(false);
-    setIncludeOPIS(false);
     setIncludeRA(false);
     setIncludeBusinessHubPv(mode !== 'addresses');
     setIncludeBusinessHubAddresses(mode === 'addresses');
@@ -93,7 +88,6 @@ export function MonthlyReportExport({
     setExportError(null);
     try {
       // Generate the selected documents
-      const docs: { name: string; content: string }[] = [];
       const failedExports: string[] = [];
       const runExport = async (label: string, action: () => Promise<void> | void) => {
         try {
@@ -107,16 +101,6 @@ export function MonthlyReportExport({
       
       if (includeTimesheet) {
         await runExport('Pontaj PEO', () => downloadPontajExcel('peo'));
-      }
-
-      if (includeConsolidatedTimesheet) {
-        await runExport('Pontaj final consolidat', () => downloadPontajExcel('consolidated'));
-      }
-      
-      if (includeOPIS) {
-        await runExport('OPIS livrabile', () => {
-          docs.push(generateOPIS(expert, compileActivitiesByPeriodGroup(activities), month, year));
-        });
       }
       
       if (includeRA) {
@@ -149,18 +133,6 @@ export function MonthlyReportExport({
           }
         });
       }
-
-      docs.forEach(doc => {
-        const blob = new Blob([doc.content], { type: 'text/plain;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = doc.name;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-      });
 
       if (failedExports.length > 0) {
         setExportError(`Am descarcat documentele generate, dar unele exporturi au esuat:\n${failedExports.join('\n')}`);
@@ -412,31 +384,7 @@ export function MonthlyReportExport({
               />
               <label htmlFor="timesheet" className="text-sm flex items-center gap-2">
                 <FileSpreadsheet className="h-4 w-4 text-green-600" />
-                Pontaj (Timesheet)
-              </label>
-            </div>
-
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="final-timesheet"
-                checked={includeConsolidatedTimesheet}
-                onCheckedChange={(checked) => setIncludeConsolidatedTimesheet(checked as boolean)}
-              />
-              <label htmlFor="final-timesheet" className="text-sm flex items-center gap-2">
-                <FileSpreadsheet className="h-4 w-4 text-emerald-700" />
-                Pontaj final consolidat
-              </label>
-            </div>
-
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="opis"
-                checked={includeOPIS}
-                onCheckedChange={(checked) => setIncludeOPIS(checked as boolean)}
-              />
-              <label htmlFor="opis" className="text-sm flex items-center gap-2">
-                <FileType className="h-4 w-4 text-blue-600" />
-                OPIS Livrabile
+                Pontaj PEO
               </label>
             </div>
 
@@ -464,7 +412,7 @@ export function MonthlyReportExport({
             <Button variant="outline" onClick={() => setIsOpen(false)}>
               Anulează
             </Button>
-            <Button onClick={handleExport} disabled={isGenerating || (!includeOPIS && !includeTimesheet && !includeConsolidatedTimesheet && !includeRA && !(isBusinessHubExportAvailable && (includeBusinessHubPv || includeBusinessHubAddresses)))}>
+            <Button onClick={handleExport} disabled={isGenerating || (!includeTimesheet && !includeRA && !(isBusinessHubExportAvailable && (includeBusinessHubPv || includeBusinessHubAddresses)))}>
               {isGenerating ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -570,50 +518,3 @@ Data: _____________________
   };
 }
 
-function generateOPIS(
-  expert: Expert,
-  activities: Activity[],
-  month: number,
-  year: number
-) {
-  const monthName = getMonthName(month);
-  
-  let content = `OPIS LIVRABILE
-==============
-Proiect: PEO - Parteneriat pentru Educație și Oportunități
-Cod proiect: 302141
-
-Expert: ${expert.name}
-Funcție: ${expert.role}
-Luna: ${monthName} ${year}
-
----
-Nr.\tData\t\tDenumire Document\t\tObservații
----
-`;
-
-  let nr = 1;
-  activities.forEach(a => {
-    if (a.deliverables && a.deliverables.length > 0) {
-      a.deliverables.forEach(d => {
-        content += `${nr}\t${a.date}\t${d.fileName || d.deliverableType || 'Document'}\t${d.titleCheckStatus || d.aiStatus || '-'}\n`;
-        nr++;
-      });
-    }
-  });
-
-  content += `
----
-Total documente: ${nr - 1}
-
-Întocmit de: ${expert.name}
-Data: ${new Date().toLocaleDateString('ro-RO')}
-
-Semnătură: _____________________
-`;
-
-  return {
-    name: `OPIS_${expert.name.replace(/\s+/g, '_')}_${monthName}_${year}.txt`,
-    content,
-  };
-}

@@ -27,6 +27,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { MultiSelectCalendar } from '@/components/expert/multi-select-calendar';
 import { ActivityForm, type ActivityResolutionHint, type ActivityResolutionSection } from '@/components/expert/activity-form';
 import type { ExistingDeliverableCandidate } from '@/components/expert/existing-deliverable-picker';
@@ -564,6 +571,7 @@ function ExpertDashboardContent() {
   const [pendingSharedDeliverableRelationId, setPendingSharedDeliverableRelationId] = useState<string | null>(null);
   const [sharedActivityPrefill, setSharedActivityPrefill] = useState<Partial<Activity> | null>(null);
   const [selectedReadinessKey, setSelectedReadinessKey] = useState<SubmitReadinessKey | null>(null);
+  const [isReadinessDialogOpen, setIsReadinessDialogOpen] = useState(false);
   const [activityResolutionHint, setActivityResolutionHint] = useState<ActivityResolutionHint | null>(null);
   const [isDeliverablesDialogOpen, setIsDeliverablesDialogOpen] = useState(false);
   const [deletedActivityUndo, setDeletedActivityUndo] = useState<DeletedActivityUndo | null>(null);
@@ -1729,6 +1737,14 @@ function ExpertDashboardContent() {
     ? submitReadiness.items.find((item) => item.key === selectedReadinessKey && item.severity !== 'ok') ?? null
     : null;
   const compactReadinessItems = submitReadiness.items.filter((item) => item.severity !== 'ok');
+  const openReadinessDetails = (key: SubmitReadinessKey) => {
+    setSelectedReadinessKey(key);
+    setIsReadinessDialogOpen(true);
+  };
+  const handleReadinessIssueClick = (issue: SubmitReadinessIssue) => {
+    setIsReadinessDialogOpen(false);
+    handleReadinessIssueAction(issue);
+  };
   const submitButtonTitle = isApproved
     ? 'Luna este aprobată.'
     : isInReview
@@ -2293,6 +2309,56 @@ function ExpertDashboardContent() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <Dialog open={isReadinessDialogOpen} onOpenChange={setIsReadinessDialogOpen}>
+        <DialogContent className="max-h-[85dvh] overflow-hidden sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{selectedReadinessItem?.label || 'Blocaje / warninguri'}</DialogTitle>
+            <DialogDescription>
+              {selectedReadinessItem?.detail || 'Alege o avertizare pentru a deschide locul unde trebuie rezolvata.'}
+            </DialogDescription>
+          </DialogHeader>
+          {selectedReadinessItem && (
+            <div className="min-h-0 space-y-3 overflow-y-auto pr-1">
+              <div className="flex items-center gap-2">
+                <Badge variant={selectedReadinessItem.severity === 'blocking' ? 'destructive' : 'outline'}>
+                  {selectedReadinessItem.severity === 'blocking' ? 'Blocant' : 'Atentie'}
+                </Badge>
+                <span className="text-xs text-muted-foreground">
+                  {selectedReadinessItem.issues.length} avertizari
+                </span>
+              </div>
+              {selectedReadinessItem.issues.length === 0 ? (
+                <p className="rounded-lg bg-slate-50 p-3 text-sm text-muted-foreground">
+                  Nu exista detalii separate pentru acest warning.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {selectedReadinessItem.issues.map((issue) => (
+                    <button
+                      key={issue.id}
+                      type="button"
+                      disabled={!issue.action}
+                      className="w-full rounded-lg border p-3 text-left transition hover:border-primary hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+                      onClick={() => handleReadinessIssueClick(issue)}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 space-y-1">
+                          <p className="text-sm font-semibold text-slate-900">{issue.title}</p>
+                          <p className="text-xs leading-5 text-muted-foreground">{issue.detail}</p>
+                          {issue.meta && <p className="text-xs font-medium text-slate-600">{issue.meta}</p>}
+                        </div>
+                        <Badge variant="outline" className="shrink-0">
+                          {issue.actionLabel || 'Deschide'}
+                        </Badge>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
       <DashboardShell
         activeHref="/expert/peo"
         navItems={expertNavItems}
@@ -2660,7 +2726,7 @@ function ExpertDashboardContent() {
                               'w-full rounded-lg border p-2 text-left text-xs transition hover:bg-slate-50',
                               selectedReadinessKey === item.key && 'border-primary bg-blue-50',
                             )}
-                            onClick={() => setSelectedReadinessKey(item.key)}
+                            onClick={() => openReadinessDetails(item.key)}
                           >
                             <div className="flex items-center justify-between gap-2">
                               <span className="font-semibold text-slate-900">{item.label}</span>
@@ -2673,21 +2739,6 @@ function ExpertDashboardContent() {
                         ))
                       )}
                     </div>
-                    {selectedReadinessItem && selectedReadinessItem.issues.length > 0 && (
-                      <div className="mt-3 space-y-2 rounded-lg bg-slate-50 p-2">
-                        {selectedReadinessItem.issues.slice(0, 3).map((issue) => (
-                          <div key={issue.id} className="space-y-1 text-xs">
-                            <p className="font-medium text-slate-900">{issue.title}</p>
-                            <p className="text-muted-foreground">{issue.detail}</p>
-                            {issue.action && (
-                              <Button type="button" variant="outline" size="sm" className="h-7" onClick={() => handleReadinessIssueAction(issue)}>
-                                {issue.actionLabel || 'Rezolva'}
-                              </Button>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
                   </div>
 
                   <div className="rounded-xl border bg-white p-3 text-xs text-slate-600 shadow-sm">

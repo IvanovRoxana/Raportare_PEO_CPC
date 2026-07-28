@@ -7,7 +7,13 @@ export function getRagEmbeddingModelName() {
   return getActivityAutofillEmbeddingModel();
 }
 
-export async function generateEmbedding(text: string) {
+function toNumericEmbedding(value: Iterable<unknown>): number[] {
+  return Array.from(value)
+    .map((item) => Number(item))
+    .filter((item) => Number.isFinite(item));
+}
+
+export async function generateEmbedding(text: string): Promise<number[]> {
   const value = normalizeRagText(text);
   if (!value) return [];
 
@@ -16,10 +22,10 @@ export async function generateEmbedding(text: string) {
     value,
   });
 
-  return Array.from(result.embedding);
+  return toNumericEmbedding(result.embedding);
 }
 
-export async function generateEmbeddings(texts: string[]) {
+export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
   const values = texts.map(normalizeRagText).filter(Boolean);
   if (values.length === 0) return [];
 
@@ -28,7 +34,7 @@ export async function generateEmbeddings(texts: string[]) {
     values,
   });
 
-  return result.embeddings.map((embedding) => Array.from(embedding));
+  return result.embeddings.map(toNumericEmbedding);
 }
 
 export function serializeEmbedding(embedding: number[]) {
