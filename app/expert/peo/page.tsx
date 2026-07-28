@@ -344,6 +344,10 @@ function OutlookMonthCalendar({
   }, [activities]);
   const norma = expert.norma || 8;
   const selectedDateSet = useMemo(() => new Set(selectedDates), [selectedDates]);
+  const getDayTotalHours = (date: string) =>
+    (activitiesByDate.get(date) ?? []).reduce((sum, activity) => sum + (Number(activity.hours) || 0), 0);
+  const isClosedWorkingDay = (date: string, nativeDate: Date) =>
+    !getNonWorkingDayInfo(nativeDate).isNonWorkingDay && getDayTotalHours(date) >= norma;
   const syncSelectedDates = (dates: string[]) => {
     onSelectDates([...new Set(dates)].sort());
   };
@@ -355,8 +359,13 @@ function OutlookMonthCalendar({
     const cursor = new Date(from);
 
     while (cursor <= to) {
-      if (cursor.getMonth() === month && cursor.getFullYear() === year && !getNonWorkingDayInfo(cursor).isNonWorkingDay) {
-        range.push(formatDate(cursor));
+      const date = formatDate(cursor);
+      if (
+        cursor.getMonth() === month
+        && cursor.getFullYear() === year
+        && !isClosedWorkingDay(date, cursor)
+      ) {
+        range.push(date);
       }
       cursor.setDate(cursor.getDate() + 1);
     }
@@ -418,10 +427,11 @@ function OutlookMonthCalendar({
         {days.map((day, index) => {
           if (!day) return <div key={`empty-${index}`} className="border-b border-r bg-slate-50/50" />;
           const dayActivities = activitiesByDate.get(day.date) ?? [];
-          const totalHours = dayActivities.reduce((sum, activity) => sum + (Number(activity.hours) || 0), 0);
+          const totalHours = getDayTotalHours(day.date);
           const nonWorking = getNonWorkingDayInfo(day.nativeDate);
           const isWeekend = nonWorking.isWeekend;
           const isNonWorkingDay = nonWorking.isNonWorkingDay;
+          const isDayClosed = !isNonWorkingDay && totalHours >= norma;
           const isToday = day.nativeDate.toDateString() === today.toDateString();
           const isSelected = selectedDateSet.has(day.date);
           const visibleActivities = dayActivities.slice(0, 4);
@@ -432,6 +442,7 @@ function OutlookMonthCalendar({
             !isWeekend && totalHours > 0 && totalHours < norma && 'bg-emerald-50/45',
             !isWeekend && totalHours === norma && 'bg-slate-100/80',
             !isWeekend && totalHours > norma && 'bg-red-50/70',
+            isDayClosed && 'cursor-not-allowed hover:bg-slate-100/80',
             isSelected && 'outline outline-2 -outline-offset-2 outline-blue-500',
           );
 
@@ -440,17 +451,18 @@ function OutlookMonthCalendar({
               key={day.date}
               type="button"
               className={dayClassName}
+              aria-disabled={isDayClosed || isNonWorkingDay}
               onMouseDown={() => {
-                if (isNonWorkingDay) return;
+                if (isNonWorkingDay || isDayClosed) return;
                 setIsSelectingRange(true);
                 setSelectionStart(day.date);
               }}
               onMouseEnter={() => {
-                if (!isSelectingRange || !selectionStart || isNonWorkingDay) return;
+                if (!isSelectingRange || !selectionStart || isNonWorkingDay || isDayClosed) return;
                 syncSelectedDates([...selectedDates, ...getRangeDates(selectionStart, day.date)]);
               }}
               onClick={() => {
-                if (isNonWorkingDay) return;
+                if (isNonWorkingDay || isDayClosed) return;
                 toggleDate(day.date);
               }}
             >
@@ -470,7 +482,7 @@ function OutlookMonthCalendar({
                       role="button"
                       tabIndex={0}
                       title={compactSummary}
-                      className="group flex min-w-0 items-center gap-1 rounded border-l-2 border-blue-500 bg-blue-100/80 px-1.5 py-1 text-[11px] leading-tight text-slate-800 hover:bg-blue-200"
+                      className="group flex min-w-0 cursor-pointer items-center gap-1 rounded border-l-2 border-blue-500 bg-blue-100/80 px-1.5 py-1 text-[11px] leading-tight text-slate-800 hover:bg-blue-200"
                       onClick={(event) => {
                         event.stopPropagation();
                         onEditActivity(activity);
