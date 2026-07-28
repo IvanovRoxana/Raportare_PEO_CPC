@@ -10,6 +10,9 @@ const userPoolId = outputs.auth?.user_pool_id;
 const cognitoEndpoint = `https://cognito-idp.${region}.amazonaws.com/`;
 const cognitoHost = `cognito-idp.${region}.amazonaws.com`;
 const appSyncEndpoint = outputs.data?.url;
+const dynamoEndpoint = `https://dynamodb.${region}.amazonaws.com/`;
+const dynamoHost = `dynamodb.${region}.amazonaws.com`;
+const expertTableName = process.env.EXPERT_TABLE_NAME || 'Expert-3wpaiebzefggpcmhzurrifx53i-NONE';
 
 const EXPERT_FIELDS = [
   'name',
@@ -37,6 +40,8 @@ const EXPERT_FIELDS = [
 ] as const;
 
 type AdminExpertAction = 'create' | 'update';
+type AwsService = 'cognito-idp' | 'dynamodb';
+type DdbAttribute = { S: string } | { N: string } | { BOOL: boolean } | { L: DdbAttribute[] };
 
 class AdminExpertsRouteError extends Error {
   status: number;
@@ -109,7 +114,7 @@ function getCredentials() {
 }
 
 async function callSignedAws<T>(
-  service: 'cognito-idp',
+  service: AwsService,
   host: string,
   endpoint: string,
   target: string,
@@ -253,13 +258,6 @@ async function assertAdminCaller(request: Request) {
   if (!hasAdminAccess && !hasExplicitPmAdminAccess) {
     throw new AdminExpertsRouteError('Doar administratorii pot administra profilurile expertilor.', 403);
   }
-  if (!tokenGroups.includes('admin') && !tokenGroups.includes('pm')) {
-    throw new AdminExpertsRouteError(
-      'Sesiunea Cognito curenta nu include inca grupul admin/pm necesar pentru scrierea in AppSync. Delogheaza-te, logheaza-te din nou si reincearca salvarea.',
-      403,
-    );
-  }
-
   return token;
 }
 
@@ -300,6 +298,70 @@ const EXPERT_SELECTION = `
   createdAt
   updatedAt
 `;
+
+async function callSignedDynamo<T>(action: string, payload: Record<string, unknown>) {
+  return callSignedAws<T>(
+    'dynamodb',
+    dynamoHost,
+    dynamoEndpoint,
+    `DynamoDB_20120810.${action}`,
+    'application/x-amz-json-1.0',
+    payload,
+  );
+}
+
+function toDdbAttribute(value: unknown): DdbAttribute | undefined {
+  if (typeof value === 'string') return { S: value };
+  if (typeof value === 'number' && Number.isFinite(value)) return { N: String(value) };
+  if (typeof value === 'boolean') return { BOOL: value };
+  if (Array.isArray(value)) {
+    return { L: value.map(toDdbAttribute).filter((item): item is DdbAttribute => Boolean(item)) };
+  }
+  return undefined;
+}
+
+function fromDdbAttribute(attribute: DdbAttribute | undefined): unknown {
+  if (!attribute) return undefined;
+  if ('S' in attribute) return attribute.S;
+  if ('N' in attribute) return Number(attribute.N);
+  if ('BOOL' in attribute) return attribute.BOOL;
+  if ('L' in attribute) return attribute.L.map(fromDdbAttribute);
+  return undefined;
+}
+
+function mapDdbExpert(item: Record<string, DdbAttribute>) {
+  return Object.fromEntries(
+    Object.entries(item).map(([key, value]) => [key, fromDdbAttribute(value)]),
+  );
+}
+
+async function updateExpertWithDynamo(id: string, input: Record<string, unknown>) {
+  const cleanInput = pickExpertFields(input, 'update');
+  const entries = Object.entries({ ...cleanInput, updatedAt: new Date().toISOString() })
+    .map(([key, value]) => [key, toDdbAttribute(value)] as const)
+    .filter((entry): entry is readonly [string, DdbAttribute] => Boolean(entry[1]));
+
+  if (entries.length === 0) {
+    throw new AdminExpertsRouteError('Nu exista campuri permise pentru actualizare.', 400);
+  }
+
+  const expressionAttributeNames = Object.fromEntries(entries.map(([key]) => [`#${key}`, key]));
+  const expressionAttributeValues = Object.fromEntries(entries.map(([key, value]) => [`:${key}`, value]));
+  const result = await callSignedDynamo<{ Attributes?: Record<string, DdbAttribute> }>('UpdateItem', {
+    TableName: expertTableName,
+    Key: { id: { S: id } },
+    UpdateExpression: `SET ${entries.map(([key]) => `#${key} = :${key}`).join(', ')}`,
+    ConditionExpression: 'attribute_exists(id)',
+    ExpressionAttributeNames: expressionAttributeNames,
+    ExpressionAttributeValues: expressionAttributeValues,
+    ReturnValues: 'ALL_NEW',
+  });
+
+  if (!result.Attributes) {
+    throw new AdminExpertsRouteError('DynamoDB nu a returnat profilul salvat.', 502);
+  }
+  return mapDdbExpert(result.Attributes);
+}
 
 async function writeExpertWithAppSync(
   accessToken: string,
@@ -383,7 +445,7 @@ export async function POST(request: Request) {
       throw new AdminExpertsRouteError('Lipseste id-ul expertului pentru actualizare.', 400);
     }
 
-    const data = await writeExpertWithAppSync(accessToken, action, input, id);
+    const data = await updateExpertWithDynamo(id, input);
     return NextResponse.json({ data });
   } catch (error) {
     const status = error instanceof AdminExpertsRouteError ? error.status : 500;
