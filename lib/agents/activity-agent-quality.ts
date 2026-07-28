@@ -56,6 +56,145 @@ export function clampScore(value: number) {
   return Math.max(0, Math.min(1, Number(value.toFixed(2))));
 }
 
+function extractNumericFacts(value: unknown) {
+  return Array.from(String(value ?? '').matchAll(/(?<![A-Za-z])\d+(?:[.,]\d+)?%?(?![A-Za-z])/g))
+    .map((match) => match[0].replace(',', '.'))
+    .filter(Boolean);
+}
+
+const GENERIC_DESCRIPTION_TERMS = new Set([
+  'activitate',
+  'activitatea',
+  'activitati',
+  'analiza',
+  'analizat',
+  'elaborat',
+  'formulat',
+  'corelat',
+  'fundamentat',
+  'realizat',
+  'structurat',
+  'sintetizat',
+  'redactat',
+  'revizuit',
+  'pregatit',
+  'identificat',
+  'consolidat',
+  'documentare',
+  'fundamentare',
+  'rezultat',
+  'rezultate',
+  'proiect',
+  'proiectului',
+  'raportare',
+  'raportarii',
+  'tehnica',
+  'coerenta',
+  'relevanta',
+  'relevante',
+  'informatii',
+  'elemente',
+  'elementele',
+  'disponibile',
+  'obiective',
+  'obiectivelor',
+  'administrativ',
+  'profesional',
+  'contribuit',
+  'cadrul',
+  'pentru',
+  'privind',
+  'asupra',
+  'aceasta',
+  'acestei',
+  'acestor',
+  'munca',
+  'efectiva',
+  'obtinute',
+  'aferente',
+]);
+
+function extractNotableTerms(value: unknown) {
+  const normalized = normalizePolicyText(String(value ?? ''));
+  return Array.from(new Set(
+    normalized
+      .split(/[^a-z0-9]+/i)
+      .map((term) => term.trim())
+      .filter((term) => term.length >= 6)
+      .filter((term) => !GENERIC_DESCRIPTION_TERMS.has(term))
+      .filter((term) => !/^\d+$/.test(term)),
+  ));
+}
+
+function buildEvidenceCorpus(request: ActivityAgentRequest) {
+  return normalizePolicyText([
+    request.currentDescription,
+    request.saCode,
+    request.activityName,
+    request.title,
+    request.category,
+    request.projectCode,
+    request.expertRole,
+    request.selectedDates?.join(' '),
+    ...request.catalogCandidates.map((candidate) => [
+      candidate.saCode,
+      candidate.activityName,
+      candidate.description,
+      candidate.objectives,
+      candidate.serviceComponent,
+      candidate.beneficiaries,
+      candidate.expectedResults,
+      candidate.deliverables,
+      candidate.indicators,
+    ].join(' ')),
+    ...request.deliverables.map((deliverable) => [
+      deliverable.documentTitle,
+      deliverable.deliverableType,
+      deliverable.extractedText,
+      deliverable.eligibilitySummary,
+    ].join(' ')),
+  ].filter(Boolean).join(' '));
+}
+
+export function evaluateDescriptionEvidenceSupport(description: string, request: ActivityAgentRequest) {
+  const evidenceCorpus = buildEvidenceCorpus(request);
+  const descriptionTerms = extractNotableTerms(description);
+  const unsupportedTerms = descriptionTerms
+    .filter((term) => !evidenceCorpus.includes(term))
+    .slice(0, 16);
+  const unsupportedNumbers = Array.from(new Set(extractNumericFacts(description)))
+    .filter((value) => !new Set(extractNumericFacts(evidenceCorpus)).has(value));
+  const unsupportedRatio = descriptionTerms.length > 0
+    ? unsupportedTerms.length / descriptionTerms.length
+    : 0;
+  const hasDeliverableText = request.deliverables.some((deliverable) => deliverable.extractedText?.trim());
+  const score = clampScore(
+    (hasDeliverableText ? 0.95 : 0.55)
+    - Math.min(0.55, unsupportedRatio * 1.4)
+    - Math.min(0.35, unsupportedNumbers.length * 0.18),
+  );
+  const warnings = [
+    unsupportedTerms.length >= 5
+      ? `Descrierea contine termeni/teme care nu apar in livrabil sau context: ${unsupportedTerms.slice(0, 8).join(', ')}.`
+      : '',
+    unsupportedNumbers.length > 0
+      ? `Descrierea contine cifre care nu apar in livrabil sau context: ${unsupportedNumbers.join(', ')}.`
+      : '',
+  ].filter(Boolean);
+
+  return {
+    score,
+    unsupportedTerms,
+    unsupportedNumbers,
+    warnings,
+    evidence: [
+      `Termeni verificati: ${descriptionTerms.length}`,
+      unsupportedTerms.length > 0 ? `Termeni nesustinuti: ${unsupportedTerms.slice(0, 6).join(', ')}` : 'Termeni nesustinuti: 0',
+      unsupportedNumbers.length > 0 ? `Cifre nesustinute: ${unsupportedNumbers.join(', ')}` : 'Cifre nesustinute: 0',
+    ],
+  };
+}
+
 export function classifyDeliverableKind(request: ActivityAgentRequest) {
   const source = normalizePolicyText(request.deliverables.map((deliverable) => [
     deliverable.documentTitle,
@@ -134,6 +273,7 @@ export function classifyDeliverableKind(request: ActivityAgentRequest) {
 export function evaluateFinalActivityDescription(description: string, request: ActivityAgentRequest) {
   const normalized = normalizePolicyText(description);
   const wordCount = countWords(description);
+  const evidenceSupport = evaluateDescriptionEvidenceSupport(description, request);
   const hasSelectedDates = Boolean(request.selectedDates?.length || request.date);
   const startsWithDate = /^in (data|zilele) de\b/.test(normalized);
   const hasFirstPerson = /\bam\s+(analizat|elaborat|formulat|corelat|fundamentat|realizat|structurat|sintetizat|redactat|revizuit|pregatit|identificat|consolidat)\b/.test(normalized);
@@ -156,6 +296,7 @@ export function evaluateFinalActivityDescription(description: string, request: A
     wordCount < 120 ? `Descrierea este prea scurta pentru Anexa 10 (${wordCount} cuvinte).` : '',
     wordCount > 330 ? `Descrierea este prea lunga pentru Anexa 10 (${wordCount} cuvinte).` : '',
     forbidden ? 'Descrierea contine termeni tehnici sau audit care nu trebuie afisati expertului.' : '',
+    ...evidenceSupport.warnings,
   ].filter(Boolean);
 
   const score = clampScore([
@@ -165,16 +306,18 @@ export function evaluateFinalActivityDescription(description: string, request: A
     hasResultContribution ? 0.18 : 0,
     wordCount >= 120 && wordCount <= 330 ? 0.18 : wordCount >= 90 && wordCount <= 380 ? 0.1 : 0,
     !forbidden ? 0.13 : 0,
-  ].reduce((total, item) => total + item, 0));
+  ].reduce((total, item) => total + item, 0) * (0.65 + evidenceSupport.score * 0.35));
 
   return {
     score,
     wordCount,
+    evidenceSupport,
     warnings,
     evidence: [
       `Cuvinte: ${wordCount}`,
       hasFirstPerson ? 'Persoana I: detectata' : 'Persoana I: slaba/absenta',
       hasResultContribution ? 'Rezultat proiect: detectat' : 'Rezultat proiect: slab/absent',
+      `Sustinere in dovezi: ${Math.round(evidenceSupport.score * 100)}%`,
     ],
   };
 }

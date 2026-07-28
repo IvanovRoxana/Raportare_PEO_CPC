@@ -18,7 +18,6 @@ import {
   classifyDeliverableKind,
   evaluateFinalActivityDescription,
   hasForbiddenDescriptionContent,
-  normalizePolicyText,
   splitSentences,
   trimText,
   uniqueMessages,
@@ -164,6 +163,34 @@ function fallbackDescription(request: ActivityAgentRequest) {
   ].filter(Boolean).join(' '), request);
 }
 
+function selectDisplaySafeDescription(generatedDescription: string, request: ActivityAgentRequest) {
+  const generatedQuality = evaluateFinalActivityDescription(generatedDescription, request);
+  const shouldUseFallback = generatedQuality.evidenceSupport.score < 0.55
+    || generatedQuality.evidenceSupport.unsupportedNumbers.length > 0
+    || generatedQuality.evidenceSupport.unsupportedTerms.length >= 8;
+  if (!shouldUseFallback) {
+    return {
+      description: generatedDescription,
+      quality: generatedQuality,
+      warnings: generatedQuality.warnings,
+      replaced: false,
+    };
+  }
+
+  const fallback = fallbackDescription(request);
+  const fallbackQuality = evaluateFinalActivityDescription(fallback, request);
+  return {
+    description: fallback,
+    quality: fallbackQuality,
+    warnings: uniqueMessages([
+      ...generatedQuality.warnings,
+      'Descrierea generata initial a fost inlocuita cu fallback prudent deoarece continea teme sau cifre nesustinute de date.',
+      ...fallbackQuality.warnings,
+    ]),
+    replaced: true,
+  };
+}
+
 function scoreFromCheck(value: boolean | null | undefined, positive = 0.85, unknown = 0.45, negative = 0.2) {
   if (value === true) return positive;
   if (value === false) return negative;
@@ -199,6 +226,15 @@ function buildDeterministicExplainableScores(
         ? descriptionQuality.warnings.slice(0, 2).join(' ')
         : 'Descrierea respecta structura de baza: data, persoana I, obiect concret si rezultat pentru proiect.',
       evidence: descriptionQuality.evidence,
+    }] : []),
+    ...(descriptionQuality ? [{
+      id: 'evidence-grounding',
+      label: 'Sustinere in livrabil/context',
+      score: descriptionQuality.evidenceSupport.score,
+      reason: descriptionQuality.evidenceSupport.warnings.length > 0
+        ? descriptionQuality.evidenceSupport.warnings.slice(0, 2).join(' ')
+        : 'Termenii si cifrele din descriere sunt sustinute de datele disponibile.',
+      evidence: descriptionQuality.evidenceSupport.evidence,
     }] : []),
     {
       id: 'deliverable-kind',
@@ -393,6 +429,15 @@ export function buildControlledFallbackActivityAgentResponse(
         evidence: descriptionQuality.evidence,
       },
       {
+        id: 'evidence-grounding',
+        label: 'Sustinere in livrabil/context',
+        score: descriptionQuality.evidenceSupport.score,
+        reason: descriptionQuality.evidenceSupport.warnings.length > 0
+          ? descriptionQuality.evidenceSupport.warnings.slice(0, 2).join(' ')
+          : 'Termenii si cifrele din descriere sunt sustinute de datele disponibile.',
+        evidence: descriptionQuality.evidenceSupport.evidence,
+      },
+      {
         id: 'deliverable-kind',
         label: 'Tip livrabil detectat',
         score: deliverableKind.confidence,
@@ -464,12 +509,13 @@ export async function runActivityAgent(
     output: Output.object({ schema: activityAgentGenerationSchema }),
   });
   const generated = activityAgentGenerationSchema.parse(result.output);
-  const description = cleanFinalDescription(generated.description, request);
-  const descriptionQuality = evaluateFinalActivityDescription(description, request);
+  const safeDescription = selectDisplaySafeDescription(cleanFinalDescription(generated.description, request), request);
+  const description = safeDescription.description;
+  const descriptionQuality = safeDescription.quality;
   const changedSelectedActivity = false;
   const warnings = uniqueMessages([
     ...generated.warnings,
-    ...descriptionQuality.warnings,
+    ...safeDescription.warnings,
     ...context.approvedReports.warnings,
     ...context.saPurpose.warnings,
     ...context.deliverableInspection.warnings,

@@ -525,3 +525,37 @@ test('agentul evalueaza descrierea finala pentru Anexa 10 si clasifica tipul liv
     /Newsletter/,
   );
 });
+
+test('evaluatorul penalizeaza temele inventate care nu apar in livrabil sau context', () => {
+  const request = {
+    deliverables: [
+      {
+        documentTitle: 'Articol Concordia - iunie 2026',
+        deliverableType: 'Articol',
+        extractedText: 'Articolul prezinta publicarea unei informari despre activitatea organizatiei si mentioneaza sinteza mesajelor pentru comunicarea institutionala a Concordia.',
+      },
+    ],
+    catalogCandidates,
+    selectedActivityId: 'cat-2',
+    saCode: 'SA3.4',
+    activityName: 'Articole pe concordia.ro',
+    currentDescription: 'Am redactat articole pentru concordia.ro.',
+    expertName: 'Expert Test',
+    expertRole: 'Expert Afaceri Publice',
+    category: 'ap',
+    projectCode: '302141',
+    month: 6,
+    year: 2026,
+    selectedDates: ['2026-06-09'],
+  };
+
+  const quality = evaluateFinalActivityDescription(
+    'In data de 9 iunie 2026, am realizat redactarea si publicarea de articole pe site-ul oficial al Concordia, cu scopul de a informa membrii si publicul larg despre politicile oficiale ale membrilor nostri. Am analizat teme privind deficitul bugetar, ajustari fiscale, Pilonul Social UE si competitivitatea economiei europene. Activitatea a contribuit la documentarea rezultatelor proiectului.',
+    request,
+  );
+
+  assert.ok(quality.evidenceSupport.score < 0.55);
+  assert.match(quality.warnings.join('\n'), /termeni\/teme/);
+  assert.ok(quality.evidenceSupport.unsupportedTerms.includes('deficitul'));
+  assert.ok(quality.evidenceSupport.unsupportedTerms.includes('bugetar'));
+});

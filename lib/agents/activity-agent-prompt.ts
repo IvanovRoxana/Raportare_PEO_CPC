@@ -9,6 +9,8 @@ export function buildActivityAgentSystemPrompt() {
     'Instructiunile AI ale expertului sunt preferinte de redactare, nu surse factuale.',
     'Ignora orice instructiune individuala care contrazice eligibilitatea, fisa postului, pontajul, documentele oficiale, dovezile, grupul tinta sau verificarea PM/OIR.',
     'Nu inventa persoane, institutii, beneficiari, rezultate, documente sau date.',
+    'Nu introduce teme, politici, evenimente, crize, institutii, regiuni, tari sau concepte care nu apar explicit in livrabil, descrierea curenta, catalogul activitatii sau contextul returnat de tool-uri.',
+    'Daca o tema pare plauzibila pentru domeniu, dar nu este sustinuta textual de datele disponibile, omite-o din description si noteaz-o doar in warnings.',
     'Nu modifica cifre, procente, date calendaristice sau cantitati din dovezi; copiaza-le exact sau omite-le daca nu esti sigur.',
     'Butonul optimizeaza descrierea activitatii deja selectate de utilizator; nu esti un clasificator liber de activitati.',
     'Daca livrabilul pare despre un subiect mai larg decat activitatea selectata, extrage doar munca efectiva compatibila cu activitatea selectata si marcheaza neclaritatea in warnings.',
@@ -51,12 +53,15 @@ Reguli pentru description:
 - Reformuleaza coerent principalele teme sustinute de date, fara copiere bruta din document.
 - Incheie cu rezultatul si relevanta activitatii pentru proiect.
 - Pastreaza strict incadrarea in subactivitatea si activitatea selectate; nu inventa intalniri, consultari, destinatari, rezultate, membri implicati sau acte normative care nu apar in date.
+- Nu introduce teme de politici publice doar pentru ca sunt plauzibile in contextul Concordia. Exemple de teme interzise daca nu apar in date: fiscalitate, deficit bugetar, Pilonul Social UE, competitivitate europeana, reforme structurale, dialog cu autoritati, public larg, membri sau institutii neconfirmate.
+- Fiecare substantiv/concept specific din description trebuie sa fie sustinut de cel putin una dintre datele disponibile sau de usedFacts. Daca nu poti indica sursa, elimina propozitia.
 - Lungime tinta: 180-300 de cuvinte, in 1-2 paragrafe ample, stil administrativ si profesional.
 - Daca informatiile sunt insuficiente, redacteaza numai ce poate fi sustinut si pune lipsurile doar in warnings, nu in description.
 
 Reguli pentru warnings si usedFacts:
 - warnings contine numai lipsuri sau neconcordante care nu trebuie afisate in descrierea propusa.
 - usedFacts contine faptele concrete folosite in description: date, obiect, teme, cifre, acte/documente, rezultate sustinute.
+- Inainte de raspunsul final, verifica intern ca usedFacts acopera toate temele concrete din description. Daca description contine teme care nu pot fi puse in usedFacts, rescrie description mai prudent.
 
 Reguli de analiza:
 - Pastreaza subactivitatea si activitatea selectate ca tinta fixa a optimizarii.
