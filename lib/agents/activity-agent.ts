@@ -13,22 +13,16 @@ import {
   createActivityAgentToolContext,
   createActivityAgentTools,
 } from './activity-agent-tools.ts';
-
-function uniqueMessages(messages: string[]) {
-  return Array.from(new Set(messages.map((message) => message.trim()).filter(Boolean)));
-}
-
-function trimText(value: unknown, maxChars = 900) {
-  return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, maxChars);
-}
-
-function splitSentences(value: unknown) {
-  return String(value ?? '')
-    .replace(/\s+/g, ' ')
-    .split(/(?<=[.!?])\s+/)
-    .map((sentence) => sentence.trim())
-    .filter((sentence) => sentence.length >= 45 && sentence.length <= 360);
-}
+import {
+  clampScore,
+  classifyDeliverableKind,
+  evaluateFinalActivityDescription,
+  hasForbiddenDescriptionContent,
+  normalizePolicyText,
+  splitSentences,
+  trimText,
+  uniqueMessages,
+} from './activity-agent-quality.ts';
 
 function formatActivityDates(request: ActivityAgentRequest) {
   const dates = (request.selectedDates?.length ? request.selectedDates : request.date ? [request.date] : [])
@@ -60,37 +54,6 @@ function formatActivityDates(request: ActivityAgentRequest) {
 
 function lowerFirst(value: string) {
   return value ? `${value.charAt(0).toLocaleLowerCase('ro-RO')}${value.slice(1)}` : value;
-}
-
-function normalizePolicyText(value: string) {
-  return value
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .toLowerCase();
-}
-
-function hasForbiddenDescriptionContent(value: string) {
-  const forbiddenPatterns = [
-    /\bformular(?:ul)?\b/,
-    /\bactivitatea selectat[ae]\b/,
-    /\bagent(?:ul)?\s+(?:ai|peo)\b/,
-    /\bocr\b/,
-    /\brag\b/,
-    /\bcontext(?:ul)?\s+disponibil\b/,
-    /\b(?:am\s+)?(?:citit|extras|procesat|parcurs)\s+(?:livrabilul|documentul|textul)\b/,
-    /\blivrabil(?:ul|e|ele|ului)?\b/,
-    /\bdocument(?:ul)?\s+atasat\b/,
-    /\bsurse?(?:le)?\s+(?:folosite|utilizate|disponibile|consultate)\b/,
-    /\bam urmarit sa pastrez\b/,
-    /\b(?:necesita\s+)?verificare\s+pm\b/,
-    /\bvalidare(?:a)?\s+(?:de catre\s+)?pm\b/,
-    /\braportarea lunara\b/,
-    /\bpregatit(?:a)?\s+formularea\b/,
-  ];
-  const normalized = normalizePolicyText(value);
-  return forbiddenPatterns.some((pattern) => pattern.test(normalized));
 }
 
 function buildMinimalFinalDescription(request: ActivityAgentRequest) {
@@ -160,6 +123,7 @@ function extractFallbackEvidence(request: ActivityAgentRequest) {
 
 function fallbackDeliverableInterpretation(request: ActivityAgentRequest) {
   const evidence = extractFallbackEvidence(request);
+  const deliverableKind = classifyDeliverableKind(request);
   const deliverableNames = request.deliverables
     .map((deliverable) => deliverable.documentTitle)
     .filter(Boolean);
@@ -169,14 +133,15 @@ function fallbackDeliverableInterpretation(request: ActivityAgentRequest) {
       : 'Livrabilul nu are suficient text extras pentru interpretare detaliata.'),
     workPerformed: evidence.slice(0, 3),
     keyFacts: evidence.slice(0, 4),
-    documentSignals: request.deliverables
-      .flatMap((deliverable) => [
+    documentSignals: [
+      `Tip detectat: ${deliverableKind.label}`,
+      deliverableKind.signals.length > 0 ? `Semnale tip: ${deliverableKind.signals.join(', ')}` : '',
+      ...request.deliverables.flatMap((deliverable) => [
         deliverable.documentTitle ? `Titlu: ${deliverable.documentTitle}` : '',
         deliverable.deliverableType ? `Tip: ${deliverable.deliverableType}` : '',
         deliverable.eligibilitySummary ? `Eligibilitate: ${deliverable.eligibilitySummary}` : '',
-      ])
-      .filter(Boolean)
-      .slice(0, 8),
+      ]),
+    ].filter(Boolean).slice(0, 8),
     unsupportedGaps: evidence.length === 0
       ? ['Nu exista suficiente propozitii extrase din livrabil pentru interpretare aprofundata.']
       : [],
@@ -199,11 +164,6 @@ function fallbackDescription(request: ActivityAgentRequest) {
   ].filter(Boolean).join(' '), request);
 }
 
-function clampScore(value: number) {
-  if (!Number.isFinite(value)) return 0;
-  return Math.max(0, Math.min(1, Number(value.toFixed(2))));
-}
-
 function scoreFromCheck(value: boolean | null | undefined, positive = 0.85, unknown = 0.45, negative = 0.2) {
   if (value === true) return positive;
   if (value === false) return negative;
@@ -214,9 +174,14 @@ function buildDeterministicExplainableScores(
   request: ActivityAgentRequest,
   context: Awaited<ReturnType<typeof createActivityAgentToolContext>>,
   changedSelectedActivity = false,
+  finalDescription?: string,
 ) {
   const hasDeliverableText = request.deliverables.some((deliverable) => deliverable.extractedText?.trim());
   const ragChunks = context.approvedReports.chunks.length;
+  const deliverableKind = classifyDeliverableKind(request);
+  const descriptionQuality = finalDescription
+    ? evaluateFinalActivityDescription(finalDescription, request)
+    : null;
   const targetImpactScore = context.targetGroupImpact.impactType === 'direct'
     ? 0.9
     : context.targetGroupImpact.impactType === 'indirect'
@@ -226,6 +191,24 @@ function buildDeterministicExplainableScores(
         : 0.35;
 
   return [
+    ...(descriptionQuality ? [{
+      id: 'annex10-description-quality',
+      label: 'Calitate text Anexa 10',
+      score: descriptionQuality.score,
+      reason: descriptionQuality.warnings.length > 0
+        ? descriptionQuality.warnings.slice(0, 2).join(' ')
+        : 'Descrierea respecta structura de baza: data, persoana I, obiect concret si rezultat pentru proiect.',
+      evidence: descriptionQuality.evidence,
+    }] : []),
+    {
+      id: 'deliverable-kind',
+      label: 'Tip livrabil detectat',
+      score: deliverableKind.confidence,
+      reason: deliverableKind.kind === 'unknown'
+        ? 'Tipul livrabilului nu a putut fi clasificat clar din titlu, tip si text extras.'
+        : `Livrabilul pare a fi: ${deliverableKind.label}.`,
+      evidence: deliverableKind.signals,
+    },
     {
       id: 'deliverable-text',
       label: 'Text livrabil disponibil',
@@ -375,8 +358,12 @@ export function buildControlledFallbackActivityAgentResponse(
     .filter(Boolean)
     .join('; ') || 'Nu exista livrabile cu titlu disponibil.';
 
+  const description = fallbackDescription(request);
+  const descriptionQuality = evaluateFinalActivityDescription(description, request);
+  const deliverableKind = classifyDeliverableKind(request);
+
   return {
-    description: fallbackDescription(request),
+    description,
     usedFacts: extractFallbackEvidence(request),
     shortSummary: fallbackShortSummary(request),
     proposedSaCode: request.saCode,
@@ -397,6 +384,24 @@ export function buildControlledFallbackActivityAgentResponse(
     })),
     explainableScores: [
       {
+        id: 'annex10-description-quality',
+        label: 'Calitate text Anexa 10',
+        score: descriptionQuality.score,
+        reason: descriptionQuality.warnings.length > 0
+          ? descriptionQuality.warnings.slice(0, 2).join(' ')
+          : 'Descrierea respecta structura de baza pentru Anexa 10.',
+        evidence: descriptionQuality.evidence,
+      },
+      {
+        id: 'deliverable-kind',
+        label: 'Tip livrabil detectat',
+        score: deliverableKind.confidence,
+        reason: deliverableKind.kind === 'unknown'
+          ? 'Tipul livrabilului nu a putut fi clasificat clar din datele disponibile.'
+          : `Livrabilul pare a fi: ${deliverableKind.label}.`,
+        evidence: deliverableKind.signals,
+      },
+      {
         id: 'fallback-confidence',
         label: 'Nivel fallback',
         score: 0.25,
@@ -413,6 +418,7 @@ export function buildControlledFallbackActivityAgentResponse(
     ],
     warnings: uniqueMessages([
       ...warnings,
+      ...descriptionQuality.warnings,
       'Descriere formulata prudent pe baza datelor disponibile; incadrarea necesita verificare interna.',
     ]),
     expertInstructionAudit: {
@@ -459,9 +465,11 @@ export async function runActivityAgent(
   });
   const generated = activityAgentGenerationSchema.parse(result.output);
   const description = cleanFinalDescription(generated.description, request);
+  const descriptionQuality = evaluateFinalActivityDescription(description, request);
   const changedSelectedActivity = false;
   const warnings = uniqueMessages([
     ...generated.warnings,
+    ...descriptionQuality.warnings,
     ...context.approvedReports.warnings,
     ...context.saPurpose.warnings,
     ...context.deliverableInspection.warnings,
@@ -508,13 +516,13 @@ export async function runActivityAgent(
       conflicts: uniqueMessages(context.expertAiInstructions.conflicts),
     },
     auditId: result.auditId,
-    explainableScores: mergeExplainableScores([], buildDeterministicExplainableScores(request, context, changedSelectedActivity)),
-    confidence: context.classification.confidence >= 0.75 && warnings.length === 0
+    explainableScores: mergeExplainableScores([], buildDeterministicExplainableScores(request, context, changedSelectedActivity, description)),
+    confidence: context.classification.confidence >= 0.75 && descriptionQuality.score >= 0.75 && warnings.length === 0
       ? 'high'
-      : context.classification.confidence >= 0.55
+      : context.classification.confidence >= 0.55 && descriptionQuality.score >= 0.55
         ? 'medium'
         : 'low',
-    requiresPmReview: warnings.length > 0 || context.classification.confidence < 0.55,
+    requiresPmReview: warnings.length > 0 || context.classification.confidence < 0.55 || descriptionQuality.score < 0.55,
     checks: {
       jobDescriptionAligned: null,
       saPurposeFound: context.saPurpose.found,

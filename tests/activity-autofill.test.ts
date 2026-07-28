@@ -10,6 +10,10 @@ import {
   validateActivityAutofillSuggestionAgainstCatalog,
   type ActivityAutofillCatalogCandidate,
 } from '../lib/activity-autofill.ts';
+import {
+  classifyDeliverableKind,
+  evaluateFinalActivityDescription,
+} from '../lib/agents/activity-agent-quality.ts';
 import { buildActivityAgentPrompt } from '../lib/agents/activity-agent-prompt.ts';
 
 const catalogCandidates: ActivityAutofillCatalogCandidate[] = [
@@ -120,6 +124,7 @@ test('promptul Agentului PEO pastreaza activitatea selectata ca tinta fixa', () 
     activityName: 'Pregatire materiale de informare',
     currentDescription: 'Am redactat si consolidat continut pentru newsletterul intern CPC.',
     expertName: 'Expert Test',
+    projectCode: '302141',
   });
 
   assert.match(prompt, /Pastreaza subactivitatea si activitatea selectate ca tinta fixa/);
@@ -481,4 +486,42 @@ test('fallbackul local rescrie prudent descrierea fara sa schimbe activitatea se
   assert.match(fallback?.evidence.join('\n') || '', /SA3.4 :: Organizare eveniment/);
   assert.equal(fallback?.confidence, 'low');
   assert.match(fallback?.warnings.join('\n') || '', /generata local/);
+});
+
+test('agentul evalueaza descrierea finala pentru Anexa 10 si clasifica tipul livrabilului', () => {
+  const request = {
+    deliverables: [
+      {
+        documentTitle: 'Newsletter lunar CPC - mai 2026',
+        deliverableType: 'Newsletter',
+        extractedText: 'Newsletterul lunar CPC a inclus informari pentru membri despre activitatea Concordia, grupuri de lucru, webinarul SME ECO-TECH si evenimentele anuntate pentru perioada urmatoare.',
+      },
+    ],
+    catalogCandidates,
+    selectedActivityId: 'cat-2',
+    saCode: 'SA3.4',
+    activityName: 'Redactare Newsletter lunar CPC',
+    currentDescription: 'Newsletter si informari pentru membri.',
+    expertName: 'Expert Test',
+    expertRole: 'Expert Afaceri Publice',
+    category: 'ap',
+    projectCode: '302141',
+    month: 6,
+    year: 2026,
+    selectedDates: ['2026-06-02'],
+  };
+
+  const bad = evaluateFinalActivityDescription(
+    'Agentul AI a citit livrabilul si a pregatit raportarea lunara.',
+    request,
+  );
+  assert.ok(bad.score < 0.55);
+  assert.match(bad.warnings.join('\n'), /termeni tehnici/);
+
+  const deliverableKind = classifyDeliverableKind(request);
+  assert.equal(deliverableKind.kind, 'newsletter');
+  assert.match(
+    deliverableKind.label,
+    /Newsletter/,
+  );
 });
