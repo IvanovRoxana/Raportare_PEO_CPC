@@ -566,6 +566,8 @@ function ExpertDashboardContent() {
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [activitySaveError, setActivitySaveError] = useState<string | null>(null);
+  const [activitySaveNotice, setActivitySaveNotice] = useState<string | null>(null);
   const [workBlockSaveNotice, setWorkBlockSaveNotice] = useState<string | null>(null);
   const [pendingSharedActivityRelationId, setPendingSharedActivityRelationId] = useState<string | null>(null);
   const [pendingSharedDeliverableRelationId, setPendingSharedDeliverableRelationId] = useState<string | null>(null);
@@ -1001,6 +1003,8 @@ function ExpertDashboardContent() {
     }
 
     setSaveError(null);
+    setActivitySaveError(null);
+    setActivitySaveNotice(null);
     setWorkBlockSaveNotice(null);
     setIsSaving(true);
     try {
@@ -1103,6 +1107,7 @@ function ExpertDashboardContent() {
           pmNotes: editingActivity.pmNotes,
         });
         await refreshActivities();
+        setActivitySaveNotice('Activitatea a fost salvata. Modificarile sunt vizibile in pontaj.');
         setShowForm(false);
         setEditingActivity(null);
         setActivityResolutionHint(null);
@@ -1135,6 +1140,7 @@ function ExpertDashboardContent() {
           createdBy: selectedExpertId,
         });
         await refreshLeaveEntries();
+        setActivitySaveNotice('Concediul a fost salvat. Modificarile sunt vizibile in pontaj.');
         setShowForm(false);
         setEditingActivity(null);
         setActivityResolutionHint(null);
@@ -1238,6 +1244,11 @@ function ExpertDashboardContent() {
         }
       }
       await refreshActivities();
+      setActivitySaveNotice(
+        editingActivity
+          ? 'Modificarile au fost salvate. Pontajul a fost actualizat.'
+          : 'Activitatea a fost salvata. Pontajul a fost actualizat.',
+      );
       setShowForm(false);
       setEditingActivity(null);
       setSharedActivityPrefill(null);
@@ -1256,11 +1267,11 @@ function ExpertDashboardContent() {
       });
     } catch (error) {
       console.error('Error saving activities:', error);
-      setSaveError(
-        error instanceof Error
-          ? error.message
-          : 'Activitatea nu a fost creată. Verifică norma disponibilă sau contactează administratorul.',
-      );
+      const message = error instanceof Error
+        ? error.message
+        : 'Activitatea nu a fost creată. Verifică norma disponibilă sau contactează administratorul.';
+      setActivitySaveError(message);
+      setSaveError(message);
     } finally {
       setIsSaving(false);
     }
@@ -1284,6 +1295,8 @@ function ExpertDashboardContent() {
     );
 
     setIsDeliverablesDialogOpen(false);
+    setActivitySaveError(null);
+    setActivitySaveNotice(null);
     setEditingActivity(activityForEdit);
     setSharedActivityPrefill(null);
     setActivityResolutionHint(resolutionHint ?? null);
@@ -2116,6 +2129,8 @@ function ExpertDashboardContent() {
     }
 
     setSaveError(null);
+    setActivitySaveError(null);
+    setActivitySaveNotice(null);
     setEditingActivity(null);
     setSharedActivityPrefill(null);
     setActivityResolutionHint(null);
@@ -2147,6 +2162,8 @@ function ExpertDashboardContent() {
     }
 
     setSaveError(null);
+    setActivitySaveError(null);
+    setActivitySaveNotice(null);
     syncSelectedDates(dates, nextHours ?? selectedHours);
     if (dates.length > 0) {
       if (!showForm) {
@@ -2265,6 +2282,7 @@ function ExpertDashboardContent() {
       prefillActivity={sharedActivityPrefill || undefined}
       resolutionHint={activityResolutionHint || undefined}
       isSaving={isSaving}
+      saveError={activitySaveError}
       layout="workspace"
       showObservationRail={false}
     />
@@ -2598,6 +2616,13 @@ function ExpertDashboardContent() {
               <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                 <p>{saveError}</p>
+              </div>
+            )}
+
+            {activitySaveNotice && !saveError && (
+              <div className="flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
+                <CheckCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                <p>{activitySaveNotice}</p>
               </div>
             )}
 

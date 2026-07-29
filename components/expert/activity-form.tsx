@@ -185,6 +185,7 @@ interface ActivityFormProps {
   prefillActivity?: Partial<Activity>;
   resolutionHint?: ActivityResolutionHint;
   isSaving?: boolean;
+  saveError?: string | null;
   layout?: 'card' | 'workspace';
   showObservationRail?: boolean;
 }
@@ -451,6 +452,7 @@ export function ActivityForm({
   prefillActivity,
   resolutionHint,
   isSaving = false,
+  saveError,
   layout = 'card',
   showObservationRail = true,
 }: ActivityFormProps) {
@@ -1508,6 +1510,10 @@ export function ActivityForm({
     confirmedMonthlyDeliverableDuplicate = false,
     selectedDuplicateSourceActivityId?: string,
   ) => {
+    if (saveInFlightRef.current || isSaving || isSubmittingActivity) {
+      return;
+    }
+
     setValidationError(null);
     const reportingWarnings: string[] = [];
     const eventDocumentationForSave = getEventDocumentationStatus(deliverables);
@@ -1977,6 +1983,7 @@ export function ActivityForm({
     isGdprExpert,
     isException,
     isSaving,
+    isSubmittingActivity,
     isLeave,
     location,
     month,
@@ -4274,7 +4281,20 @@ export function ActivityForm({
 
         {/* Actions */}
         <div className={isWorkspaceLayout ? 'sticky bottom-0 z-10 -mx-4 -mb-4 flex flex-col gap-3 border-t bg-white/95 px-4 py-3 shadow-[0_-10px_24px_rgba(15,23,42,0.08)] backdrop-blur sm:-mx-6 sm:-mb-6 sm:flex-row sm:items-center sm:justify-between sm:px-6' : 'flex justify-end gap-2 pt-4 border-t'}>
-          {isWorkspaceLayout && currentWizardStep === 'review' && footerValidationMessage && !isSaving && !isSubmittingActivity ? (
+          {isWorkspaceLayout && saveError && !isSaving && !isSubmittingActivity ? (
+            <div className="flex min-w-0 items-start gap-2 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-900 sm:max-w-[min(720px,calc(100%-220px))]">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
+              <div className="min-w-0">
+                <span className="font-medium">Nu s-a salvat: </span>
+                <span>{saveError}</span>
+              </div>
+            </div>
+          ) : isWorkspaceLayout && (isSaving || isSubmittingActivity) ? (
+            <div className="flex min-w-0 items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-900 sm:max-w-[min(720px,calc(100%-220px))]">
+              <Loader2 className="h-4 w-4 shrink-0 animate-spin text-blue-600" />
+              <span>Se salveaza activitatea. Te rog nu apasa din nou.</span>
+            </div>
+          ) : isWorkspaceLayout && currentWizardStep === 'review' && footerValidationMessage ? (
             <div className="flex min-w-0 items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 sm:max-w-[min(720px,calc(100%-220px))]">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
               <div className="min-w-0">
@@ -4315,6 +4335,7 @@ export function ActivityForm({
               onClick={() => handleSave()}
               disabled={!isLastWizardStep || isSaveDisabled || isSaving || isSubmittingActivity}
               className={isWorkspaceLayout ? 'w-full sm:w-auto' : undefined}
+              aria-busy={isSaving || isSubmittingActivity}
             >
               {isSaving || isSubmittingActivity ? (
                 <>
