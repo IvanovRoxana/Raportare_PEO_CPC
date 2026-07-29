@@ -163,6 +163,11 @@ function shouldSyncCognitoGroupsForProfileSave(expert: Expert, form: EditFormSta
   return currentRole !== form.role || currentHasPmAccess !== nextHasPmAccess || currentEmail !== nextEmail;
 }
 
+function isCognitoSyncPermissionError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error || '');
+  return /AccessDeniedException|not authorized to perform|access denied/i.test(message);
+}
+
 function buildExpertCreateInput(expert: Expert, updates: Partial<Expert>): Omit<Expert, 'id'> {
   return {
     userId: expert.userId,
@@ -435,9 +440,18 @@ export function AdminUsersTable() {
 
     try {
       await refreshAdminAuthSession();
+      let cognitoSyncWarning: string | null = null;
       if (shouldSyncCognitoGroups) {
-        await syncOrInviteCognitoGroupsForUser(updates.email, cognitoGroups, updates.name);
-        await refreshAdminAuthSession();
+        try {
+          await syncOrInviteCognitoGroupsForUser(updates.email, cognitoGroups, updates.name);
+          await refreshAdminAuthSession();
+        } catch (syncError) {
+          if (!isCognitoSyncPermissionError(syncError)) {
+            throw syncError;
+          }
+          console.warn('Profilul se salveaza fara sincronizarea grupurilor Cognito.', syncError);
+          cognitoSyncWarning = ' Grupurile Cognito nu au fost sincronizate deoarece serviciul AWS nu are permisiunea necesara.';
+        }
       }
 
       const savedExpert = isPersistedExpert(editingExpert)
@@ -453,7 +467,7 @@ export function AdminUsersTable() {
         justification: 'Profil utilizator actualizat din panoul de administrare.',
       });
 
-      setOk(`Profilul pentru ${updates.name} a fost actualizat.`);
+      setOk(`Profilul pentru ${updates.name} a fost actualizat.${cognitoSyncWarning ?? ''}`);
       setEditingExpert(null);
       setForm(null);
       await loadExperts();
