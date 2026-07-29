@@ -194,7 +194,7 @@ async function generatePeoWorkbook(payload: ExportPayload): Promise<GeneratedWor
     sheetXml = setCell(sheetXml, `D${row}`, hours > 0 || leaveCode ? joinUnique(activities.map(activitySubactivity)) : null);
     sheetXml = setCell(sheetXml, `G${row}`, hourlyRate && (hours > 0 || leaveCode) ? hourlyRate : null);
     sheetXml = setCell(sheetXml, `H${row}`, leaveCode ?? (hours > 0 ? hours : null));
-    sheetXml = setCell(sheetXml, `I${row}`, detail?.isWorking ? Math.max(0, cimDailyHours - dailyHours) : null);
+    sheetXml = setCell(sheetXml, `I${row}`, detail?.isWorking ? Math.max(0, cimDailyHours - hours) : null);
   }
 
   const lastDayRow = 13 + timesheetRows.length;

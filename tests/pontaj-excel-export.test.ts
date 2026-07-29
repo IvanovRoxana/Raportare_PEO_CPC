@@ -186,6 +186,26 @@ describe('export pontaj Excel', () => {
     assert.match(cellXml(sheet, 'H45'), /COUNTIF\(H14:H44,&quot;CO&quot;\)\*8/);
   });
 
+  it('calculeaza alte activitati ca norma CIM minus orele PEO pontate in zi', async () => {
+    const workbook = await generatePontajExcel({
+      kind: 'peo',
+      month: 5,
+      year: 2026,
+      expert: { id: 'expert-partial', name: 'Expert Partial', role: 'Expert PEO', category: 'Expert', oreZi: 8, saCodes: ['SA3.4'] },
+      activities: [
+        { date: '2026-06-02', hours: 3, activityType: 'Activitate partiala', saCode: 'SA3.4', status: 'approved' },
+      ],
+      concurrentProjects: [],
+      concurrentTimesheetEntries: [],
+    });
+
+    const files = readXlsx(workbook.buffer);
+    const sheet = files.get('xl/worksheets/sheet1.xml')!.toString('utf8');
+
+    assert.match(cellXml(sheet, 'H15'), /<v>3<\/v>/);
+    assert.match(cellXml(sheet, 'I15'), /<v>5<\/v>/);
+  });
+
   it('agrega Pontaj_PEO simplu pe zile fara sa extinda template-ul cu randuri pe activitate', async () => {
     const workingDays = ['02', '03', '04', '05', '08', '09', '10', '11'];
     const activities = Array.from({ length: 24 }, (_item, index) => ({
