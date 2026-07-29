@@ -135,6 +135,10 @@ export interface DeliverableEligibilityCheck {
   checkedSaCode?: string;
   checkedActivityName?: string;
   checkedDeliverableType?: string;
+  pmUnlockRequested?: boolean;
+  pmUnlockRequestedAt?: string;
+  pmUnlockRequestedBy?: string;
+  pmUnlockReason?: string;
   modelAuditId?: string;
   analyzedDeliverables?: Array<{
     id?: string;

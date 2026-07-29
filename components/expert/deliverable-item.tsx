@@ -550,6 +550,20 @@ export function DeliverableItem({
     onApplyEligibilitySuggestion?.(settings, change, deliverable.id);
   };
 
+  const handleRequestPmUnlock = () => {
+    if (!visibleEligibilityCheck || visibleEligibilityCheck.status !== 'neeligibil') return;
+
+    onUpdate({
+      eligibilityCheck: {
+        ...visibleEligibilityCheck,
+        pmUnlockRequested: true,
+        pmUnlockRequestedAt: new Date().toISOString(),
+        pmUnlockRequestedBy: expertName,
+        pmUnlockReason: visibleEligibilityCheck.summary,
+      },
+    });
+  };
+
   const validateTitle = (title: string, source: DeliverableSlot['titleSource']) =>
     validateDeclaredTitleOnFirstPage({
       firstPageText: deliverable.firstPageText || deliverable.docText,
@@ -1070,6 +1084,7 @@ export function DeliverableItem({
             <EligibilityResultCard
               check={visibleEligibilityCheck}
               onApplySuggestedSettings={handleApplyEligibilitySuggestion}
+              onRequestPmUnlock={handleRequestPmUnlock}
             />
           )}
         </div>
@@ -1120,6 +1135,7 @@ export function DeliverableItem({
         <EligibilityResultCard
           check={visibleEligibilityCheck}
           onApplySuggestedSettings={handleApplyEligibilitySuggestion}
+          onRequestPmUnlock={handleRequestPmUnlock}
         />
       )}
     </div>
@@ -1361,6 +1377,20 @@ export function DeliverableEligibilityControl({
     onApplyEligibilitySuggestion?.(settings, change, deliverable.id);
   };
 
+  const handleRequestPmUnlock = () => {
+    if (!visibleEligibilityCheck || visibleEligibilityCheck.status !== 'neeligibil') return;
+
+    onUpdate({
+      eligibilityCheck: {
+        ...visibleEligibilityCheck,
+        pmUnlockRequested: true,
+        pmUnlockRequestedAt: new Date().toISOString(),
+        pmUnlockRequestedBy: expertName,
+        pmUnlockReason: visibleEligibilityCheck.summary,
+      },
+    });
+  };
+
   return (
     <div className={className}>
       {eligibilityCheckEnabled && hasReusableEligibilityCheck ? null : eligibilityCheckEnabled && canRunEligibilityCheck ? (
@@ -1415,6 +1445,7 @@ export function DeliverableEligibilityControl({
         <EligibilityResultCard
           check={visibleEligibilityCheck}
           onApplySuggestedSettings={handleApplyEligibilitySuggestion}
+          onRequestPmUnlock={handleRequestPmUnlock}
         />
       )}
     </div>
@@ -1471,14 +1502,19 @@ function getEligibilityClass(status: string) {
 function EligibilityResultCard({
   check,
   onApplySuggestedSettings,
+  onRequestPmUnlock,
 }: {
   check: NonNullable<DeliverableSlot['eligibilityCheck']>;
   onApplySuggestedSettings?: (
     settings: EligibilitySuggestedSettings,
     change: EligibilitySuggestedSettingsChange,
   ) => void;
+  onRequestPmUnlock?: () => void;
 }) {
   const warning = check.status === 'neeligibil' || check.status === 'neconcludent';
+  const isNeeligibil = check.status === 'neeligibil';
+  const isNeconcludent = check.status === 'neconcludent';
+  const pmUnlockRequested = Boolean(check.pmUnlockRequested);
   const suggestedSettings = check.suggestedSettings;
   const canApplyActivity = Boolean(
     suggestedSettings?.changes?.includes('activity')
@@ -1510,6 +1546,34 @@ function EligibilityResultCard({
       {warning && (
         <div className="mt-1 font-medium">
           Verifică manual livrabilul înainte de validare.
+        </div>
+      )}
+      {isNeconcludent && (
+        <div className="mt-1 rounded border border-amber-200 bg-white/80 p-2 text-slate-800">
+          Verificarea automata nu a putut citi/analiza livrabilul. Continua cu introducere manuala si verificare PM.
+        </div>
+      )}
+      {isNeeligibil && !pmUnlockRequested && onRequestPmUnlock && (
+        <div className="mt-2 rounded border border-red-200 bg-white/80 p-2 text-slate-800">
+          <div className="text-[10px] text-slate-700">
+            Daca livrabilul trebuie pastrat in raportare, solicita deblocare PM. Cererea permite continuarea activitatii, dar nu aproba livrabilul automat.
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="mt-2 h-7 border-red-300 px-2 text-[10px] text-red-700 hover:bg-red-50"
+            onClick={onRequestPmUnlock}
+          >
+            Solicita deblocare PM
+          </Button>
+        </div>
+      )}
+      {isNeeligibil && pmUnlockRequested && (
+        <div className="mt-2 rounded border border-amber-200 bg-white/80 p-2 text-[10px] text-slate-700">
+          Deblocare PM solicitata
+          {check.pmUnlockRequestedAt ? ` la ${check.pmUnlockRequestedAt}` : ''}
+          {check.pmUnlockRequestedBy ? ` de ${check.pmUnlockRequestedBy}` : ''}.
         </div>
       )}
       {check.checks.length > 0 && (

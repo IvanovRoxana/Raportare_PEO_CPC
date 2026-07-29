@@ -127,6 +127,7 @@ export function buildPmDashboardSummary(args: {
   });
 
   const titleIssues = args.documents.filter((document) => document.titleMatch === false || document.titleCheckStatus === 'mismatch').length;
+  const pmUnlockRequests = args.documents.filter((document) => document.eligibilityCheck?.pmUnlockRequested).length;
   const pendingSharedDeliverables = args.sharedDeliverables.filter((relation) => relation.status === 'pending_registration').length;
   const crossAlignmentIssues = checkCrossAlignment(args.activities).length;
   const monthlyOpenClarificationsCount = args.reportStatuses.filter(
@@ -140,7 +141,7 @@ export function buildPmDashboardSummary(args: {
     if (!activity.pmNotes?.trim() || !activity.updatedAt) return false;
     return activity.status !== 'approved';
   }).length;
-  const documentAlertsCount = titleIssues + pendingSharedDeliverables;
+  const documentAlertsCount = titleIssues + pmUnlockRequests + pendingSharedDeliverables;
   const problemCount = documentAlertsCount + crossAlignmentIssues + openClarificationsCount;
 
   return {
@@ -148,6 +149,7 @@ export function buildPmDashboardSummary(args: {
     statusCounts,
     totalHours: args.activities.reduce((sum, activity) => sum + (Number(activity.hours) || 0), 0),
     titleIssues,
+    pmUnlockRequests,
     pendingSharedDeliverables,
     crossAlignmentIssues,
     documentAlertsCount,

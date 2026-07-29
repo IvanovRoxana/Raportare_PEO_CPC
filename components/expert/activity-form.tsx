@@ -1025,6 +1025,12 @@ export function ActivityForm({
   }, [activityAutofillSuggestion?.description, activityAutofillSuggestion?.modelAuditId]);
 
   const activityAutofillDeliverables = deliverablesForEligibility.length > 0 ? deliverablesForEligibility : deliverables;
+  const activityAutofillManualEntryMessage = activityAutofillDeliverables.some((deliverable) => (
+    deliverable.eligibilityCheck?.status === 'neconcludent'
+  ))
+    ? 'Verificarea automata nu a putut citi/analiza livrabilul. Continua cu introducere manuala si verificare PM.'
+    : null;
+  const effectiveActivityAutofillUnavailableMessage = activityAutofillManualEntryMessage || activityAutofillUnavailableMessage;
   const canExtractActivityAutofillText = activityAutofillDeliverables.some((deliverable) => (
     deliverable.uploaded
     && !deliverable.docText
@@ -1033,6 +1039,11 @@ export function ActivityForm({
   ));
   const isActivityAutofillActionBusy = isAutofillingActivity || isPreparingActivityAutofill;
   const handlePrepareAndSuggestActivityDescription = useCallback(async () => {
+    if (activityAutofillManualEntryMessage) {
+      setValidationError(activityAutofillManualEntryMessage);
+      return;
+    }
+
     const missingTextDeliverables = activityAutofillDeliverables.filter((deliverable) => (
       deliverable.uploaded
       && !deliverable.docText
@@ -1073,7 +1084,7 @@ export function ActivityForm({
     } finally {
       setIsPreparingActivityAutofill(false);
     }
-  }, [activityAutofillDeliverables, handleSuggestActivityFromDeliverables]);
+  }, [activityAutofillDeliverables, activityAutofillManualEntryMessage, handleSuggestActivityFromDeliverables]);
 
   useEffect(() => {
     if (initialActivity?.id || prefillActivity?.description?.trim()) return;
@@ -1522,6 +1533,28 @@ export function ActivityForm({
       && deliverable.uploaded
       && Boolean(deliverable.filename || deliverable.name)
     ));
+    const mainDeliverableEligibilityBlockersForSave = eligibilityCheckEnabled
+      ? deliverables
+          .filter((deliverable) => (
+            (!deliverable.slotType || deliverable.slotType === 'livrabil')
+            && deliverable.uploaded
+            && !deliverable.isPhoto
+            && Boolean(deliverable.filename || deliverable.name)
+          ))
+          .map((deliverable): string | null => {
+            if (!deliverable.eligibilityCheck) {
+              return 'Ruleaza verificarea eligibilitatii pentru livrabilul principal.';
+            }
+            if (
+              deliverable.eligibilityCheck.status === 'neeligibil'
+              && !deliverable.eligibilityCheck.pmUnlockRequested
+            ) {
+              return 'Livrabilul este neeligibil. Solicita deblocare PM sau corecteaza livrabilul.';
+            }
+            return null;
+          })
+          .filter((message): message is string => Boolean(message))
+      : [];
     if (
       showStandardActivityWorkflow
       && !isLeave
@@ -1530,8 +1563,12 @@ export function ActivityForm({
         ? !eventDocumentationForSave.complete
         : (!hasMainDeliverableForSave && !skipMainDeliverableForNow))
     ) {
-      setValidationError(isEvent ? MISSING_EVENT_DOCUMENTATION_MESSAGE : MISSING_MAIN_DELIVERABLE_MESSAGE);
-      setCurrentWizardStep('review');
+      reportingWarnings.push(isEvent ? MISSING_EVENT_DOCUMENTATION_MESSAGE : MISSING_MAIN_DELIVERABLE_MESSAGE);
+    }
+
+    if (mainDeliverableEligibilityBlockersForSave.length > 0) {
+      setValidationError(mainDeliverableEligibilityBlockersForSave[0]);
+      setCurrentWizardStep('deliverables');
       return;
     }
 
@@ -1962,6 +1999,7 @@ export function ActivityForm({
     description,
     effectiveActivityTitle,
     effectiveSaCode,
+    eligibilityCheckEnabled,
     eventDur,
     eventExtendedDesc,
     expert,
@@ -2078,6 +2116,23 @@ export function ActivityForm({
   const hasUploadedMainDeliverable = mainDeliverables.some((deliverable) => (
     deliverable.uploaded && Boolean(deliverable.filename || deliverable.name)
   ));
+  const mainDeliverableEligibilityBlockers = eligibilityCheckEnabled
+    ? mainDeliverables
+        .filter((deliverable) => deliverable.uploaded && !deliverable.isPhoto && Boolean(deliverable.filename || deliverable.name))
+        .map((deliverable): string | null => {
+          if (!deliverable.eligibilityCheck) {
+            return 'Ruleaza verificarea eligibilitatii pentru livrabilul principal.';
+          }
+          if (
+            deliverable.eligibilityCheck.status === 'neeligibil'
+            && !deliverable.eligibilityCheck.pmUnlockRequested
+          ) {
+            return 'Livrabilul este neeligibil. Solicita deblocare PM sau corecteaza livrabilul.';
+          }
+          return null;
+        })
+        .filter((message): message is string => Boolean(message))
+    : [];
   const isMissingRequiredMainDeliverable = (
     showStandardActivityWorkflow
     && !isLeave
@@ -2086,9 +2141,11 @@ export function ActivityForm({
       ? !eventDocumentationStatus.complete
       : (!hasUploadedMainDeliverable && !skipMainDeliverableForNow))
   );
-  const saveBlockers = isMissingRequiredMainDeliverable
-    ? [...baseSaveBlockers, isEvent ? MISSING_EVENT_DOCUMENTATION_MESSAGE : MISSING_MAIN_DELIVERABLE_MESSAGE]
-    : baseSaveBlockers;
+  const saveBlockers = [
+    ...baseSaveBlockers,
+    ...(isMissingRequiredMainDeliverable && isEvent ? [MISSING_EVENT_DOCUMENTATION_MESSAGE] : []),
+    ...mainDeliverableEligibilityBlockers,
+  ];
   const isSaveDisabled = saveBlockers.length > 0;
   const footerValidationMessage = validationError || saveBlockers[0] || null;
   const footerAdditionalBlockersCount = validationError
@@ -2123,7 +2180,7 @@ export function ActivityForm({
           : skipMainDeliverableForNow
             ? 'Incarcare mai tarziu'
             : 'Documente',
-      blocked: !canOpenDeliverablesStep || isMissingRequiredMainDeliverable,
+      blocked: !canOpenDeliverablesStep || (isEvent && isMissingRequiredMainDeliverable) || mainDeliverableEligibilityBlockers.length > 0,
       disabled: !canOpenDeliverablesStep,
     },
     {
@@ -2159,6 +2216,7 @@ export function ActivityForm({
     isException,
     isSaveDisabled,
     isMissingRequiredMainDeliverable,
+    mainDeliverableEligibilityBlockers.length,
     mainDeliverables.length,
     needsCommonDesc,
     needsExtendedDesc,
@@ -2282,7 +2340,7 @@ export function ActivityForm({
     resolutionHint,
     warnings: {
       activityAutofillError,
-      activityAutofillUnavailableMessage: null,
+      activityAutofillUnavailableMessage: effectiveActivityAutofillUnavailableMessage,
       isSaveDisabled,
       isSaving,
       saveBlockers,
@@ -3455,9 +3513,10 @@ export function ActivityForm({
                     onClick={handlePrepareAndSuggestActivityDescription}
                     disabled={
                       isActivityAutofillActionBusy
-                      || (Boolean(activityAutofillUnavailableMessage) && !canExtractActivityAutofillText)
+                      || Boolean(activityAutofillManualEntryMessage)
+                      || (Boolean(effectiveActivityAutofillUnavailableMessage) && !canExtractActivityAutofillText)
                     }
-                    title={activityAutofillUnavailableMessage || undefined}
+                    title={effectiveActivityAutofillUnavailableMessage || undefined}
                   >
                     {isActivityAutofillActionBusy ? (
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -3468,9 +3527,9 @@ export function ActivityForm({
                   </Button>
                 </div>
 
-                {activityAutofillUnavailableMessage && (
+                {effectiveActivityAutofillUnavailableMessage && (
                   <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-2 text-xs text-slate-700">
-                    {activityAutofillUnavailableMessage}
+                    {effectiveActivityAutofillUnavailableMessage}
                   </div>
                 )}
 

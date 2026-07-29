@@ -149,7 +149,7 @@ export default function PMDashboard() {
   const [reviewExpertId, setReviewExpertId] = useState<string | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [reviewFocus, setReviewFocus] = useState<{ activityId?: string; documentId?: string; issueType?: string } | null>(null);
-  const [activeAlertFilter, setActiveAlertFilter] = useState<'title_mismatch' | 'shared_deliverables' | 'event_documents' | 'all'>('all');
+  const [activeAlertFilter, setActiveAlertFilter] = useState<'title_mismatch' | 'pm_unlock_requests' | 'shared_deliverables' | 'event_documents' | 'all'>('all');
   const [isExportingOpisTotal, setIsExportingOpisTotal] = useState(false);
   const [localDocumentClarificationThreads, setLocalDocumentClarificationThreads] = useState<PmClarificationThread[]>([]);
   const [pmExceptionOpen, setPmExceptionOpen] = useState(false);
@@ -851,6 +851,10 @@ export default function PMDashboard() {
     () => documents.filter((document) => document.titleMatch === false || document.titleCheckStatus === 'mismatch'),
     [documents]
   );
+  const pmUnlockRequests = useMemo(
+    () => documents.filter((document) => Boolean(document.eligibilityCheck?.pmUnlockRequested)),
+    [documents]
+  );
   const problemCountByExpertId = useMemo(() => {
     const result = new Map<string, number>();
     const bump = (expertId: string | undefined, count = 1) => {
@@ -869,13 +873,14 @@ export default function PMDashboard() {
       ].filter(Boolean).length);
     });
     titleIssues.forEach((documentMeta) => bump(documentMeta.uploadedByExpertId));
+    pmUnlockRequests.forEach((documentMeta) => bump(documentMeta.uploadedByExpertId));
     eventDocumentIssues.forEach((activity) => bump(activity.expertId));
     clarificationThreadsByExpertId.forEach((threads, expertId) => {
       bump(expertId, threads.filter((thread) => thread.status !== 'resolved').length);
     });
 
     return result;
-  }, [clarificationThreadsByExpertId, dashboardRows, eventDocumentIssues, localNeconformitati, titleIssues]);
+  }, [clarificationThreadsByExpertId, dashboardRows, eventDocumentIssues, localNeconformitati, pmUnlockRequests, titleIssues]);
   const reviewExpertActivities = useMemo(
     () => (reviewExpertId ? monthActivities.filter((activity) => activity.expertId === reviewExpertId) : []),
     [monthActivities, reviewExpertId]
@@ -900,9 +905,10 @@ export default function PMDashboard() {
     window.setTimeout(() => document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
   };
   const openDocumentAlerts = () => {
-    if (titleIssues.length > 0 && pendingSharedDeliverables.length === 0 && eventDocumentIssues.length === 0) setActiveAlertFilter('title_mismatch');
-    else if (pendingSharedDeliverables.length > 0 && titleIssues.length === 0 && eventDocumentIssues.length === 0) setActiveAlertFilter('shared_deliverables');
-    else if (eventDocumentIssues.length > 0 && titleIssues.length === 0 && pendingSharedDeliverables.length === 0) setActiveAlertFilter('event_documents');
+    if (titleIssues.length > 0 && pmUnlockRequests.length === 0 && pendingSharedDeliverables.length === 0 && eventDocumentIssues.length === 0) setActiveAlertFilter('title_mismatch');
+    else if (pmUnlockRequests.length > 0 && titleIssues.length === 0 && pendingSharedDeliverables.length === 0 && eventDocumentIssues.length === 0) setActiveAlertFilter('pm_unlock_requests');
+    else if (pendingSharedDeliverables.length > 0 && titleIssues.length === 0 && pmUnlockRequests.length === 0 && eventDocumentIssues.length === 0) setActiveAlertFilter('shared_deliverables');
+    else if (eventDocumentIssues.length > 0 && titleIssues.length === 0 && pmUnlockRequests.length === 0 && pendingSharedDeliverables.length === 0) setActiveAlertFilter('event_documents');
     else setActiveAlertFilter('all');
     scrollToPmSection('pm-document-alerts');
   };
@@ -1345,6 +1351,7 @@ export default function PMDashboard() {
           pmSummary={pmSummary}
           dashboardTotals={dashboardTotals}
           titleIssuesCount={titleIssues.length}
+          pmUnlockRequestsCount={pmUnlockRequests.length}
           pendingSharedDeliverablesCount={pendingSharedDeliverables.length}
           eventDocumentIssuesCount={eventDocumentIssues.length}
           openClarificationsCount={pmSummary.openClarificationsCount}
@@ -1357,6 +1364,7 @@ export default function PMDashboard() {
 
         <PmAlertsPanel
           titleIssues={titleIssues}
+          pmUnlockRequests={pmUnlockRequests}
           pendingSharedDeliverables={pendingSharedDeliverables}
           eventDocumentIssues={eventDocumentIssues}
           unresolvedNeconformitati={localNeconformitati.filter((item) => !item.resolved)}

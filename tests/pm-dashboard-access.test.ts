@@ -167,17 +167,38 @@ test('summary PM calculeaza statusuri, alerte titlu, livrabile comune si cross a
       { id: 's1', expertId: 'e1', month: 4, year: 2026, status: 'clarifications', pmNotes: 'Clarifica documentul d1.' },
       { id: 's2', expertId: 'e2', month: 4, year: 2026, status: 'approved' },
     ],
-    documents: [{
-      id: 'd1',
-      s3Key: 'documents/d1.pdf',
-      originalFileName: 'd1.pdf',
-      mimeType: 'application/pdf',
-      fileSize: 1,
-      uploadedByExpertId: 'e1',
-      uploadDate: '2026-05-04',
-      titleMatch: false,
-      titleCheckStatus: 'mismatch',
-    }],
+    documents: [
+      {
+        id: 'd1',
+        s3Key: 'documents/d1.pdf',
+        originalFileName: 'd1.pdf',
+        mimeType: 'application/pdf',
+        fileSize: 1,
+        uploadedByExpertId: 'e1',
+        uploadDate: '2026-05-04',
+        titleMatch: false,
+        titleCheckStatus: 'mismatch',
+      },
+      {
+        id: 'd2',
+        s3Key: 'documents/d2.pdf',
+        originalFileName: 'd2.pdf',
+        mimeType: 'application/pdf',
+        fileSize: 1,
+        uploadedByExpertId: 'e1',
+        uploadDate: '2026-05-04',
+        eligibilityCheck: {
+          status: 'neeligibil',
+          score: 15,
+          summary: 'Nu corespunde activitatii selectate.',
+          checks: [],
+          missingElements: [],
+          recommendations: [],
+          riskFlags: [],
+          pmUnlockRequested: true,
+        },
+      },
+    ],
     sharedDeliverables: [{ id: 'sh1', documentId: 'd1', sourceExpertId: 'e1', targetExpertId: 'e2', status: 'pending_registration' }],
   });
 
@@ -185,11 +206,12 @@ test('summary PM calculeaza statusuri, alerte titlu, livrabile comune si cross a
   assert.equal(summary.statusCounts.clarifications, 1);
   assert.equal(summary.statusCounts.approved, 1);
   assert.equal(summary.titleIssues, 1);
+  assert.equal(summary.pmUnlockRequests, 1);
   assert.equal(summary.pendingSharedDeliverables, 1);
   assert.equal(summary.crossAlignmentIssues, 1);
-  assert.equal(summary.documentAlertsCount, 2);
+  assert.equal(summary.documentAlertsCount, 3);
   assert.equal(summary.openClarificationsCount, 2);
-  assert.equal(summary.problemCount, 5);
+  assert.equal(summary.problemCount, 6);
 });
 
 test('clarificarile PM pentru documente title_mismatch apar ca fire document', () => {

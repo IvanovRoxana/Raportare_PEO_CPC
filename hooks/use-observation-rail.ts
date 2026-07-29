@@ -94,7 +94,8 @@ function getRailDuplicateIssueLabel(issue: string) {
 
 function getEligibilityRailTone(status?: string): ObservationTone {
   if (status === 'eligibil') return 'success';
-  if (status === 'neeligibil' || status === 'neconcludent') return 'danger';
+  if (status === 'neeligibil') return 'danger';
+  if (status === 'neconcludent') return 'warning';
   return 'warning';
 }
 
@@ -334,8 +335,12 @@ export function useObservationRail({
 
       if (deliverable.eligibilityCheck) {
         const check = deliverable.eligibilityCheck;
+        const isPmUnlockRequested = check.status === 'neeligibil' && check.pmUnlockRequested;
+        const isManualEntryRequired = check.status === 'neconcludent';
         const meta = [
           typeof check.score === 'number' ? `Scor: ${check.score}/100` : null,
+          isPmUnlockRequested ? 'Deblocare PM solicitata' : null,
+          isManualEntryRequired ? 'Introducere manuala / eroare citire livrabil' : null,
           ...(check.missingElements || []).slice(0, 3),
           ...(check.riskFlags || []).slice(0, 3),
           ...(check.recommendations || []).slice(0, 2),
@@ -349,7 +354,9 @@ export function useObservationRail({
             : `${getEligibilityRailLabel(check.status)} - ${notePrefix}`,
           detail: sourceContext
             ? `Verificare preluata din raportarea sursa: ${check.summary}`
-            : check.summary,
+            : isManualEntryRequired
+              ? 'Verificarea automata nu a putut citi/analiza livrabilul. Continua cu introducere manuala si verificare PM.'
+              : check.summary,
           meta,
         });
       }

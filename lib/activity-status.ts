@@ -97,7 +97,15 @@ export function getActivityStatus(entry: ActivityEntry): ActivityStatus {
     if (mainDelivs.length > 0) {
       // Check title confirmation and manual status. AI eligibility is optional while the feature flag is disabled.
       const eligibilityCheckEnabled = isDeliverableEligibilityCheckEnabledClient();
-      if (mainDelivs.some(d => !d.isPhoto && (!d.titleConfirmed || !d.stadiu || (eligibilityCheckEnabled && !d.aiCheck)))) {
+      if (mainDelivs.some(d => (
+        !d.isPhoto
+        && (
+          !d.titleConfirmed
+          || !d.stadiu
+          || (eligibilityCheckEnabled && !d.eligibilityCheck)
+          || (eligibilityCheckEnabled && d.eligibilityCheck?.status === 'neeligibil' && !d.eligibilityCheck.pmUnlockRequested)
+        )
+      ))) {
         return 'title_mismatch';
       }
     }

@@ -18,12 +18,13 @@ type PendingSharedDeliverable = {
 
 type PmAlertsPanelProps = {
   titleIssues: DocumentMetadata[];
+  pmUnlockRequests: DocumentMetadata[];
   pendingSharedDeliverables: PendingSharedDeliverable[];
   eventDocumentIssues: Activity[];
   unresolvedNeconformitati: Neconformitate[];
   dashboardRows: DashboardComplianceRow[];
   clarificationThreads?: PmClarificationThread[];
-  activeAlertFilter?: 'title_mismatch' | 'shared_deliverables' | 'event_documents' | 'all';
+  activeAlertFilter?: 'title_mismatch' | 'pm_unlock_requests' | 'shared_deliverables' | 'event_documents' | 'all';
   onOpenDossier?: (expertId: string, options?: { activityId?: string; documentId?: string; issueType?: string }) => void;
   onRequestDocumentClarification?: (document: DocumentMetadata) => void;
   onOpenProblemsForExpert?: (expertId: string) => void;
@@ -31,6 +32,7 @@ type PmAlertsPanelProps = {
 
 export function PmAlertsPanel({
   titleIssues,
+  pmUnlockRequests,
   pendingSharedDeliverables,
   eventDocumentIssues,
   unresolvedNeconformitati,
@@ -53,11 +55,13 @@ export function PmAlertsPanel({
 
   const alertCount =
     titleIssues.length +
+    pmUnlockRequests.length +
     pendingSharedDeliverables.length +
     eventDocumentIssues.length +
     unresolvedNeconformitati.length +
     complianceRowsWithIssues.length;
   const showTitleIssues = activeAlertFilter === 'all' || activeAlertFilter === 'title_mismatch';
+  const showPmUnlockRequests = activeAlertFilter === 'all' || activeAlertFilter === 'pm_unlock_requests';
   const showSharedDeliverables = activeAlertFilter === 'all' || activeAlertFilter === 'shared_deliverables';
   const showEventDocuments = activeAlertFilter === 'all' || activeAlertFilter === 'event_documents';
   const sharedDeliverableGroups = groupPendingSharedDeliverables(pendingSharedDeliverables.slice(0, 4));
@@ -177,6 +181,61 @@ export function PmAlertsPanel({
                           Cere clarificari
                         </Button>
                         <Button variant="ghost" size="sm" onClick={() => onOpenDossier?.(document.uploadedByExpertId, { documentId: document.id, activityId: document.sourceActivityId, issueType: 'title_mismatch' })}>
+                          <FolderOpen className="h-4 w-4" />
+                          Dosar
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </AlertCard>
+          )}
+
+          {showPmUnlockRequests && pmUnlockRequests.length > 0 && (
+            <AlertCard title={`Deblocari PM solicitate (${pmUnlockRequests.length})`} tone="destructive">
+              {pmUnlockRequests.slice(0, 6).map((document) => {
+                const clarificationThread = documentClarificationById.get(document.id);
+                const check = document.eligibilityCheck;
+
+                return (
+                  <div key={document.id} className="rounded-md border bg-background/80 p-3 text-sm">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-medium">{document.originalFileName}</span>
+                          <Badge variant="destructive">Deblocare solicitata</Badge>
+                          {clarificationThread && (
+                            <Badge variant="secondary">{clarificationStatusLabel(clarificationThread.status)}</Badge>
+                          )}
+                        </div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {document.uploadedByExpertName || document.uploadedByExpertId}
+                          {document.activityDate ? ` / ${document.activityDate}` : ''}
+                          {document.saCode ? ` / ${document.saCode}` : ''}
+                        </div>
+                        <div className="mt-2 grid gap-1 text-xs">
+                          <span>Status eligibilitate: {check?.status || 'neprecizat'}</span>
+                          {check?.summary && <span className="line-clamp-2">Motiv AI: {check.summary}</span>}
+                          {check?.pmUnlockRequestedAt && <span>Solicitat la: {check.pmUnlockRequestedAt}</span>}
+                          {check?.pmUnlockRequestedBy && <span>Solicitat de: {check.pmUnlockRequestedBy}</span>}
+                          {check?.pmUnlockReason && <span className="line-clamp-2">Motiv deblocare: {check.pmUnlockReason}</span>}
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap justify-end gap-2">
+                        <Button variant="outline" size="sm" onClick={() => openDocument(document)} disabled={documentActionId !== null}>
+                          {documentActionId === `open-${document.id}` ? <FileWarning className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          Deschide
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={() => downloadDocument(document)} disabled={documentActionId !== null}>
+                          {documentActionId === `download-${document.id}` ? <FileWarning className="h-4 w-4" /> : <Download className="h-4 w-4" />}
+                          Descarca
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={() => onRequestDocumentClarification?.(document)}>
+                          <MessageSquare className="h-4 w-4" />
+                          Cere clarificari
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => onOpenDossier?.(document.uploadedByExpertId, { documentId: document.id, activityId: document.sourceActivityId, issueType: 'pm_unlock_requested' })}>
                           <FolderOpen className="h-4 w-4" />
                           Dosar
                         </Button>

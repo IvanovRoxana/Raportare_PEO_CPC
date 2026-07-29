@@ -17,6 +17,7 @@ type PmDashboardKpiCardsProps = {
   pmSummary: PmSummary;
   dashboardTotals: DashboardTotals;
   titleIssuesCount: number;
+  pmUnlockRequestsCount: number;
   pendingSharedDeliverablesCount: number;
   eventDocumentIssuesCount: number;
   openClarificationsCount?: number;
@@ -32,6 +33,7 @@ export function PmDashboardKpiCards({
   pmSummary,
   dashboardTotals,
   titleIssuesCount,
+  pmUnlockRequestsCount,
   pendingSharedDeliverablesCount,
   eventDocumentIssuesCount,
   openClarificationsCount = pmSummary.openClarificationsCount,
@@ -41,7 +43,7 @@ export function PmDashboardKpiCards({
   onOpenProblems,
   onOpenClarifications,
 }: PmDashboardKpiCardsProps) {
-  const documentAlertsCount = titleIssuesCount + pendingSharedDeliverablesCount + eventDocumentIssuesCount;
+  const documentAlertsCount = titleIssuesCount + pmUnlockRequestsCount + pendingSharedDeliverablesCount + eventDocumentIssuesCount;
   const cards = [
     {
       label: hasExtendedExpertAccess ? 'Experti monitorizati' : 'Raportare vizibila',
@@ -72,7 +74,7 @@ export function PmDashboardKpiCards({
     {
       label: 'Alerte documente',
       value: documentAlertsCount,
-      helper: `Titlu ${titleIssuesCount} / comune ${pendingSharedDeliverablesCount} / evenimente ${eventDocumentIssuesCount}`,
+      helper: `Titlu ${titleIssuesCount} / deblocari ${pmUnlockRequestsCount} / comune ${pendingSharedDeliverablesCount} / evenimente ${eventDocumentIssuesCount}`,
       icon: FileWarning,
       warning: documentAlertsCount > 0,
       onClick: onOpenDocumentAlerts,
