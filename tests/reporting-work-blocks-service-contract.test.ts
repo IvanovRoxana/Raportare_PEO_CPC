@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const awsStoreSource = readFileSync(new URL('../lib/aws-store.ts', import.meta.url), 'utf8');
 const backendStoreSource = readFileSync(new URL('../lib/backend-store.ts', import.meta.url), 'utf8');
+const dataAvailabilitySource = readFileSync(new URL('../lib/data-availability.ts', import.meta.url), 'utf8');
 const backendHooksSource = readFileSync(new URL('../hooks/use-backend-data.ts', import.meta.url), 'utf8');
 const expertPeoPageSource = readFileSync(new URL('../app/expert/peo/page.tsx', import.meta.url), 'utf8');
 const exportPageSource = readFileSync(new URL('../app/expert/peo/export/page.tsx', import.meta.url), 'utf8');
@@ -25,6 +26,24 @@ const reportingWorkBlockActivityOptionsHookSource = backendHooksSource.match(
 const reportingWorkBlockDeliverableOptionsHookSource = backendHooksSource.match(
   /export function useReportingWorkBlockDeliverableOptions\([\s\S]*?\n\}/,
 )?.[0] ?? '';
+
+test('backend data hooks expose explicit data availability status', () => {
+  assert.match(dataAvailabilitySource, /export type DataAvailabilityStatus =/);
+  assert.match(dataAvailabilitySource, /'disabled'/);
+  assert.match(dataAvailabilitySource, /'loading'/);
+  assert.match(dataAvailabilitySource, /'error'/);
+  assert.match(dataAvailabilitySource, /'empty'/);
+  assert.match(dataAvailabilitySource, /'success'/);
+  assert.match(dataAvailabilitySource, /export function resolveDataStatus<T>/);
+  assert.match(backendHooksSource, /export \{ resolveDataStatus \};/);
+  assert.match(backendHooksSource, /export type \{ DataAvailabilityStatus \};/);
+  assert.match(reportingWorkBlockBundlesHookSource, /status,/);
+  assert.match(reportingWorkBlockBundlesHookSource, /isReady: status === 'success' \|\| status === 'empty'/);
+  assert.match(reportingWorkBlockBundlesHookSource, /isEmpty: status === 'empty'/);
+  assert.match(reportingWorkBlockBundlesHookSource, /isUnavailable: status === 'disabled' \|\| status === 'error'/);
+  assert.match(backendHooksSource, /availabilityStatus/);
+  assert.doesNotMatch(backendHooksSource, /status: availabilityStatus/);
+});
 
 test('reporting work blocks service is read-only and exported through backend store', () => {
   assert.match(reportingWorkBlocksServiceSource, /export const reportingWorkBlocksService = \{/);
@@ -53,6 +72,7 @@ test('reporting work block bundles hook is opt-in and uses an isolated cache key
   assert.match(reportingWorkBlockBundlesHookSource, /reportingWorkBlocksService\.getBundlesByExpertAndMonth\(expertId!, month, year\)/);
   assert.match(reportingWorkBlockBundlesHookSource, /isValidating/);
   assert.match(reportingWorkBlockBundlesHookSource, /isRefreshing: isValidating/);
+  assert.match(reportingWorkBlockBundlesHookSource, /Boolean\(expertId\) && isBackendAvailable\(\) && isReportingWorkBlocksEnabledClient\(\)/);
   assert.doesNotMatch(reportingWorkBlockBundlesHookSource, /activities-|shared-deliverables|concurrent-project-timesheet/);
 });
 
@@ -136,6 +156,8 @@ test('export page wires persisted work block bundles as a read-only optional pre
   assert.match(exportPageSource, /useReportingWorkBlockBundles,/);
   assert.match(exportPageSource, /ReportingWorkBlockDraftPanel/);
   assert.match(exportPageSource, /bundles: persistedWorkBlockBundles/);
+  assert.match(exportPageSource, /status: bundlesStatus/);
+  assert.match(exportPageSource, /isReady: bundlesReady/);
   assert.match(exportPageSource, /isLoading: isLoadingPersistedWorkBlockBundles/);
   assert.match(exportPageSource, /isRefreshing: isRefreshingPersistedWorkBlockBundles/);
   assert.match(exportPageSource, /useReportingWorkBlockBundles\(selectedExpertId, currentMonth, currentYear\);/);
@@ -143,9 +165,13 @@ test('export page wires persisted work block bundles as a read-only optional pre
   assert.match(exportPageSource, /existingBundles=\{persistedWorkBlockBundles\}/);
   assert.match(exportPageSource, /existingBundlesLoading=\{isLoadingPersistedWorkBlockBundles \|\| isRefreshingPersistedWorkBlockBundles\}/);
   assert.match(exportPageSource, /const isLoadingDeterministicWorkBlocks = reportingWorkBlocksEnabled/);
+  assert.match(exportPageSource, /!bundlesReady \|\| isLoadingPersistedWorkBlockBundles \|\| isRefreshingPersistedWorkBlockBundles/);
+  assert.match(exportPageSource, /const useActivityWorkBlockFallback = reportingWorkBlocksEnabled/);
+  assert.match(exportPageSource, /bundlesStatus === 'empty'/);
+  assert.doesNotMatch(exportPageSource, /persistedWorkBlockBundles\.length === 0/);
   assert.match(exportPageSource, /isLoadingDeterministicWorkBlocks=\{isLoadingDeterministicWorkBlocks\}/);
-  assert.match(exportPageSource, /workBlockBundles=\{reportingWorkBlocksEnabled \? persistedWorkBlockBundles : \[\]\}/);
-  assert.match(exportPageSource, /<MonthlyReportExport[\s\S]*workBlockBundles=\{reportingWorkBlocksEnabled \? persistedWorkBlockBundles : \[\]\}/);
+  assert.match(exportPageSource, /workBlockBundles=\{deterministicWorkBlockBundles\}/);
+  assert.match(exportPageSource, /<MonthlyReportExport[\s\S]*workBlockBundles=\{deterministicWorkBlockBundles\}/);
   assert.match(exportPageSource, /<MonthlyReportExport[\s\S]*workBlockBundlesLoading=\{isLoadingDeterministicWorkBlocks\}/);
   assert.match(exportPageSource, /projectCode=\{selectedExpert\.projectCode \?\? '302141'\}/);
   assert.match(reportingWorkBlocksPanelSource, /persistedBundles\?: ReportingWorkBlockBundle\[\];/);
@@ -180,6 +206,20 @@ test('export page wires persisted work block bundles as a read-only optional pre
   assert.doesNotMatch(reportGeneratorSource, /Marcheaz[aă] acest raport ca exemplu validat/);
 });
 
+test('expert submit waits for required reporting data before compliance checks', () => {
+  assert.match(expertPeoPageSource, /SUBMISSION_DATA_LOADING_MESSAGE = 'Se verifică datele raportului…'/);
+  assert.match(expertPeoPageSource, /isReady: activitiesReady/);
+  assert.match(expertPeoPageSource, /isReady: documentsReady/);
+  assert.match(expertPeoPageSource, /isReady: reportStatusReady/);
+  assert.match(expertPeoPageSource, /isReady: reportingWorkBlockBundlesReady/);
+  assert.match(expertPeoPageSource, /const workBlocksReady = !reportingWorkBlocksEnabled \|\| reportingWorkBlockBundlesReady/);
+  assert.match(expertPeoPageSource, /const submissionDataReady = activitiesReady && documentsReady && reportStatusReady && workBlocksReady/);
+  assert.match(expertPeoPageSource, /if \(!submissionDataReady\) \{/);
+  assert.match(expertPeoPageSource, /disabledReason: SUBMISSION_DATA_LOADING_MESSAGE/);
+  assert.match(expertPeoPageSource, /setSaveError\(SUBMISSION_DATA_LOADING_MESSAGE\)/);
+  assert.match(expertPeoPageSource, /disabled=\{isApproved \|\| isSent \|\| isInReview \|\| !submissionDataReady\}/);
+});
+
 test('expert activity save flow auto-persists reporting work blocks from saved activities', () => {
   assert.match(expertPeoPageSource, /useReportingWorkBlockBundles,/);
   assert.match(expertPeoPageSource, /useReportingWorkBlockDraft,/);
@@ -192,7 +232,7 @@ test('expert activity save flow auto-persists reporting work blocks from saved a
   assert.match(expertPeoPageSource, /savedActivitiesForWorkBlock = \[\.\.\.updateActivities, \.\.\.createdActivities\]/);
   assert.match(expertPeoPageSource, /deletedActivityIdsForWorkBlock = deleteActivityIds/);
   assert.match(expertPeoPageSource, /savedActivitiesForWorkBlock = savedActivities/);
-  assert.match(expertPeoPageSource, /const didSaveReportingWorkBlock = await saveAutomaticReportingWorkBlock\(\{/);
+  assert.match(expertPeoPageSource, /saveAutomaticReportingWorkBlock\(\{[\s\S]*?\}\)\.then\(\(didSaveReportingWorkBlock\) => \{/);
   assert.match(expertPeoPageSource, /await saveReportingWorkBlockDraft\(input, nextActivities\)/);
   assert.match(expertPeoPageSource, /setWorkBlockSaveNotice\('Work block-ul Anexa 10 a fost actualizat automat din formularul de activitate\.'\)/);
   assert.match(expertPeoPageSource, /\{workBlockSaveNotice && \(/);
@@ -203,5 +243,5 @@ test('expert activity save flow auto-persists reporting work blocks from saved a
   assert.match(expertPeoPageSource, /setSaveError\('Activitatea a fost salvata, dar work block-ul Anexa 10 nu a putut fi actualizat automat\. Verifica sectiunea Export\.'\);/);
   assert.match(expertPeoPageSource, /setSaveError\('Activitatea a fost salvata, dar work block-ul Anexa 10 nu a putut fi actualizat automat\. Verifica sectiunea Export\.'\);\s+return false;/);
   assert.match(expertPeoPageSource, /if \(didSaveReportingWorkBlock\) \{\s+setWorkBlockSaveNotice/);
-  assert.match(expertPeoPageSource, /await refreshActivities\(\);\s+setShowForm\(false\);/);
+  assert.match(expertPeoPageSource, /await refreshActivities\(\);[\s\S]*?setShowForm\(false\);/);
 });

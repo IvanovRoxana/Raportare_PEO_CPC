@@ -99,6 +99,7 @@ import { buildActivitySaveWorkBlockInput } from '@/lib/activity-report/activity-
 import { cn } from '@/lib/utils';
 
 type SubmitReadinessSeverity = 'ok' | 'warning' | 'blocking';
+const SUBMISSION_DATA_LOADING_MESSAGE = 'Se verifică datele raportului…';
 type SubmitReadinessKey =
   | 'working-days'
   | 'deliverables'
@@ -587,13 +588,13 @@ function ExpertDashboardContent() {
   const { experts, isLoading: expertsLoading } = useExperts();
   const { catalog: activityCatalog } = useActivityCatalog();
   const { experts: collaborationExperts } = useCollaborationExperts();
-  const { activities: allMonthActivities, isLoading: activitiesLoading, mutate: refreshActivities } = useActivitiesByMonth(currentMonth, currentYear);
+  const { activities: allMonthActivities, isLoading: activitiesLoading, isReady: activitiesReady, mutate: refreshActivities } = useActivitiesByMonth(currentMonth, currentYear);
   const { leaveEntries, mutate: refreshLeaveEntries } = useLeaveEntries(currentMonth, currentYear);
   const { createAutomatic: createAutomaticLeave, remove: removeLeaveEntry } = useLeaveEntryMutations(currentMonth, currentYear);
-  const { documents } = useDocuments();
+  const { documents, isReady: documentsReady } = useDocuments();
   const { documents: colleagueDocuments } = useColleagueDocumentsByMonth(currentMonth, currentYear);
   const { create: createActivity, createBatch, update: updateActivity, remove: removeActivity } = useActivityMutations();
-  const { status: reportStatus, updateStatus: updateReportStatus, isLoading: reportStatusLoading } = useReportStatus(selectedExpertId, currentMonth, currentYear);
+  const { status: reportStatus, updateStatus: updateReportStatus, isLoading: reportStatusLoading, isReady: reportStatusReady } = useReportStatus(selectedExpertId, currentMonth, currentYear);
   const previousMonthDate = useMemo(() => new Date(baseYear, baseMonth - 1, 1), [baseMonth, baseYear]);
   const nextMonthDate = useMemo(() => new Date(baseYear, baseMonth + 1, 1), [baseMonth, baseYear]);
   const { status: previousMonthStatus } = useReportStatus(selectedExpertId, previousMonthDate.getMonth(), previousMonthDate.getFullYear());
@@ -601,7 +602,9 @@ function ExpertDashboardContent() {
   const { projects: concurrentProjects } = useConcurrentProjects(selectedExpertId);
   const { entries: concurrentTimesheetEntries } = useConcurrentProjectTimesheetByMonth(currentMonth, currentYear);
   const reportingWorkBlocksEnabled = isReportingWorkBlocksEnabledClient();
-  const { bundles: reportingWorkBlockBundles } = useReportingWorkBlockBundles(selectedExpertId, currentMonth, currentYear);
+  const { bundles: reportingWorkBlockBundles, isReady: reportingWorkBlockBundlesReady } = useReportingWorkBlockBundles(selectedExpertId, currentMonth, currentYear);
+  const workBlocksReady = !reportingWorkBlocksEnabled || reportingWorkBlockBundlesReady;
+  const submissionDataReady = activitiesReady && documentsReady && reportStatusReady && workBlocksReady;
   const { saveDraft: saveReportingWorkBlockDraft } = useReportingWorkBlockDraft();
   const { sharedDeliverables, isLoading: sharedDeliverablesLoading, mutate: refreshSharedDeliverables } = useSharedDeliverables(selectedExpertId || undefined);
   const visibleSharedDeliverables = useMemo(() => filterSharedRelationsForMonths({
@@ -1536,6 +1539,15 @@ function ExpertDashboardContent() {
         ? 'Luna trimisă către PM'
         : 'Trimite luna către PM';
   const submitReadiness = useMemo(() => {
+    if (!submissionDataReady) {
+      return {
+        items: [],
+        blockingItems: [],
+        hasBlockingIssues: true,
+        disabledReason: SUBMISSION_DATA_LOADING_MESSAGE,
+      };
+    }
+
     const workingDays = getWorkingDaysListInMonth(currentMonth + 1, currentYear).map(formatDate);
     const activityDates = new Set(activities.map((activity) => activity.date));
     const missingWorkingDays = workingDays.filter((date) => !activityDates.has(date));
@@ -1745,7 +1757,7 @@ function ExpertDashboardContent() {
         ? 'Adauga cel putin o activitate inainte de trimitere.'
         : blockingItems[0]?.detail || '',
     };
-  }, [activities, activityCatalog, currentMonth, currentYear, documents, monthlyBlocking, selectedExpert.category, visibleSharedDeliverables]);
+  }, [activities, activityCatalog, currentMonth, currentYear, documents, monthlyBlocking, selectedExpert.category, submissionDataReady, visibleSharedDeliverables]);
 
   const selectedReadinessItem = selectedReadinessKey
     ? submitReadiness.items.find((item) => item.key === selectedReadinessKey && item.severity !== 'ok') ?? null
@@ -1765,10 +1777,16 @@ function ExpertDashboardContent() {
       ? 'Raportarea este deja în verificare la PM.'
       : isSent
         ? 'Luna a fost deja trimisă către PM.'
+        : !submissionDataReady
+          ? SUBMISSION_DATA_LOADING_MESSAGE
         : submitReadiness.disabledReason || undefined;
 
   const handleSubmitMonth = async () => {
     if (!selectedExpertId || isApproved) return;
+    if (!submissionDataReady) {
+      setSaveError(SUBMISSION_DATA_LOADING_MESSAGE);
+      return;
+    }
     if (submitReadiness.hasBlockingIssues) {
       const firstIssueItem = submitReadiness.blockingItems[0] || submitReadiness.items.find((item) => item.severity !== 'ok');
       if (firstIssueItem) {
@@ -2731,7 +2749,7 @@ function ExpertDashboardContent() {
                         type="button"
                         className="w-full"
                         onClick={handleSubmitMonth}
-                        disabled={isApproved || isSent || isInReview}
+                        disabled={isApproved || isSent || isInReview || !submissionDataReady}
                       >
                         {submitButtonIcon}
                         {submitButtonLabel}

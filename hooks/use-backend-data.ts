@@ -62,7 +62,14 @@ import {
   buildDraftWorkBlockDeliverableOptions,
   getUnassociatedDeliverableCount,
 } from '@/lib/activity-report/draft-work-block-deliverable-options';
+import {
+  resolveDataStatus,
+  type DataAvailabilityStatus,
+} from '@/lib/data-availability';
 import { isReportingWorkBlocksEnabledClient } from '@/lib/feature-flags';
+
+export { resolveDataStatus };
+export type { DataAvailabilityStatus };
 
 const EMPTY_LIST: readonly never[] = Object.freeze([]);
 
@@ -170,13 +177,19 @@ export function useActivities(expertId?: string) {
 
 export function useActivitiesByMonth(month: number, year: number) {
   const key = `activities-month-${month}-${year}`;
+  const enabled = isBackendAvailable();
   const { data, error, isLoading } = useSWR(
-    isBackendAvailable() ? key : null,
+    enabled ? key : null,
     safeFetcher(() => activitiesService.getByMonth(month, year))
   );
+  const status = resolveDataStatus({ data, error, isLoading, enabled });
 
   return {
     activities: stableList(data),
+    status,
+    isReady: status === 'success' || status === 'empty',
+    isEmpty: status === 'empty',
+    isUnavailable: status === 'disabled' || status === 'error',
     isLoading,
     error,
     mutate: () => mutate(key),
@@ -199,14 +212,20 @@ export function useActivitiesByDateRange(startDate: string, endDate: string) {
 }
 
 export function useReportingWorkBlockBundles(expertId: string | null, month: number, year: number) {
+  const enabled = Boolean(expertId) && isBackendAvailable() && isReportingWorkBlocksEnabledClient();
   const key = expertId ? `reporting-work-block-bundles-${expertId}-${month}-${year}` : null;
   const { data, error, isLoading, isValidating } = useSWR<ReportingWorkBlockBundle[] | null>(
-    isBackendAvailable() && isReportingWorkBlocksEnabledClient() && key ? key : null,
+    enabled && key ? key : null,
     safeFetcher(() => reportingWorkBlocksService.getBundlesByExpertAndMonth(expertId!, month, year))
   );
+  const status = resolveDataStatus({ data, error, isLoading, enabled });
 
   return {
     bundles: stableList(data),
+    status,
+    isReady: status === 'success' || status === 'empty',
+    isEmpty: status === 'empty',
+    isUnavailable: status === 'disabled' || status === 'error',
     isLoading,
     isRefreshing: isValidating,
     error,
@@ -365,13 +384,19 @@ export function useBusinessHubEntityDirectoryMutations() {
 }
 
 export function useDocuments() {
+  const enabled = isBackendAvailable();
   const { data, error, isLoading } = useSWR(
-    isBackendAvailable() ? 'documents' : null,
+    enabled ? 'documents' : null,
     safeFetcher(documentsService.getAll)
   );
+  const status = resolveDataStatus({ data, error, isLoading, enabled });
 
   return {
     documents: stableList(data),
+    status,
+    isReady: status === 'success' || status === 'empty',
+    isEmpty: status === 'empty',
+    isUnavailable: status === 'disabled' || status === 'error',
     isLoading,
     error,
     mutate: () => mutate('documents'),
@@ -380,13 +405,19 @@ export function useDocuments() {
 
 export function useColleagueDocumentsByMonth(month: number, year: number) {
   const key = `colleague-documents-month-${month}-${year}`;
+  const enabled = isBackendAvailable();
   const { data, error, isLoading } = useSWR(
-    isBackendAvailable() ? key : null,
+    enabled ? key : null,
     safeFetcher(() => documentsService.getColleagueDocumentsByMonth(month, year))
   );
+  const status = resolveDataStatus({ data, error, isLoading, enabled });
 
   return {
     documents: stableList(data),
+    status,
+    isReady: status === 'success' || status === 'empty',
+    isEmpty: status === 'empty',
+    isUnavailable: status === 'disabled' || status === 'error',
     isLoading,
     error,
     mutate: () => mutate(key),
@@ -817,10 +848,12 @@ export function useWorkingGroupsByType(type: string | null) {
 
 export function useConcurrentProjects(expertId: string | null) {
   const key = expertId ? `concurrent-projects-${expertId}` : null;
+  const enabled = Boolean(expertId) && isBackendAvailable();
   const { data, error, isLoading } = useSWR(
-    key && isBackendAvailable() ? key : null,
+    enabled && key ? key : null,
     safeFetcher(() => concurrentProjectsService.getByExpert(expertId!))
   );
+  const status = resolveDataStatus({ data, error, isLoading, enabled });
   
   const addProject = async (project: Omit<ConcurrentProject, 'id'>) => {
     const created = await concurrentProjectsService.create(project);
@@ -844,6 +877,10 @@ export function useConcurrentProjects(expertId: string | null) {
   
   return {
     projects: stableList(data),
+    status,
+    isReady: status === 'success' || status === 'empty',
+    isEmpty: status === 'empty',
+    isUnavailable: status === 'disabled' || status === 'error',
     isLoading,
     error,
     addProject,
@@ -909,13 +946,19 @@ export function useConcurrentProjectTimesheet(projectId: string | null, month: n
 
 export function useConcurrentProjectTimesheetByMonth(month: number, year: number) {
   const key = `concurrent-project-timesheet-month-${month}-${year}`;
+  const enabled = isBackendAvailable();
   const { data, error, isLoading } = useSWR(
-    isBackendAvailable() ? key : null,
+    enabled ? key : null,
     safeFetcher(() => concurrentProjectTimesheetService.getAllByMonth(month, year))
   );
+  const status = resolveDataStatus({ data, error, isLoading, enabled });
 
   return {
     entries: stableList(data),
+    status,
+    isReady: status === 'success' || status === 'empty',
+    isEmpty: status === 'empty',
+    isUnavailable: status === 'disabled' || status === 'error',
     isLoading,
     error,
     mutate: () => mutate(key),
@@ -954,10 +997,17 @@ export function useConcurrentProjectTimesheetMutations(month?: number, year?: nu
 
 export function useReportStatus(expertId: string | null, month: number, year: number) {
   const key = expertId ? `report-status-${expertId}-${month}-${year}` : null;
+  const enabled = Boolean(expertId) && isBackendAvailable();
   const { data, error, isLoading } = useSWR(
-    key && isBackendAvailable() ? key : null,
+    enabled && key ? key : null,
     safeFetcher(() => reportStatusService.getByExpertAndMonth(expertId!, month, year))
   );
+  const availabilityStatus = resolveDataStatus({
+    data: data ? [data] : [],
+    error,
+    isLoading,
+    enabled,
+  });
   
   const updateStatus = async (status: Omit<ReportStatus, 'id'>) => {
     await reportStatusService.upsert(status);
@@ -969,6 +1019,10 @@ export function useReportStatus(expertId: string | null, month: number, year: nu
   
   return {
     status: data,
+    availabilityStatus,
+    isReady: availabilityStatus === 'success' || availabilityStatus === 'empty',
+    isEmpty: availabilityStatus === 'empty',
+    isUnavailable: availabilityStatus === 'disabled' || availabilityStatus === 'error',
     isLoading,
     error,
     updateStatus,

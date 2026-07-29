@@ -62,6 +62,8 @@ function ExportRaContent() {
   const { entries: concurrentTimesheetEntries } = useConcurrentProjectTimesheetByMonth(currentMonth, currentYear);
   const {
     bundles: persistedWorkBlockBundles,
+    status: bundlesStatus,
+    isReady: bundlesReady,
     isLoading: isLoadingPersistedWorkBlockBundles,
     isRefreshing: isRefreshingPersistedWorkBlockBundles,
   } = useReportingWorkBlockBundles(selectedExpertId, currentMonth, currentYear);
@@ -134,7 +136,14 @@ function ExportRaContent() {
   const reportingWorkBlocksEnabled = isReportingWorkBlocksEnabledClient();
   const deterministicAnexa10DocxEnabled = isAnexa10DeterministicDocxEnabledClient();
   const isLoadingDeterministicWorkBlocks = reportingWorkBlocksEnabled
-    && (isLoadingPersistedWorkBlockBundles || isRefreshingPersistedWorkBlockBundles);
+    && (!bundlesReady || isLoadingPersistedWorkBlockBundles || isRefreshingPersistedWorkBlockBundles);
+  const usePersistedWorkBlockBundles = reportingWorkBlocksEnabled && bundlesStatus === 'success';
+  const useActivityWorkBlockFallback = reportingWorkBlocksEnabled
+    && bundlesReady
+    && bundlesStatus === 'empty';
+  const deterministicWorkBlockBundles = usePersistedWorkBlockBundles || useActivityWorkBlockFallback
+    ? persistedWorkBlockBundles
+    : undefined;
 
   if (isLoading && (experts.length === 0 || !selectedExpertId)) {
     return (
@@ -191,7 +200,7 @@ function ExportRaContent() {
               activities={activities}
               concurrentProjects={concurrentProjects}
               concurrentTimesheetEntries={concurrentTimesheetEntries.filter((entry) => entry.expertId === selectedExpertId)}
-              workBlockBundles={reportingWorkBlocksEnabled ? persistedWorkBlockBundles : []}
+              workBlockBundles={deterministicWorkBlockBundles}
               workBlockBundlesLoading={isLoadingDeterministicWorkBlocks}
               month={currentMonth}
               year={currentYear}
@@ -241,7 +250,7 @@ function ExportRaContent() {
             expert={selectedExpert as Expert}
             enableDeterministicAnexa10Docx={deterministicAnexa10DocxEnabled}
             isLoadingDeterministicWorkBlocks={isLoadingDeterministicWorkBlocks}
-            workBlockBundles={reportingWorkBlocksEnabled ? persistedWorkBlockBundles : []}
+            workBlockBundles={deterministicWorkBlockBundles}
           />
         </div>
       </DashboardShell>
