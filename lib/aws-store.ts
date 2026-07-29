@@ -42,6 +42,7 @@ import type {
   ConcurrentProjectTimesheetEntry,
   Deliverable,
   ExpertNormContract,
+  FinancialPersonLink,
   LeaveEntry,
 
   DocumentMetadata,
@@ -3992,6 +3993,22 @@ function mapExpertNormContract(data: any): ExpertNormContract {
   };
 }
 
+function mapFinancialPersonLink(data: any): FinancialPersonLink {
+  return {
+    id: data.id,
+    financialPersonName: data.financialPersonName,
+    financialPersonKey: data.financialPersonKey,
+    expertId: data.expertId ?? undefined,
+    status: data.status ?? 'suggested',
+    confidence: Number(data.confidence) || 0,
+    source: data.source ?? 'automatic',
+    createdBy: data.createdBy ?? undefined,
+    updatedBy: data.updatedBy ?? undefined,
+    createdAt: data.createdAt ?? undefined,
+    updatedAt: data.updatedAt ?? undefined,
+  };
+}
+
 function mapLeaveEntry(data: any): LeaveEntry {
   return {
     id: data.id,
@@ -4060,6 +4077,34 @@ export const expertNormContractsService = {
     const result = await client.models.ExpertNormContract.update({ id, ...updates });
     assertNoErrors(result, 'AWS update expert norm contract');
     return mapExpertNormContract(result.data);
+  },
+};
+
+export const financialPersonLinksService = {
+  async getAll(): Promise<FinancialPersonLink[]> {
+    const client = getAwsDataClient() as any;
+    if (!client.models.FinancialPersonLink) return [];
+    return (await listModel<any>(client.models.FinancialPersonLink)).map(mapFinancialPersonLink);
+  },
+
+  async create(link: Omit<FinancialPersonLink, 'id'> & { id?: string }): Promise<FinancialPersonLink> {
+    const client = getAwsDataClient() as any;
+    const scope = await getCurrentDataAccessScope(client);
+    if (!scope.canAccessAllExperts) throw new Error(ACCESS_DENIED_MESSAGE);
+    if (!client.models.FinancialPersonLink) throw new Error('Modelul FinancialPersonLink nu este disponibil in backend.');
+    const result = await client.models.FinancialPersonLink.create(link);
+    assertNoErrors(result, 'AWS create financial person link');
+    return mapFinancialPersonLink(result.data);
+  },
+
+  async update(id: string, updates: Partial<FinancialPersonLink>): Promise<FinancialPersonLink> {
+    const client = getAwsDataClient() as any;
+    const scope = await getCurrentDataAccessScope(client);
+    if (!scope.canAccessAllExperts) throw new Error(ACCESS_DENIED_MESSAGE);
+    if (!client.models.FinancialPersonLink) throw new Error('Modelul FinancialPersonLink nu este disponibil in backend.');
+    const result = await client.models.FinancialPersonLink.update({ id, ...updates });
+    assertNoErrors(result, 'AWS update financial person link');
+    return mapFinancialPersonLink(result.data);
   },
 };
 

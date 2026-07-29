@@ -207,3 +207,91 @@ test('centralizeaza in dashboard financiar orele pontate de expert in raportare 
   assert.equal(summary.rows[0].totalWorked, 168);
   assert.equal(summary.totalPeoWorked, 6);
 });
+
+test('mappingul confirmat leaga randul financiar de expert chiar daca numele difera', () => {
+  const renamedExpert: Expert = {
+    id: 'expert-alias',
+    name: 'Alexandra Ioana Colceru',
+    role: 'Expert comunicare',
+    positionInProject: 'Expert comunicare',
+    norma: 8,
+    oreZi: 8,
+  };
+  const summary = buildFinancialReportingSummary({
+    experts: [renamedExpert],
+    activities: [{ id: 'a-alias', expertId: renamedExpert.id, expertName: renamedExpert.name, date: '2026-06-03', hours: 5, activityType: 'A', title: 'Activitate', status: 'sent' }],
+    month: 5,
+    year: 2026,
+    referencePeople: [{
+      name: 'Alexandra Colceru',
+      basePosition: '-',
+      peoPosition: 'Expert comunicare',
+      peoNorm: '8 h/zi',
+      cimNorm: '8 h/zi',
+      concordiaWorked: 0,
+      concordiaLeave: 0,
+      peoWorked: 0,
+      peoLeave: 0,
+      goodworksPosition: '-',
+      goodworksWorked: 0,
+    }],
+    financialPersonLinks: [{
+      id: 'link-1',
+      financialPersonName: 'Alexandra Colceru',
+      financialPersonKey: 'alexandra colceru',
+      expertId: renamedExpert.id,
+      status: 'confirmed',
+      confidence: 0.9,
+      source: 'manual',
+    }],
+  });
+
+  assert.equal(summary.rows.length, 1);
+  assert.equal(summary.rows[0].expertId, renamedExpert.id);
+  assert.equal(summary.rows[0].name, renamedExpert.name);
+  assert.equal(summary.rows[0].peoWorked, 5);
+  assert.equal(summary.missingExperts, 0);
+});
+
+test('sugestiile neconfirmate nu leaga randul financiar de expert', () => {
+  const suggestedExpert: Expert = {
+    id: 'expert-suggested',
+    name: 'Andrei Adelina',
+    role: 'Expert',
+    norma: 8,
+    oreZi: 8,
+  };
+  const summary = buildFinancialReportingSummary({
+    experts: [suggestedExpert],
+    activities: [],
+    month: 5,
+    year: 2026,
+    referencePeople: [{
+      name: 'Adelina Andrei',
+      basePosition: '-',
+      peoPosition: 'Expert',
+      peoNorm: '8 h/zi',
+      cimNorm: '8 h/zi',
+      concordiaWorked: 0,
+      concordiaLeave: 0,
+      peoWorked: 0,
+      peoLeave: 0,
+      goodworksPosition: '-',
+      goodworksWorked: 0,
+    }],
+    financialPersonLinks: [{
+      id: 'link-suggested',
+      financialPersonName: 'Adelina Andrei',
+      financialPersonKey: 'adelina andrei',
+      expertId: suggestedExpert.id,
+      status: 'suggested',
+      confidence: 0.96,
+      source: 'automatic',
+    }],
+  });
+
+  const financialRow = summary.rows.find((row) => row.name === 'Adelina Andrei');
+  assert.equal(financialRow?.expertId, undefined);
+  assert.ok(financialRow?.conflicts.some((conflict) => conflict.code === 'missing_expert'));
+  assert.equal(financialRow?.matchSuggestions[0].expertId, suggestedExpert.id);
+});

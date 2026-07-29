@@ -1,5 +1,6 @@
 import referenceSeed from '../data/staging/seed.json' with { type: 'json' };
-import type { Activity, ConcurrentProject, ConcurrentProjectTimesheetEntry, Expert, ExpertNormContract, LeaveEntry } from './types.ts';
+import { normalizeFinancialPersonKey, rankFinancialPersonMatches, type FinancialPersonMatchSuggestion } from './financial-person-matching.ts';
+import type { Activity, ConcurrentProject, ConcurrentProjectTimesheetEntry, Expert, ExpertNormContract, FinancialPersonLink, LeaveEntry } from './types.ts';
 import { calculateCapacitySnapshot, resolveNormContract } from './time-capacity.ts';
 
 export type FinancialConflictCode =
@@ -56,6 +57,8 @@ export type FinancialTimesheetRow = {
   draftHours: number;
   leaveDates: string[];
   conflicts: FinancialConflict[];
+  financialPersonKey: string;
+  matchSuggestions: FinancialPersonMatchSuggestion[];
 };
 
 export type FinancialReportingSummary = {
@@ -72,12 +75,7 @@ export type FinancialReportingSummary = {
 const EPSILON = 0.01;
 
 export function normalizeFinancialPersonName(value: string | undefined) {
-  return (value ?? '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLocaleLowerCase('ro-RO')
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim();
+  return normalizeFinancialPersonKey(value);
 }
 
 function isSameNumber(left: number | undefined, right: number | undefined) {
@@ -181,6 +179,7 @@ export function buildFinancialReportingSummary(input: {
   month: number;
   normContracts?: ExpertNormContract[];
   leaveEntries?: LeaveEntry[];
+  financialPersonLinks?: FinancialPersonLink[];
   year: number;
   referencePeople?: FinancialReferencePerson[];
 }): FinancialReportingSummary {
@@ -190,8 +189,15 @@ export function buildFinancialReportingSummary(input: {
   const expertById = new Map(input.experts.map((expert) => [expert.id, expert]));
   const normContracts = input.normContracts ?? [];
   const leaveEntries = input.leaveEntries ?? [];
+  const financialPersonLinks = input.financialPersonLinks ?? [];
   const expertByName = new Map(input.experts.map((expert) => [normalizeFinancialPersonName(expert.name), expert]));
   const referenceByName = new Map(referencePeople.map((person) => [normalizeFinancialPersonName(person.name), person]));
+  const confirmedLinkByPersonKey = new Map(
+    financialPersonLinks
+      .filter((link) => link.status === 'confirmed' && link.expertId)
+      .map((link) => [link.financialPersonKey, link]),
+  );
+  const linkedExpertIds = new Set([...confirmedLinkByPersonKey.values()].map((link) => link.expertId!));
   const activityByExpert = new Map<string, Activity[]>();
   const concurrentByExpert = new Map<string, ConcurrentProjectTimesheetEntry[]>();
   const projectById = new Map(projects.map((project) => [project.id, project]));
@@ -209,11 +215,17 @@ export function buildFinancialReportingSummary(input: {
     leaveByExpert.set(leave.expertId, [...(leaveByExpert.get(leave.expertId) ?? []), leave]);
   }
 
-  const names = new Set([...referenceByName.keys(), ...expertByName.keys()]);
+  const names = new Set([
+    ...referenceByName.keys(),
+    ...input.experts
+      .filter((expert) => !linkedExpertIds.has(expert.id))
+      .map((expert) => normalizeFinancialPersonName(expert.name)),
+  ]);
   const compareHours = input.month + 1 === referenceSeed.month && input.year === referenceSeed.year;
   const rows = [...names].map((normalizedName) => {
     const reference = referenceByName.get(normalizedName);
-    const expert = expertByName.get(normalizedName);
+    const confirmedLink = confirmedLinkByPersonKey.get(normalizedName);
+    const expert = confirmedLink?.expertId ? expertById.get(confirmedLink.expertId) : expertByName.get(normalizedName);
     const activities = expert
       ? activityByExpert.get(expert.id) ?? []
       : [...activityByExpert.values()].flat().filter((activity) => normalizeFinancialPersonName(activity.expertName) === normalizedName);
@@ -333,6 +345,8 @@ export function buildFinancialReportingSummary(input: {
       draftHours,
       leaveDates: [...leaveDates].sort(),
       conflicts: [],
+      financialPersonKey: normalizedName,
+      matchSuggestions: expert ? [] : rankFinancialPersonMatches(reference?.name ?? normalizedName, input.experts, financialPersonLinks),
     };
 
     if (reference) compareReference(row, expert, reference, compareHours);

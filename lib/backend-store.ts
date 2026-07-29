@@ -17,6 +17,7 @@ export const workingGroupsService = awsStore.workingGroupsService;
 export const concurrentProjectsService = awsStore.concurrentProjectsService;
 export const concurrentProjectTimesheetService = awsStore.concurrentProjectTimesheetService;
 export const expertNormContractsService = awsStore.expertNormContractsService;
+export const financialPersonLinksService = awsStore.financialPersonLinksService;
 export const leaveEntriesService = awsStore.leaveEntriesService;
 export const reportStatusService = awsStore.reportStatusService;
 export const reportingWorkBlocksService = awsStore.reportingWorkBlocksService;

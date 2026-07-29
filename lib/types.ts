@@ -54,6 +54,23 @@ export interface ExpertNormContract {
   updatedAt?: string;
 }
 
+export type FinancialPersonLinkStatus = 'suggested' | 'confirmed' | 'dismissed';
+export type FinancialPersonLinkSource = 'automatic' | 'manual' | 'financial';
+
+export interface FinancialPersonLink {
+  id: string;
+  financialPersonName: string;
+  financialPersonKey: string;
+  expertId?: string;
+  status: FinancialPersonLinkStatus;
+  confidence: number;
+  source: FinancialPersonLinkSource;
+  createdBy?: string;
+  updatedBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export type LeaveType = 'CO' | 'CM';
 export type LeaveSource = 'EXPERT' | 'FINANCIAL' | 'LEGACY_IMPORT';
 export type LeaveStatus = 'DRAFT' | 'SUBMITTED' | 'VALIDATED' | 'REJECTED';

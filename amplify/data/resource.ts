@@ -31,6 +31,7 @@ const schema = a.schema({
       historicalReports: a.hasMany("MonthlyExpertReport", "expertId"),
       normContracts: a.hasMany("ExpertNormContract", "expertId"),
       leaveEntries: a.hasMany("LeaveEntry", "expertId"),
+      financialPersonLinks: a.hasMany("FinancialPersonLink", "expertId"),
 
     })
     .authorization((allow) => [
@@ -58,6 +59,28 @@ const schema = a.schema({
     })
     .secondaryIndexes((index) => [
       index("expertId").sortKeys(["validFrom"]),
+    ])
+    .authorization((allow) => [
+      allow.authenticated().to(["read"]),
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
+  FinancialPersonLink: a
+    .model({
+      financialPersonName: a.string().required(),
+      financialPersonKey: a.string().required(),
+      expertId: a.id(),
+      expert: a.belongsTo("Expert", "expertId"),
+      status: a.string().default("suggested"),
+      confidence: a.float().default(0),
+      source: a.string().default("automatic"),
+      createdBy: a.string(),
+      updatedBy: a.string(),
+    })
+    .secondaryIndexes((index) => [
+      index("financialPersonKey"),
+      index("expertId"),
+      index("status"),
     ])
     .authorization((allow) => [
       allow.authenticated().to(["read"]),

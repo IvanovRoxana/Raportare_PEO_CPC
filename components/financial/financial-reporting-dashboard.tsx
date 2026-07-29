@@ -15,10 +15,13 @@ import {
   useExperts,
   useAllExpertNormContracts,
   useExpertNormContractMutations,
+  useFinancialPersonLinkMutations,
+  useFinancialPersonLinks,
   useLeaveEntries,
   useLeaveEntryMutations,
 } from '@/hooks/use-backend-data';
 import { buildFinancialReportingSummary, type FinancialTimesheetRow } from '@/lib/financial-reporting';
+import { normalizeFinancialPersonKey, rankFinancialPersonMatches } from '@/lib/financial-person-matching';
 import { isFinancialLeaveEnabledClient, isFinancialTimesheetsEnabledClient } from '@/lib/feature-flags';
 import { buildPontajExportPayload } from '@/lib/pontaj-export-payload';
 import type { Expert, ExpertNormContract, LeaveEntry, NormUnit } from '@/lib/types';
@@ -210,6 +213,9 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
   const [savingContract, setSavingContract] = useState(false);
   const [verificationMessage, setVerificationMessage] = useState('');
   const [selectedNormExpertName, setSelectedNormExpertName] = useState('');
+  const [selectedFinancialPersonKey, setSelectedFinancialPersonKey] = useState('');
+  const [selectedLinkExpertId, setSelectedLinkExpertId] = useState('');
+  const [savingLink, setSavingLink] = useState(false);
   const [hourlyRates, setHourlyRates] = useState<Record<string, string>>({});
   const [leaveGridDrafts, setLeaveGridDrafts] = useState<Record<string, LeaveGridDraft>>({});
   const [savingLeaveRow, setSavingLeaveRow] = useState<string | null>(null);
@@ -239,11 +245,13 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
   const { projects, isLoading: loadingProjects } = useAllConcurrentProjects();
   const { entries, isLoading: loadingEntries } = useConcurrentProjectTimesheetByMonth(month, year);
   const { contracts, isLoading: loadingContracts } = useAllExpertNormContracts();
+  const { links: financialPersonLinks, isLoading: loadingLinks } = useFinancialPersonLinks();
   const { leaveEntries, isLoading: loadingLeave } = useLeaveEntries(month, year);
   const { createAutomatic, createManual, remove: removeLeaveEntry, updateStatus } = useLeaveEntryMutations(month, year);
   const { create: createNormContract, update: updateNormContract } = useExpertNormContractMutations();
+  const { create: createFinancialPersonLink, update: updateFinancialPersonLink } = useFinancialPersonLinkMutations();
   const enabled = mode === 'timesheets' ? isFinancialTimesheetsEnabledClient() : isFinancialLeaveEnabledClient();
-  const isLoading = loadingExperts || loadingActivities || loadingProjects || loadingEntries || loadingContracts || loadingLeave;
+  const isLoading = loadingExperts || loadingActivities || loadingProjects || loadingEntries || loadingContracts || loadingLinks || loadingLeave;
   const hourlyRateStorageKey = `financial-peo-hourly-rates-${year}-${String(month + 1).padStart(2, '0')}`;
 
   useEffect(() => {
@@ -262,9 +270,19 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
     concurrentEntries: entries,
     normContracts: contracts,
     leaveEntries,
+    financialPersonLinks,
     month,
     year,
-  }), [experts, activities, projects, entries, contracts, leaveEntries, month, year]);
+  }), [experts, activities, projects, entries, contracts, leaveEntries, financialPersonLinks, month, year]);
+
+  const selectedFinancialRow = useMemo(
+    () => summary.rows.find((row) => row.financialPersonKey === selectedFinancialPersonKey && !row.expertId) ?? null,
+    [selectedFinancialPersonKey, summary.rows],
+  );
+  const selectedFinancialSuggestions = useMemo(
+    () => selectedFinancialRow ? rankFinancialPersonMatches(selectedFinancialRow.name, experts, financialPersonLinks) : [],
+    [experts, financialPersonLinks, selectedFinancialRow],
+  );
 
   const visibleRows = useMemo(() => {
     const query = search.trim().toLocaleLowerCase('ro-RO');
@@ -414,6 +432,49 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
       window.localStorage.setItem(hourlyRateStorageKey, JSON.stringify(next));
       return next;
     });
+  };
+
+  const openFinancialLinkPanel = (row: FinancialTimesheetRow) => {
+    setSelectedFinancialPersonKey(row.financialPersonKey);
+    setSelectedLinkExpertId(row.matchSuggestions[0]?.expertId ?? '');
+    setVerificationMessage(`Alege utilizatorul existent care corespunde persoanei ${row.name}.`);
+  };
+
+  const saveFinancialPersonLink = async () => {
+    if (!selectedFinancialRow || !selectedLinkExpertId) return;
+    const expert = experts.find((item) => item.id === selectedLinkExpertId);
+    const financialPersonKey = selectedFinancialRow.financialPersonKey || normalizeFinancialPersonKey(selectedFinancialRow.name);
+    const confidence = selectedFinancialSuggestions.find((match) => match.expertId === selectedLinkExpertId)?.score ?? 1;
+    const existing = financialPersonLinks.find((link) => link.financialPersonKey === financialPersonKey);
+    setSavingLink(true);
+    try {
+      if (existing) {
+        await updateFinancialPersonLink(existing.id, {
+          expertId: selectedLinkExpertId,
+          status: 'confirmed',
+          confidence,
+          source: 'manual',
+          updatedBy: 'financial-session',
+        });
+      } else {
+        await createFinancialPersonLink({
+          financialPersonName: selectedFinancialRow.name,
+          financialPersonKey,
+          expertId: selectedLinkExpertId,
+          status: 'confirmed',
+          confidence,
+          source: 'manual',
+          createdBy: 'financial-session',
+        });
+      }
+      setVerificationMessage(`${selectedFinancialRow.name} a fost asociat cu ${expert?.name ?? 'utilizatorul selectat'}.`);
+      setSelectedFinancialPersonKey('');
+      setSelectedLinkExpertId('');
+    } catch (error) {
+      setVerificationMessage(error instanceof Error ? error.message : 'Asocierea nu a putut fi salvata.');
+    } finally {
+      setSavingLink(false);
+    }
   };
 
   const updateLeaveGridDraft = (row: FinancialTimesheetRow, field: keyof LeaveGridDraft, value: string) => {
@@ -869,6 +930,45 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
         </CardContent>
       </Card>
 
+      {selectedFinancialRow && (
+        <Card className="border-amber-300 bg-amber-50/50">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <Users className="h-4 w-4" />
+              Asociere utilizator financiar: {selectedFinancialRow.name}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-end">
+            <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+              Utilizator PEO/PM
+              <select
+                className="h-10 rounded-md border bg-background px-3 text-sm text-foreground"
+                value={selectedLinkExpertId}
+                onChange={(event) => setSelectedLinkExpertId(event.target.value)}
+                aria-label={`Utilizator pentru ${selectedFinancialRow.name}`}
+              >
+                <option value="">Alege expert</option>
+                {selectedFinancialSuggestions.map((match) => (
+                  <option key={match.expertId} value={match.expertId}>
+                    {match.expertName} - {Math.round(match.score * 100)}% - {match.reason}
+                  </option>
+                ))}
+                {experts
+                  .filter((expert) => !selectedFinancialSuggestions.some((match) => match.expertId === expert.id))
+                  .map((expert) => <option key={expert.id} value={expert.id}>{expert.name}</option>)}
+              </select>
+            </label>
+            <Button onClick={saveFinancialPersonLink} disabled={savingLink || !selectedLinkExpertId}>
+              {savingLink ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+              Confirma
+            </Button>
+            <Button variant="outline" onClick={() => setSelectedFinancialPersonKey('')} disabled={savingLink}>
+              Anuleaza
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       {mode === 'leave' && (
         <Card id="experti-norme">
           <CardHeader className="gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -1087,6 +1187,11 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
                         <div className="flex min-w-0 items-start gap-0.5">
                           <ConflictDot row={row} />
                           <span className="min-w-0 flex-1 whitespace-normal break-words font-medium leading-snug" title={row.name}>{row.name}</span>
+                          {!row.expertId ? (
+                            <Button size="sm" variant="outline" className="h-5 shrink-0 px-1 text-[9px]" title={`Asociaza ${row.name} cu un utilizator PEO/PM`} onClick={() => openFinancialLinkPanel(row)}>
+                              Asociaza
+                            </Button>
+                          ) : null}
                           <Button size="icon" variant="ghost" className="h-5 w-5 shrink-0" title={`Editeaza norma pentru ${row.name}`} aria-label={`Editeaza norma pentru ${row.name}`} onClick={() => editNormFromTimesheet(row)}><ShieldCheck className="h-3 w-3" /></Button>
                           <Button size="icon" variant="ghost" className="h-5 w-5 shrink-0" title={`Exportă template pentru ${row.name}`} aria-label={`Exportă template pentru ${row.name}`} disabled={!row.expertId || exporting !== null} onClick={() => exportExpertTemplate(row)}>{exporting === row.expertId ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileText className="h-3 w-3" />}</Button>
                         </div>

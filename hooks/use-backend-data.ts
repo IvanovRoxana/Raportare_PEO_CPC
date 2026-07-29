@@ -14,6 +14,7 @@ import {
   concurrentProjectsService,
   concurrentProjectTimesheetService,
   expertNormContractsService,
+  financialPersonLinksService,
   leaveEntriesService,
   reportStatusService,
   grupTintaService,
@@ -43,7 +44,7 @@ import {
   sharedDeliverablesService,
   reportingWorkBlocksService,
 } from '@/lib/backend-store';
-import type { Activity, Expert, ExpertNormContract, LeaveEntry, VerificationData, Neconformitate, VerificationNote, AppSettings, ActivityCatalog, WorkingGroup, ConcurrentProject, ConcurrentProjectTimesheetEntry, ReportStatus, GrupTintaEntry, BusinessHubEntityDirectoryEntry, AuditLog, ActivityAutofillAudit, AdminInterventionRequest, HistoricalImportBatch, HistoricalTimesheetDayEntry, MonthlyActivityItem, MonthlyExpertReport, UploadedReportingFile } from '@/lib/types';
+import type { Activity, Expert, ExpertNormContract, FinancialPersonLink, LeaveEntry, VerificationData, Neconformitate, VerificationNote, AppSettings, ActivityCatalog, WorkingGroup, ConcurrentProject, ConcurrentProjectTimesheetEntry, ReportStatus, GrupTintaEntry, BusinessHubEntityDirectoryEntry, AuditLog, ActivityAutofillAudit, AdminInterventionRequest, HistoricalImportBatch, HistoricalTimesheetDayEntry, MonthlyActivityItem, MonthlyExpertReport, UploadedReportingFile } from '@/lib/types';
 import { getContractedProcurementProjects, type ProcurementChecklist, type ProcurementContract, type ProcurementDeliverable, type ProcurementDocument, type ProcurementEvaluation, type ProcurementInvoice, type ProcurementLaunch, type ProcurementOffer, type ProcurementProject, type ProcurementReception, type ProcurementStatusHistory, type ProcurementSupplier } from '@/lib/procurement';
 import {
   buildDeterministicWorkBlockConsolidation,
@@ -1358,6 +1359,33 @@ export function useExpertNormContractMutations() {
   const update = async (id: string, updates: Parameters<typeof expertNormContractsService.update>[1]) => {
     const saved = await expertNormContractsService.update(id, updates);
     refresh(saved.expertId);
+    return saved;
+  };
+
+  return { create, update };
+}
+
+export function useFinancialPersonLinks() {
+  const key = 'financial-person-links-all';
+  const { data, error, isLoading } = useSWR(
+    isBackendAvailable() ? key : null,
+    safeFetcher(financialPersonLinksService.getAll),
+  );
+  return { links: stableList(data), error, isLoading, mutate: () => mutate(key) };
+}
+
+export function useFinancialPersonLinkMutations() {
+  const refresh = () => mutate('financial-person-links-all');
+
+  const create = async (link: Omit<FinancialPersonLink, 'id'> & { id?: string }) => {
+    const saved = await financialPersonLinksService.create(link);
+    refresh();
+    return saved;
+  };
+
+  const update = async (id: string, updates: Partial<FinancialPersonLink>) => {
+    const saved = await financialPersonLinksService.update(id, updates);
+    refresh();
     return saved;
   };
 
