@@ -473,7 +473,7 @@ export function ActivityForm({
   const isBusinessHubExpert = show.businessHubTab;
   const reportMonthName = ['ianuarie', 'februarie', 'martie', 'aprilie', 'mai', 'iunie', 'iulie', 'august', 'septembrie', 'octombrie', 'noiembrie', 'decembrie'][month] || 'luna de raportare';
   const [activityFormTab, setActivityFormTab] = useState<'business_hub' | 'standard' | 'event'>(
-    () => isBusinessHubExpert && !initialActivity?.businessHubMetaJson ? 'business_hub' : 'standard',
+    () => isBusinessHubExpert && (initialActivity?.businessHubMetaJson || !initialActivity) ? 'business_hub' : 'standard',
   );
   const [currentWizardStep, setCurrentWizardStep] = useState<ActivityWizardStepId>(() => getResolutionWizardStep(resolutionHint));
   const [skipMainDeliverableForNow, setSkipMainDeliverableForNow] = useState(false);
@@ -1626,7 +1626,9 @@ export function ActivityForm({
       activityType: effectiveActivityTitle,
       title: effectiveActivityTitle,
       description,
-      businessHubMetaJson: isBusinessHubTabActive ? serializeBusinessHubMeta({ ...businessHubMetaDraft, date }) : undefined,
+      businessHubMetaJson: isBusinessHubTabActive
+        ? serializeBusinessHubMeta({ ...businessHubMetaDraft, date })
+        : initialActivity?.businessHubMetaJson,
     }));
     const existingActivityDrafts: ActivityDraftForValidation[] = allActivities
       .filter((activity) => activity.expertId === expertId)
@@ -1791,7 +1793,9 @@ export function ActivityForm({
         gdprMetaJson: isGdprExpert ? serializeGdprMeta({ ...gdprMeta, concluzie: gdprConclusionCode }) : undefined,
         gdprGeneratedText: isGdprExpert ? (gdprGeneratedText || description) : undefined,
         gdprConclusionCode: isGdprExpert ? gdprConclusionCode : undefined,
-        businessHubMetaJson: isBusinessHubTabActive ? serializeBusinessHubMeta({ ...businessHubMetaDraft, date }) : undefined,
+        businessHubMetaJson: isBusinessHubTabActive
+          ? serializeBusinessHubMeta({ ...businessHubMetaDraft, date })
+          : initialActivity?.businessHubMetaJson,
         eventDurationHours: isEvent ? eventDur || undefined : undefined,
         eventExtendedDescription: isEvent ? eventExtendedDesc.trim() || undefined : undefined,
         grupTinta,
