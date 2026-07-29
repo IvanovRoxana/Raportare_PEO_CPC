@@ -993,19 +993,41 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
                 {experts.map((expert) => <option key={expert.id} value={expert.id}>{expert.name}</option>)}
               </select>
               <Input type="date" value={contractForm.validFrom} onChange={(event) => setContractForm((current) => ({ ...current, validFrom: event.target.value }))} aria-label="Valabil de la" />
-              <select className="h-10 rounded-md border bg-background px-3 text-sm" value={contractForm.peoNormUnit} onChange={(event) => setContractForm((current) => ({ ...current, peoNormUnit: event.target.value as NormUnit }))} aria-label="Unitate PEO">
-                <option value="HOURS_PER_DAY">PEO h/zi</option>
-                <option value="HOURS_PER_MONTH">PEO h/luna</option>
-              </select>
-              <Input type="number" min="0" step="0.5" value={contractForm.peoNormValue} onChange={(event) => setContractForm((current) => ({ ...current, peoNormValue: event.target.value }))} aria-label="Norma PEO" />
-              <Input type="number" min="0" step="0.5" value={contractForm.peoDailyCap} onChange={(event) => setContractForm((current) => ({ ...current, peoDailyCap: event.target.value }))} aria-label="Plafon PEO zilnic" />
-              <select className="h-10 rounded-md border bg-background px-3 text-sm" value={contractForm.cimNormUnit} onChange={(event) => setContractForm((current) => ({ ...current, cimNormUnit: event.target.value as NormUnit }))} aria-label="Unitate CIM">
-                <option value="HOURS_PER_DAY">CIM h/zi</option>
-                <option value="HOURS_PER_MONTH">CIM h/luna</option>
-              </select>
-              <Input type="number" min="0" step="0.5" value={contractForm.cimNormValue} onChange={(event) => setContractForm((current) => ({ ...current, cimNormValue: event.target.value }))} aria-label="Norma CIM" />
-              <Input type="number" min="0" max="8" step="0.5" value={contractForm.cimDailyCap} onChange={(event) => setContractForm((current) => ({ ...current, cimDailyCap: event.target.value, leaveHoursPerDay: event.target.value }))} aria-label="Plafon CIM zilnic" />
-              <Input type="number" min="0" max="8" step="0.5" value={contractForm.leaveHoursPerDay} onChange={(event) => setContractForm((current) => ({ ...current, leaveHoursPerDay: event.target.value }))} aria-label="Ore CO pe zi" />
+              <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+                Unitate PEO
+                <select className="h-10 rounded-md border bg-background px-3 text-sm text-foreground" value={contractForm.peoNormUnit} onChange={(event) => setContractForm((current) => ({ ...current, peoNormUnit: event.target.value as NormUnit }))} aria-label="Unitate PEO">
+                  <option value="HOURS_PER_DAY">PEO h/zi</option>
+                  <option value="HOURS_PER_MONTH">PEO h/luna</option>
+                </select>
+              </label>
+              <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+                {contractForm.peoNormUnit === 'HOURS_PER_DAY' ? 'Bază calcul plafon lunar PEO (h/zi)' : 'Plafon lunar PEO (ore)'}
+                <Input type="number" min="0" step="0.5" value={contractForm.peoNormValue} onChange={(event) => setContractForm((current) => ({ ...current, peoNormValue: event.target.value }))} aria-label={contractForm.peoNormUnit === 'HOURS_PER_DAY' ? 'Bază calcul plafon lunar PEO (h/zi)' : 'Plafon lunar PEO (ore)'} />
+              </label>
+              <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+                Referință zilnică PEO
+                <Input type="number" min="0" step="0.5" value={contractForm.peoDailyCap} onChange={(event) => setContractForm((current) => ({ ...current, peoDailyCap: event.target.value }))} aria-label="Referință zilnică PEO" />
+              </label>
+              <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+                Unitate CIM
+                <select className="h-10 rounded-md border bg-background px-3 text-sm text-foreground" value={contractForm.cimNormUnit} onChange={(event) => setContractForm((current) => ({ ...current, cimNormUnit: event.target.value as NormUnit }))} aria-label="Unitate CIM">
+                  <option value="HOURS_PER_DAY">CIM h/zi</option>
+                  <option value="HOURS_PER_MONTH">CIM h/luna</option>
+                </select>
+              </label>
+              <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+                Norma lunara CIM
+                <Input type="number" min="0" step="0.5" value={contractForm.cimNormValue} onChange={(event) => setContractForm((current) => ({ ...current, cimNormValue: event.target.value }))} aria-label="Norma lunara CIM" />
+              </label>
+              <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+                Maximum total CIM într-o zi
+                <Input type="number" min="0" max="8" step="0.5" value={contractForm.cimDailyCap} onChange={(event) => setContractForm((current) => ({ ...current, cimDailyCap: event.target.value, leaveHoursPerDay: event.target.value }))} aria-label="Maximum total CIM într-o zi" />
+              </label>
+              <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+                Ore CO pe zi
+                <Input type="number" min="0" max="8" step="0.5" value={contractForm.leaveHoursPerDay} onChange={(event) => setContractForm((current) => ({ ...current, leaveHoursPerDay: event.target.value }))} aria-label="Ore CO pe zi" />
+              </label>
+              <p className="md:col-span-6 text-xs text-muted-foreground">Valoarea PEO folosită pentru calculul lunar nu limitează orele PEO dintr-o zi. Pontajul zilnic este limitat de CIM, iar PEO este limitat lunar.</p>
               <Input id="norma-editor-justification" className="md:col-span-3" value={contractForm.justification} onChange={(event) => setContractForm((current) => ({ ...current, justification: event.target.value }))} placeholder="Justificare modificare norma" />
               {contractForm.expertId && !contractForm.justification.trim() ? <p className="md:col-span-3 text-xs text-amber-700">Justificarea este obligatorie pentru audit. Scrie motivul modificarii, apoi salveaza.</p> : null}
               <Button className="md:col-span-2" onClick={saveNormContract} disabled={savingContract || !contractForm.expertId || !contractForm.validFrom}>

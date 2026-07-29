@@ -31,25 +31,55 @@ function contract(overrides: Partial<ExpertNormContract> = {}): ExpertNormContra
   };
 }
 
-test('calculeaza separat plafoanele PEO si CIM zilnice', () => {
+test('calculeaza plafonul lunar PEO din norma PEO, nu din referinta zilnica', () => {
   const snapshot = calculateCapacitySnapshot({
     expert,
-    contracts: [contract()],
+    contracts: [contract({
+      peoNormValue: 4,
+      peoDailyCap: 8,
+    })],
+    month: 5,
+    year: 2026,
+  });
+
+  assert.equal(snapshot.peoMonthlyLimit, 84);
+  assert.equal(snapshot.cimMonthlyLimit, 168);
+});
+
+test('permite 8 ore PEO intr-o zi cand CIM permite, fara conflict PEO zilnic', () => {
+  const snapshot = calculateCapacitySnapshot({
+    expert,
+    contracts: [contract({
+      peoNormValue: 6,
+      peoDailyCap: 6,
+    })],
+    activities: [{
+      id: 'activity',
+      expertId: expert.id,
+      date: '2026-06-02',
+      hours: 8,
+      activityType: 'test',
+      title: 'test',
+      status: 'draft',
+    }],
     month: 5,
     year: 2026,
   });
 
   assert.equal(snapshot.peoMonthlyLimit, 126);
-  assert.equal(snapshot.cimMonthlyLimit, 168);
+  assert.equal(snapshot.conflicts.some((conflict) => conflict.code === 'DAILY_PEO_EXCEEDED'), false);
+  assert.equal(snapshot.conflicts.length, 0);
 });
 
-test('contractul PEO lunar pastreaza plafonul fix si maximum 6 ore pe zi', () => {
+test('blocheaza doar CIM cand totalul zilnic depaseste norma CIM 6h', () => {
   const snapshot = calculateCapacitySnapshot({
     expert,
     contracts: [contract({
-      peoNormUnit: 'HOURS_PER_MONTH',
-      peoNormValue: 130,
+      peoNormValue: 4,
       peoDailyCap: 6,
+      cimNormValue: 6,
+      cimDailyCap: 6,
+      leaveHoursPerDay: 6,
     })],
     activities: [{
       id: 'activity',
@@ -64,8 +94,91 @@ test('contractul PEO lunar pastreaza plafonul fix si maximum 6 ore pe zi', () =>
     year: 2026,
   });
 
+  assert.equal(snapshot.peoMonthlyLimit, 84);
+  assert.equal(snapshot.conflicts.some((conflict) => conflict.code === 'DAILY_CIM_EXCEEDED'), true);
+  assert.equal(snapshot.conflicts.some((conflict) => conflict.code === 'DAILY_PEO_EXCEEDED'), false);
+});
+
+test('contractul PEO lunar pastreaza plafonul fix si verifica ziua prin CIM', () => {
+  const snapshot = calculateCapacitySnapshot({
+    expert,
+    contracts: [contract({
+      peoNormUnit: 'HOURS_PER_MONTH',
+      peoNormValue: 130,
+      peoDailyCap: 1,
+    })],
+    activities: [{
+      id: 'activity',
+      expertId: expert.id,
+      date: '2026-06-02',
+      hours: 8,
+      activityType: 'test',
+      title: 'test',
+      status: 'draft',
+    }],
+    month: 5,
+    year: 2026,
+  });
+
   assert.equal(snapshot.peoMonthlyLimit, 130);
-  assert.equal(snapshot.conflicts[0]?.code, 'DAILY_PEO_EXCEEDED');
+  assert.equal(snapshot.conflicts.some((conflict) => conflict.code === 'DAILY_PEO_EXCEEDED'), false);
+  assert.equal(snapshot.conflicts.length, 0);
+});
+
+test('permite proiecte concurente pana la limita CIM zilnica', () => {
+  const snapshot = calculateCapacitySnapshot({
+    expert,
+    contracts: [contract()],
+    activities: [{
+      id: 'activity',
+      expertId: expert.id,
+      date: '2026-06-02',
+      hours: 5,
+      activityType: 'test',
+      title: 'test',
+      status: 'draft',
+    }],
+    concurrentEntries: [{
+      id: 'concurrent-entry',
+      concurrentProjectId: 'project-1',
+      date: '2026-06-02',
+      hours: 3,
+      status: 'draft',
+    }],
+    month: 5,
+    year: 2026,
+  });
+
+  assert.equal(snapshot.dailyTotals['2026-06-02'], 8);
+  assert.equal(snapshot.conflicts.length, 0);
+});
+
+test('blocheaza proiecte concurente peste limita CIM zilnica', () => {
+  const snapshot = calculateCapacitySnapshot({
+    expert,
+    contracts: [contract()],
+    activities: [{
+      id: 'activity',
+      expertId: expert.id,
+      date: '2026-06-02',
+      hours: 6,
+      activityType: 'test',
+      title: 'test',
+      status: 'draft',
+    }],
+    concurrentEntries: [{
+      id: 'concurrent-entry',
+      concurrentProjectId: 'project-1',
+      date: '2026-06-02',
+      hours: 3,
+      status: 'draft',
+    }],
+    month: 5,
+    year: 2026,
+  });
+
+  assert.equal(snapshot.dailyTotals['2026-06-02'], 9);
+  assert.equal(snapshot.conflicts[0]?.code, 'DAILY_CIM_EXCEEDED');
 });
 
 test('repartizeaza sapte zile CO in 30 ore PEO si 26 ore CPC', () => {

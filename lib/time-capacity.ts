@@ -58,11 +58,11 @@ export function buildLegacyNormContract(expert: Partial<Expert>): ExpertNormCont
     validFrom: '1900-01-01',
     peoNormUnit: monthly > 0 ? 'HOURS_PER_MONTH' : 'HOURS_PER_DAY',
     peoNormValue: monthly || daily,
-    peoDailyCap: monthly > 0 ? 6 : daily,
-    cimNormUnit: monthly > 0 ? 'HOURS_PER_MONTH' : 'HOURS_PER_DAY',
-    cimNormValue: monthly || 8,
-    cimDailyCap: 8,
-    leaveHoursPerDay: 8,
+    peoDailyCap: daily,
+    cimNormUnit: 'HOURS_PER_DAY',
+    cimNormValue: daily,
+    cimDailyCap: daily,
+    leaveHoursPerDay: daily,
     status: 'ACTIVE',
     justification: 'Compatibilitate cu modelul vechi',
   };
@@ -92,7 +92,7 @@ function monthLimit(
     const date = monthPrefix + '-' + String(day).padStart(2, '0');
     if (getNonWorkingDayInfo(date).isNonWorkingDay) continue;
     const dayContract = resolveNormContract(expert, contracts, date);
-    total += bucket === 'peo' ? dayContract.peoDailyCap : dayContract.cimDailyCap;
+    total += bucket === 'peo' ? dayContract.peoNormValue : dayContract.cimNormValue;
   }
   return total;
 }
@@ -104,14 +104,12 @@ export function calculateCapacitySnapshot(input: CapacityInput): CapacitySnapsho
   const peoMonthlyLimit = monthLimit(expert, input.contracts, month, year, 'peo');
   const cimMonthlyLimit = monthLimit(expert, input.contracts, month, year, 'cim');
   const dailyTotals: Record<string, number> = {};
-  const dailyPeo: Record<string, number> = {};
   let peoUsed = 0;
   let cimUsed = 0;
 
   const add = (date: string, hours: number, peoHours = 0) => {
     if (!date.startsWith(monthKey) || hours <= 0) return;
     dailyTotals[date] = (dailyTotals[date] ?? 0) + hours;
-    dailyPeo[date] = (dailyPeo[date] ?? 0) + peoHours;
     cimUsed += hours;
     peoUsed += peoHours;
   };
@@ -135,9 +133,6 @@ export function calculateCapacitySnapshot(input: CapacityInput): CapacitySnapsho
     const cimLimit = Math.min(ABSOLUTE_DAILY_HOURS_LIMIT, dayContract.cimDailyCap || 8);
     if (total > cimLimit) {
       conflicts.push({ code: 'DAILY_CIM_EXCEEDED', date, message: `${date}: total ${total} h, peste norma CIM de ${cimLimit} h/zi.` });
-    }
-    if ((dailyPeo[date] ?? 0) > dayContract.peoDailyCap) {
-      conflicts.push({ code: 'DAILY_PEO_EXCEEDED', date, message: `${date}: PEO ${dailyPeo[date]} h, peste plafonul de ${dayContract.peoDailyCap} h/zi.` });
     }
   }
   if (peoUsed > peoMonthlyLimit) {
@@ -176,7 +171,7 @@ export function allocateLeaveEntries(args: CapacityInput & {
     if ((before.dailyTotals[date] ?? 0) + totalHours > cimLimit) {
       throw new Error(`${date}: CO de ${totalHours} h ar dep??i norma CIM de ${cimLimit} h/zi.`);
     }
-    const peoHours = Math.min(totalHours, contract.peoDailyCap, before.peoRemaining);
+    const peoHours = Math.min(totalHours, before.peoRemaining);
     const leave: LeaveEntry = {
       id: `leave:${args.expert.id}:${date}:CO`,
       expertId: args.expert.id ?? '',
