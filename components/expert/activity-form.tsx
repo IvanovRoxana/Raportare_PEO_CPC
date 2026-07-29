@@ -1690,6 +1690,12 @@ export function ActivityForm({
         hours: Number(activity.hours) || 0,
         status: activity.status,
         projectCode: activity.projectCode,
+        saCode: activity.saCode,
+        catalogActivityId: activity.catalogActivityId,
+        activityType: activity.activityType,
+        title: activity.title,
+        description: activity.description,
+        businessHubMetaJson: activity.businessHubMetaJson,
       }));
     const validation = validateActivitiesBeforeCreate({
       expert: expert ?? { id: expertId, name: expertName, norma: expertNorma },

@@ -1470,6 +1470,12 @@ function activityToValidationDraft(activity: any): ActivityDraftForValidation {
     hours: Number(activity.hours) || 0,
     status: activity.status,
     projectCode: activity.projectCode ?? undefined,
+    saCode: activity.saCode ?? undefined,
+    catalogActivityId: activity.catalogActivityId ?? undefined,
+    activityType: activity.activityType ?? undefined,
+    title: activity.title ?? undefined,
+    description: activity.description ?? undefined,
+    businessHubMetaJson: activity.businessHubMetaJson ?? undefined,
   };
 }
 
