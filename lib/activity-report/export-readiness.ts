@@ -1,4 +1,8 @@
 import type { Anexa10ReportModel } from './build-report-model.ts';
+import {
+  buildDeterministicAnexa10Preflight,
+  type Anexa10PreflightReport,
+} from './preflight.ts';
 
 export type Anexa10ExportReadiness = {
   canExport: boolean;
@@ -19,6 +23,11 @@ export type Anexa10ExportReadiness = {
 
 export type Anexa10ExportReadinessOptions = {
   usesPersistedWorkBlocks?: boolean;
+};
+
+export type Anexa10ExportGateOptions = Anexa10ExportReadinessOptions & {
+  preflightReport?: Pick<Anexa10PreflightReport, 'canExport' | 'findings' | 'summary'> | null;
+  requirePassedPreflight?: boolean;
 };
 
 const FALLBACK_WORK_BLOCK_WARNING =
@@ -48,6 +57,73 @@ export function getAnexa10ExportReadiness(
     blockingMessages,
     warningMessages,
   };
+}
+
+export function getAnexa10ExportGate(
+  model: Anexa10ReportModel,
+  options: Anexa10ExportGateOptions = {},
+): Anexa10ExportReadiness {
+  const readiness = getAnexa10ExportReadiness(model, options);
+  const deterministicPreflight = buildDeterministicAnexa10Preflight(model);
+  const deterministicBlockingMessages = deterministicPreflight.findings
+    .filter((finding) => finding.severity === 'critical')
+    .map((finding) => `${finding.title}: ${finding.detail}`);
+  const deterministicWarningMessages = deterministicPreflight.findings
+    .filter((finding) => finding.severity !== 'critical')
+    .map((finding) => `${finding.title}: ${finding.detail}`);
+  const preflightBlockingMessages = options.preflightReport?.canExport === false
+    ? [options.preflightReport.summary || 'Preflight-ul Anexa 10 a blocat exportul.']
+    : [];
+  const preflightWarningMessages = options.preflightReport?.canExport === true
+    ? options.preflightReport.findings
+      .filter((finding) => finding.severity !== 'critical')
+      .map((finding) => `${finding.title}: ${finding.detail}`)
+    : [];
+  const missingPreflightMessages = options.requirePassedPreflight && !options.preflightReport
+    ? ['Ruleaza preflight-ul Anexa 10 inainte de export.']
+    : [];
+  const blockingMessages = uniqueMessages([
+    ...readiness.blockingMessages,
+    ...deterministicBlockingMessages,
+    ...preflightBlockingMessages,
+    ...missingPreflightMessages,
+  ]);
+  const warningMessages = uniqueMessages([
+    ...readiness.warningMessages,
+    ...deterministicWarningMessages,
+    ...preflightWarningMessages,
+  ]);
+  if (blockingMessages.length === 0 && warningMessages.length === readiness.warningMessages.length) {
+    return readiness;
+  }
+
+  const canExport = blockingMessages.length === 0;
+  const severity = !canExport ? 'blocked' : warningMessages.length > 0 ? 'warning' : 'ready';
+  const checks = getReadinessChecks(blockingMessages.length, warningMessages.length);
+  const score = checks.datesAndHours + checks.deliverables + checks.narrative + checks.finalValidation;
+
+  return {
+    canExport,
+    severity,
+    score,
+    scoreLabel: `${score}/100`,
+    statusLabel: getReadinessStatusLabel(severity),
+    summary: getReadinessSummary(severity, blockingMessages.length, warningMessages.length, score),
+    checks,
+    blockingMessages,
+    warningMessages,
+  };
+}
+
+export function assertCanExportAnexa10Docx(
+  model: Anexa10ReportModel,
+  options: Anexa10ExportGateOptions = {},
+) {
+  const readiness = getAnexa10ExportGate(model, options);
+  if (!readiness.canExport) {
+    throw new Error(readiness.blockingMessages[0] || readiness.summary);
+  }
+  return readiness;
 }
 
 function getReadinessStatusLabel(severity: Anexa10ExportReadiness['severity']) {
@@ -96,4 +172,8 @@ function getReadinessChecks(blockingCount: number, warningCount: number): Anexa1
     narrative: 20,
     finalValidation: 15,
   };
+}
+
+function uniqueMessages(messages: string[]) {
+  return [...new Set(messages.filter(Boolean))];
 }

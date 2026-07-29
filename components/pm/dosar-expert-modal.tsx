@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { useReportingWorkBlockBundles } from '@/hooks/use-backend-data';
 import {
   Building2,
   CheckCircle,
@@ -40,6 +41,7 @@ import { dedupeDeliverablesBySignature } from '@/lib/deliverable-deduplication';
 import { GDPR_CONCLUSION_OPTIONS, getGdprDeliverableRequirementLabel, getGdprMinimumEvidenceLabels, getGdprTemplate, parseGdprMetaJson, validateGdprActivityDraft } from '@/lib/gdpr-reporting';
 import { buildAnexa10ReportModel } from '@/lib/activity-report/build-report-model';
 import { buildAnexa10DocxBlob, buildAnexa10DocxFilename } from '@/lib/activity-report/docx-export';
+import { assertCanExportAnexa10Docx } from '@/lib/activity-report/export-readiness';
 import { buildPontajExportPayload } from '@/lib/pontaj-export-payload';
 import { buildOpisXlsxBlob, buildOpisXlsxFilename } from '@/lib/opis-xls-export';
 import { buildPmDossierPdfBlob, buildPmDossierPdfFilename } from '@/lib/pm-dossier-export';
@@ -197,6 +199,11 @@ export function DosarExpertModal({
   const [activityActionId, setActivityActionId] = useState<string | null>(null);
   const [documentActionId, setDocumentActionId] = useState<string | null>(null);
   const [documentError, setDocumentError] = useState<string | null>(null);
+  const {
+    bundles: persistedRaWorkBlockBundles,
+    isLoading: isLoadingRaWorkBlockBundles,
+    isRefreshing: isRefreshingRaWorkBlockBundles,
+  } = useReportingWorkBlockBundles(expert?.id ?? null, month, year);
 
   const MONTHS = ['Ianuarie', 'Februarie', 'Martie', 'Aprilie', 'Mai', 'Iunie', 
                   'Iulie', 'August', 'Septembrie', 'Octombrie', 'Noiembrie', 'Decembrie'];
@@ -492,10 +499,25 @@ export function DosarExpertModal({
   const handleDownloadRa = async () => {
     if (!expert) return;
     setIsGeneratingRa(true);
+    setDocumentError(null);
     try {
-      const model = buildAnexa10ReportModel({ expert, activities, month, year });
+      if (isLoadingRaWorkBlockBundles || isRefreshingRaWorkBlockBundles) {
+        throw new Error('Se incarca work block-urile salvate. Asteapta finalizarea incarcarii si incearca din nou.');
+      }
+      const model = buildAnexa10ReportModel({
+        expert,
+        activities,
+        month,
+        year,
+        workBlockBundles: persistedRaWorkBlockBundles.length > 0 ? persistedRaWorkBlockBundles : undefined,
+      });
+      assertCanExportAnexa10Docx(model, {
+        usesPersistedWorkBlocks: persistedRaWorkBlockBundles.length > 0,
+      });
       const blob = await buildAnexa10DocxBlob(model);
       saveBlob(blob, buildAnexa10DocxFilename(model));
+    } catch (error) {
+      setDocumentError(error instanceof Error ? error.message : 'Exportul Raportului de Activitate a fost blocat.');
     } finally {
       setIsGeneratingRa(false);
     }

@@ -23,6 +23,7 @@ import { getWorkingHoursInfo } from '@/lib/working-hours';
 import { normalizePeoCategory } from '@/lib/peo-category';
 import { buildAnexa10ReportModel } from '@/lib/activity-report/build-report-model';
 import { buildAnexa10DocxBlob, buildAnexa10DocxFilename } from '@/lib/activity-report/docx-export';
+import { assertCanExportAnexa10Docx } from '@/lib/activity-report/export-readiness';
 import type { ReportingWorkBlockBundle } from '@/lib/activity-report/work-blocks';
 import {
   buildBusinessHubAddressDocxBlob,
@@ -115,6 +116,9 @@ export function MonthlyReportExport({
             month,
             year,
             workBlockBundles: workBlockBundles.length > 0 ? workBlockBundles : undefined,
+          });
+          assertCanExportAnexa10Docx(model, {
+            usesPersistedWorkBlocks: workBlockBundles.length > 0,
           });
           const blob = await buildAnexa10DocxBlob(model);
           triggerDownload(blob, buildAnexa10DocxFilename(model));

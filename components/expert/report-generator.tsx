@@ -14,7 +14,7 @@ import {
 } from '@/lib/activity-report/local-fallback';
 import { buildAnexa10ReportModel } from '@/lib/activity-report/build-report-model';
 import { buildAnexa10DocxBlob, buildAnexa10DocxFilename } from '@/lib/activity-report/docx-export';
-import { getAnexa10ExportReadiness } from '@/lib/activity-report/export-readiness';
+import { assertCanExportAnexa10Docx, getAnexa10ExportGate } from '@/lib/activity-report/export-readiness';
 import type { Anexa10PreflightReport } from '@/lib/activity-report/preflight';
 import { combineActivityReportSections, splitActivityReportSections } from '@/lib/activity-report/sections';
 import type { ReportingWorkBlockBundle } from '@/lib/activity-report/work-blocks';
@@ -123,8 +123,10 @@ export function ReportGenerator({
   }, [activities, enableDeterministicAnexa10Docx, expert, expertName, isLoadingDeterministicWorkBlocks, month, workBlockBundles, year]);
   const persistedWorkBlockCount = workBlockBundles?.length ?? 0;
   const deterministicExportReadiness = deterministicAnexa10Model
-    ? getAnexa10ExportReadiness(deterministicAnexa10Model, {
+    ? getAnexa10ExportGate(deterministicAnexa10Model, {
       usesPersistedWorkBlocks: persistedWorkBlockCount > 0,
+      preflightReport: anexa10PreflightReport,
+      requirePassedPreflight: true,
     })
     : null;
   const deterministicWorkBlockSourceLabel = persistedWorkBlockCount > 0
@@ -357,6 +359,11 @@ export function ReportGenerator({
     setIsExportingDeterministicDocx(true);
     setError(null);
     try {
+      assertCanExportAnexa10Docx(deterministicAnexa10Model, {
+        usesPersistedWorkBlocks: persistedWorkBlockCount > 0,
+        preflightReport: anexa10PreflightReport,
+        requirePassedPreflight: true,
+      });
       const blob = await buildAnexa10DocxBlob(deterministicAnexa10Model);
       downloadBlob(blob, buildAnexa10DocxFilename(deterministicAnexa10Model));
     } catch (err) {
