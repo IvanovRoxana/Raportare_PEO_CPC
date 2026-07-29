@@ -249,11 +249,14 @@ async function consolidateWorkBlockBeforeSave(
   activities: Activity[],
 ): Promise<WorkBlockConsolidationResult> {
   const request = buildWorkBlockConsolidationRequest(bundle, activities);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 8000);
   try {
     const response = await fetch('/api/ai/consolidate-work-block', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(request),
+      signal: controller.signal,
     });
     if (!response.ok) {
       throw new Error(`Consolidarea AI a esuat. Status HTTP: ${response.status}`);
@@ -261,6 +264,8 @@ async function consolidateWorkBlockBeforeSave(
     return await response.json() as WorkBlockConsolidationResult;
   } catch {
     return buildDeterministicWorkBlockConsolidation(request, 'failed');
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 

@@ -1237,15 +1237,6 @@ function ExpertDashboardContent() {
           resetSharedRegistrationFlow();
         }
       }
-      const didSaveReportingWorkBlock = await saveAutomaticReportingWorkBlock({
-        savedActivities: savedActivitiesForWorkBlock,
-        deletedActivityIds: deletedActivityIdsForWorkBlock,
-        sourceActivityId: editingActivity?.id ?? savedActivitiesForWorkBlock[0]?.id,
-        editScope,
-      });
-      if (didSaveReportingWorkBlock) {
-        setWorkBlockSaveNotice('Work block-ul Anexa 10 a fost actualizat automat din formularul de activitate.');
-      }
       await refreshActivities();
       setShowForm(false);
       setEditingActivity(null);
@@ -1253,6 +1244,16 @@ function ExpertDashboardContent() {
       setActivityResolutionHint(null);
       setSelectedDates([]);
       setSelectedHours({});
+      void saveAutomaticReportingWorkBlock({
+        savedActivities: savedActivitiesForWorkBlock,
+        deletedActivityIds: deletedActivityIdsForWorkBlock,
+        sourceActivityId: editingActivity?.id ?? savedActivitiesForWorkBlock[0]?.id,
+        editScope,
+      }).then((didSaveReportingWorkBlock) => {
+        if (didSaveReportingWorkBlock) {
+          setWorkBlockSaveNotice('Work block-ul Anexa 10 a fost actualizat automat din formularul de activitate.');
+        }
+      });
     } catch (error) {
       console.error('Error saving activities:', error);
       setSaveError(
