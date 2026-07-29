@@ -2,8 +2,30 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { inflateRawSync } from 'node:zlib';
 import { generatePontajExcel } from '../lib/pontaj-excel-export.ts';
+import { buildPontajExportPayload } from '../lib/pontaj-export-payload.ts';
 
 describe('export pontaj Excel', () => {
+  it('pastreaza instructiunile PM/Admin in payload-ul exportului', () => {
+    const payload = buildPontajExportPayload({
+      kind: 'peo',
+      month: 5,
+      year: 2026,
+      expert: {
+        id: 'expert-instructions',
+        name: 'Expert Instructiuni',
+        role: 'Expert PEO',
+        norma: 8,
+        aiReportingInstructions: 'Exporta pontajul pe zile si pastreaza formatul template-ului.',
+      },
+      activities: [],
+    });
+
+    assert.equal(
+      payload.expert.aiReportingInstructions,
+      'Exporta pontajul pe zile si pastreaza formatul template-ului.',
+    );
+  });
+
   it('pastreaza formulele GOODWORKS4ALL si curata valorile ramase din template', async () => {
     const workbook = await generatePontajExcel({
       kind: 'consolidated',
@@ -162,6 +184,49 @@ describe('export pontaj Excel', () => {
     assert.match(cellXml(sheet, 'H35'), /CO/);
     assert.match(cellXml(sheet, 'G35'), /<v>99<\/v>/);
     assert.match(cellXml(sheet, 'H45'), /COUNTIF\(H14:H44,&quot;CO&quot;\)\*8/);
+  });
+
+  it('agrega Pontaj_PEO simplu pe zile fara sa extinda template-ul cu randuri pe activitate', async () => {
+    const workingDays = ['02', '03', '04', '05', '08', '09', '10', '11'];
+    const activities = Array.from({ length: 24 }, (_item, index) => ({
+      date: `2026-06-${workingDays[Math.floor(index / 3)]}`,
+      hours: index % 3 === 0 ? 2 : 3,
+      activityType: 'Activitate comunicare',
+      saCode: index % 4 === 0 ? 'SA3.3' : 'SA3.4',
+      status: 'approved' as const,
+    }));
+
+    const workbook = await generatePontajExcel({
+      kind: 'peo',
+      month: 5,
+      year: 2026,
+      expert: { id: 'expert-dense', name: 'Expert Dense', role: 'Expert PEO', category: 'Expert', oreZi: 8, saCodes: ['SA3.3', 'SA3.4'] },
+      activities,
+      concurrentProjects: [],
+      concurrentTimesheetEntries: [],
+    });
+
+    const files = readXlsx(workbook.buffer);
+    const sheet = files.get('xl/worksheets/sheet1.xml')!.toString('utf8');
+    const sharedStrings = readSharedStrings(files);
+
+    assert.match(cellXml(sheet, 'A44'), /NR\. TOTAL DE ORE/);
+    assert.match(cellText(sheet, 'A45', sharedStrings), /Subsemnatul declar/);
+    assert.equal(cellText(sheet, 'A47', sharedStrings), 'Numele expertului:');
+    assert.equal(cellText(sheet, 'A48', sharedStrings), 'Semnătură:');
+    assert.equal(cellText(sheet, 'A49', sharedStrings), 'Data:');
+    assert.match(cellXml(sheet, 'D49'), /<v>\d+<\/v>/);
+    assert.equal(cellText(sheet, 'A51', sharedStrings), 'Numele managerului de proiect:');
+    assert.equal(cellText(sheet, 'D51', sharedStrings), 'MIHAELA GRIGORAS');
+    assert.equal(cellText(sheet, 'A52', sharedStrings), 'Semnătură:');
+    assert.equal(cellText(sheet, 'A53', sharedStrings), 'Data:');
+    assert.match(cellXml(sheet, 'D53'), /<v>\d+<\/v>/);
+    assert.match(cellXml(sheet, 'H15'), /<v>8<\/v>/);
+    assert.match(cellXml(sheet, 'H16'), /<v>8<\/v>/);
+    assert.match(cellXml(sheet, 'D15'), /SA3\.3 Realizarea unor campanii/);
+    assert.match(cellXml(sheet, 'D15'), /SA3\.4 Dezvoltarea si derularea/);
+    assert.match(cellXml(sheet, 'H44'), /SUM\(H14:H43\)\+COUNTIF\(H14:H43,&quot;CO&quot;\)\*8/);
+    assert.equal(cellXml(sheet, 'A54'), '');
   });
 
   it('completeaza metadatele PEO din profil si data finala din ultima zi lucrata', async () => {
@@ -334,4 +399,23 @@ function findEocd(buffer: Buffer) {
 
 function cellXml(xml: string, ref: string) {
   return xml.match(new RegExp(`<c\\b(?=[^>]*\\br="${ref}")[^>]*?(?:/>|>[\\s\\S]*?</c>)`))?.[0] ?? '';
+}
+
+function readSharedStrings(files: Map<string, Buffer>) {
+  const xml = files.get('xl/sharedStrings.xml')?.toString('utf8') ?? '';
+  return [...xml.matchAll(/<si>([\s\S]*?)<\/si>/g)].map((match) =>
+    match[1]
+      .replace(/<[^>]+>/g, '')
+      .replace(/&quot;/g, '"')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>'),
+  );
+}
+
+function cellText(xml: string, ref: string, sharedStrings: string[]) {
+  const cell = cellXml(xml, ref);
+  const value = cell.match(/<v>([\s\S]*?)<\/v>/)?.[1] ?? '';
+  if (/\bt="s"/.test(cell)) return sharedStrings[Number(value)] ?? '';
+  return value;
 }

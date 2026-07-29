@@ -143,6 +143,14 @@ interface PeoDetailRow {
   activity?: Partial<Activity>;
 }
 
+interface PeoTimesheetRow {
+  day: number;
+  dateKey: string;
+  dateSerial: number;
+  isWorking: boolean;
+  activities: Partial<Activity>[];
+}
+
 export async function generatePontajExcel(payload: ExportPayload): Promise<GeneratedWorkbook> {
   validateExportPayload(payload);
   return payload.kind === 'peo' ? generatePeoWorkbook(payload) : generateConsolidatedWorkbook(payload);
@@ -157,8 +165,7 @@ async function generatePeoWorkbook(payload: ExportPayload): Promise<GeneratedWor
   let totalRow = daysInMonth === 31 ? 45 : 44;
   const monthEndSerial = excelSerial(payload.year, payload.month, daysInMonth);
   const grouped = groupActivitiesByDate(payload.activities);
-  const detailRows = buildPeoDetailRows(payload.year, payload.month, grouped);
-  const extraRows = Math.max(0, detailRows.length - daysInMonth);
+  const timesheetRows = buildPeoTimesheetRows(payload.year, payload.month, grouped);
   const dailyHours = getExpertDailyHours(payload.expert);
   const cimDailyHours = getExpertCimDailyHours(payload.expert);
   const hourlyRate = getExpertHourlyRate(payload.expert);
@@ -167,10 +174,6 @@ async function generatePeoWorkbook(payload: ExportPayload): Promise<GeneratedWor
   if (daysInMonth === 31) {
     sheetXml = insertPeoDay31Row(sheetXml);
   }
-  if (extraRows > 0) {
-    sheetXml = insertWorksheetRows(sheetXml, totalRow, extraRows);
-    totalRow += extraRows;
-  }
 
   sheetXml = setCell(sheetXml, 'G8', stringValue(payload.expert.name));
   sheetXml = setCell(sheetXml, 'G9', stringValue(getExpertPosition(payload.expert)));
@@ -178,23 +181,23 @@ async function generatePeoWorkbook(payload: ExportPayload): Promise<GeneratedWor
   sheetXml = setCell(sheetXml, 'G11', stringValue(payload.expert.beneficiary));
   sheetXml = setCell(sheetXml, 'G12', stringValue(getProjectTitle(payload.expert)));
 
-  const peoDayRows = 30 + (daysInMonth === 31 ? 1 : 0) + extraRows;
+  const peoDayRows = 30 + (daysInMonth === 31 ? 1 : 0);
   for (let index = 0; index < peoDayRows; index += 1) {
-    const detail = detailRows[index];
+    const detail = timesheetRows[index];
     const row = 14 + index;
-    const activity = detail?.activity;
-    const leaveCode = activity ? getLeaveCode([activity]) : null;
-    const hours = detail?.isWorking && activity ? Number(activity.hours) || 0 : 0;
+    const activities = detail?.activities ?? [];
+    const leaveCode = getLeaveCode(activities);
+    const hours = detail?.isWorking ? sumHours(activities) : 0;
 
     sheetXml = setCell(sheetXml, `A${row}`, detail ? detail.dateSerial : null);
-    sheetXml = setCell(sheetXml, `B${row}`, (hours > 0 || leaveCode) && activity ? activityCode(activity, payload.expert) : null);
-    sheetXml = setCell(sheetXml, `D${row}`, (hours > 0 || leaveCode) && activity ? activitySubactivity(activity) : null);
+    sheetXml = setCell(sheetXml, `B${row}`, hours > 0 || leaveCode ? joinUnique(activities.map((activity) => activityCode(activity, payload.expert))) : null);
+    sheetXml = setCell(sheetXml, `D${row}`, hours > 0 || leaveCode ? joinUnique(activities.map(activitySubactivity)) : null);
     sheetXml = setCell(sheetXml, `G${row}`, hourlyRate && (hours > 0 || leaveCode) ? hourlyRate : null);
     sheetXml = setCell(sheetXml, `H${row}`, leaveCode ?? (hours > 0 ? hours : null));
     sheetXml = setCell(sheetXml, `I${row}`, detail?.isWorking ? Math.max(0, cimDailyHours - dailyHours) : null);
   }
 
-  const lastDayRow = 13 + detailRows.length;
+  const lastDayRow = 13 + timesheetRows.length;
   sheetXml = setCell(sheetXml, `A${totalRow}`, 'NR. TOTAL DE ORE');
   sheetXml = setCell(sheetXml, `H${totalRow}`, { formula: `SUM(H14:H${lastDayRow})+COUNTIF(H14:H${lastDayRow},"CO")*${dailyHours}` });
   sheetXml = setCell(sheetXml, `I${totalRow}`, { formula: `SUM(I14:I${lastDayRow})` });
@@ -577,7 +580,7 @@ export function writeXlsx(entries: ZipEntry[], files: Map<string, Buffer>) {
 export function setCell(xml: string, ref: string, input: CellInput): string {
   const rowNumber = Number(ref.match(/\d+$/)?.[0]);
   const current = matchCell(xml, ref);
-  const style = current?.match(/\bs="([^"]+)"/)?.[1];
+  const style = current?.match(/\bs="([^"]+)"/)?.[1] ?? findColumnStyle(xml, ref);
   const cellXml = buildCellXml(ref, input, style);
 
   if (current) {
@@ -591,6 +594,19 @@ function matchCell(xml: string, ref: string): string | null {
   const escaped = ref.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const match = xml.match(new RegExp(`<c\\b(?=[^>]*\\br="${escaped}")[^>]*?(?:/>|>[\\s\\S]*?<\\/c>)`));
   return match?.[0] ?? null;
+}
+
+function findColumnStyle(xml: string, ref: string) {
+  const column = ref.replace(/\d+/g, '');
+  const row = Number(ref.match(/\d+$/)?.[0]);
+  if (!column || !Number.isFinite(row)) return undefined;
+
+  for (let offset = 1; offset <= 3; offset += 1) {
+    const previous = matchCell(xml, `${column}${row - offset}`);
+    const style = previous?.match(/\bs="([^"]+)"/)?.[1];
+    if (style) return style;
+  }
+  return undefined;
 }
 
 function buildCellXml(ref: string, input: CellInput, style?: string) {
@@ -895,6 +911,25 @@ function buildPeoDetailRows(year: number, month: number, grouped: Map<string, Pa
     } else {
       activities.forEach((activity) => rows.push({ ...baseRow, activity }));
     }
+  }
+
+  return rows;
+}
+
+function buildPeoTimesheetRows(year: number, month: number, grouped: Map<string, Partial<Activity>[]>) {
+  const rows: PeoTimesheetRow[] = [];
+  const daysInMonth = getDaysInMonth(year, month);
+
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const dateKey = isoDate(year, month, day);
+    const isWorking = !getNonWorkingDayInfo(dateKey).isNonWorkingDay;
+    rows.push({
+      day,
+      dateKey,
+      dateSerial: excelSerial(year, month, day),
+      isWorking,
+      activities: isWorking ? grouped.get(dateKey) ?? [] : [],
+    });
   }
 
   return rows;
