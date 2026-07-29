@@ -259,13 +259,20 @@ function getOfficialActivityTitle(bundle: ReportingWorkBlockBundle, activities: 
 
 function getPerformedActivity(bundle: ReportingWorkBlockBundle, activities: Activity[]) {
   return normalizeAnexa10ReportText(
-    bundle.workBlock.generatedTableSummary
+    getActivitySummariesText(activities)
+    || bundle.workBlock.generatedTableSummary
     || bundle.workBlock.cleanedActivitySummary
     || bundle.workBlock.expertContribution
-    || activities.map((activity) => activity.activitySummary).filter(Boolean).join(' ')
     || activities.map((activity) => activity.description).filter(Boolean).join(' ')
     || bundle.workBlock.title,
   );
+}
+
+function getActivitySummariesText(activities: Activity[]) {
+  return activities
+    .map((activity) => activity.activitySummary)
+    .filter(Boolean)
+    .join(' ');
 }
 
 function getCommonDeliverableLabel(activities: Activity[]) {

@@ -80,6 +80,31 @@ test('modelul determinist prefera activitySummary cand nu exista consolidare wor
   assert.equal(model.saSections[0].items[0].body, 'Am sintetizat statusul livrabilelor pentru raportarea lunara.');
 });
 
+test('coloana Activitate prestata foloseste activitySummary inaintea sumarului work block', () => {
+  const activities = [
+    activity({
+      id: 'a1',
+      date: '2026-06-02',
+      hours: 2,
+      periodGroupId: 'summary-group',
+      activitySummary: 'Am actualizat sinteza activitatii pentru raportarea Anexa 10.',
+      description: 'Descriere lunga veche.',
+    }),
+  ];
+  const bundles = buildWorkBlocks(activities).map((bundle) => ({
+    ...bundle,
+    workBlock: {
+      ...bundle.workBlock,
+      cleanedActivitySummary: 'Summary vechi din work block.',
+      generatedTableSummary: 'Text tabel vechi din work block.',
+    },
+  }));
+
+  const model = buildAnexa10ReportModel({ expert, activities, month: 5, year: 2026, workBlockBundles: bundles });
+
+  assert.equal(model.tableRows[0].performedActivity, 'Am actualizat sinteza activitatii pentru raportarea Anexa 10.');
+});
+
 test('modelul determinist elimina propozitiile repetate din sumarul work block-ului', () => {
   const repeatedSentence = 'Am analizat propunerea legislativa si am sintetizat impactul pentru membrii CPC.';
   const repeatedSummary = `${repeatedSentence} ${repeatedSentence} ${repeatedSentence} Am formulat concluzii si recomandari.`;
