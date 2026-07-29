@@ -204,7 +204,15 @@ export default function PMDashboard() {
     status: reviewReportStatus,
     updateStatus: updateReviewReportStatus,
   } = useReportStatus(reviewExpertId, selectedMonth, selectedYear);
+  const previousSelectedMonthDate = useMemo(
+    () => new Date(selectedYear, selectedMonth - 1, 1),
+    [selectedMonth, selectedYear]
+  );
   const { statuses: allMonthlyReportStatuses } = useReportStatusByMonth(selectedMonth, selectedYear);
+  const { statuses: allPreviousMonthlyReportStatuses } = useReportStatusByMonth(
+    previousSelectedMonthDate.getMonth(),
+    previousSelectedMonthDate.getFullYear()
+  );
   const { activities: allMonthActivities, mutate: refreshMonthActivities } = useActivitiesByMonth(selectedMonth, selectedYear);
   const { catalog: activityCatalog } = useActivityCatalog();
   const scopedAuditExpertId = hasExtendedExpertAccess ? null : dataAccessScope.currentExpertId ?? selectedExpertId;
@@ -225,6 +233,10 @@ export default function PMDashboard() {
   const monthlyReportStatuses = useMemo(
     () => filterReportStatusesForScope(allMonthlyReportStatuses, dataAccessScope),
     [allMonthlyReportStatuses, dataAccessScope]
+  );
+  const previousMonthlyReportStatuses = useMemo(
+    () => filterReportStatusesForScope(allPreviousMonthlyReportStatuses, dataAccessScope),
+    [allPreviousMonthlyReportStatuses, dataAccessScope]
   );
   const monthActivities = useMemo(
     () => filterActivitiesForScope(allMonthActivities, dataAccessScope),
@@ -428,6 +440,22 @@ export default function PMDashboard() {
       expertAccessApproved: false,
       expertAccessApprovedAt: undefined,
       pmNotes: clearMonthAccessRequestNote(status.pmNotes, { month: status.month, year: status.year }),
+    });
+  };
+
+  const closeMonthAccess = async (status: ReportStatus) => {
+    if (!canManagePmReview) return;
+
+    await updateReportStatus({
+      expertId: status.expertId,
+      year: status.year,
+      month: status.month,
+      status: status.status,
+      sentDate: status.sentDate,
+      approvalDate: status.approvalDate,
+      expertAccessApproved: false,
+      expertAccessApprovedAt: undefined,
+      pmNotes: status.pmNotes,
     });
   };
 
@@ -720,16 +748,36 @@ export default function PMDashboard() {
     () => new Map(monthlyReportStatuses.map((status) => [status.expertId, status])),
     [monthlyReportStatuses]
   );
+  const monthAccessStatuses = useMemo(() => {
+    const seen = new Set<string>();
+    return [...monthlyReportStatuses, ...previousMonthlyReportStatuses].filter((status) => {
+      const key = status.id || `${status.expertId}-${status.year}-${status.month}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [monthlyReportStatuses, previousMonthlyReportStatuses]);
   const monthAccessRequests = useMemo(
     () =>
-      monthlyReportStatuses
+      monthAccessStatuses
         .filter(hasMonthAccessRequest)
         .map((status) => ({
           status,
           expert: visibleExperts.find((expert) => expert.id === status.expertId),
         }))
         .filter((item): item is { status: ReportStatus; expert: Expert } => Boolean(item.expert)),
-    [monthlyReportStatuses, visibleExperts]
+    [monthAccessStatuses, visibleExperts]
+  );
+  const activeMonthAccesses = useMemo(
+    () =>
+      monthAccessStatuses
+        .filter((status) => status.expertAccessApproved === true)
+        .map((status) => ({
+          status,
+          expert: visibleExperts.find((expert) => expert.id === status.expertId),
+        }))
+        .filter((item): item is { status: ReportStatus; expert: Expert } => Boolean(item.expert)),
+    [monthAccessStatuses, visibleExperts]
   );
   const dashboardRowByExpertId = useMemo(
     () => new Map(dashboardRows.map((row) => [row.expertId, row])),
@@ -1024,44 +1072,78 @@ export default function PMDashboard() {
             </Link>
           </RightInfoCard>
 
-          <RightInfoCard title="Cereri acces lună" icon={AlertTriangle}>
+          <RightInfoCard title="Acces editare lună" icon={AlertTriangle}>
             <div className="mb-3 flex items-center justify-between gap-3">
               <p className="text-sm text-muted-foreground">
-                {getMonthName(selectedMonth)} {selectedYear}
+                {getMonthName(selectedMonth)} {selectedYear} + luna precedentă
               </p>
-              <Badge variant={monthAccessRequests.length > 0 ? 'destructive' : 'secondary'}>
-                {monthAccessRequests.length}
+              <Badge variant={monthAccessRequests.length > 0 ? 'destructive' : activeMonthAccesses.length > 0 ? 'default' : 'secondary'}>
+                {monthAccessRequests.length} cereri / {activeMonthAccesses.length} active
               </Badge>
             </div>
-            <div className="space-y-2">
-              {monthAccessRequests.length === 0 ? (
+            <div className="space-y-3">
+              {monthAccessRequests.length === 0 && activeMonthAccesses.length === 0 ? (
                 <div className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
-                  Nu exista cereri de acces pentru luna selectata.
+                  Nu exista cereri sau acces deschis pentru luna selectata ori luna precedenta.
                 </div>
-              ) : (
-                monthAccessRequests.map(({ status, expert }) => (
-                  <div key={status.id} className="rounded-md border border-amber-200 bg-amber-50/80 p-3 text-sm">
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div>
-                        <div className="font-semibold text-slate-950">{expert.name}</div>
-                        <div className="text-xs text-amber-800">
-                          Solicita acces pentru {getMonthName(status.month)} {status.year}
+              ) : null}
+
+              {monthAccessRequests.length > 0 && (
+                <div className="space-y-2">
+                  <div className="text-xs font-semibold uppercase text-muted-foreground">Cereri in asteptare</div>
+                  {monthAccessRequests.map(({ status, expert }) => (
+                    <div key={status.id} className="rounded-md border border-amber-200 bg-amber-50/80 p-3 text-sm">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                          <div className="font-semibold text-slate-950">{expert.name}</div>
+                          <div className="text-xs text-amber-800">
+                            Solicita acces pentru {getMonthName(status.month)} {status.year}
+                          </div>
                         </div>
+                        <Badge variant="outline">{expert.category || expert.role || 'expert'}</Badge>
                       </div>
-                      <Badge variant="outline">{expert.category || expert.role || 'expert'}</Badge>
+                      {canManagePmReview && (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <Button size="sm" onClick={() => approveMonthAccessRequest(status)}>
+                            Aproba acces
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => rejectMonthAccessRequest(status)}>
+                            Respinge
+                          </Button>
+                        </div>
+                      )}
                     </div>
-                    {canManagePmReview && (
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <Button size="sm" onClick={() => approveMonthAccessRequest(status)}>
-                          Aproba acces
-                        </Button>
-                        <Button size="sm" variant="outline" onClick={() => rejectMonthAccessRequest(status)}>
-                          Respinge
-                        </Button>
+                  ))}
+                </div>
+              )}
+
+              {activeMonthAccesses.length > 0 && (
+                <div className="space-y-2">
+                  <div className="text-xs font-semibold uppercase text-muted-foreground">Acces deschis</div>
+                  {activeMonthAccesses.map(({ status, expert }) => (
+                    <div
+                      key={`active-${status.id || `${status.expertId}-${status.year}-${status.month}`}`}
+                      className="rounded-md border border-emerald-200 bg-emerald-50/80 p-3 text-sm"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                          <div className="font-semibold text-slate-950">{expert.name}</div>
+                          <div className="text-xs text-emerald-800">
+                            Poate edita {getMonthName(status.month)} {status.year}
+                          </div>
+                        </div>
+                        <Badge variant="outline">{status.expertAccessApprovedAt ? 'aprobat' : 'deschis'}</Badge>
                       </div>
-                    )}
-                  </div>
-                ))
+                      {canManagePmReview && (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <Button size="sm" variant="outline" onClick={() => closeMonthAccess(status)}>
+                            Inchide acces
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           </RightInfoCard>

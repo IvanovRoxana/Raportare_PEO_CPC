@@ -961,8 +961,10 @@ export function useReportStatus(expertId: string | null, month: number, year: nu
   
   const updateStatus = async (status: Omit<ReportStatus, 'id'>) => {
     await reportStatusService.upsert(status);
-    mutate(key);
-    mutate(`report-status-month-${month}-${year}`);
+    const targetKey = `report-status-${status.expertId}-${status.month}-${status.year}`;
+    mutate(targetKey);
+    if (targetKey !== key) mutate(key);
+    mutate(`report-status-month-${status.month}-${status.year}`);
   };
   
   return {
