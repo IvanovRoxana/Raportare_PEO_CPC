@@ -567,7 +567,7 @@ export default function ExpertHomeDashboard() {
         date: leave.date,
         expertId: leave.expertId,
         expertName: currentExpert.name,
-        hours: leave.peoHours,
+        hours: Number(leave.totalHours) || (Number(leave.peoHours) || 0) + (Number(leave.cpcHours) || 0),
         activityType: leave.type === 'CM' ? 'CM - Concediu medical' : 'CO - Concediu de odihna',
         title: leave.type + ' (' + leave.peoHours + ' h PEO + ' + leave.cpcHours + ' h CPC)',
         description: leave.source === 'FINANCIAL' ? 'Concediu introdus de Financiar.' : 'Concediu repartizat automat.',
