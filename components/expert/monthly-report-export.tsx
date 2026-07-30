@@ -229,6 +229,7 @@ export function MonthlyReportExport({
         saCode: 'SA3.2',
         deliverableType: file.deliverableType,
         isCommonDeliverable: true,
+        sharedWithExpertIds: [],
         uploadedAt: new Date().toISOString(),
         titleCheckStatus: 'matched',
         aiStatus: 'generated',

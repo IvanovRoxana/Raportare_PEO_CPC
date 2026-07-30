@@ -105,6 +105,26 @@ test('coloana Activitate prestata foloseste activitySummary inaintea sumarului w
   assert.equal(model.tableRows[0].performedActivity, 'Am actualizat sinteza activitatii pentru raportarea Anexa 10.');
 });
 
+test('modelul determinist tolereaza work block-uri legacy fara deliverableLinks', () => {
+  const activities = [
+    activity({
+      id: 'a1',
+      date: '2026-06-02',
+      hours: 2,
+      deliverables: [{ id: 'd1', fileName: 'PV Business Hub.xlsx', fileType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', fileSize: 1024 }],
+    }),
+  ];
+  const [bundle] = buildWorkBlocks(activities);
+  const legacyBundle = {
+    ...bundle,
+    deliverableLinks: undefined,
+  } as unknown as ReportingWorkBlockBundle;
+
+  const model = buildAnexa10ReportModel({ expert, activities, month: 5, year: 2026, workBlockBundles: [legacyBundle] });
+
+  assert.equal(model.tableRows.length, 1);
+});
+
 test('modelul determinist elimina propozitiile repetate din sumarul work block-ului', () => {
   const repeatedSentence = 'Am analizat propunerea legislativa si am sintetizat impactul pentru membrii CPC.';
   const repeatedSummary = `${repeatedSentence} ${repeatedSentence} ${repeatedSentence} Am formulat concluzii si recomandari.`;

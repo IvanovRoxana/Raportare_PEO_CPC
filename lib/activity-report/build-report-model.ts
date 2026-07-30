@@ -199,7 +199,7 @@ function buildReportWarnings(
       warnings.push(`Work block-ul "${bundle.workBlock.title}" nu are SA confirmat.`);
     }
 
-    const deliverableIds = bundle.deliverableLinks.map((link) => link.deliverableId);
+    const deliverableIds = (bundle.deliverableLinks ?? []).map((link) => link.deliverableId);
     if (settings.requireDeliverableForMaterialWork && bundle.workBlock.reportingFlowType === 'deliverable' && deliverableIds.length === 0) {
       warnings.push(`Work block-ul material "${bundle.workBlock.title}" nu are livrabil asociat.`);
     }
