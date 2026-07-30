@@ -72,6 +72,57 @@ test('preflight permite Anexa 10 cand datele institutionale sunt complete', () =
   assert.equal(report.findings.filter((finding) => finding.severity === 'critical').length, 0);
 });
 
+test('preflight nu blocheaza activitati legitime despre formulare sau chestionare', () => {
+  const model = buildAnexa10ReportModel({
+    expert: {
+      ...baseExpert,
+      contractNumber: '12/2026',
+      contractType: 'CIM',
+      expertExperienceCategory: 'expert senior',
+      jobDescriptionText: 'Am responsabilitati de analiza legislativa, sinteza si formulare pozitii institutionale.',
+    },
+    activities: [activity({
+      id: 'a1',
+      title: 'Chestionare si formulare feedback membri',
+      activitySummary: 'Am elaborat formularul de feedback si am centralizat raspunsurile transmise de membri.',
+      deliverables: [{ id: 'd1', fileName: 'Feedback.docx', fileType: 'docx', fileSize: 10 }],
+    })],
+    month: 5,
+    year: 2026,
+  });
+
+  const report = buildDeterministicAnexa10Preflight(model);
+
+  assert.equal(report.canExport, true);
+  assert.equal(report.findings.some((finding) => finding.id === 'forbidden-phrases'), false);
+});
+
+test('preflight blocheaza in continuare referirile la formular generat automat', () => {
+  const model = buildAnexa10ReportModel({
+    expert: {
+      ...baseExpert,
+      contractNumber: '12/2026',
+      contractType: 'CIM',
+      expertExperienceCategory: 'expert senior',
+      jobDescriptionText: 'Am responsabilitati de analiza legislativa, sinteza si formulare pozitii institutionale.',
+    },
+    activities: [activity({
+      id: 'a1',
+      activitySummary: 'Am revizuit formularul generat si am pastrat observatiile relevante pentru raportare.',
+      deliverables: [{ id: 'd1', fileName: 'Analiza.docx', fileType: 'docx', fileSize: 10 }],
+    })],
+    month: 5,
+    year: 2026,
+  });
+
+  const report = buildDeterministicAnexa10Preflight(model);
+
+  assert.equal(report.canExport, false);
+  assert.equal(report.findings.some((finding) => (
+    finding.id === 'forbidden-phrases' && finding.detail.includes('formularul generat')
+  )), true);
+});
+
 test('gate-ul comun cere preflight trecut pentru exportul principal Anexa 10', () => {
   const model = buildAnexa10ReportModel({
     expert: {
