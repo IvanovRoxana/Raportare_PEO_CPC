@@ -670,9 +670,10 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
 
     const peoNorm = numericCell(draft.peoNorm);
     const cpcNorm = numericCell(draft.cpcNorm);
-    const peoHours = numericCell(draft.peoHours);
-    const cpcHours = numericCell(draft.cpcHours);
-    const totalHours = peoHours + cpcHours;
+    const draftPeoDays = numericCell(draft.peoDays);
+    const draftCpcDays = numericCell(draft.cpcDays);
+    const draftPeoHours = numericCell(draft.peoHours);
+    const draftCpcHours = numericCell(draft.cpcHours);
     let replacementDates: string[];
     try {
       replacementDates = parseLeavePeriod(draft.period, month, year);
@@ -680,9 +681,31 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
       setVerificationMessage(error instanceof Error ? error.message : 'Perioada CO nu este valida.');
       return;
     }
+    const selectedDays = replacementDates.length;
+    const peoDays = draftPeoDays || (peoNorm > 0 ? selectedDays : 0);
+    const cpcDays = draftCpcDays || (cpcNorm > 0 ? selectedDays : 0);
+    const peoHours = draftPeoHours || peoNorm * peoDays;
+    const cpcHours = draftCpcHours || cpcNorm * cpcDays;
+    const totalHours = peoHours + cpcHours;
     if (totalHours > 0 && replacementDates.length === 0) {
       setVerificationMessage(`Completeaza perioada CO pentru ${row.name}, de exemplu 01-08; 29-31.`);
       return;
+    }
+    if (selectedDays > 0 && totalHours === 0) {
+      setVerificationMessage(`Completeaza norma sau orele CO pentru ${row.name} inainte de salvare.`);
+      return;
+    }
+    if (selectedDays > 0 && (peoDays !== draftPeoDays || cpcDays !== draftCpcDays || peoHours !== draftPeoHours || cpcHours !== draftCpcHours)) {
+      setLeaveGridDrafts((current) => ({
+        ...current,
+        [key]: {
+          ...draft,
+          peoDays: formatNumericCell(peoDays),
+          peoHours: formatNumericCell(peoHours),
+          cpcDays: formatNumericCell(cpcDays),
+          cpcHours: formatNumericCell(cpcHours),
+        },
+      }));
     }
     const preservedFinalLeaves = row.leaveEntries.filter((leave) => leave.source === 'FINANCIAL' && (leave.status === 'VALIDATED' || leave.status === 'REJECTED'));
     if (preservedFinalLeaves.length) {
