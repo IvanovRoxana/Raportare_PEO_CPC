@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { useExperts } from '@/hooks/use-backend-data';
 import { extractPdfTextWithSource } from '@/lib/document-utils';
+import { expertIdentityKey } from '@/lib/expert-merge';
 import type { Expert } from '@/lib/types';
 
 function unique(values: string[]) {
@@ -27,7 +28,47 @@ async function getAccessToken() {
   return token;
 }
 
-async function updateExpertJobDescription(expertId: string, jobDescriptionText: string, token: string) {
+function buildExpertCreateInput(expert: Expert, jobDescriptionText: string): Omit<Expert, 'id'> {
+  return {
+    userId: expert.userId,
+    name: expert.name,
+    role: expert.role || 'Expert',
+    email: expert.email,
+    phone: expert.phone,
+    category: expert.category,
+    norma: expert.norma ?? 8,
+    normType: expert.normType,
+    oreZi: expert.oreZi,
+    dailyHours: expert.dailyHours,
+    manualMonthlyNorm: expert.manualMonthlyNorm,
+    projectMonthlyNorm: expert.projectMonthlyNorm,
+    positionInProject: expert.positionInProject,
+    projectCode: expert.projectCode,
+    projectTitle: expert.projectTitle,
+    contractNumber: expert.contractNumber,
+    contractType: expert.contractType,
+    expertExperienceCategory: expert.expertExperienceCategory,
+    jobDescriptionText,
+    aiReportingInstructions: expert.aiReportingInstructions,
+    beneficiary: expert.beneficiary,
+    saCodes: expert.saCodes ?? [],
+    hasPmAccess: expert.hasPmAccess ?? false,
+    cognitoGroups: expert.cognitoGroups,
+    isActive: expert.isActive ?? true,
+  };
+}
+
+async function writeExpertJobDescription({
+  action,
+  expert,
+  jobDescriptionText,
+  token,
+}: {
+  action: 'create' | 'update';
+  expert: Expert;
+  jobDescriptionText: string;
+  token: string;
+}) {
   const response = await fetch('/api/admin/experts', {
     method: 'POST',
     headers: {
@@ -35,9 +76,11 @@ async function updateExpertJobDescription(expertId: string, jobDescriptionText: 
       'content-type': 'application/json',
     },
     body: JSON.stringify({
-      action: 'update',
-      id: expertId,
-      input: { jobDescriptionText },
+      action,
+      id: action === 'update' ? expert.id : undefined,
+      input: action === 'update'
+        ? { jobDescriptionText }
+        : buildExpertCreateInput(expert, jobDescriptionText),
     }),
   });
   const data = await response.json().catch(() => null);
@@ -46,9 +89,18 @@ async function updateExpertJobDescription(expertId: string, jobDescriptionText: 
 
 export function PeoExpertCategoriesPanel() {
   const { experts, isLoading, mutate } = useExperts({ includeInactive: true });
+  const {
+    experts: persistedExperts,
+    isLoading: isLoadingPersistedExperts,
+    mutate: mutatePersistedExperts,
+  } = useExperts({ includeInactive: true, includeFallback: false });
   const activeExperts = useMemo(
     () => experts.filter((expert) => expert.isActive !== false),
     [experts],
+  );
+  const persistedExpertsByKey = useMemo(
+    () => new Map(persistedExperts.map((expert) => [expertIdentityKey(expert), expert])),
+    [persistedExperts],
   );
   const projectPositions = useMemo(
     () => unique(activeExperts.map(getPositionKey)),
@@ -112,10 +164,33 @@ export function PeoExpertCategoriesPanel() {
     setMessage(null);
     try {
       const token = await getAccessToken();
-      await Promise.all(matchingExperts.map((expert) => (
-        updateExpertJobDescription(expert.id, responsibilities.trim(), token)
-      )));
+      const jobDescriptionText = responsibilities.trim();
+      await Promise.all(matchingExperts.map(async (expert) => {
+        const persistedExpert = persistedExpertsByKey.get(expertIdentityKey(expert));
+        const writableExpert = persistedExpert ?? expert;
+        try {
+          await writeExpertJobDescription({
+            action: persistedExpert ? 'update' : 'create',
+            expert: writableExpert,
+            jobDescriptionText,
+            token,
+          });
+        } catch (caughtError) {
+          const message = caughtError instanceof Error ? caughtError.message : '';
+          if (persistedExpert && /conditional request failed/i.test(message)) {
+            await writeExpertJobDescription({
+              action: 'create',
+              expert: { ...expert, jobDescriptionText },
+              jobDescriptionText,
+              token,
+            });
+            return;
+          }
+          throw caughtError;
+        }
+      }));
       await mutate();
+      await mutatePersistedExperts();
       setMessage(`Responsabilitatile au fost salvate pentru ${matchingExperts.length} expert(i) cu pozitia ${projectPosition}.`);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : 'Salvarea responsabilitatilor a esuat.');
@@ -140,7 +215,7 @@ export function PeoExpertCategoriesPanel() {
           <div className="grid gap-4 lg:grid-cols-[1fr_1fr_auto]">
             <div className="space-y-2">
               <Label>Pozitie in proiect</Label>
-              <Select value={projectPosition} onValueChange={setProjectPosition} disabled={isLoading}>
+              <Select value={projectPosition} onValueChange={setProjectPosition} disabled={isLoading || isLoadingPersistedExperts}>
                 <SelectTrigger>
                   <SelectValue placeholder="Alege pozitia" />
                 </SelectTrigger>
