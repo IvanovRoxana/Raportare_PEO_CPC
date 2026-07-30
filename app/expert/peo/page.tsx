@@ -2648,6 +2648,56 @@ function ExpertDashboardContent() {
               </div>
             )}
 
+            <div className="grid gap-3 rounded-lg border bg-card p-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+              <div className="min-w-0 space-y-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-sm font-semibold text-slate-900">Status raportare</p>
+                  <Badge variant={statusMeta.variant}>{statusMeta.label}</Badge>
+                  <span className="text-xs text-muted-foreground">
+                    {monthlyBlocking.totalHours}h / {monthlyBlocking.monthlyNorm}h pontate
+                  </span>
+                </div>
+                <p className="text-sm leading-6 text-muted-foreground">{statusDescription}</p>
+                <div className="flex flex-wrap gap-2">
+                  {compactReadinessItems.length === 0 ? (
+                    <Badge variant="secondary" className="bg-emerald-50 text-emerald-800">
+                      Fara blocaje active
+                    </Badge>
+                  ) : (
+                    compactReadinessItems.slice(0, 4).map((item) => (
+                      <button
+                        key={item.key}
+                        type="button"
+                        className="inline-flex items-center gap-2 rounded-lg border px-2.5 py-1 text-xs font-medium text-slate-700 transition hover:border-primary hover:bg-blue-50"
+                        onClick={() => openReadinessDetails(item.key)}
+                      >
+                        <Badge variant={item.severity === 'blocking' ? 'destructive' : 'outline'}>
+                          {item.severity === 'blocking' ? 'Blocant' : 'Atentie'}
+                        </Badge>
+                        <span>{item.label}</span>
+                      </button>
+                    ))
+                  )}
+                  {compactReadinessItems.length > 4 && (
+                    <Button type="button" variant="ghost" size="sm" onClick={() => openReadinessDetails(compactReadinessItems[4].key)}>
+                      +{compactReadinessItems.length - 4}
+                    </Button>
+                  )}
+                </div>
+              </div>
+              <span className="block" title={submitButtonTitle}>
+                <Button
+                  type="button"
+                  className="w-full md:w-auto"
+                  onClick={handleSubmitMonth}
+                  disabled={isApproved || isSent || isInReview || isClarificationScopedAccess}
+                >
+                  {submitButtonIcon}
+                  {submitButtonLabel}
+                </Button>
+              </span>
+            </div>
+
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-4">
               <div>
                 <h2 className="text-lg font-semibold text-foreground">Activități PEO</h2>

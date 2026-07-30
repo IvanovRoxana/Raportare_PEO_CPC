@@ -39,6 +39,15 @@ function formatSentDate(value?: string) {
   });
 }
 
+function getNextAction(status: ReportStatus['status']) {
+  if (status === 'sent') return 'Deschide dosarul si marcheaza In verificare';
+  if (status === 'in_review') return 'Finalizeaza: aproba, respinge sau cere clarificari';
+  if (status === 'clarifications') return 'Urmareste raspunsul expertului';
+  if (status === 'rejected') return 'Asteapta retrimiterea raportarii';
+  if (status === 'approved') return 'Validare finalizata';
+  return 'Deschide dosarul pentru verificare';
+}
+
 export function PmSubmittedReportsPanel({ rows, statusLabels, onOpenReport }: PmSubmittedReportsPanelProps) {
   return (
     <section className="overflow-hidden rounded-2xl border bg-card shadow-sm">
@@ -70,6 +79,7 @@ export function PmSubmittedReportsPanel({ rows, statusLabels, onOpenReport }: Pm
                 <th className="px-4 py-3 font-medium">Ore</th>
                 <th className="px-4 py-3 font-medium">Livrabile</th>
                 <th className="px-4 py-3 font-medium">Probleme</th>
+                <th className="px-4 py-3 font-medium">Pas urmator</th>
                 <th className="px-4 py-3 font-medium">Actiuni</th>
               </tr>
             </thead>
@@ -101,6 +111,9 @@ export function PmSubmittedReportsPanel({ rows, statusLabels, onOpenReport }: Pm
                       ) : (
                         <Badge variant="secondary">OK</Badge>
                       )}
+                    </td>
+                    <td className="max-w-[15rem] px-4 py-4 text-xs leading-5 text-muted-foreground">
+                      {getNextAction(row.status.status)}
                     </td>
                     <td className="px-4 py-4">
                       <Button variant="outline" size="sm" onClick={() => onOpenReport(row.expert)}>
