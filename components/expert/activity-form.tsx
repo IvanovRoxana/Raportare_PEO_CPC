@@ -63,6 +63,7 @@ import {
 } from '@/lib/deliverable-deduplication';
 import { shouldAttachUploadedDeliverablesToDate } from '@/lib/activity-deliverables';
 import { getActivityEditGroupId, isSameEditableActivity } from '@/lib/activity-edit';
+import { isComCommunicationMultiGroupActivity } from '@/lib/activity-multigroup-rules';
 import { createActivityPeriodGroupId } from '@/lib/submit-readiness';
 import {
   MAX_PONTAJ_HOURS,
@@ -1246,6 +1247,10 @@ export function ActivityForm({
   ), 0);
   const eventDur = parseFloat(eventDuration) || 0;
   const needsExtendedDesc = isEvent && eventDur > 0 && totalHours > eventDur && (eventExtendedDesc || '').trim().length < 20;
+  const usesMonthlyComDeliverable = !isEvent && isComCommunicationMultiGroupActivity({
+    activityType: effectiveActivityTitle,
+    title: effectiveActivityTitle,
+  });
   const baseSaveBlockers = [
     selectedDates.length === 0 ? 'Selecteaza cel putin o zi din calendar.' : null,
     (!effectiveActivityTitle.trim() && !isLeave) ? 'Selecteaza tipul activitatii.' : null,
@@ -1563,6 +1568,7 @@ export function ActivityForm({
       showStandardActivityWorkflow
       && !isLeave
       && !isException
+      && !usesMonthlyComDeliverable
       && (isEvent
         ? !eventDocumentationForSave.complete
         : (!hasMainDeliverableForSave && !skipMainDeliverableForNow))
@@ -2042,6 +2048,7 @@ export function ActivityForm({
     showStandardActivityWorkflow,
     skipMainDeliverableForNow,
     uploadDeliverableFile,
+    usesMonthlyComDeliverable,
     year,
   ]);
 
@@ -2147,6 +2154,7 @@ export function ActivityForm({
     showStandardActivityWorkflow
     && !isLeave
     && !isException
+    && !usesMonthlyComDeliverable
     && (isEvent
       ? !eventDocumentationStatus.complete
       : (!hasUploadedMainDeliverable && !skipMainDeliverableForNow))
@@ -2233,6 +2241,7 @@ export function ActivityForm({
     selectedDates.length,
     skipMainDeliverableForNow,
     totalHours,
+    usesMonthlyComDeliverable,
   ]);
   const currentWizardStepIndex = Math.max(0, wizardSteps.findIndex((step) => step.id === currentWizardStep));
   const isLastWizardStep = currentWizardStepIndex === wizardSteps.length - 1;
