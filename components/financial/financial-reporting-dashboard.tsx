@@ -362,7 +362,7 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
   const { entries, isLoading: loadingEntries } = useConcurrentProjectTimesheetByMonth(month, year);
   const { contracts, isLoading: loadingContracts } = useAllExpertNormContracts();
   const { links: financialPersonLinks, isLoading: loadingLinks } = useFinancialPersonLinks();
-  const { leaveEntries, isLoading: loadingLeave } = useLeaveEntries(month, year);
+  const { leaveEntries, isLoading: loadingLeave, mutate: refreshLeaveEntries } = useLeaveEntries(month, year);
   const { createAutomatic, createManual, remove: removeLeaveEntry, updateStatus } = useLeaveEntryMutations(month, year);
   const { create: createNormContract, update: updateNormContract } = useExpertNormContractMutations();
   const { create: createFinancialPersonLink, update: updateFinancialPersonLink } = useFinancialPersonLinkMutations();
@@ -755,11 +755,12 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
         });
       }
 
-      const replaceableLeaves = row.leaveEntries.filter((leave) => leave.source === 'FINANCIAL' && leave.status !== 'VALIDATED' && leave.status !== 'REJECTED');
+      const replaceableLeaves = row.leaveEntries.filter((leave) => leave.status !== 'VALIDATED' && leave.status !== 'REJECTED');
       for (const leave of replaceableLeaves) {
         await removeLeaveEntry(leave.id);
       }
 
+      let savedLeaveCount = 0;
       if (totalHours > 0) {
         const peoPerDay = peoHours / replacementDates.length;
         const cpcPerDay = cpcHours / replacementDates.length;
@@ -780,9 +781,15 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
             justification: `Actualizare manuala CO Financiar: ${draft.period || date}`,
             createdBy: 'financial-session',
           });
+          savedLeaveCount += 1;
         }
       }
-      setVerificationMessage(`CO pentru ${row.name} a fost salvat in formatul centralizatorului Excel.`);
+      await refreshLeaveEntries();
+      setVerificationMessage(
+        savedLeaveCount > 0
+          ? `CO pentru ${row.name} a fost salvat: ${savedLeaveCount} zile, ${formatNumericCell(totalHours)} ore.`
+          : `CO pentru ${row.name} a fost actualizat. Nu exista zile CO de salvat pentru acest rand.`,
+      );
     } catch (error) {
       setVerificationMessage(error instanceof Error ? error.message : `CO pentru ${row.name} nu a putut fi salvat.`);
     } finally {
@@ -1406,6 +1413,11 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
               </TooltipProvider>
             ) : (
               <TooltipProvider delayDuration={150}>
+                {verificationMessage ? (
+                  <div className="mb-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                    {verificationMessage}
+                  </div>
+                ) : null}
                 <table className="w-full min-w-[1060px] table-fixed border-collapse border-t-2 border-black text-[11px] leading-tight">
                   <colgroup>
                     {[22, 8, 9, 9, 8, 9, 9, 18, 8].map((width, index) => <col key={index} style={{ width: `${width}%` }} />)}
