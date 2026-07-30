@@ -504,6 +504,81 @@ test('activitatile cu acelasi periodGroupId dar identitate diferita nu sunt grup
   assert.equal(compileActivitiesByPeriodGroup(activities).length, 2);
 });
 
+test('grupurile corupte cu doua activitati pe aceeasi zi se editeaza ca rand individual', () => {
+  const periodGroupId = 'activity-period:andreea-iulie';
+  const activities = [
+    activity('activity-1', {
+      date: '2026-07-06',
+      periodGroupId,
+      catalogActivityId: 'catalog-sa34',
+      activityType: 'SA3.4 - Elaborare document de pozitie / analiza legislativa',
+      title: 'SA3.4 - Elaborare document de pozitie / analiza legislativa',
+    }),
+    activity('activity-duplicate', {
+      date: '2026-07-06',
+      periodGroupId,
+      catalogActivityId: 'catalog-sa34',
+      activityType: 'SA3.4 - Elaborare document de pozitie / analiza legislativa',
+      title: 'SA3.4 - Elaborare document de pozitie / analiza legislativa',
+    }),
+    activity('activity-hooked', {
+      date: '2026-07-10',
+      periodGroupId,
+      catalogActivityId: 'catalog-sa34',
+      activityType: 'SA3.4 - Elaborare document de pozitie / analiza legislativa',
+      title: 'SA3.4 - Elaborare document de pozitie / analiza legislativa',
+    }),
+  ];
+
+  assert.deepEqual(
+    getActivityGroupMembers(activities[0], activities).map((item) => item.id),
+    ['activity-1'],
+  );
+});
+
+test('selectia de date nu reataseaza duplicatele unui grup corupt la editare', () => {
+  const periodGroupId = 'activity-period:andreea-iulie';
+  const activities = [
+    activity('activity-1', {
+      date: '2026-07-06',
+      periodGroupId,
+      catalogActivityId: 'catalog-sa34',
+      activityType: 'SA3.4 - Elaborare document de pozitie / analiza legislativa',
+      title: 'SA3.4 - Elaborare document de pozitie / analiza legislativa',
+    }),
+    activity('activity-duplicate', {
+      date: '2026-07-07',
+      periodGroupId,
+      catalogActivityId: 'catalog-sa34',
+      activityType: 'SA3.4 - Elaborare document de pozitie / analiza legislativa',
+      title: 'SA3.4 - Elaborare document de pozitie / analiza legislativa',
+    }),
+    activity('activity-other-day', {
+      date: '2026-07-08',
+      periodGroupId,
+      catalogActivityId: 'catalog-sa34',
+      activityType: 'SA3.4 - Elaborare document de pozitie / analiza legislativa',
+      title: 'SA3.4 - Elaborare document de pozitie / analiza legislativa',
+    }),
+    activity('activity-duplicate-other-day', {
+      date: '2026-07-08',
+      periodGroupId,
+      catalogActivityId: 'catalog-sa34',
+      activityType: 'SA3.4 - Elaborare document de pozitie / analiza legislativa',
+      title: 'SA3.4 - Elaborare document de pozitie / analiza legislativa',
+    }),
+  ];
+
+  assert.deepEqual(
+    getActivityGroupMembersForSelectedDates(
+      activities[0],
+      activities,
+      ['2026-07-06', '2026-07-07', '2026-07-08'],
+    ).map((item) => item.id),
+    ['activity-1'],
+  );
+});
+
 test('grupurile legacy cu workingGroupId activity-period sunt editate ca grup modern', () => {
   const legacyGroupId = 'activity-period:legacy-1';
   const groupMembers = [

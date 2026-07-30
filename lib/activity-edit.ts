@@ -39,6 +39,16 @@ export function getActivityGroupMembers(activity: Activity, activities: Activity
         ))
       : [activity];
 
+  const duplicateKeys = new Set<string>();
+  const hasDuplicateActivityForDate = members.some((member) => {
+    const key = getCorruptGroupDuplicateKey(member);
+    if (duplicateKeys.has(key)) return true;
+    duplicateKeys.add(key);
+    return false;
+  });
+
+  if (hasDuplicateActivityForDate) return [activity];
+
   return members.length > 0
     ? [...members].sort((first, second) => first.date.localeCompare(second.date))
     : [activity];
@@ -46,6 +56,34 @@ export function getActivityGroupMembers(activity: Activity, activities: Activity
 
 function normalizeMatchValue(value?: string | null) {
   return String(value ?? '').trim().toLowerCase();
+}
+
+function getCorruptGroupDuplicateKey(activity: Activity) {
+  const catalogKey = normalizeMatchValue(activity.catalogActivityId);
+  const manualKey = [
+    normalizeMatchValue(activity.saCode),
+    normalizeMatchValue(activity.activityType || activity.title),
+  ].join(':');
+  const identityKey = catalogKey ? `catalog:${catalogKey}` : `manual:${manualKey}`;
+  return `${activity.date}:${normalizeMatchValue(activity.expertId)}:${identityKey}`;
+}
+
+function hasCorruptGroupDuplicateForActivity(activity: Activity, activities: Activity[]) {
+  const groupId = getActivityEditGroupId(activity);
+  if (!groupId) return false;
+
+  const duplicateKeys = new Set<string>();
+  return activities
+    .filter((candidate) => (
+      getActivityEditGroupId(candidate) === groupId
+      && isSameEditableActivity(activity, candidate)
+    ))
+    .some((member) => {
+      const key = getCorruptGroupDuplicateKey(member);
+      if (duplicateKeys.has(key)) return true;
+      duplicateKeys.add(key);
+      return false;
+    });
 }
 
 export function isSameEditableActivity(activity: Activity, candidate: Activity) {
@@ -68,6 +106,10 @@ export function getActivityGroupMembersForSelectedDates(
   selectedDates: string[],
 ) {
   const groupMembers = getActivityGroupMembers(activity, activities);
+  if (hasCorruptGroupDuplicateForActivity(activity, activities)) {
+    return groupMembers;
+  }
+
   const memberIds = new Set(groupMembers.map((member) => member.id));
   const selectedDateSet = new Set(selectedDates);
   const selectedDateMatches = activities.filter((candidate) => (
