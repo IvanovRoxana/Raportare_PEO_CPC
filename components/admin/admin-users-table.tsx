@@ -18,7 +18,6 @@ import { getSignedInUser, requestPasswordReset } from '@/lib/aws/auth';
 import type { Expert } from '@/lib/types';
 import { DataTable } from '@/components/layout/dashboard-primitives';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -41,8 +40,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { StatusBadge } from '@/components/ui/status-badge';
 import { Textarea } from '@/components/ui/textarea';
 import { expertIdentityKey } from '@/lib/expert-merge';
-import { syncOrInviteCognitoGroupsForUser } from '@/lib/admin-cognito';
-import { cognitoGroupsForRole } from '@/lib/cognito-roles';
 
 type RoleOption = 'Expert' | 'PM' | 'Expert/PM' | 'Admin';
 
@@ -153,20 +150,10 @@ function parseContractDisplay(value: string) {
   };
 }
 
-function shouldSyncCognitoGroupsForProfileSave(expert: Expert, form: EditFormState) {
-  const currentRole = normalizeRole(expert.role);
-  const currentHasPmAccess = expert.hasPmAccess ?? (currentRole.includes('PM') || currentRole === 'Admin');
-  const nextHasPmAccess = form.hasPmAccess || form.role === 'Admin';
-  const currentEmail = String(expert.email || '').trim().toLowerCase();
-  const nextEmail = form.email.trim().toLowerCase();
-
-  return currentRole !== form.role || currentHasPmAccess !== nextHasPmAccess || currentEmail !== nextEmail;
-}
-
-function isCognitoSyncPermissionError(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error || '');
-  return /AccessDeniedException|not authorized to perform|access denied/i.test(message);
-}
+const cognitoSyncPermissionHint = [
+  'Necesare: cognito-idp:ListUsers, cognito-idp:AdminListGroupsForUser, cognito-idp:AdminAddUserToGroup si cognito-idp:AdminRemoveUserFromGroup pe user pool-ul aplicatiei.',
+  'Verifica rolul SSR Compute sau credentialele COGNITO_SYNC_AWS_* din Amplify Hosting.',
+].join(' ');
 
 function buildExpertCreateInput(expert: Expert, updates: Partial<Expert>): Omit<Expert, 'id'> {
   return {
@@ -293,6 +280,7 @@ function formatAdminWriteError(error: unknown, fallback: string) {
     if (/Cognito|grupuri/i.test(message)) {
       return [
         'Profilul nu a putut sincroniza rolurile Cognito: backendul nu are permisiunile AWS necesare pentru administrarea grupurilor.',
+        cognitoSyncPermissionHint,
         `Detaliu tehnic: ${message}`,
       ].join(' ');
     }
@@ -421,7 +409,6 @@ export function AdminUsersTable() {
       name: form.name.trim(),
       email: form.email.trim(),
       phone: form.phone.trim(),
-      role: form.role,
       norma,
       category: form.category.trim(),
       contractNumber: contractFields.contractNumber,
@@ -430,30 +417,10 @@ export function AdminUsersTable() {
       beneficiary: form.beneficiary.trim(),
       projectCode: form.projectCode.trim(),
       positionInProject: form.positionInProject.trim(),
-      hasPmAccess: form.hasPmAccess,
-      isActive: form.isActive,
     };
-    const cognitoGroups = cognitoGroupsForRole(form.role, form.hasPmAccess || form.role === 'Admin');
-    updates.cognitoGroups = cognitoGroups;
-    const shouldSyncCognitoGroups = !isPersistedExpert(editingExpert)
-      || shouldSyncCognitoGroupsForProfileSave(editingExpert, form);
 
     try {
       await refreshAdminAuthSession();
-      let cognitoSyncWarning: string | null = null;
-      if (shouldSyncCognitoGroups) {
-        try {
-          await syncOrInviteCognitoGroupsForUser(updates.email, cognitoGroups, updates.name);
-          await refreshAdminAuthSession();
-        } catch (syncError) {
-          if (!isCognitoSyncPermissionError(syncError)) {
-            throw syncError;
-          }
-          console.warn('Profilul se salveaza fara sincronizarea grupurilor Cognito.', syncError);
-          cognitoSyncWarning = ' Grupurile Cognito nu au fost sincronizate deoarece serviciul AWS nu are permisiunea necesara.';
-        }
-      }
-
       const savedExpert = isPersistedExpert(editingExpert)
         ? await callAdminExpertWrite('update', updates, getPersistedExpertId(editingExpert))
         : await callAdminExpertWrite('create', buildExpertCreateInput(editingExpert, updates));
@@ -467,7 +434,7 @@ export function AdminUsersTable() {
         justification: 'Profil utilizator actualizat din panoul de administrare.',
       });
 
-      setOk(`Profilul pentru ${updates.name} a fost actualizat.${cognitoSyncWarning ?? ''}`);
+      setOk(`Profilul pentru ${updates.name} a fost actualizat.`);
       setEditingExpert(null);
       setForm(null);
       await loadExperts();
@@ -808,30 +775,6 @@ export function AdminUsersTable() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Rol</Label>
-                <Select
-                  value={form.role}
-                  onValueChange={(value) =>
-                    setForm({
-                      ...form,
-                      role: value as RoleOption,
-                      hasPmAccess: value.includes('PM') || value === 'Admin' || form.hasPmAccess,
-                    })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Rol utilizator" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {roleOptions.map((option) => (
-                      <SelectItem key={option} value={option}>
-                        {option}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
                 <Label htmlFor="admin-user-norma">Norma zilnica</Label>
                 <Input
                   id="admin-user-norma"
@@ -892,20 +835,6 @@ export function AdminUsersTable() {
                   onChange={(event) => setForm({ ...form, positionInProject: event.target.value })}
                 />
               </div>
-              <label className="flex items-center gap-2 text-sm font-medium">
-                <Checkbox
-                  checked={form.hasPmAccess}
-                  onCheckedChange={(checked) => setForm({ ...form, hasPmAccess: checked === true })}
-                />
-                Acces PM
-              </label>
-              <label className="flex items-center gap-2 text-sm font-medium">
-                <Checkbox
-                  checked={form.isActive}
-                  onCheckedChange={(checked) => setForm({ ...form, isActive: checked === true })}
-                />
-                Cont activ
-              </label>
             </div>
           ) : null}
 

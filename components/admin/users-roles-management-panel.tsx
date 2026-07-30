@@ -14,6 +14,12 @@ import { cognitoGroupsForRole } from '@/lib/cognito-roles';
 
 type RoleOption = 'Expert' | 'PM' | 'Expert/PM' | 'Admin';
 
+const roleOptions: RoleOption[] = ['Expert', 'PM', 'Expert/PM', 'Admin'];
+
+function roleIncludesPmAccess(role: string) {
+  return role.includes('PM') || role === 'Admin';
+}
+
 function buildExpertCreateInput(expert: Expert, updates: Partial<Expert>): Omit<Expert, 'id'> {
   return {
     userId: expert.userId,
@@ -114,7 +120,8 @@ export function UsersRolesManagementPanel() {
         // If reset flow is not yet available for unconfirmed users, we still continue with profile provisioning.
       }
 
-      const cognitoGroups = cognitoGroupsForRole(role, role.includes('PM') || role === 'Admin');
+      const hasPmAccess = roleIncludesPmAccess(role);
+      const cognitoGroups = cognitoGroupsForRole(role, hasPmAccess);
       await syncOrInviteCognitoGroupsForUser(normalizedEmail, cognitoGroups, name.trim());
 
       await expertsService.create({
@@ -123,7 +130,7 @@ export function UsersRolesManagementPanel() {
         role,
         norma: 8,
         isActive: true,
-        hasPmAccess: role.includes('PM') || role === 'Admin',
+        hasPmAccess,
         cognitoGroups,
         saCodes: [],
       });
@@ -152,12 +159,13 @@ export function UsersRolesManagementPanel() {
     }
   }
 
-  async function handleSetRole(expert: Expert, nextRole: RoleOption) {
+  async function handleSetRole(expert: Expert, nextRole: RoleOption, nextHasPmAccess?: boolean) {
     setSaving(true);
     setError(null);
     setOk(null);
     try {
-      const hasPmAccess = nextRole.includes('PM') || nextRole === 'Admin';
+      const roleHasPmAccess = roleIncludesPmAccess(nextRole);
+      const hasPmAccess = roleHasPmAccess || (nextHasPmAccess ?? expert.hasPmAccess ?? false);
       const cognitoGroups = cognitoGroupsForRole(nextRole, hasPmAccess);
       await syncOrInviteCognitoGroupsForUser(expert.email, cognitoGroups, expert.name);
       const updates = {
@@ -247,7 +255,9 @@ export function UsersRolesManagementPanel() {
           <Input placeholder="Nume utilizator" value={name} onChange={(e) => setName(e.target.value)} />
           <Input placeholder="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
           <select className="h-10 rounded-md border bg-background px-3 text-sm" value={role} onChange={(e) => setRole(e.target.value as RoleOption)}>
-            <option>Expert</option><option>PM</option><option>Expert/PM</option><option>Admin</option>
+            {roleOptions.map((option) => (
+              <option key={option}>{option}</option>
+            ))}
           </select>
           <Button onClick={handleInvite} disabled={saving}>Invitare utilizator</Button>
         </div>
@@ -267,9 +277,25 @@ export function UsersRolesManagementPanel() {
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   {(expert.isActive ?? true) ? <Badge>Activ</Badge> : <Badge variant="outline">Dezactivat</Badge>}
-                  <select className="h-9 rounded-md border bg-background px-2 text-sm" value={expert.role} onChange={(e) => handleSetRole(expert, e.target.value as RoleOption)} disabled={saving}>
-                    <option>Expert</option><option>PM</option><option>Expert/PM</option><option>Admin</option>
+                  <select
+                    className="h-9 rounded-md border bg-background px-2 text-sm"
+                    value={expert.role}
+                    onChange={(e) => handleSetRole(expert, e.target.value as RoleOption)}
+                    disabled={saving}
+                  >
+                    {roleOptions.map((option) => (
+                      <option key={option}>{option}</option>
+                    ))}
                   </select>
+                  <label className="flex h-9 items-center gap-2 rounded-md border px-3">
+                    <input
+                      type="checkbox"
+                      checked={roleIncludesPmAccess(expert.role) || Boolean(expert.hasPmAccess)}
+                      onChange={(event) => handleSetRole(expert, expert.role as RoleOption, event.target.checked)}
+                      disabled={saving || expert.role === 'Admin'}
+                    />
+                    Acces PM
+                  </label>
                   <Button variant="outline" onClick={() => handlePasswordReset(expert)} disabled={saving}>
                     Resetare parolă
                   </Button>

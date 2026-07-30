@@ -25,6 +25,7 @@ import { AdminUsersTable } from '@/components/admin/admin-users-table';
 import { AdminProjectsPanel } from '@/components/admin/admin-projects-panel';
 import { BusinessHubEntityDirectoryPanel } from '@/components/admin/business-hub-entity-directory-panel';
 import { PeoExpertCategoriesPanel } from '@/components/admin/peo-expert-categories-panel';
+import { UsersRolesManagementPanel } from '@/components/admin/users-roles-management-panel';
 import { ViewAsExpertPanel } from '@/components/admin/view-as-expert-panel';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -188,7 +189,11 @@ export default async function AdminPage({
               <PeoExpertCategoriesPanel />
             </TabsContent>
 
-            {(['roluri'] as const).map((tab) => (
+            <TabsContent value="roluri" className="m-0 p-6">
+              <UsersRolesManagementPanel />
+            </TabsContent>
+
+            {/*
               <TabsContent key={tab} value={tab} className="m-0 p-6">
                 <div className="grid gap-4 md:grid-cols-3">
                   {[
@@ -203,7 +208,7 @@ export default async function AdminPage({
                   ))}
                 </div>
               </TabsContent>
-            ))}
+            */}
 
             <TabsContent value="proiecte" className="m-0 p-6">
               <AdminProjectsPanel />
