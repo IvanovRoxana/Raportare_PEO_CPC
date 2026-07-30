@@ -216,6 +216,28 @@ test('editarea unui grup actualizeaza zilele pastrate, creeaza zilele noi si ste
   assert.ok([...plan.updateActivities, ...plan.newActivities].every((item) => item.periodGroupId === periodGroupId));
 });
 
+test('editarea din aplicatie poate pastra zilele lipsa fara stergere implicita', () => {
+  const periodGroupId = 'activity-period:period-1';
+  const groupMembers = [
+    activity('activity-4', { date: '2026-06-04', periodGroupId }),
+    activity('activity-5', { date: '2026-06-05', periodGroupId }),
+  ];
+  const submitted = buildSubmittedActivitiesForEdit(
+    groupMembers[0],
+    [activity('activity-4', { date: '2026-06-04', periodGroupId })],
+    ['2026-06-04'],
+    { '2026-06-04': '6' },
+    groupMembers,
+    'expert-1',
+    (value, fallback) => String(value ?? fallback),
+  );
+  const plan = planGroupedActivityEdit(groupMembers[0], submitted, groupMembers, 'expert-1', false);
+
+  assert.deepEqual(plan.updateActivities.map((item) => item.id), ['activity-4']);
+  assert.equal(plan.newActivities.length, 0);
+  assert.deepEqual(plan.deleteActivityIds, []);
+});
+
 test('editarea multi-day regrupeaza activitati existente pe zilele selectate', () => {
   const existingActivities = [
     activity('activity-4', { date: '2026-06-04', hours: 4, saCode: 'SA3.4', activityType: 'Analiza legislativa' }),

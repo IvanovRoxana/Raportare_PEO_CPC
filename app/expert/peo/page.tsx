@@ -878,16 +878,7 @@ function ExpertDashboardContent() {
     if (offset === 1) return nextMonthStatus?.expertAccessApproved === true;
     return false;
   };
-  const calendarDraftActivities = useMemo(
-    () => {
-      if (!editingActivity) return activities;
-      const editingGroupMemberIds = new Set(
-        getActivityGroupMembers(editingActivity, activities).map((activity) => activity.id),
-      );
-      return activities.filter((activity) => !editingGroupMemberIds.has(activity.id));
-    },
-    [activities, editingActivity],
-  );
+  const calendarDraftActivities = activities;
 
   const getMonthAccessMessage = (month: number, year: number) =>
     `Luna ${getMonthName(month)} ${year} se poate deschide doar dupa acordul PM.`;
@@ -1195,6 +1186,7 @@ function ExpertDashboardContent() {
           submittedActivities,
           editingGroupMembers,
           selectedExpertId,
+          false,
         );
         await Promise.all(updateActivities.map((activity) => updateActivity(activity.id, activity)));
         const createdActivities = activitiesToCreate.length > 0

@@ -391,6 +391,7 @@ export function planGroupedActivityEdit(
   submittedActivities: Activity[],
   existingGroupMembers: Activity[],
   expertId: string,
+  deleteMissingActivities = true,
 ): { updateActivities: Activity[]; newActivities: Activity[]; deleteActivityIds: string[] } {
   const existingIds = new Set(existingGroupMembers.map((activity) => activity.id));
   const submittedIds = new Set(submittedActivities.map((activity) => activity.id));
@@ -406,9 +407,11 @@ export function planGroupedActivityEdit(
     newActivities: submittedActivities
       .filter((activity) => !existingIds.has(activity.id))
       .map((activity) => ({ ...activity, expertId })),
-    deleteActivityIds: existingGroupMembers
-      .filter((activity) => !submittedIds.has(activity.id))
-      .map((activity) => activity.id),
+    deleteActivityIds: deleteMissingActivities
+      ? existingGroupMembers
+          .filter((activity) => !submittedIds.has(activity.id))
+          .map((activity) => activity.id)
+      : [],
   };
 }
 
