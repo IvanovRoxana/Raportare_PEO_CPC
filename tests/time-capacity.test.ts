@@ -153,6 +153,39 @@ test('permite proiecte concurente pana la limita CIM zilnica', () => {
   assert.equal(snapshot.conflicts.length, 0);
 });
 
+test('blocheaza activitatile in zilele cu CO introdus in calendar', () => {
+  const snapshot = calculateCapacitySnapshot({
+    expert,
+    contracts: [contract()],
+    activities: [{
+      id: 'activity',
+      expertId: expert.id,
+      date: '2026-06-02',
+      hours: 1,
+      activityType: 'test',
+      title: 'test',
+      status: 'draft',
+    }],
+    leaveEntries: [{
+      id: 'leave-entry',
+      expertId: expert.id,
+      date: '2026-06-02',
+      month: 5,
+      year: 2026,
+      type: 'CO',
+      totalHours: 8,
+      peoHours: 6,
+      cpcHours: 2,
+      source: 'FINANCIAL',
+      status: 'DRAFT',
+    }],
+    month: 5,
+    year: 2026,
+  });
+
+  assert.equal(snapshot.conflicts[0]?.code, 'LEAVE_DAY_LOCKED');
+});
+
 test('blocheaza proiecte concurente peste limita CIM zilnica', () => {
   const snapshot = calculateCapacitySnapshot({
     expert,

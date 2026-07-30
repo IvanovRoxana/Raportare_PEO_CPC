@@ -700,7 +700,7 @@ function ExpertDashboardContent() {
         date: leave.date,
         expertId: leave.expertId,
         expertName: experts.find((expert) => expert.id === leave.expertId)?.name,
-        hours: leave.totalHours,
+        hours: leave.peoHours,
         activityType: leave.type === 'CM' ? 'CM - Concediu medical' : 'CO - Concediu de odihna',
         title: leave.type + ' (' + leave.peoHours + ' h PEO + ' + leave.cpcHours + ' h CPC)',
         description: leave.source === 'FINANCIAL' ? 'Concediu introdus de Financiar.' : 'Concediu repartizat automat.',

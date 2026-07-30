@@ -43,6 +43,13 @@ test('dashboardul Financiar include utilizatorii PEO fallback pentru editarea CO
   assert.doesNotMatch(source, /useExperts\(\{\s*includeFallback:\s*false\s*\}\)/);
 });
 
+test('coloana perioada CO foloseste calendar pentru selectia zilelor', () => {
+  const source = readFileSync('components/financial/financial-reporting-dashboard.tsx', 'utf8');
+  assert.match(source, /function FinancialLeavePeriodPicker/);
+  assert.match(source, /<PopoverTrigger asChild>/);
+  assert.match(source, /updateLeaveGridPeriod\(row, dates\)/);
+});
+
 test('modulul financiar preia CO doar din modulul CO manual', () => {
   const activities: Activity[] = [
     { id: 'a1', expertId: expert.id, date: '2026-06-02', hours: 8, activityType: 'A', title: 'Activitate', status: 'approved' },

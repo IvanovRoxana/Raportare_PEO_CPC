@@ -12,7 +12,7 @@ import { getNonWorkingDayInfo } from './non-working-days.ts';
 export const ABSOLUTE_DAILY_HOURS_LIMIT = 8;
 
 export type CapacityConflict = {
-  code: 'DAILY_CIM_EXCEEDED' | 'DAILY_PEO_EXCEEDED' | 'MONTHLY_PEO_EXCEEDED' | 'MONTHLY_CIM_EXCEEDED';
+  code: 'DAILY_CIM_EXCEEDED' | 'DAILY_PEO_EXCEEDED' | 'MONTHLY_PEO_EXCEEDED' | 'MONTHLY_CIM_EXCEEDED' | 'LEAVE_DAY_LOCKED';
   date?: string;
   message: string;
 };
@@ -104,14 +104,18 @@ export function calculateCapacitySnapshot(input: CapacityInput): CapacitySnapsho
   const peoMonthlyLimit = monthLimit(expert, input.contracts, month, year, 'peo');
   const cimMonthlyLimit = monthLimit(expert, input.contracts, month, year, 'cim');
   const dailyTotals: Record<string, number> = {};
+  const activeLeaveDates = new Set<string>();
+  const workDates = new Set<string>();
   let peoUsed = 0;
   let cimUsed = 0;
 
-  const add = (date: string, hours: number, peoHours = 0) => {
+  const add = (date: string, hours: number, peoHours = 0, bucket: 'work' | 'leave' = 'work') => {
     if (!date.startsWith(monthKey) || hours <= 0) return;
     dailyTotals[date] = (dailyTotals[date] ?? 0) + hours;
     cimUsed += hours;
     peoUsed += peoHours;
+    if (bucket === 'leave') activeLeaveDates.add(date);
+    else workDates.add(date);
   };
 
   for (const activity of input.activities ?? []) {
@@ -124,10 +128,19 @@ export function calculateCapacitySnapshot(input: CapacityInput): CapacitySnapsho
   }
   for (const leave of input.leaveEntries ?? []) {
     if (leave.status === 'REJECTED') continue;
-    add(String(leave.date), numeric(leave.totalHours), numeric(leave.peoHours));
+    add(String(leave.date), numeric(leave.totalHours), numeric(leave.peoHours), 'leave');
   }
 
   const conflicts: CapacityConflict[] = [];
+  for (const date of workDates) {
+    if (activeLeaveDates.has(date)) {
+      conflicts.push({
+        code: 'LEAVE_DAY_LOCKED',
+        date,
+        message: `${date}: ziua are CO/CM in calendar si nu permite adaugarea de activitati.`,
+      });
+    }
+  }
   for (const [date, total] of Object.entries(dailyTotals)) {
     const dayContract = resolveNormContract(expert, input.contracts, date);
     const cimLimit = Math.min(ABSOLUTE_DAILY_HOURS_LIMIT, dayContract.cimDailyCap || 8);

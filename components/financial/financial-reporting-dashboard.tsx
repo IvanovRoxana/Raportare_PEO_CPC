@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   useActivitiesByMonth,
@@ -135,6 +136,24 @@ function formatLeavePeriod(dates: string[]) {
   return parts.join('; ');
 }
 
+function getMonthCalendarCells(month: number, year: number) {
+  const firstDay = new Date(Date.UTC(year, month, 1));
+  const offset = (firstDay.getUTCDay() + 6) % 7;
+  const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  const cells: Array<{ day: number; date: string; isWeekend: boolean } | null> = [];
+  for (let index = 0; index < offset; index += 1) cells.push(null);
+  for (let day = 1; day <= lastDay; day += 1) {
+    const date = new Date(Date.UTC(year, month, day));
+    const weekday = date.getUTCDay();
+    cells.push({
+      day,
+      date: isoDate(year, month, day),
+      isWeekend: weekday === 0 || weekday === 6,
+    });
+  }
+  return cells;
+}
+
 function parseLeavePeriod(period: string, month: number, year: number) {
   const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
   const days = new Set<number>();
@@ -158,6 +177,103 @@ function parseLeavePeriod(period: string, month: number, year: number) {
   }
 
   return [...days].sort((left, right) => left - right).map((day) => isoDate(year, month, day));
+}
+
+function FinancialLeavePeriodPicker({
+  disabled,
+  month,
+  onSelectDates,
+  period,
+  rowName,
+  year,
+}: {
+  disabled: boolean;
+  month: number;
+  onSelectDates: (dates: string[]) => void;
+  period: string;
+  rowName: string;
+  year: number;
+}) {
+  const selectedDates = useMemo(() => {
+    try {
+      return new Set(parseLeavePeriod(period, month, year));
+    } catch {
+      return new Set<string>();
+    }
+  }, [month, period, year]);
+  const calendarCells = useMemo(() => getMonthCalendarCells(month, year), [month, year]);
+  const selectedCount = selectedDates.size;
+
+  const toggleDate = (date: string) => {
+    const next = new Set(selectedDates);
+    if (next.has(date)) {
+      next.delete(date);
+    } else {
+      next.add(date);
+    }
+    onSelectDates([...next].sort());
+  };
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          className="h-7 w-full justify-center rounded-none px-1 text-center text-[11px] font-normal tabular-nums"
+          disabled={disabled}
+          title={`Alege zile CO pentru ${rowName}`}
+        >
+          <CalendarDays className="mr-1 h-3 w-3" />
+          <span className={period ? 'text-slate-900' : 'text-muted-foreground'}>{period || 'Alege zile'}</span>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="center" className="w-[260px] p-3">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <div className="text-sm font-semibold">{MONTHS[month]} {year}</div>
+          <Badge variant="secondary" className="text-[10px]">{selectedCount} zile</Badge>
+        </div>
+        <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-semibold text-muted-foreground">
+          {['Lu', 'Ma', 'Mi', 'Jo', 'Vi', 'Sa', 'Du'].map((label) => <div key={label}>{label}</div>)}
+        </div>
+        <div className="mt-1 grid grid-cols-7 gap-1">
+          {calendarCells.map((cell, index) => {
+            if (!cell) return <div key={`empty-${index}`} className="h-7" />;
+            const selected = selectedDates.has(cell.date);
+            return (
+              <Button
+                key={cell.date}
+                type="button"
+                variant={selected ? 'default' : 'outline'}
+                className={`h-7 rounded-sm p-0 text-[11px] ${cell.isWeekend ? 'opacity-40' : ''}`}
+                disabled={cell.isWeekend}
+                onClick={() => toggleDate(cell.date)}
+              >
+                {cell.day}
+              </Button>
+            );
+          })}
+        </div>
+        <div className="mt-3 flex justify-between gap-2">
+          <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={() => onSelectDates([])}>
+            Sterge
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 text-xs"
+            onClick={() => {
+              const allWorkingDays = calendarCells.filter((cell): cell is NonNullable<typeof cell> => !!cell && !cell.isWeekend).map((cell) => cell.date);
+              onSelectDates(allWorkingDays);
+            }}
+          >
+            Toate zilele
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
 }
 
 function downloadResponse(response: Response, fallbackName: string) {
@@ -495,6 +611,43 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
       }
       if (field === 'cpcNorm' || field === 'cpcDays') {
         next.cpcHours = formatNumericCell(numericCell(next.cpcNorm) * numericCell(next.cpcDays));
+      }
+      return { ...current, [key]: next };
+    });
+  };
+
+  const updateLeaveGridPeriod = (row: FinancialTimesheetRow, dates: string[]) => {
+    const key = leaveGridRowKey(row);
+    setLeaveGridDrafts((current) => {
+      const previous = current[key] ?? {
+        peoNorm: '0',
+        peoDays: '0',
+        peoHours: '0',
+        cpcNorm: '0',
+        cpcDays: '0',
+        cpcHours: '0',
+        period: '',
+      };
+      const next = {
+        ...previous,
+        period: formatLeavePeriod(dates),
+      };
+      const selectedDays = dates.length;
+      const peoNorm = numericCell(next.peoNorm);
+      const cpcNorm = numericCell(next.cpcNorm);
+      if (peoNorm > 0) {
+        next.peoDays = formatNumericCell(selectedDays);
+        next.peoHours = formatNumericCell(peoNorm * selectedDays);
+      }
+      if (cpcNorm > 0) {
+        next.cpcDays = formatNumericCell(selectedDays);
+        next.cpcHours = formatNumericCell(cpcNorm * selectedDays);
+      }
+      if (selectedDays === 0) {
+        next.peoDays = '0';
+        next.peoHours = '0';
+        next.cpcDays = '0';
+        next.cpcHours = '0';
       }
       return { ...current, [key]: next };
     });
@@ -1289,7 +1442,14 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
                             <Input className={`${inputBaseClass} font-bold`} inputMode="decimal" value={draft.cpcHours} disabled={!row.expertId} onChange={(event) => updateLeaveGridDraft(row, 'cpcHours', event.target.value)} aria-label={`Ore CO CPC ${row.name}`} />
                           </td>
                           <td className="border-r border-black px-1 py-1">
-                            <Input className={`${inputBaseClass} text-center`} value={draft.period} disabled={!row.expertId} onChange={(event) => updateLeaveGridDraft(row, 'period', event.target.value)} placeholder="01-08; 29-31" aria-label={`Perioada CO ${row.name}`} />
+                            <FinancialLeavePeriodPicker
+                              disabled={!row.expertId}
+                              month={month}
+                              onSelectDates={(dates) => updateLeaveGridPeriod(row, dates)}
+                              period={draft.period}
+                              rowName={row.name}
+                              year={year}
+                            />
                           </td>
                           <td className="px-1 py-1 text-center">
                             <Button size="icon" variant="ghost" className="h-7 w-7" title={`Salveaza CO pentru ${row.name}`} aria-label={`Salveaza CO pentru ${row.name}`} disabled={!row.expertId || savingLeaveRow !== null} onClick={() => saveLeaveGridRow(row)}>
