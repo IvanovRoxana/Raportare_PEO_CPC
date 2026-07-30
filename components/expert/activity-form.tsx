@@ -101,7 +101,11 @@ import {
 import { useActivityAutofill } from '@/hooks/use-activity-autofill';
 import { useGdprActivity } from '@/hooks/use-gdpr-activity';
 import { ObservationRail } from './observation-rail';
-import { BUSINESS_HUB_REGISTRY_ACTIVITY_TITLE, getActivityFormRoleConfig } from '@/lib/roles/business-hub';
+import {
+  BUSINESS_HUB_REGISTRY_ACTIVITY_TITLE,
+  getActivityFormRoleConfig,
+  isBusinessHubRegistryActivity,
+} from '@/lib/roles/business-hub';
 import {
   getBusinessHubMetaMissingFields,
   parseBusinessHubMetaJson,
@@ -475,7 +479,7 @@ export function ActivityForm({
   const isBusinessHubExpert = show.businessHubTab;
   const reportMonthName = ['ianuarie', 'februarie', 'martie', 'aprilie', 'mai', 'iunie', 'iulie', 'august', 'septembrie', 'octombrie', 'noiembrie', 'decembrie'][month] || 'luna de raportare';
   const [activityFormTab, setActivityFormTab] = useState<'business_hub' | 'standard' | 'event'>(
-    () => isBusinessHubExpert && (initialActivity?.businessHubMetaJson || !initialActivity) ? 'business_hub' : 'standard',
+    () => isBusinessHubExpert && (!initialActivity || isBusinessHubRegistryActivity(initialActivity, expertCategory)) ? 'business_hub' : 'standard',
   );
   const [currentWizardStep, setCurrentWizardStep] = useState<ActivityWizardStepId>(() => getResolutionWizardStep(resolutionHint));
   const [skipMainDeliverableForNow, setSkipMainDeliverableForNow] = useState(false);

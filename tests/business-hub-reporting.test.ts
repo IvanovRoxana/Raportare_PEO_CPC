@@ -8,7 +8,11 @@ import {
   resolveBusinessHubEntitiesForRows,
   serializeBusinessHubMeta,
 } from '../lib/business-hub-reporting.ts';
-import { BUSINESS_HUB_REGISTRY_ACTIVITY_TITLE, getActivityFormRoleConfig } from '../lib/roles/business-hub.ts';
+import {
+  BUSINESS_HUB_REGISTRY_ACTIVITY_TITLE,
+  getActivityFormRoleConfig,
+  isBusinessHubRegistryActivity,
+} from '../lib/roles/business-hub.ts';
 import type { Activity, BusinessHubEntityDirectoryEntry } from '../lib/types.ts';
 import * as XLSX from 'xlsx';
 
@@ -54,6 +58,17 @@ test('Business Hub metadata validation requires only registry essentials', () =>
     startTime: '',
     endTime: '12:00',
   }), ['titlul evenimentului', 'ora de inceput']);
+});
+
+test('Business Hub legacy registry activity is recognized without metadata', () => {
+  const registryActivity = {
+    saCode: 'SA3.2',
+    activityType: BUSINESS_HUB_REGISTRY_ACTIVITY_TITLE,
+    title: BUSINESS_HUB_REGISTRY_ACTIVITY_TITLE,
+  };
+
+  assert.equal(isBusinessHubRegistryActivity(registryActivity, 'bh'), true);
+  assert.equal(isBusinessHubRegistryActivity(registryActivity, 'ap'), false);
 });
 
 test('monthly PV rows include only BH activities from selected month', () => {

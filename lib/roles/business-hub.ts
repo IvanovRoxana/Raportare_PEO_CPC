@@ -1,4 +1,5 @@
 import type { Expert } from '../types.ts';
+import type { Activity } from '../types.ts';
 import { normalizePeoCategory } from '../peo-category.ts';
 
 export const BUSINESS_HUB_REGISTRY_ACTIVITY_TITLE =
@@ -18,6 +19,23 @@ export const BUSINESS_HUB_ROLE = {
     grupTinta: false,
   },
 } as const;
+
+function normalizeActivityLabel(value?: string | null) {
+  return String(value ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+export function isBusinessHubRegistryActivity(
+  activity: Pick<Activity, 'activityType' | 'title' | 'businessHubMetaJson'> | null | undefined,
+  expertCategory?: string | null,
+) {
+  if (!activity) return false;
+  if (normalizePeoCategory(expertCategory ?? undefined) !== BUSINESS_HUB_ROLE.category) return false;
+  if (activity.businessHubMetaJson) return true;
+
+  const registryTitle = normalizeActivityLabel(BUSINESS_HUB_REGISTRY_ACTIVITY_TITLE);
+  return normalizeActivityLabel(activity.activityType) === registryTitle
+    || normalizeActivityLabel(activity.title) === registryTitle;
+}
 
 export type ActivityFormRoleConfig = {
   category: string;
