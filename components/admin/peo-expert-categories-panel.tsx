@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { fetchAuthSession } from 'aws-amplify/auth';
-import { BriefcaseBusiness, FileText, Loader2, Save, Upload } from 'lucide-react';
+import { BriefcaseBusiness, Loader2, Save, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -17,8 +17,8 @@ function unique(values: string[]) {
   return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean))).sort();
 }
 
-function getCategoryKey(expert: Expert) {
-  return expert.expertExperienceCategory?.trim() || expert.category?.trim() || '';
+function getPositionKey(expert: Expert) {
+  return expert.positionInProject?.trim() || '';
 }
 
 async function getAccessToken() {
@@ -41,7 +41,7 @@ async function updateExpertJobDescription(expertId: string, jobDescriptionText: 
     }),
   });
   const data = await response.json().catch(() => null);
-  if (!response.ok) throw new Error(data?.error || 'Nu am putut salva responsabilitatile categoriei.');
+  if (!response.ok) throw new Error(data?.error || 'Nu am putut salva responsabilitatile pozitiei in proiect.');
 }
 
 export function PeoExpertCategoriesPanel() {
@@ -50,11 +50,11 @@ export function PeoExpertCategoriesPanel() {
     () => experts.filter((expert) => expert.isActive !== false),
     [experts],
   );
-  const categories = useMemo(
-    () => unique(activeExperts.map(getCategoryKey)),
+  const projectPositions = useMemo(
+    () => unique(activeExperts.map(getPositionKey)),
     [activeExperts],
   );
-  const [category, setCategory] = useState('');
+  const [projectPosition, setProjectPosition] = useState('');
   const [responsibilities, setResponsibilities] = useState('');
   const [pdfName, setPdfName] = useState('');
   const [extractingPdf, setExtractingPdf] = useState(false);
@@ -63,15 +63,15 @@ export function PeoExpertCategoriesPanel() {
   const [error, setError] = useState<string | null>(null);
 
   const matchingExperts = useMemo(
-    () => activeExperts.filter((expert) => getCategoryKey(expert) === category),
-    [activeExperts, category],
+    () => activeExperts.filter((expert) => getPositionKey(expert) === projectPosition),
+    [activeExperts, projectPosition],
   );
 
   useEffect(() => {
     const savedResponsibilities = matchingExperts.find((expert) => expert.jobDescriptionText?.trim())?.jobDescriptionText;
     setResponsibilities(savedResponsibilities || '');
     setPdfName('');
-  }, [category, matchingExperts]);
+  }, [projectPosition, matchingExperts]);
 
   async function handlePdfUpload(file?: File | null) {
     if (!file) return;
@@ -94,16 +94,16 @@ export function PeoExpertCategoriesPanel() {
   }
 
   async function saveCategoryResponsibilities() {
-    if (!category) {
-      setError('Alege o categorie expert PEO.');
+    if (!projectPosition) {
+      setError('Alege o pozitie in proiect.');
       return;
     }
     if (!responsibilities.trim()) {
-      setError('Completeaza responsabilitatile pentru categoria selectata.');
+      setError('Completeaza responsabilitatile pentru pozitia selectata.');
       return;
     }
     if (matchingExperts.length === 0) {
-      setError('Nu exista experti activi in categoria selectata.');
+      setError('Nu exista experti activi cu pozitia selectata.');
       return;
     }
 
@@ -116,7 +116,7 @@ export function PeoExpertCategoriesPanel() {
         updateExpertJobDescription(expert.id, responsibilities.trim(), token)
       )));
       await mutate();
-      setMessage(`Responsabilitatile au fost salvate pentru ${matchingExperts.length} expert(i) din categoria ${category}.`);
+      setMessage(`Responsabilitatile au fost salvate pentru ${matchingExperts.length} expert(i) cu pozitia ${projectPosition}.`);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : 'Salvarea responsabilitatilor a esuat.');
     } finally {
@@ -139,13 +139,13 @@ export function PeoExpertCategoriesPanel() {
         <CardContent className="space-y-5">
           <div className="grid gap-4 lg:grid-cols-[1fr_1fr_auto]">
             <div className="space-y-2">
-              <Label>Categorie expert</Label>
-              <Select value={category} onValueChange={setCategory} disabled={isLoading}>
+              <Label>Pozitie in proiect</Label>
+              <Select value={projectPosition} onValueChange={setProjectPosition} disabled={isLoading}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Alege categoria" />
+                  <SelectValue placeholder="Alege pozitia" />
                 </SelectTrigger>
                 <SelectContent>
-                  {categories.map((item) => (
+                  {projectPositions.map((item) => (
                     <SelectItem key={item} value={item}>{item}</SelectItem>
                   ))}
                 </SelectContent>
@@ -168,9 +168,9 @@ export function PeoExpertCategoriesPanel() {
             </div>
           </div>
 
-          {category ? (
+          {projectPosition ? (
             <div className="rounded-xl border bg-slate-50 p-3 text-sm text-slate-700">
-              Categoria selectata are {matchingExperts.length} expert(i) activ(i). Salvarea aplica responsabilitatile pe profilurile lor, iar Anexa 10 le preia automat.
+              Pozitia selectata are {matchingExperts.length} expert(i) activ(i). Salvarea aplica responsabilitatile pe profilurile lor, iar Anexa 10 le preia automat.
             </div>
           ) : null}
 
@@ -184,13 +184,13 @@ export function PeoExpertCategoriesPanel() {
               rows={10}
               value={responsibilities}
               onChange={(event) => setResponsibilities(event.target.value)}
-              placeholder="Completeaza responsabilitatile categoriei sau incarca fisa postului PDF pentru extragere text."
+              placeholder="Completeaza responsabilitatile pozitiei in proiect sau incarca fisa postului PDF pentru extragere text."
             />
           </div>
 
           <Button type="button" onClick={saveCategoryResponsibilities} disabled={saving || extractingPdf}>
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            Salveaza responsabilitatile categoriei
+            Salveaza responsabilitatile pozitiei
           </Button>
 
           <div className="rounded-xl border bg-white p-4 text-sm text-muted-foreground">
