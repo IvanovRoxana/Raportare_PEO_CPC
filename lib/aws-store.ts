@@ -358,7 +358,12 @@ function withSupportedExpertFields(payload: Record<string, unknown>, expert: Par
     positionInProject: expert.positionInProject,
     projectCode: expert.projectCode,
     projectTitle: expert.projectTitle,
+    contractNumber: expert.contractNumber,
+    contractType: expert.contractType,
+    expertExperienceCategory: expert.expertExperienceCategory,
+    jobDescriptionText: expert.jobDescriptionText,
     aiReportingInstructions: expert.aiReportingInstructions,
+    beneficiary: expert.beneficiary,
   };
 
   Object.entries(extendedFields).forEach(([field, value]) => {
@@ -505,7 +510,12 @@ function mapExpert(item: any): Expert {
     positionInProject: item.positionInProject ?? undefined,
     projectCode: item.projectCode ?? undefined,
     projectTitle: item.projectTitle ?? undefined,
+    contractNumber: item.contractNumber ?? undefined,
+    contractType: item.contractType ?? undefined,
+    expertExperienceCategory: item.expertExperienceCategory ?? undefined,
+    jobDescriptionText: item.jobDescriptionText ?? undefined,
     aiReportingInstructions: item.aiReportingInstructions ?? undefined,
+    beneficiary: item.beneficiary ?? undefined,
     saCodes: item.saCodes ?? [],
     hasPmAccess: item.hasPmAccess ?? false,
     isActive: item.isActive ?? true,

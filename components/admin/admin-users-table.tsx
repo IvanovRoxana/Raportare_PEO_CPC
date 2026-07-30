@@ -141,7 +141,7 @@ function parseContractDisplay(value: string) {
   const contract = value.trim();
   if (!contract) return { contractNumber: '', contractType: '' };
 
-  const knownTypeMatch = contract.match(/^(CIM|PFA|SRL|CPS|PS|contract(?:ul)?(?: de)? prestari servicii)\b[\s:,-]*(.*)$/i);
+  const knownTypeMatch = contract.match(/^(CIM|PFA|SRL|CPS|PS|contract(?:ul)?(?: de)? prestari servicii)\b[\s:,-]+(.+)$/i);
   if (!knownTypeMatch) return { contractNumber: contract, contractType: '' };
 
   return {
