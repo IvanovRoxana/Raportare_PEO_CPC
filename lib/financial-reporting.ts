@@ -197,7 +197,19 @@ export function buildFinancialReportingSummary(input: {
       .filter((link) => link.status === 'confirmed' && link.expertId)
       .map((link) => [link.financialPersonKey, link]),
   );
-  const linkedExpertIds = new Set([...confirmedLinkByPersonKey.values()].map((link) => link.expertId!));
+  const inferredMatchByPersonKey = new Map<string, FinancialPersonMatchSuggestion>();
+  for (const person of referencePeople) {
+    const personKey = normalizeFinancialPersonName(person.name);
+    if (confirmedLinkByPersonKey.has(personKey)) continue;
+    const [bestMatch, secondMatch] = rankFinancialPersonMatches(person.name, input.experts, financialPersonLinks);
+    if (bestMatch && bestMatch.score >= 0.96 && (!secondMatch || secondMatch.score < bestMatch.score)) {
+      inferredMatchByPersonKey.set(personKey, bestMatch);
+    }
+  }
+  const linkedExpertIds = new Set([
+    ...[...confirmedLinkByPersonKey.values()].map((link) => link.expertId!),
+    ...[...inferredMatchByPersonKey.values()].map((match) => match.expertId),
+  ]);
   const activityByExpert = new Map<string, Activity[]>();
   const concurrentByExpert = new Map<string, ConcurrentProjectTimesheetEntry[]>();
   const projectById = new Map(projects.map((project) => [project.id, project]));
@@ -225,7 +237,12 @@ export function buildFinancialReportingSummary(input: {
   const rows = [...names].map((normalizedName) => {
     const reference = referenceByName.get(normalizedName);
     const confirmedLink = confirmedLinkByPersonKey.get(normalizedName);
-    const expert = confirmedLink?.expertId ? expertById.get(confirmedLink.expertId) : expertByName.get(normalizedName);
+    const inferredMatch = inferredMatchByPersonKey.get(normalizedName);
+    const expert = confirmedLink?.expertId
+      ? expertById.get(confirmedLink.expertId)
+      : inferredMatch?.expertId
+        ? expertById.get(inferredMatch.expertId)
+        : expertByName.get(normalizedName);
     const activities = expert
       ? activityByExpert.get(expert.id) ?? []
       : [...activityByExpert.values()].flat().filter((activity) => normalizeFinancialPersonName(activity.expertName) === normalizedName);

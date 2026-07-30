@@ -98,6 +98,33 @@ test('auditul evidentiaza persoanele lipsa si diferentele de norma fara a inlocu
   assert.equal(summary.missingExperts, 1);
 });
 
+test('leaga automat persoanele financiare de expertii PEO cand numele are ordinea inversata', () => {
+  const summary = buildFinancialReportingSummary({
+    experts: [expert],
+    activities: [],
+    month: 6,
+    year: 2026,
+    referencePeople: [{
+      name: 'Ivanov Roxana',
+      basePosition: '-',
+      peoPosition: expert.role,
+      peoNorm: '8 h/zi',
+      cimNorm: '8 h/zi',
+      concordiaWorked: 0,
+      concordiaLeave: 0,
+      peoWorked: 0,
+      peoLeave: 0,
+      goodworksPosition: '-',
+      goodworksWorked: 0,
+    }],
+  });
+
+  assert.equal(summary.rows.length, 1);
+  assert.equal(summary.rows[0].expertId, expert.id);
+  assert.equal(summary.rows[0].name, 'Roxana Ivanov');
+  assert.equal(summary.missingExperts, 0);
+});
+
 test('orele CPC lucrate se calculeaza din norma CIM minus PEO, GOODWORKS si CO manual', () => {
   const projects: ConcurrentProject[] = [
     { id: 'c1', expertId: expert.id, projectName: 'Concordia', expertProjectRole: 'Expert resurse umane', dailyHours: 8, startDate: '2026-01-01', isActive: true },
@@ -253,7 +280,7 @@ test('mappingul confirmat leaga randul financiar de expert chiar daca numele dif
   assert.equal(summary.missingExperts, 0);
 });
 
-test('sugestiile neconfirmate nu leaga randul financiar de expert', () => {
+test('potrivirile automate foarte sigure leaga randul financiar de expert', () => {
   const suggestedExpert: Expert = {
     id: 'expert-suggested',
     name: 'Andrei Adelina',
@@ -290,8 +317,8 @@ test('sugestiile neconfirmate nu leaga randul financiar de expert', () => {
     }],
   });
 
-  const financialRow = summary.rows.find((row) => row.name === 'Adelina Andrei');
-  assert.equal(financialRow?.expertId, undefined);
-  assert.ok(financialRow?.conflicts.some((conflict) => conflict.code === 'missing_expert'));
-  assert.equal(financialRow?.matchSuggestions[0].expertId, suggestedExpert.id);
+  const financialRow = summary.rows.find((row) => row.name === 'Andrei Adelina');
+  assert.equal(financialRow?.expertId, suggestedExpert.id);
+  assert.equal(financialRow?.conflicts.some((conflict) => conflict.code === 'missing_expert'), false);
+  assert.deepEqual(financialRow?.matchSuggestions, []);
 });
