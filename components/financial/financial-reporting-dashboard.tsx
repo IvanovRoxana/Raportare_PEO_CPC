@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
 import { AlertTriangle, CalendarDays, CheckCircle2, Download, FileText, Loader2, Plus, Save, SearchIcon, ShieldCheck, Users } from 'lucide-react';
 import { DashboardShell, financialNavItems } from '@/components/layout/dashboard-shell';
 import { Badge } from '@/components/ui/badge';
@@ -651,6 +651,12 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
       }
       return { ...current, [key]: next };
     });
+  };
+
+  const saveLeaveGridRowOnEnter = (row: FinancialTimesheetRow, event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    void saveLeaveGridRow(row);
   };
 
   const saveLeaveGridRow = async (row: FinancialTimesheetRow) => {
@@ -1413,7 +1419,7 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
                         period: '',
                       };
                       const hasDraftLeave = row.leaveEntries.some((leave) => leave.status !== 'VALIDATED' && leave.status !== 'REJECTED');
-                      const inputBaseClass = 'h-7 rounded-none border-0 bg-transparent px-1 text-center text-[11px] tabular-nums shadow-none focus-visible:ring-1 focus-visible:ring-primary';
+                      const inputBaseClass = 'h-7 rounded-sm border border-transparent bg-white/70 px-1 text-center text-[11px] tabular-nums shadow-none hover:border-slate-300 hover:bg-white focus-visible:border-primary focus-visible:bg-white focus-visible:ring-1 focus-visible:ring-primary disabled:bg-transparent';
                       return (
                         <tr key={key} className="border-b border-dashed border-black align-middle hover:bg-slate-50/70">
                           <td className="border-r border-black px-2 py-1">
@@ -1424,22 +1430,22 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
                             </div>
                           </td>
                           <td className="border-r border-black px-1 py-1">
-                            <Input className={inputBaseClass} inputMode="decimal" value={draft.peoNorm} disabled={!row.expertId} onChange={(event) => updateLeaveGridDraft(row, 'peoNorm', event.target.value)} aria-label={`Norma PEO ${row.name}`} />
+                            <Input className={inputBaseClass} inputMode="decimal" value={draft.peoNorm} disabled={!row.expertId} onChange={(event) => updateLeaveGridDraft(row, 'peoNorm', event.target.value)} onFocus={(event) => event.target.select()} onKeyDown={(event) => saveLeaveGridRowOnEnter(row, event)} aria-label={`Norma PEO ${row.name}`} />
                           </td>
                           <td className="border-r border-black px-1 py-1">
-                            <Input className={inputBaseClass} inputMode="decimal" value={draft.peoDays} disabled={!row.expertId} onChange={(event) => updateLeaveGridDraft(row, 'peoDays', event.target.value)} aria-label={`Zile CO PEO ${row.name}`} />
+                            <Input className={inputBaseClass} inputMode="decimal" value={draft.peoDays} disabled={!row.expertId} onChange={(event) => updateLeaveGridDraft(row, 'peoDays', event.target.value)} onFocus={(event) => event.target.select()} onKeyDown={(event) => saveLeaveGridRowOnEnter(row, event)} aria-label={`Zile CO PEO ${row.name}`} />
                           </td>
                           <td className="border-r border-black bg-slate-200 px-1 py-1">
-                            <Input className={`${inputBaseClass} font-bold`} inputMode="decimal" value={draft.peoHours} disabled={!row.expertId} onChange={(event) => updateLeaveGridDraft(row, 'peoHours', event.target.value)} aria-label={`Ore CO PEO ${row.name}`} />
+                            <Input className={`${inputBaseClass} font-bold`} inputMode="decimal" value={draft.peoHours} disabled={!row.expertId} onChange={(event) => updateLeaveGridDraft(row, 'peoHours', event.target.value)} onFocus={(event) => event.target.select()} onKeyDown={(event) => saveLeaveGridRowOnEnter(row, event)} aria-label={`Ore CO PEO ${row.name}`} />
                           </td>
                           <td className="border-r border-black px-1 py-1">
-                            <Input className={inputBaseClass} inputMode="decimal" value={draft.cpcNorm} disabled={!row.expertId} onChange={(event) => updateLeaveGridDraft(row, 'cpcNorm', event.target.value)} aria-label={`Norma CPC ${row.name}`} />
+                            <Input className={inputBaseClass} inputMode="decimal" value={draft.cpcNorm} disabled={!row.expertId} onChange={(event) => updateLeaveGridDraft(row, 'cpcNorm', event.target.value)} onFocus={(event) => event.target.select()} onKeyDown={(event) => saveLeaveGridRowOnEnter(row, event)} aria-label={`Norma CPC ${row.name}`} />
                           </td>
                           <td className="border-r border-black px-1 py-1">
-                            <Input className={inputBaseClass} inputMode="decimal" value={draft.cpcDays} disabled={!row.expertId} onChange={(event) => updateLeaveGridDraft(row, 'cpcDays', event.target.value)} aria-label={`Zile CO CPC ${row.name}`} />
+                            <Input className={inputBaseClass} inputMode="decimal" value={draft.cpcDays} disabled={!row.expertId} onChange={(event) => updateLeaveGridDraft(row, 'cpcDays', event.target.value)} onFocus={(event) => event.target.select()} onKeyDown={(event) => saveLeaveGridRowOnEnter(row, event)} aria-label={`Zile CO CPC ${row.name}`} />
                           </td>
                           <td className="border-r border-black bg-slate-200 px-1 py-1">
-                            <Input className={`${inputBaseClass} font-bold`} inputMode="decimal" value={draft.cpcHours} disabled={!row.expertId} onChange={(event) => updateLeaveGridDraft(row, 'cpcHours', event.target.value)} aria-label={`Ore CO CPC ${row.name}`} />
+                            <Input className={`${inputBaseClass} font-bold`} inputMode="decimal" value={draft.cpcHours} disabled={!row.expertId} onChange={(event) => updateLeaveGridDraft(row, 'cpcHours', event.target.value)} onFocus={(event) => event.target.select()} onKeyDown={(event) => saveLeaveGridRowOnEnter(row, event)} aria-label={`Ore CO CPC ${row.name}`} />
                           </td>
                           <td className="border-r border-black px-1 py-1">
                             <FinancialLeavePeriodPicker
