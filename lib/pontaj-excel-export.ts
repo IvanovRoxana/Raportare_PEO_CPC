@@ -698,10 +698,15 @@ function mergeRefIsSingleRow(ref: string, row: number) {
 }
 
 function shiftRows(xml: string, startRow: number, delta: number) {
-  return xml.replace(/([A-Z]{1,3})(\d+)/g, (match, col, row) => {
-    const rowNumber = Number(row);
-    return rowNumber >= startRow ? `${col}${rowNumber + delta}` : match;
-  });
+  return xml
+    .replace(/(<row\b[^>]*\br=")(\d+)(")/g, (match, open, row, close) => {
+      const rowNumber = Number(row);
+      return rowNumber >= startRow ? `${open}${rowNumber + delta}${close}` : match;
+    })
+    .replace(/([A-Z]{1,3})(\d+)/g, (match, col, row) => {
+      const rowNumber = Number(row);
+      return rowNumber >= startRow ? `${col}${rowNumber + delta}` : match;
+    });
 }
 
 function shiftCellReferences(xml: string, fromRow: number, toRow: number) {

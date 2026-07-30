@@ -249,6 +249,33 @@ describe('export pontaj Excel', () => {
     assert.equal(cellXml(sheet, 'A54'), '');
   });
 
+  it('genereaza Pontaj_PEO valid pentru lunile cu 31 de zile', async () => {
+    const workbook = await generatePontajExcel({
+      kind: 'peo',
+      month: 6,
+      year: 2026,
+      expert: { id: 'expert-july', name: 'Expert Iulie', role: 'Expert PEO', category: 'Expert', oreZi: 8, saCodes: ['SA3.4'] },
+      activities: [
+        { date: '2026-07-31', hours: 6, activityType: 'Activitate finala', saCode: 'SA3.4', status: 'approved' },
+      ],
+      concurrentProjects: [],
+      concurrentTimesheetEntries: [],
+    });
+
+    const files = readXlsx(workbook.buffer);
+    const sheet = files.get('xl/worksheets/sheet1.xml')!.toString('utf8');
+    const rowRefs = [...sheet.matchAll(/<row\b[^>]*\br="(\d+)"/g)].map((match) => match[1]);
+
+    assert.equal(new Set(rowRefs).size, rowRefs.length);
+    assert.ok(rowRefs.includes('54'));
+    assert.match(cellXml(sheet, 'A44'), /<v>46234<\/v>/);
+    assert.match(cellXml(sheet, 'H44'), /<v>6<\/v>/);
+    assert.match(cellXml(sheet, 'A45'), /NR\. TOTAL DE ORE/);
+    assert.match(cellXml(sheet, 'D50'), /<v>46234<\/v>/);
+    assert.match(cellXml(sheet, 'D54'), /<v>46234<\/v>/);
+    assert.doesNotMatch(rowXml(sheet, '45'), /\br="A46"/);
+  });
+
   it('completeaza metadatele PEO din profil si data finala din ultima zi lucrata', async () => {
     const workbook = await generatePontajExcel({
       kind: 'peo',
@@ -419,6 +446,10 @@ function findEocd(buffer: Buffer) {
 
 function cellXml(xml: string, ref: string) {
   return xml.match(new RegExp(`<c\\b(?=[^>]*\\br="${ref}")[^>]*?(?:/>|>[\\s\\S]*?</c>)`))?.[0] ?? '';
+}
+
+function rowXml(xml: string, ref: string) {
+  return xml.match(new RegExp(`<row\\b(?=[^>]*\\br="${ref}")[^>]*>[\\s\\S]*?</row>`))?.[0] ?? '';
 }
 
 function readSharedStrings(files: Map<string, Buffer>) {
