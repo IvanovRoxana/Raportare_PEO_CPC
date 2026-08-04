@@ -41,6 +41,7 @@ import type {
   ConcurrentProject,
   ConcurrentProjectTimesheetEntry,
   Deliverable,
+  DeliverableEligibilityCheck,
   ExpertNormContract,
   FinancialPersonLink,
   LeaveEntry,
@@ -2208,6 +2209,17 @@ export const documentsService = {
     if (scope.accessLevel === 'none') return [];
     const data = await listModel<any>(client.models.Document, { fileHash: { eq: fileHash } });
     return filterDocumentsForScope(data.map(mapDocument), scope);
+  },
+
+  async updateEligibilityCheck(id: string, eligibilityCheck: DeliverableEligibilityCheck | null): Promise<DocumentMetadata | null> {
+    const client = getAwsDataClient() as any;
+    if (!client.models.Document) return null;
+    const result = await client.models.Document.update({
+      id,
+      eligibilityCheck: serializeAwsJsonField(eligibilityCheck),
+    });
+    assertNoErrors(result, 'AWS update document eligibility check');
+    return result.data ? mapDocument(result.data) : null;
   },
 };
 

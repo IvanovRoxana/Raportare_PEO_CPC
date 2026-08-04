@@ -1,6 +1,6 @@
 import type React from 'react';
 import { useState } from 'react';
-import { AlertCircle, CheckCircle2, Download, Eye, FileWarning, FolderOpen, MessageSquare } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Download, Eye, FileWarning, FolderOpen, MessageSquare, ShieldCheck } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { getSecureDocumentUrl } from '@/lib/document-retrieval';
@@ -27,6 +27,7 @@ type PmAlertsPanelProps = {
   activeAlertFilter?: 'title_mismatch' | 'pm_unlock_requests' | 'shared_deliverables' | 'event_documents' | 'all';
   onOpenDossier?: (expertId: string, options?: { activityId?: string; documentId?: string; issueType?: string }) => void;
   onRequestDocumentClarification?: (document: DocumentMetadata) => void;
+  onApprovePmUnlock?: (document: DocumentMetadata) => void | Promise<void>;
   onOpenProblemsForExpert?: (expertId: string) => void;
 };
 
@@ -41,6 +42,7 @@ export function PmAlertsPanel({
   activeAlertFilter = 'all',
   onOpenDossier,
   onRequestDocumentClarification,
+  onApprovePmUnlock,
   onOpenProblemsForExpert,
 }: PmAlertsPanelProps) {
   const [documentActionId, setDocumentActionId] = useState<string | null>(null);
@@ -111,6 +113,18 @@ export function PmAlertsPanel({
       saveBlob(await response.blob(), result.fileName || documentMeta.originalFileName);
     } catch (error) {
       window.alert(error instanceof Error ? error.message : 'Fisierul nu a putut fi descarcat.');
+    } finally {
+      setDocumentActionId(null);
+    }
+  };
+
+  const approvePmUnlock = async (documentMeta: DocumentMetadata) => {
+    if (!onApprovePmUnlock) return;
+    setDocumentActionId(`approve-unlock-${documentMeta.id}`);
+    try {
+      await onApprovePmUnlock(documentMeta);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Deblocarea PM nu a putut fi aprobata.');
     } finally {
       setDocumentActionId(null);
     }
@@ -234,6 +248,10 @@ export function PmAlertsPanel({
                         <Button variant="outline" size="sm" onClick={() => onRequestDocumentClarification?.(document)}>
                           <MessageSquare className="h-4 w-4" />
                           Cere clarificari
+                        </Button>
+                        <Button variant="default" size="sm" onClick={() => approvePmUnlock(document)} disabled={!onApprovePmUnlock || documentActionId !== null}>
+                          {documentActionId === `approve-unlock-${document.id}` ? <FileWarning className="h-4 w-4" /> : <ShieldCheck className="h-4 w-4" />}
+                          Aproba deblocarea
                         </Button>
                         <Button variant="ghost" size="sm" onClick={() => onOpenDossier?.(document.uploadedByExpertId, { documentId: document.id, activityId: document.sourceActivityId, issueType: 'pm_unlock_requested' })}>
                           <FolderOpen className="h-4 w-4" />

@@ -44,7 +44,7 @@ import {
   sharedDeliverablesService,
   reportingWorkBlocksService,
 } from '@/lib/backend-store';
-import type { Activity, Expert, ExpertNormContract, FinancialPersonLink, LeaveEntry, VerificationData, Neconformitate, VerificationNote, AppSettings, ActivityCatalog, WorkingGroup, ConcurrentProject, ConcurrentProjectTimesheetEntry, ReportStatus, GrupTintaEntry, BusinessHubEntityDirectoryEntry, AuditLog, ActivityAutofillAudit, AdminInterventionRequest, HistoricalImportBatch, HistoricalTimesheetDayEntry, MonthlyActivityItem, MonthlyExpertReport, UploadedReportingFile } from '@/lib/types';
+import type { Activity, Expert, ExpertNormContract, FinancialPersonLink, LeaveEntry, VerificationData, Neconformitate, VerificationNote, AppSettings, ActivityCatalog, WorkingGroup, ConcurrentProject, ConcurrentProjectTimesheetEntry, ReportStatus, GrupTintaEntry, BusinessHubEntityDirectoryEntry, AuditLog, ActivityAutofillAudit, AdminInterventionRequest, HistoricalImportBatch, HistoricalTimesheetDayEntry, MonthlyActivityItem, MonthlyExpertReport, UploadedReportingFile, DocumentMetadata } from '@/lib/types';
 import { getContractedProcurementProjects, type ProcurementChecklist, type ProcurementContract, type ProcurementDeliverable, type ProcurementDocument, type ProcurementEvaluation, type ProcurementInvoice, type ProcurementLaunch, type ProcurementOffer, type ProcurementProject, type ProcurementReception, type ProcurementStatusHistory, type ProcurementSupplier } from '@/lib/procurement';
 import {
   buildDeterministicWorkBlockConsolidation,
@@ -402,6 +402,19 @@ export function useDocuments() {
     error,
     mutate: () => mutate('documents'),
   };
+}
+
+export function useDocumentMutations() {
+  const updateEligibilityCheck = async (
+    id: string,
+    eligibilityCheck: DocumentMetadata['eligibilityCheck'],
+  ) => {
+    const updated = await documentsService.updateEligibilityCheck(id, eligibilityCheck ?? null);
+    mutate('documents');
+    return updated;
+  };
+
+  return { updateEligibilityCheck };
 }
 
 export function useColleagueDocumentsByMonth(month: number, year: number) {

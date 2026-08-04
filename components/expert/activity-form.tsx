@@ -1542,7 +1542,14 @@ export function ActivityForm({
       && deliverable.uploaded
       && Boolean(deliverable.filename || deliverable.name)
     ));
-    const mainDeliverableEligibilityBlockersForSave = eligibilityCheckEnabled
+    const requiresMainDeliverableEligibilityForSave = (
+      showStandardActivityWorkflow
+      && !isLeave
+      && !isException
+      && !isEvent
+      && !usesMonthlyComDeliverable
+    );
+    const mainDeliverableEligibilityBlockersForSave = eligibilityCheckEnabled && requiresMainDeliverableEligibilityForSave
       ? deliverables
           .filter((deliverable) => (
             (!deliverable.slotType || deliverable.slotType === 'livrabil')
@@ -1556,9 +1563,9 @@ export function ActivityForm({
             }
             if (
               deliverable.eligibilityCheck.status === 'neeligibil'
-              && !deliverable.eligibilityCheck.pmUnlockRequested
+              && !deliverable.eligibilityCheck.pmUnlockApproved
             ) {
-              return 'Livrabilul este neeligibil. Solicita deblocare PM sau corecteaza livrabilul.';
+              return 'Livrabilul este neeligibil. Solicita deblocare PM si asteapta aprobarea sau corecteaza livrabilul.';
             }
             return null;
           })
@@ -2133,7 +2140,14 @@ export function ActivityForm({
   const hasUploadedMainDeliverable = mainDeliverables.some((deliverable) => (
     deliverable.uploaded && Boolean(deliverable.filename || deliverable.name)
   ));
-  const mainDeliverableEligibilityBlockers = eligibilityCheckEnabled
+  const requiresMainDeliverableEligibility = (
+    showStandardActivityWorkflow
+    && !isLeave
+    && !isException
+    && !isEvent
+    && !usesMonthlyComDeliverable
+  );
+  const mainDeliverableEligibilityBlockers = eligibilityCheckEnabled && requiresMainDeliverableEligibility
     ? mainDeliverables
         .filter((deliverable) => deliverable.uploaded && !deliverable.isPhoto && Boolean(deliverable.filename || deliverable.name))
         .map((deliverable): string | null => {
@@ -2142,9 +2156,9 @@ export function ActivityForm({
           }
           if (
             deliverable.eligibilityCheck.status === 'neeligibil'
-            && !deliverable.eligibilityCheck.pmUnlockRequested
+            && !deliverable.eligibilityCheck.pmUnlockApproved
           ) {
-            return 'Livrabilul este neeligibil. Solicita deblocare PM sau corecteaza livrabilul.';
+            return 'Livrabilul este neeligibil. Solicita deblocare PM si asteapta aprobarea sau corecteaza livrabilul.';
           }
           return null;
         })

@@ -139,6 +139,9 @@ export interface DeliverableEligibilityCheck {
   pmUnlockRequestedAt?: string;
   pmUnlockRequestedBy?: string;
   pmUnlockReason?: string;
+  pmUnlockApproved?: boolean;
+  pmUnlockApprovedAt?: string;
+  pmUnlockApprovedBy?: string;
   modelAuditId?: string;
   analyzedDeliverables?: Array<{
     id?: string;

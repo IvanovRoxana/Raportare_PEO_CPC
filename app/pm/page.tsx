@@ -59,6 +59,7 @@ import {
   useAuditLogs,
   useAuditLogMutations,
   useDocuments,
+  useDocumentMutations,
   useGTEntities,
   useGTPersons,
   useSharedDeliverables,
@@ -195,6 +196,7 @@ export default function PMDashboard() {
   const { create: createNote, update: updateNote, remove: removeNote } = useNoteMutations();
   const { create: createActivity, update: updateActivity } = useActivityMutations();
   const { create: createAuditLog } = useAuditLogMutations();
+  const { updateEligibilityCheck: updateDocumentEligibilityCheck } = useDocumentMutations();
   const {
     status: reportStatus,
     updateStatus: updateReportStatus,
@@ -425,6 +427,43 @@ export default function PMDashboard() {
       expertAccessApprovedAt: new Date().toISOString(),
       pmNotes: clearMonthAccessRequestNote(status.pmNotes, { month: status.month, year: status.year }),
     });
+  };
+
+  const approvePmUnlockRequest = async (document: DocumentMetadata) => {
+    if (!canManagePmReview || !document.eligibilityCheck) return;
+
+    const approvedCheck = {
+      ...document.eligibilityCheck,
+      pmUnlockRequested: true,
+      pmUnlockApproved: true,
+      pmUnlockApprovedAt: new Date().toISOString(),
+      pmUnlockApprovedBy: currentUser?.displayName || currentUser?.email || 'PM',
+    };
+
+    const sourceActivity = document.sourceActivityId
+      ? monthActivities.find((activity) => activity.id === document.sourceActivityId)
+      : undefined;
+    const sourceDeliverable = sourceActivity?.deliverables?.find((deliverable) => (
+      deliverable.documentId === document.id || deliverable.id === document.id
+    ));
+
+    if (sourceActivity && sourceDeliverable) {
+      await updateActivity(sourceActivity.id, {
+        deliverables: sourceActivity.deliverables?.map((deliverable) => (
+          deliverable.id === sourceDeliverable.id
+            ? {
+                ...deliverable,
+                eligibilityCheck: {
+                  ...(deliverable.eligibilityCheck || document.eligibilityCheck),
+                  ...approvedCheck,
+                },
+              }
+            : deliverable
+        )),
+      });
+    }
+
+    await updateDocumentEligibilityCheck(document.id, approvedCheck);
   };
 
   const rejectMonthAccessRequest = async (status: ReportStatus) => {
@@ -852,7 +891,9 @@ export default function PMDashboard() {
     [documents]
   );
   const pmUnlockRequests = useMemo(
-    () => documents.filter((document) => Boolean(document.eligibilityCheck?.pmUnlockRequested)),
+    () => documents.filter((document) => Boolean(
+      document.eligibilityCheck?.pmUnlockRequested && !document.eligibilityCheck?.pmUnlockApproved,
+    )),
     [documents]
   );
   const problemCountByExpertId = useMemo(() => {
@@ -1373,6 +1414,7 @@ export default function PMDashboard() {
           activeAlertFilter={activeAlertFilter}
           onOpenDossier={openReviewReportById}
           onRequestDocumentClarification={requestDocumentClarification}
+          onApprovePmUnlock={approvePmUnlockRequest}
           onOpenProblemsForExpert={(expertId) => openReviewReportById(expertId, { issueType: 'problems' })}
         />
 

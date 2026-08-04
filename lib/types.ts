@@ -300,6 +300,9 @@ export interface DeliverableEligibilityCheck {
   pmUnlockRequestedAt?: string;
   pmUnlockRequestedBy?: string;
   pmUnlockReason?: string;
+  pmUnlockApproved?: boolean;
+  pmUnlockApprovedAt?: string;
+  pmUnlockApprovedBy?: string;
   modelAuditId?: string;
   ruleVersionId?: string;
   aiScore?: number;

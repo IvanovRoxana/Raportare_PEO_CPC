@@ -103,7 +103,7 @@ export function getActivityStatus(entry: ActivityEntry): ActivityStatus {
           !d.titleConfirmed
           || !d.stadiu
           || (eligibilityCheckEnabled && !d.eligibilityCheck)
-          || (eligibilityCheckEnabled && d.eligibilityCheck?.status === 'neeligibil' && !d.eligibilityCheck.pmUnlockRequested)
+          || (eligibilityCheckEnabled && d.eligibilityCheck?.status === 'neeligibil' && !d.eligibilityCheck.pmUnlockApproved)
         )
       ))) {
         return 'title_mismatch';
