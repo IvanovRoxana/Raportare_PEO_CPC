@@ -433,6 +433,28 @@ export function DeliverableItem({
     if (!eligibilityCheckEnabled) return;
 
     setAiLoading(true);
+    onUpdate({
+      eligibilityCheck: {
+        status: 'neconcludent',
+        score: 0,
+        summary: 'Verificarea eligibilitatii a fost pornita. Daca AI nu raspunde, continua cu introducere manuala si verificare PM.',
+        checks: [],
+        missingElements: [],
+        recommendations: ['Continua cu introducere manuala daca verificarea automata nu raspunde.'],
+        riskFlags: ['Verificare automata in curs sau indisponibila.'],
+        checkedAt: new Date().toISOString(),
+        checkedBy: expertName,
+        checkedActivityId: selectedActivityId || subActivity,
+        checkedSaCode: subActivity,
+        checkedActivityName: activityTitle,
+        checkedDeliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
+      },
+      aiCheck: {
+        eligible: null,
+        reason: 'Verificarea eligibilitatii a fost pornita.',
+        issues: ['Verificare automata in curs sau indisponibila.'],
+      },
+    });
     try {
       const extractedText = (deliverable.docText || deliverable.firstPageText || '').slice(0, 12000);
       const response = await fetch('/api/ai/check-deliverable-eligibility', {
@@ -1258,6 +1280,28 @@ export function DeliverableEligibilityControl({
     if (!eligibilityCheckEnabled) return;
 
     setAiLoading(true);
+    onUpdate({
+      eligibilityCheck: {
+        status: 'neconcludent',
+        score: 0,
+        summary: 'Verificarea eligibilitatii a fost pornita. Daca AI nu raspunde, continua cu introducere manuala si verificare PM.',
+        checks: [],
+        missingElements: [],
+        recommendations: ['Continua cu introducere manuala daca verificarea automata nu raspunde.'],
+        riskFlags: ['Verificare automata in curs sau indisponibila.'],
+        checkedAt: new Date().toISOString(),
+        checkedBy: expertName,
+        checkedActivityId: selectedActivityId || subActivity,
+        checkedSaCode: subActivity,
+        checkedActivityName: activityTitle,
+        checkedDeliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
+      },
+      aiCheck: {
+        eligible: null,
+        reason: 'Verificarea eligibilitatii a fost pornita.',
+        issues: ['Verificare automata in curs sau indisponibila.'],
+      },
+    });
     try {
       const extractedText = (deliverable.docText || deliverable.firstPageText || '').slice(0, 12000);
       const activityGroupId = selectedActivityId || subActivity;
