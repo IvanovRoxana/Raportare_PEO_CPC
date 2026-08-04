@@ -173,6 +173,24 @@ test('publicarea online fara link cere dovada minima, nu raport artificial', () 
   assert.equal(validation.missingFields.includes('livrabil_generat_sau_atasat'), false);
 });
 
+test('selectiile GDPR incomplete sunt tratate ca liste goale la validare', () => {
+  const validation = validateGdprActivityDraft({
+    templateCode: 'GDPR_PUBLICARE',
+    meta: {
+      ...baseMeta,
+      lunaAnalizata: 'ianuarie 2026',
+      tipMateriale: JSON.parse('{"altele":""}'),
+      canalPublicare: ['website'],
+      linkPublicare: 'https://example.test/anunt',
+    },
+    description: 'Descriere GDPR generata.',
+    hasDeliverable: false,
+  });
+
+  assert.equal(validation.ok, false);
+  assert.ok(validation.missingFields.includes('tipMateriale'));
+});
+
 test('monitorizarea GT ramane activitate cu livrabil obligatoriu', () => {
   const validation = validateGdprActivityDraft({
     templateCode: 'GDPR_GT_MON',

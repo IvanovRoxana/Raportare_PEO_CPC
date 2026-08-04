@@ -1279,8 +1279,9 @@ function getBusinessHubEvents(meta: GdprMeta): GdprBusinessHubEvent[] {
 }
 
 function isEmptyMetaValue(value: GdprMetaValue) {
-  if (isSelectionValue(value)) {
-    return value.selected.length === 0 && !value.altele?.trim();
+  if (isSelectionLikeValue(value)) {
+    const selection = normalizeSelectionValue(value);
+    return selection.selected.length === 0 && !selection.altele?.trim();
   }
   if (Array.isArray(value)) return value.length === 0;
   if (typeof value === 'string') return value.trim().length === 0;
@@ -1288,7 +1289,7 @@ function isEmptyMetaValue(value: GdprMetaValue) {
 }
 
 function text(value: GdprMetaValue, fallback: string) {
-  if (isSelectionValue(value)) return listText(value, fallback);
+  if (isSelectionLikeValue(value)) return listText(value, fallback);
   if (Array.isArray(value)) return value.filter((item): item is string => typeof item === 'string' && item.length > 0).join(', ') || fallback;
   if (typeof value === 'boolean') return value ? 'Da' : 'Nu';
   if (value === undefined || value === null || value === '') return fallback;
@@ -1300,9 +1301,10 @@ function stringValue(value: GdprMetaValue) {
 }
 
 function listText(value: GdprMetaValue, fallback: string) {
-  if (isSelectionValue(value)) {
-    const labels = value.selected.map((item) => optionLabelByKey(item));
-    if (value.altele?.trim()) labels.push(value.altele.trim());
+  if (isSelectionLikeValue(value)) {
+    const selection = normalizeSelectionValue(value);
+    const labels = selection.selected.map((item) => optionLabelByKey(item));
+    if (selection.altele?.trim()) labels.push(selection.altele.trim());
     return labels.filter(Boolean).join(', ') || fallback;
   }
   if (Array.isArray(value)) return value.filter(Boolean).join(', ') || fallback;
@@ -1311,12 +1313,27 @@ function listText(value: GdprMetaValue, fallback: string) {
   return String(value);
 }
 
+function isSelectionLikeValue(value: GdprMetaValue): value is GdprSelectionValue {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
 function isSelectionValue(value: GdprMetaValue): value is GdprSelectionValue {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value) && Array.isArray((value as GdprSelectionValue).selected));
 }
 
+function normalizeSelectionValue(value: GdprMetaValue): GdprSelectionValue {
+  if (!isSelectionLikeValue(value)) return { selected: [] };
+  const selection = value as GdprSelectionValue;
+  return {
+    selected: Array.isArray(selection.selected)
+      ? selection.selected.filter((item): item is string => typeof item === 'string')
+      : [],
+    altele: typeof selection.altele === 'string' ? selection.altele : undefined,
+  };
+}
+
 function selectedValues(value: GdprMetaValue): string[] {
-  if (isSelectionValue(value)) return value.selected;
+  if (isSelectionLikeValue(value)) return normalizeSelectionValue(value).selected;
   if (Array.isArray(value)) return value.filter((item): item is string => typeof item === 'string');
   if (typeof value === 'string') return value.split(',').map((item) => item.trim()).filter(Boolean);
   return [];
