@@ -155,18 +155,52 @@ function buildSaSections(
       const hours = calculateWorkBlockHours(bundle.activityLinks);
       return {
         heading: `${getNarrativeHeading(bundle, activities)} (${formatNarrativeTiming(days, hours)})`,
-        body: normalizeAnexa10ReportText(
-          bundle.workBlock.generatedNarrative
-          || bundle.workBlock.cleanedActivitySummary
-          || bundle.workBlock.expertContribution
-          || activities.map((activity) => activity.activitySummary).filter(Boolean).join(' ')
-          || activities.map((activity) => activity.description).filter(Boolean).join(' ')
-          || `Am realizat activitatea "${bundle.workBlock.title}" in cadrul ${saCode}.${deliverableText}`,
-        ),
+        body: getNarrativeBody(bundle, activities, saCode, deliverableText),
       };
     }),
     totalHours: calculateIncludedTotalHours(saBundles, {}),
   }));
+}
+
+function getNarrativeBody(
+  bundle: ReportingWorkBlockBundle,
+  activities: Activity[],
+  saCode: string,
+  deliverableText: string,
+) {
+  const activityDescriptions = getActivityDescriptionsText(activities);
+  const fallback = `Am realizat activitatea "${bundle.workBlock.title}" in cadrul ${saCode}.${deliverableText}`;
+  const candidates = [
+    bundle.workBlock.generatedNarrative,
+    bundle.workBlock.cleanedActivitySummary,
+    bundle.workBlock.expertContribution,
+    getActivitySummariesText(activities),
+  ];
+  let shouldPreferActivityDescription = false;
+
+  for (const candidate of candidates) {
+    if (isUsefulNarrativeText(candidate, bundle, activities, activityDescriptions)) {
+      return normalizeAnexa10ReportText(candidate || '');
+    }
+    shouldPreferActivityDescription ||= shouldUseActivityDescriptionInstead(candidate, bundle, activities, activityDescriptions);
+  }
+
+  return normalizeAnexa10ReportText(
+    (shouldPreferActivityDescription ? activityDescriptions : '')
+    || activityDescriptions
+    || fallback,
+  );
+}
+
+function isUsefulNarrativeText(
+  value: string | undefined,
+  bundle: ReportingWorkBlockBundle,
+  activities: Activity[],
+  activityDescriptions: string,
+) {
+  const normalized = normalizeWhitespace(value || '');
+  if (!normalized) return false;
+  return !shouldUseActivityDescriptionInstead(normalized, bundle, activities, activityDescriptions);
 }
 
 function formatNarrativeTiming(days: string, hours: number) {
