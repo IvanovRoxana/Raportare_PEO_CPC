@@ -80,7 +80,7 @@ test('modelul determinist prefera activitySummary cand nu exista consolidare wor
   assert.equal(model.saSections[0].items[0].body, 'Am sintetizat statusul livrabilelor pentru raportarea lunara.');
 });
 
-test('coloana Activitate prestata foloseste activitySummary inaintea sumarului work block', () => {
+test('coloana Activitate prestata foloseste generatedTableSummary inaintea activitySummary', () => {
   const activities = [
     activity({
       id: 'a1',
@@ -102,7 +102,44 @@ test('coloana Activitate prestata foloseste activitySummary inaintea sumarului w
 
   const model = buildAnexa10ReportModel({ expert, activities, month: 5, year: 2026, workBlockBundles: bundles });
 
-  assert.equal(model.tableRows[0].performedActivity, 'Am actualizat sinteza activitatii pentru raportarea Anexa 10.');
+  assert.equal(model.tableRows[0].performedActivity, 'Text tabel vechi din work block.');
+  assert.equal(
+    model.saSections[0].items[0].heading,
+    'Analiza acte normative (în data de 2 iunie 2026, 2 ore)',
+  );
+  assert.doesNotMatch(model.saSections[0].items[0].heading, /Text tabel vechi|Am actualizat sinteza/);
+});
+
+test('sectiunea narativa foloseste heading scurt si pastreaza detaliul in body', () => {
+  const longNarrative = [
+    'Am redactat newsletterul lunar CPC pe baza informatiilor colectate din grupurile tematice.',
+    'Am verificat acuratetea informatiilor si am structurat continutul intr-un format editorial unitar.',
+  ].join(' ');
+  const activities = [
+    activity({
+      id: 'a1',
+      date: '2026-06-09',
+      hours: 6,
+      periodGroupId: 'newsletter',
+      title: 'Redactare Newsletter lunar CPC',
+      activitySummary: 'Summary din formular care nu trebuie sa devina heading lung.',
+    }),
+  ];
+  const bundles = buildWorkBlocks(activities).map((bundle) => ({
+    ...bundle,
+    workBlock: {
+      ...bundle.workBlock,
+      title: 'Redactare Newsletter lunar CPC',
+      generatedTableSummary: 'Am redactat newsletterul lunar CPC.',
+      generatedNarrative: longNarrative,
+    },
+  }));
+
+  const model = buildAnexa10ReportModel({ expert, activities, month: 5, year: 2026, workBlockBundles: bundles });
+
+  assert.equal(model.tableRows[0].performedActivity, 'Am redactat newsletterul lunar CPC.');
+  assert.equal(model.saSections[0].items[0].heading, 'Redactare Newsletter lunar CPC (în data de 9 iunie 2026, 6 ore)');
+  assert.equal(model.saSections[0].items[0].body, longNarrative);
 });
 
 test('modelul determinist tolereaza work block-uri legacy fara deliverableLinks', () => {
@@ -154,6 +191,7 @@ test('modelul determinist elimina propozitiile repetate din sumarul work block-u
     `${repeatedSentence} Am formulat concluzii si recomandari.`,
   );
   assert.equal(model.saSections[0].items[0].body, model.tableRows[0].performedActivity);
+  assert.notEqual(model.saSections[0].items[0].heading, model.saSections[0].items[0].body);
 });
 
 test('modelul determinist converteste formularile generice in persoana I singular', () => {

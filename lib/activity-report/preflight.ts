@@ -222,6 +222,20 @@ function checkNarrative(model: Anexa10ReportModel) {
     }));
   }
 
+  const duplicatedHeadingBlocks = model.saSections.reduce((count, section) => (
+    count + section.items.filter((item) => hasSimilarHeadingAndBody(item.heading, item.body)).length
+  ), 0);
+  if (duplicatedHeadingBlocks > 0) {
+    findings.push(finding({
+      id: 'duplicated-heading-body-narrative',
+      severity: 'warning',
+      area: 'narrative',
+      title: 'Heading narativ duplicat in corp',
+      detail: `${duplicatedHeadingBlocks} bloc(uri) au heading foarte similar cu textul narativ.`,
+      suggestion: 'Foloseste un heading scurt cu titlul work block-ului, zilele si orele, iar detaliile pastreaza-le doar in corpul narativ.',
+    }));
+  }
+
   return findings;
 }
 
@@ -256,6 +270,28 @@ function hasRepeatedSentence(value: string) {
     seen.add(key);
   }
   return false;
+}
+
+function hasSimilarHeadingAndBody(heading: string, body: string) {
+  const normalizedHeading = normalizeForComparison(heading);
+  const normalizedBody = normalizeForComparison(body);
+  if (!normalizedHeading || !normalizedBody) return false;
+  if (normalizedHeading === normalizedBody) return true;
+  if (normalizedBody.length < 80) return normalizedHeading.includes(normalizedBody);
+  const shorter = normalizedHeading.length < normalizedBody.length ? normalizedHeading : normalizedBody;
+  const longer = normalizedHeading.length < normalizedBody.length ? normalizedBody : normalizedHeading;
+  return shorter.length >= 80 && longer.includes(shorter);
+}
+
+function normalizeForComparison(value: string) {
+  return value
+    .toLocaleLowerCase('ro')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\([^)]*\bore lucrate\)/giu, ' ')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function finding(input: Anexa10PreflightFinding): Anexa10PreflightFinding {

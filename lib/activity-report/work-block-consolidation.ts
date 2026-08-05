@@ -93,7 +93,7 @@ export function buildDeterministicWorkBlockConsolidation(
   const uniqueTitles = uniqueNormalized(request.activities.map((activity) => activity.title || '').filter(Boolean));
   const sourceSentences = uniqueDescriptions.length > 0 ? uniqueDescriptions : uniqueTitles;
   const cleanedActivitySummary = sourceSentences.join(' ');
-  const tableSummary = cleanedActivitySummary || request.workBlock.title;
+  const tableSummary = buildCompactTableSummary(cleanedActivitySummary || request.workBlock.title);
   const totalHours = roundHours(request.activities.reduce((sum, activity) => sum + (Number(activity.hours) || 0), 0));
   const dateSummary = summarizeDates(request.activities.map((activity) => activity.date));
   const narrativeBase = cleanedActivitySummary || `Am realizat activitatea ${request.workBlock.title}.`;
@@ -135,6 +135,9 @@ Reguli stricte:
 - Nu lista fiecare zi separat decat daca descrierile sunt diferite si relevante.
 - Foloseste prioritar campul summary al activitatilor cand construiesti cleanedActivitySummary, generatedTableSummary si generatedNarrative.
 - Nu duplica descrierea lunga cand summary contine deja sinteza activitatii.
+- generatedTableSummary este pentru coloana "Activitate prestata": maxim 1-2 propozitii, fara enumerari lungi si fara repetarea detaliilor din generatedNarrative.
+- generatedNarrative este pentru sectiunea narativa: un paragraf complet, la persoana I singular, cu date concrete, rezultat si context auditabil.
+- cleanedActivitySummary este fallback neutru: sinteza curata, fara repetitii, utilizabila daca lipsesc celelalte campuri.
 - Returneaza exclusiv JSON valid cu cheile: cleanedActivitySummary, generatedTableSummary, generatedNarrative.
 
 Work block:
@@ -162,6 +165,16 @@ function summarizeDates(dates: string[]) {
   if (uniqueDates.length === 0) return 'in luna raportata';
   if (uniqueDates.length === 1) return `in data de ${uniqueDates[0]}`;
   return `in ${uniqueDates.length} zile din luna raportata`;
+}
+
+function buildCompactTableSummary(value: string) {
+  const normalized = normalizeWhitespace(value);
+  if (!normalized) return normalized;
+  const sentences = normalized.split(/(?<=[.!?])\s+(?=[A-ZĂÂÎȘȚ])/u).slice(0, 2);
+  const summary = normalizeWhitespace(sentences.join(' ')) || normalized;
+  if (summary.length <= 360) return summary;
+  const clipped = summary.slice(0, 360).replace(/\s+\S*$/, '').trim();
+  return clipped ? `${clipped}.` : summary.slice(0, 360).trim();
 }
 
 function normalizeWhitespace(value?: string) {

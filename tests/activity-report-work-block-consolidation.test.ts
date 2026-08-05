@@ -67,6 +67,28 @@ test('consolidarea determinista prefera activity summary fata de descrierea lung
   assert.equal(result.generatedTableSummary.includes('Detaliu lung'), false);
 });
 
+test('consolidarea determinista limiteaza generatedTableSummary pentru tabel', () => {
+  const result = buildDeterministicWorkBlockConsolidation({
+    ...request,
+    activities: [
+      {
+        ...request.activities[0],
+        summary: [
+          'Am redactat analiza legislativa pentru membrii CPC.',
+          'Am integrat observatiile primite si am structurat concluziile relevante.',
+          'Am inclus detalii extinse despre contextul institutional, procesul de consultare, impactul sectorial si recomandarile rezultate.',
+        ].join(' '),
+      },
+    ],
+  });
+
+  assert.equal(
+    result.generatedTableSummary,
+    'Am redactat analiza legislativa pentru membrii CPC. Am integrat observatiile primite si am structurat concluziile relevante.',
+  );
+  assert.equal(result.generatedTableSummary.includes('detalii extinse'), false);
+});
+
 test('modelul Anexa 10 foloseste textul curatat inaintea descrierilor brute repetate', () => {
   const activities: Activity[] = [
     { id: 'a-1', expertId: 'e-1', date: '2026-07-01', hours: 8, title: 'Zi 1', description: 'Text brut repetat.' } as Activity,

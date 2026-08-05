@@ -123,6 +123,31 @@ test('preflight blocheaza in continuare referirile la formular generat automat',
   )), true);
 });
 
+test('preflight semnaleaza heading narativ duplicat in corp', () => {
+  const model = buildAnexa10ReportModel({
+    expert: {
+      ...baseExpert,
+      contractNumber: '12/2026',
+      contractType: 'CIM',
+      expertExperienceCategory: 'expert senior',
+      jobDescriptionText: 'Am responsabilitati de analiza legislativa, sinteza si formulare pozitii institutionale.',
+    },
+    activities: [activity({
+      id: 'a1',
+      activitySummary: 'Am elaborat analiza legislativa pentru membrii CPC si am sintetizat impactul propunerii.',
+      deliverables: [{ id: 'd1', fileName: 'Analiza.docx', fileType: 'docx', fileSize: 10 }],
+    })],
+    month: 5,
+    year: 2026,
+  });
+  model.saSections[0].items[0].heading = `${model.saSections[0].items[0].body} (2 iunie 2026, 2 ore lucrate)`;
+
+  const report = buildDeterministicAnexa10Preflight(model);
+
+  assert.equal(report.canExport, true);
+  assert.equal(report.findings.some((finding) => finding.id === 'duplicated-heading-body-narrative'), true);
+});
+
 test('gate-ul comun cere preflight trecut pentru exportul principal Anexa 10', () => {
   const model = buildAnexa10ReportModel({
     expert: {

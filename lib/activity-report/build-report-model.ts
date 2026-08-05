@@ -152,8 +152,9 @@ function buildSaSections(
       const deliverableText = deliverables.length > 0
         ? ` Rezultatele obtinute / livrabilele elaborate: ${deliverables.join('; ')}.`
         : ` Rezultat raportabil fara fisier: ${getResultWithoutDeliverable(bundle)}.`;
+      const hours = calculateWorkBlockHours(bundle.activityLinks);
       return {
-        heading: `${getPerformedActivity(bundle, activities)} (${days}, ${calculateWorkBlockHours(bundle.activityLinks)} ore lucrate)`,
+        heading: `${getNarrativeHeading(bundle, activities)} (${formatNarrativeTiming(days, hours)})`,
         body: normalizeAnexa10ReportText(
           bundle.workBlock.generatedNarrative
           || bundle.workBlock.cleanedActivitySummary
@@ -166,6 +167,12 @@ function buildSaSections(
     }),
     totalHours: calculateIncludedTotalHours(saBundles, {}),
   }));
+}
+
+function formatNarrativeTiming(days: string, hours: number) {
+  if (!days) return `${hours} ore lucrate`;
+  if (/\bc(?:a|â)te\b|\bdistribu/i.test(days)) return `${days}, ${hours} ore lucrate`;
+  return days;
 }
 
 function shouldIncludeBundle(bundle: ReportingWorkBlockBundle, settings: ProjectReportingSettings) {
@@ -259,12 +266,23 @@ function getOfficialActivityTitle(bundle: ReportingWorkBlockBundle, activities: 
 
 function getPerformedActivity(bundle: ReportingWorkBlockBundle, activities: Activity[]) {
   return normalizeAnexa10ReportText(
-    getActivitySummariesText(activities)
-    || bundle.workBlock.generatedTableSummary
+    bundle.workBlock.generatedTableSummary
+    || getActivitySummariesText(activities)
     || bundle.workBlock.cleanedActivitySummary
     || bundle.workBlock.expertContribution
     || activities.map((activity) => activity.description).filter(Boolean).join(' ')
     || bundle.workBlock.title,
+  );
+}
+
+function getNarrativeHeading(bundle: ReportingWorkBlockBundle, activities: Activity[]) {
+  return normalizeWhitespace(
+    bundle.workBlock.title
+    || bundle.workBlock.activityCategory
+    || activities.find((activity) => activity.title)?.title
+    || activities.find((activity) => activity.activityType)?.activityType
+    || bundle.workBlock.saCode
+    || 'Activitate raportabila',
   );
 }
 
