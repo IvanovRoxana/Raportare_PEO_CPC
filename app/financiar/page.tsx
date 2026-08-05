@@ -38,6 +38,22 @@ import { buildPontajExportPayload } from '@/lib/pontaj-export-payload';
 
 const MONTH_OPTIONS = Array.from({ length: 12 }, (_, value) => ({ value, label: getMonthName(value) }));
 
+function financialHourlyRateStorageKey(month: number, year: number) {
+  return `financial-peo-hourly-rates-${year}-${String(month + 1).padStart(2, '0')}`;
+}
+
+function getStoredFinancialHourlyRate(expert: { id?: string; name?: string }, month: number, year: number) {
+  try {
+    const storedRates = window.localStorage.getItem(financialHourlyRateStorageKey(month, year));
+    const rates = storedRates ? JSON.parse(storedRates) as Record<string, string> : {};
+    const rawValue = (expert.id ? rates[expert.id] : undefined) ?? (expert.name ? rates[expert.name] : undefined);
+    const value = Number(rawValue?.replace(',', '.'));
+    return Number.isFinite(value) && value > 0 ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 const monthlySeries = [
   { month: 'Ian', planned: 22000, eligible: 12000 },
   { month: 'Feb', planned: 62000, eligible: 28000 },
@@ -182,7 +198,7 @@ export default function FinancialDashboardPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(buildPontajExportPayload({
           kind: 'consolidated',
-          expert: selectedExpert,
+          expert: { ...selectedExpert, hourlyRate: getStoredFinancialHourlyRate(selectedExpert, currentMonth, currentYear) },
           activities: peoActivities,
           concurrentProjects: activeConcurrentProjects,
           concurrentTimesheetEntries: expertConcurrentEntries,

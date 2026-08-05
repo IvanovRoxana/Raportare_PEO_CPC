@@ -17,6 +17,7 @@ describe('export pontaj Excel', () => {
         norma: 8,
         expertExperienceCategory: '< 5 ani',
         aiReportingInstructions: 'Exporta pontajul pe zile si pastreaza formatul template-ului.',
+        hourlyRate: 135.75,
       },
       activities: [],
     });
@@ -26,6 +27,7 @@ describe('export pontaj Excel', () => {
       'Exporta pontajul pe zile si pastreaza formatul template-ului.',
     );
     assert.equal(payload.expert.expertExperienceCategory, '< 5 ani');
+    assert.equal(payload.expert.hourlyRate, 135.75);
   });
 
   it('pastreaza formulele GOODWORKS4ALL si curata valorile ramase din template', async () => {
