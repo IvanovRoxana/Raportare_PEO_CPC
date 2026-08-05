@@ -1032,7 +1032,7 @@ function getExpertPosition(expert: Partial<Expert>) {
 }
 
 function getExpertCategoryForExport(expert: Partial<Expert>) {
-  return getExpertPosition(expert);
+  return expert.expertExperienceCategory || expert.category || getExpertPosition(expert);
 }
 
 function getLastPeoWorkedDateSerial(activities: Partial<Activity>[], year: number, month: number) {

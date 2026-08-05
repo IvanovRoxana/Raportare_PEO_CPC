@@ -44,6 +44,7 @@ export function buildPontajExportPayload({
       positionInProject: expert.positionInProject,
       projectCode: expert.projectCode,
       projectTitle: expert.projectTitle,
+      expertExperienceCategory: expert.expertExperienceCategory,
       aiReportingInstructions: limitText(expert.aiReportingInstructions, 4000),
       beneficiary: expert.beneficiary,
       hourlyRate: expert.hourlyRate,

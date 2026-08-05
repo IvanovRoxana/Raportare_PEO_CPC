@@ -15,6 +15,7 @@ describe('export pontaj Excel', () => {
         name: 'Expert Instructiuni',
         role: 'Expert PEO',
         norma: 8,
+        expertExperienceCategory: '< 5 ani',
         aiReportingInstructions: 'Exporta pontajul pe zile si pastreaza formatul template-ului.',
       },
       activities: [],
@@ -24,6 +25,7 @@ describe('export pontaj Excel', () => {
       payload.expert.aiReportingInstructions,
       'Exporta pontajul pe zile si pastreaza formatul template-ului.',
     );
+    assert.equal(payload.expert.expertExperienceCategory, '< 5 ani');
   });
 
   it('pastreaza formulele GOODWORKS4ALL si curata valorile ramase din template', async () => {
@@ -289,6 +291,7 @@ describe('export pontaj Excel', () => {
         norma: 8,
         oreZi: 4,
         positionInProject: 'Responsabil Informare si Comunicare',
+        expertExperienceCategory: '< 5 ani',
         beneficiary: 'Organizatie Beneficiar Test',
         hourlyRate: 77.5,
         saCodes: ['SA1.1'],
@@ -305,7 +308,7 @@ describe('export pontaj Excel', () => {
     const sheet = files.get('xl/worksheets/sheet1.xml')!.toString('utf8');
 
     assert.match(cellXml(sheet, 'G9'), /Responsabil Informare si Comunicare/);
-    assert.match(cellXml(sheet, 'G10'), /Responsabil Informare si Comunicare/);
+    assert.match(cellXml(sheet, 'G10'), /&lt; 5 ani/);
     assert.match(cellXml(sheet, 'G11'), /Organizatie Beneficiar Test/);
     assert.match(cellXml(sheet, 'G34'), /<v>77.5<\/v>/);
     assert.match(cellXml(sheet, 'I34'), /<v>4<\/v>/);
