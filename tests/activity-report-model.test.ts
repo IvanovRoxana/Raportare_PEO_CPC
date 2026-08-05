@@ -110,6 +110,38 @@ test('coloana Activitate prestata foloseste generatedTableSummary inaintea activ
   assert.doesNotMatch(model.saSections[0].items[0].heading, /Text tabel vechi|Am actualizat sinteza/);
 });
 
+test('coloana Activitate prestata cade la descrierea din admin cand summary-ul este generic si prea scurt', () => {
+  const adminDescription = [
+    'Activitatea de monitorizare legislativa regionala si informare a membrilor consta in identificarea, analizarea si sintetizarea principalelor initiative legislative.',
+    'Expertul urmareste surse institutionale relevante si pregateste informari adaptate nevoilor membrilor.',
+  ].join(' ');
+  const activities = [
+    activity({
+      id: 'a1',
+      date: '2026-06-02',
+      hours: 2,
+      periodGroupId: 'monitorizare',
+      title: 'Monitorizare legislativa si informare membri CPC',
+      activityType: 'Monitorizare legislativa si informare membri CPC',
+      activitySummary: 'Am realizat Monitorizare legislativa si informare membri CPC (SA3.4).',
+      description: adminDescription,
+    }),
+  ];
+  const bundles = buildWorkBlocks(activities).map((bundle) => ({
+    ...bundle,
+    workBlock: {
+      ...bundle.workBlock,
+      title: 'Monitorizare legislativa si informare membri CPC',
+      generatedTableSummary: 'Am realizat Monitorizare legislativa si informare membri CPC (SA3.4).',
+    },
+  }));
+
+  const model = buildAnexa10ReportModel({ expert, activities, month: 5, year: 2026, workBlockBundles: bundles });
+
+  assert.equal(model.tableRows[0].performedActivity, adminDescription);
+  assert.doesNotMatch(model.tableRows[0].performedActivity, /^Am realizat Monitorizare legislativa/);
+});
+
 test('sectiunea narativa foloseste heading scurt si pastreaza detaliul in body', () => {
   const longNarrative = [
     'Am redactat newsletterul lunar CPC pe baza informatiilor colectate din grupurile tematice.',

@@ -265,14 +265,65 @@ function getOfficialActivityTitle(bundle: ReportingWorkBlockBundle, activities: 
 }
 
 function getPerformedActivity(bundle: ReportingWorkBlockBundle, activities: Activity[]) {
-  return normalizeAnexa10ReportText(
-    bundle.workBlock.generatedTableSummary
-    || getActivitySummariesText(activities)
+  return normalizeAnexa10ReportText(selectPerformedActivityText(bundle, activities));
+}
+
+function selectPerformedActivityText(bundle: ReportingWorkBlockBundle, activities: Activity[]) {
+  const activityDescriptions = getActivityDescriptionsText(activities);
+  const candidates = [
+    bundle.workBlock.generatedTableSummary,
+    getActivitySummariesText(activities),
+  ];
+  let shouldPreferActivityDescription = false;
+
+  for (const candidate of candidates) {
+    if (isUsefulPerformedActivityText(candidate, bundle, activities, activityDescriptions)) {
+      return candidate || '';
+    }
+    shouldPreferActivityDescription ||= shouldUseActivityDescriptionInstead(candidate, bundle, activities, activityDescriptions);
+  }
+
+  return (shouldPreferActivityDescription ? activityDescriptions : '')
     || bundle.workBlock.cleanedActivitySummary
     || bundle.workBlock.expertContribution
-    || activities.map((activity) => activity.description).filter(Boolean).join(' ')
-    || bundle.workBlock.title,
-  );
+    || activityDescriptions
+    || bundle.workBlock.title;
+}
+
+function isUsefulPerformedActivityText(
+  value: string | undefined,
+  bundle: ReportingWorkBlockBundle,
+  activities: Activity[],
+  activityDescriptions: string,
+) {
+  const normalized = normalizeWhitespace(value || '');
+  if (!normalized) return false;
+  return !shouldUseActivityDescriptionInstead(normalized, bundle, activities, activityDescriptions);
+}
+
+function shouldUseActivityDescriptionInstead(
+  value: string | undefined,
+  bundle: ReportingWorkBlockBundle,
+  activities: Activity[],
+  activityDescriptions: string,
+) {
+  const normalized = normalizeWhitespace(value || '');
+  if (!normalized || !activityDescriptions || normalized.length >= 90) return false;
+
+  const genericTargets = [
+    bundle.workBlock.title,
+    bundle.workBlock.activityCategory,
+    ...activities.flatMap((activity) => [activity.title, activity.activityType]),
+  ]
+    .filter(Boolean)
+    .map((target) => normalizeForActivityFallback(String(target)));
+  const candidate = normalizeForActivityFallback(normalized);
+
+  if (/^am realizat\b/i.test(normalized) && genericTargets.some((target) => target && candidate.includes(target))) {
+    return true;
+  }
+
+  return false;
 }
 
 function getNarrativeHeading(bundle: ReportingWorkBlockBundle, activities: Activity[]) {
@@ -289,6 +340,13 @@ function getNarrativeHeading(bundle: ReportingWorkBlockBundle, activities: Activ
 function getActivitySummariesText(activities: Activity[]) {
   return activities
     .map((activity) => activity.activitySummary)
+    .filter(Boolean)
+    .join(' ');
+}
+
+function getActivityDescriptionsText(activities: Activity[]) {
+  return activities
+    .map((activity) => activity.description)
     .filter(Boolean)
     .join(' ');
 }
@@ -380,6 +438,13 @@ function normalizeForDedupe(value: string) {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function normalizeForActivityFallback(value: string) {
+  return normalizeForDedupe(value)
+    .replace(/\bsa\s*\d+(?:\s*\.\s*\d+)?\b/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
