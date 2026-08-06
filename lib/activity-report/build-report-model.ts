@@ -171,7 +171,7 @@ function getNarrativeBody(
   saCode: string,
   deliverableText: string,
 ) {
-  const activityDescriptions = getActivityDescriptionsText(activities);
+  const activityDescriptions = getActivityDescriptionsText(activities, bundle);
   const fallback = `Am realizat activitatea "${bundle.workBlock.title}" in cadrul ${saCode}.${deliverableText}`;
   const candidates = [
     bundle.workBlock.generatedNarrative,
@@ -306,7 +306,7 @@ function getPerformedActivity(bundle: ReportingWorkBlockBundle, activities: Acti
 }
 
 function selectPerformedActivityText(bundle: ReportingWorkBlockBundle, activities: Activity[]) {
-  const activityDescriptions = getActivityDescriptionsText(activities);
+  const activityDescriptions = getActivityDescriptionsText(activities, bundle);
   const candidates = [
     bundle.workBlock.generatedTableSummary,
     getActivitySummariesText(activities),
@@ -381,9 +381,9 @@ function getActivitySummariesText(activities: Activity[]) {
     .join(' ');
 }
 
-function getActivityDescriptionsText(activities: Activity[]) {
+function getActivityDescriptionsText(activities: Activity[], bundle?: ReportingWorkBlockBundle) {
   return activities
-    .map((activity) => getActivityDescriptionForReport(activity))
+    .map((activity) => getActivityDescriptionForReport(activity, bundle))
     .filter(Boolean)
     .filter((description, index, descriptions) => {
       const key = normalizeForActivityFallback(description || '');
@@ -392,11 +392,11 @@ function getActivityDescriptionsText(activities: Activity[]) {
     .join(' ');
 }
 
-function getActivityDescriptionForReport(activity: Activity) {
+function getActivityDescriptionForReport(activity: Activity, bundle?: ReportingWorkBlockBundle) {
   const activityDescription = normalizeWhitespace(activity.description || '');
   if (activityDescription.length >= 90) return activityDescription;
 
-  const adminDescription = getAdminCatalogDescription(activity);
+  const adminDescription = getAdminCatalogDescription(activity, bundle);
   if (!adminDescription) return activityDescription;
 
   if (hasDistinctShortExpertDetail(activityDescription, adminDescription, activity)) {
@@ -406,18 +406,18 @@ function getActivityDescriptionForReport(activity: Activity) {
   return adminDescription;
 }
 
-function getAdminCatalogDescription(activity: Activity) {
+function getAdminCatalogDescription(activity: Activity, bundle?: ReportingWorkBlockBundle) {
   const catalogId = normalizeWhitespace(activity.catalogActivityId || '');
   const byId = catalogId
     ? ADMIN_ACTIVITY_CATALOG.find((item) => item.id === catalogId)
     : undefined;
-  const matchedItem = byId || findAdminCatalogItemByActivity(activity);
+  const matchedItem = byId || findAdminCatalogItemByActivity(activity, bundle);
   return normalizeWhitespace(matchedItem?.description || '');
 }
 
-function findAdminCatalogItemByActivity(activity: Activity) {
-  const saCode = normalizeWhitespace(activity.saCode || '');
-  const activityNames = [activity.title, activity.activityType]
+function findAdminCatalogItemByActivity(activity: Activity, bundle?: ReportingWorkBlockBundle) {
+  const saCode = normalizeWhitespace(activity.saCode || bundle?.workBlock.saCode || '');
+  const activityNames = [activity.title, activity.activityType, bundle?.workBlock.title, bundle?.workBlock.activityCategory]
     .map((value) => normalizeForActivityFallback(value || ''))
     .filter(Boolean);
 

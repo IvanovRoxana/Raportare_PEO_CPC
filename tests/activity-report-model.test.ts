@@ -204,6 +204,43 @@ test('narativul generic foloseste descrierea din catalogul admin cand activitate
   assert.doesNotMatch(model.saSections[0].items[0].body, /^Am realizat Monitorizare legislativa/);
 });
 
+test('narativul generic foloseste catalogul admin si cand titlul util exista doar pe work block', () => {
+  const activities = [
+    activity({
+      id: 'a1',
+      date: '2026-06-02',
+      hours: 2,
+      periodGroupId: 'monitorizare-cpc',
+      catalogActivityId: undefined,
+      title: undefined,
+      activityType: undefined,
+      activitySummary: 'Am realizat Monitorizare legislativa si informare membri CPC (SA3.4).',
+      description: undefined,
+    }),
+  ];
+  const bundles: ReportingWorkBlockBundle[] = [{
+    workBlock: {
+      id: 'wb1',
+      expertId: expert.id,
+      projectCode: '302141',
+      month: 5,
+      year: 2026,
+      title: 'Monitorizare legislativa si informare membri CPC',
+      saCode: 'SA3.4',
+      reportingFlowType: 'other',
+      status: 'draft',
+      generatedNarrative: 'Am realizat Monitorizare legislativa si informare membri CPC (SA3.4).',
+    },
+    activityLinks: [{ id: 'link1', workBlockId: 'wb1', activityId: 'a1', allocatedHours: 2, activityDate: '2026-06-02' }],
+    deliverableLinks: [],
+  }];
+
+  const model = buildAnexa10ReportModel({ expert, activities, month: 5, year: 2026, workBlockBundles: bundles });
+
+  assert.match(model.saSections[0].items[0].body, /Monitorizarea continu/);
+  assert.doesNotMatch(model.saSections[0].items[0].body, /^Am realizat Monitorizare legislativa/);
+});
+
 test('narativul pastreaza descrierea optimizata de expert cand este suficient de completa', () => {
   const optimizedDescription = [
     'Am monitorizat initiativele legislative relevante pentru membrii CPC si am analizat impactul potential al modificarilor propuse.',
