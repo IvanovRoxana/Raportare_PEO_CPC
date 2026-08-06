@@ -396,7 +396,14 @@ function getActivityDescriptionForReport(activity: Activity) {
   const activityDescription = normalizeWhitespace(activity.description || '');
   if (activityDescription.length >= 90) return activityDescription;
 
-  return getAdminCatalogDescription(activity) || activityDescription;
+  const adminDescription = getAdminCatalogDescription(activity);
+  if (!adminDescription) return activityDescription;
+
+  if (hasDistinctShortExpertDetail(activityDescription, adminDescription, activity)) {
+    return `${adminDescription} ${activityDescription}`;
+  }
+
+  return adminDescription;
 }
 
 function getAdminCatalogDescription(activity: Activity) {
@@ -420,6 +427,54 @@ function findAdminCatalogItemByActivity(activity: Activity) {
     if (saCode && item.saCode !== saCode) return false;
     return activityNames.includes(normalizeForActivityFallback(item.activityName || ''));
   });
+}
+
+function hasDistinctShortExpertDetail(
+  activityDescription: string,
+  adminDescription: string,
+  activity: Activity,
+) {
+  const normalizedDescription = normalizeForActivityFallback(activityDescription);
+  if (!normalizedDescription || normalizedDescription.length < 30) return false;
+
+  const normalizedAdminDescription = normalizeForActivityFallback(adminDescription);
+  if (normalizedAdminDescription.includes(normalizedDescription)) return false;
+
+  const genericTargets = [
+    activity.title,
+    activity.activityType,
+    activity.saCode,
+  ]
+    .filter(Boolean)
+    .map((target) => normalizeForActivityFallback(String(target)));
+
+  const residualText = genericTargets.reduce((text, target) => (
+    target ? text.replace(new RegExp(escapeRegExp(target), 'g'), ' ') : text
+  ), normalizedDescription);
+
+  const genericWords = new Set([
+    'am',
+    'facut',
+    'realizat',
+    'efectuat',
+    'activitate',
+    'activitatea',
+    'lucrat',
+    'pentru',
+    'privind',
+    'cadrul',
+    'luna',
+    'raportare',
+  ]);
+  const adminTokens = new Set(normalizedAdminDescription.split(' ').filter((token) => token.length >= 4));
+  const distinctTokens = residualText
+    .split(' ')
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 4)
+    .filter((token) => !genericWords.has(token))
+    .filter((token) => !adminTokens.has(token));
+
+  return distinctTokens.length >= 2;
 }
 
 function getCommonDeliverableLabel(activities: Activity[]) {
@@ -511,6 +566,10 @@ function normalizeForDedupe(value: string) {
     .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function normalizeForActivityFallback(value: string) {
