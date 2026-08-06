@@ -1,6 +1,7 @@
 import { getMonthName } from '../app-utils.ts';
 import { getDocumentAuditTitle } from '../document-sharing.ts';
-import type { Activity, Expert } from '../types.ts';
+import activityCatalogSeed from '../../data/import/activity-catalog.json' with { type: 'json' };
+import type { Activity, ActivityCatalog, Expert } from '../types.ts';
 import { formatDayCluster } from './day-cluster.ts';
 import {
   buildWorkBlocks,
@@ -10,6 +11,8 @@ import {
   type ReportingWorkBlockBundle,
   type WorkBlockAllocationProblem,
 } from './work-blocks.ts';
+
+const ADMIN_ACTIVITY_CATALOG = activityCatalogSeed as ActivityCatalog[];
 
 export type ProjectReportingSettings = {
   includeLeaveInTable?: boolean;
@@ -380,9 +383,43 @@ function getActivitySummariesText(activities: Activity[]) {
 
 function getActivityDescriptionsText(activities: Activity[]) {
   return activities
-    .map((activity) => activity.description)
+    .map((activity) => getActivityDescriptionForReport(activity))
     .filter(Boolean)
+    .filter((description, index, descriptions) => {
+      const key = normalizeForActivityFallback(description || '');
+      return descriptions.findIndex((item) => normalizeForActivityFallback(item || '') === key) === index;
+    })
     .join(' ');
+}
+
+function getActivityDescriptionForReport(activity: Activity) {
+  const activityDescription = normalizeWhitespace(activity.description || '');
+  if (activityDescription.length >= 90) return activityDescription;
+
+  return getAdminCatalogDescription(activity) || activityDescription;
+}
+
+function getAdminCatalogDescription(activity: Activity) {
+  const catalogId = normalizeWhitespace(activity.catalogActivityId || '');
+  const byId = catalogId
+    ? ADMIN_ACTIVITY_CATALOG.find((item) => item.id === catalogId)
+    : undefined;
+  const matchedItem = byId || findAdminCatalogItemByActivity(activity);
+  return normalizeWhitespace(matchedItem?.description || '');
+}
+
+function findAdminCatalogItemByActivity(activity: Activity) {
+  const saCode = normalizeWhitespace(activity.saCode || '');
+  const activityNames = [activity.title, activity.activityType]
+    .map((value) => normalizeForActivityFallback(value || ''))
+    .filter(Boolean);
+
+  if (activityNames.length === 0) return undefined;
+
+  return ADMIN_ACTIVITY_CATALOG.find((item) => {
+    if (saCode && item.saCode !== saCode) return false;
+    return activityNames.includes(normalizeForActivityFallback(item.activityName || ''));
+  });
 }
 
 function getCommonDeliverableLabel(activities: Activity[]) {
