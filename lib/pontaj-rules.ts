@@ -254,10 +254,12 @@ export function validateActivitiesBeforeCreate(args: {
   newActivities: ActivityDraftForValidation[];
   month: number;
   year: number;
+  affectedDates?: string[];
 }): PontajValidationResult {
   const { expert, month, year } = args;
   const existingActivities = args.existingActivities.filter((activity) => activity.status !== 'rejected');
   const newActivities = args.newActivities.filter((activity) => activity.hours > 0);
+  const affectedDateSet = new Set(args.affectedDates ?? newActivities.map((activity) => activity.date));
   const normInfo = calculateMonthlyNormInfo(expert, month, year);
   const monthlyNorm = normInfo.monthlyNorm;
   const monthlyTotalBefore = totalActivityHours(existingActivities);
@@ -318,6 +320,7 @@ export function validateActivitiesBeforeCreate(args: {
   }
 
   for (const [date, total] of Object.entries(dailyTotalsAfter)) {
+    if (!affectedDateSet.has(date)) continue;
     if (total > DAILY_HOURS_LIMIT) {
       return {
         ok: false,

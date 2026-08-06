@@ -1720,6 +1720,7 @@ export function ActivityForm({
       newActivities: newActivityDrafts,
       month,
       year,
+      affectedDates: activityDatesForSave,
     });
 
     if (!validation.ok) {

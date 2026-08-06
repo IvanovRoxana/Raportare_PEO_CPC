@@ -1078,6 +1078,7 @@ function ExpertDashboardContent() {
           }],
           month: currentMonth,
           year: currentYear,
+          affectedDates: [nextActivity.date],
         });
 
         if (!validation.ok) {
@@ -1171,6 +1172,7 @@ function ExpertDashboardContent() {
         ),
         month: currentMonth,
         year: currentYear,
+        affectedDates: submittedActivities.map((activity) => activity.date),
       });
 
       if (!validation.ok) {
