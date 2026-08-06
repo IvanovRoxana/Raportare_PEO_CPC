@@ -92,6 +92,22 @@ test('nu permite depășirea limitei cumulate de 8 ore pe zi', () => {
   assert.equal(result.code, 'DAILY_LIMIT_EXCEEDED');
 });
 
+test('nu blocheaza o zi editata din cauza unei alte zile deja suprapontate', () => {
+  const result = validateActivitiesBeforeCreate({
+    expert,
+    month: testMonth,
+    year: testYear,
+    existingActivities: [
+      { expertId: expert.id, date: '2026-02-15', hours: 9, title: 'Zi deja suprapontata' },
+      { expertId: expert.id, date: '2026-02-06', hours: 4, title: 'Activitate existenta' },
+    ],
+    newActivities: [{ expertId: expert.id, date: '2026-02-06', hours: 3, title: 'Activitate editata' }],
+    affectedDates: ['2026-02-06'],
+  });
+
+  assert.equal(result.ok, true);
+});
+
 test('blocheaza activitati duplicate pe aceeasi zi pentru acelasi expert', () => {
   const result = validateActivitiesBeforeCreate({
     expert,

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useMemo, useCallback, type SetStateAction } from 'react';
-import { Upload, X, FileText, Loader2, Users, Plus, AlertTriangle, CheckCircle, Sparkles, Check } from 'lucide-react';
+import { Upload, X, FileText, Loader2, Users, Plus, AlertTriangle, CheckCircle, Sparkles, Check, Trash2 } from 'lucide-react';
 import { uploadData } from 'aws-amplify/storage';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -32,6 +32,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { generateId, formatDateRo } from '@/lib/app-utils';
 import { EventDocsPanel } from './event-docs-panel';
@@ -186,6 +187,7 @@ interface ActivityFormProps {
   year: number;
   onSave: (activities: Activity[]) => void | Promise<void>;
   onCancel: () => void;
+  onDelete?: (activityId: string) => void | Promise<void>;
   onDeleteBrokenExistingDeliverable?: (candidate: ExistingDeliverableCandidate) => Promise<boolean>;
   initialActivity?: Activity;
   prefillActivity?: Partial<Activity>;
@@ -455,6 +457,7 @@ export function ActivityForm({
   year,
   onSave,
   onCancel,
+  onDelete,
   onDeleteBrokenExistingDeliverable,
   initialActivity,
   prefillActivity,
@@ -1724,6 +1727,7 @@ export function ActivityForm({
       newActivities: newActivityDrafts,
       month,
       year,
+      affectedDates: activityDatesForSave,
     });
 
     if (!validation.ok) {
@@ -4405,6 +4409,38 @@ export function ActivityForm({
             <div className="hidden sm:block" />
           ) : null}
           <div className={isWorkspaceLayout ? 'flex flex-col-reverse gap-2 sm:flex-row sm:justify-end' : 'flex justify-end gap-2'}>
+            {initialActivity && onDelete ? (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={isSaving || isSubmittingActivity}
+                    className={isWorkspaceLayout ? 'w-full border-destructive/40 text-destructive hover:bg-destructive/10 sm:mr-auto sm:w-auto' : 'border-destructive/40 text-destructive hover:bg-destructive/10'}
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Sterge
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Sterge activitatea?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Aceasta actiune nu poate fi anulata. Activitatea din {formatDateRo(initialActivity.date)} va fi stearsa permanent.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Anuleaza</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={() => void onDelete(initialActivity.id)}
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    >
+                      Sterge
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            ) : null}
             <Button type="button" variant="outline" onClick={onCancel} className={isWorkspaceLayout ? 'w-full sm:w-auto' : undefined}>
               Anuleaza
             </Button>

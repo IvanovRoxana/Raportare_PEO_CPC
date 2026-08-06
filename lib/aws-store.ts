@@ -1617,6 +1617,7 @@ async function validateActivityBatchForWrite(
       newActivities: groupActivities.map(activityToValidationDraft),
       month,
       year,
+      affectedDates: groupActivities.map((activity) => activity.date),
     });
 
     if (!validation.ok) {
