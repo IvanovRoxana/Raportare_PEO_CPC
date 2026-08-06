@@ -753,8 +753,13 @@ export function DeliverableItem({
           </div>
         ) : (
           <Select
-            value={deliverable.type}
-            onValueChange={(value: string) => onUpdate({ type: value, aiCheck: null, eligibilityCheck: null })}
+            value={deliverable.type || deliverable.deliverableType || ''}
+            onValueChange={(value: string) => onUpdate({
+              type: value,
+              deliverableType: value,
+              aiCheck: null,
+              eligibilityCheck: null,
+            })}
           >
             <SelectTrigger className="flex-1 text-xs">
               <SelectValue placeholder="Tip livrabil" />

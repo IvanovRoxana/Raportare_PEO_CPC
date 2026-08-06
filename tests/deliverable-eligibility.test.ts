@@ -48,6 +48,13 @@ test('UI tolereaza suggestedSettings persistat fara lista changes', () => {
   assert.match(deliverableItemSource, /suggestedSettings\?\.changes\?\.includes\('deliverableType'\)/);
 });
 
+test('formularul pastreaza tipul livrabilului nou incarcat in aceleasi campuri ca livrabilul existent', () => {
+  assert.match(deliverableItemSource, /value=\{deliverable\.type \|\| deliverable\.deliverableType \|\| ''\}/);
+  assert.match(deliverableItemSource, /type: value,\s*deliverableType: value,/);
+  assert.match(activityFormSource, /const resolvedDeliverableType = d\.type \|\| d\.deliverableType \|\| d\.slotType/);
+  assert.match(activityFormSource, /category: resolvedDeliverableType,\s*deliverableType: resolvedDeliverableType,/);
+});
+
 test('accepta sugestii de activitate si tip livrabil cand exista in listele permise', () => {
   const suggestion = validateEligibilitySuggestedSettings({
     suggestedSettings: {
