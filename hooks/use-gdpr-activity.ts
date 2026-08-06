@@ -60,6 +60,7 @@ export function useGdprActivity({
   setDeliverables,
   onSelectedHoursChange,
 }: UseGdprActivityOptions) {
+  const selectedActivityDates = Array.isArray(selectedDates) ? selectedDates : [];
   const [gdprTemplateCode, setGdprTemplateCode] = useState(activitySeed?.gdprTemplateCode || '');
   const [gdprMeta, setGdprMeta] = useState<GdprMeta>(() =>
     buildDefaultGdprMeta(
@@ -130,7 +131,7 @@ export function useGdprActivity({
     setHours(templateHours);
     setHoursPerDay((prev) => {
       const next = { ...prev };
-      selectedDates.forEach((date) => {
+      selectedActivityDates.forEach((date) => {
         next[date] = templateHours;
       });
       onSelectedHoursChange?.(next);
@@ -141,7 +142,7 @@ export function useGdprActivity({
     gdprConclusionCode,
     onSelectedHoursChange,
     reportMonthLabel,
-    selectedDates,
+    selectedActivityDates,
     setActivityTitle,
     setHours,
     setHoursPerDay,
@@ -157,13 +158,13 @@ export function useGdprActivity({
         ...gdprMeta,
         concluzie: gdprConclusionCode,
       },
-      date: selectedDates[0] || '',
+      date: selectedActivityDates[0] || '',
       expertName,
       expertRole: expert?.positionInProject || expert?.role,
       projectCode: expert?.projectCode,
       projectTitle: expert?.projectTitle,
     };
-  }, [expert, expertName, gdprConclusionCode, gdprMeta, selectedDates, selectedTemplate]);
+  }, [expert, expertName, gdprConclusionCode, gdprMeta, selectedActivityDates, selectedTemplate]);
 
   const generateDescription = useCallback(() => {
     const input = buildGdprInput();
@@ -232,7 +233,7 @@ export function useGdprActivity({
         gdprConclusionCode,
         reportMonthLabel,
         year,
-        selectedDates,
+        selectedDates: selectedActivityDates,
         expertName,
         expert,
         setGdprTemplateCode,
@@ -306,7 +307,7 @@ export function useGdprActivity({
     gdprTemplateCode,
     onSelectedHoursChange,
     reportMonthLabel,
-    selectedDates,
+    selectedActivityDates,
     setActivityTitle,
     setDeliverables,
     setDescription,
@@ -377,6 +378,7 @@ async function generateBusinessHubDeliverable({
   setValidationError,
   setIsGeneratingGdprDocx,
 }: GenerateBusinessHubDeliverableOptions) {
+  const selectedActivityDates = Array.isArray(selectedDates) ? selectedDates : [];
   setIsGeneratingGdprDocx(true);
   setValidationError(null);
   try {
@@ -403,7 +405,7 @@ async function generateBusinessHubDeliverable({
     setHours('6');
     setHoursPerDay((prev) => {
       const next = { ...prev };
-      selectedDates.forEach((date) => {
+      selectedActivityDates.forEach((date) => {
         next[date] = '6';
       });
       onSelectedHoursChange?.(next);
@@ -415,7 +417,7 @@ async function generateBusinessHubDeliverable({
     const input = {
       templateCode: 'GDPR_BUSINESS_HUB' as const,
       meta: completedMeta,
-      date: selectedDates[0] || '',
+      date: selectedActivityDates[0] || '',
       expertName,
       expertRole: expert?.positionInProject || expert?.role,
       projectCode: expert?.projectCode,

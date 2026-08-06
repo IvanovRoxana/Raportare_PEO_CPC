@@ -523,6 +523,7 @@ export function ActivityForm({
   }, [activityTabCatalog]);
   
   const activitySeed = initialActivity || prefillActivity;
+  const selectedActivityDates = Array.isArray(selectedDates) ? selectedDates : [];
   const expertNorma = expert?.norma || 8;
   const defaultDailyHours = Number(normalizePontajHoursValue(Math.min(expertNorma, MAX_PONTAJ_HOURS)));
   const editedActivityGroupId = initialActivity ? getActivityEditGroupId(initialActivity) : undefined;
@@ -547,14 +548,14 @@ export function ActivityForm({
   }, [allActivities, editedActivityGroupId, expertId, initialActivity]);
   const availablePontajHoursByDate = useMemo(() => {
     const hoursByDate: Record<string, number> = {};
-    selectedDates.forEach((date) => {
+    selectedActivityDates.forEach((date) => {
       hoursByDate[date] = Math.max(0, defaultDailyHours - (existingPontajHoursByDate[date] ?? 0));
     });
     return hoursByDate;
-  }, [defaultDailyHours, existingPontajHoursByDate, selectedDates]);
+  }, [defaultDailyHours, existingPontajHoursByDate, selectedActivityDates]);
   const defaultHoursByDate = useMemo(() => {
     const hoursByDate: Record<string, string> = {};
-    selectedDates.forEach((date) => {
+    selectedActivityDates.forEach((date) => {
       hoursByDate[date] = normalizePontajHoursForAvailableCapacity(
         activitySeed?.date === date ? activitySeed.hours : undefined,
         availablePontajHoursByDate[date] ?? defaultDailyHours,
@@ -562,14 +563,14 @@ export function ActivityForm({
       );
     });
     return hoursByDate;
-  }, [activitySeed?.date, activitySeed?.hours, availablePontajHoursByDate, defaultDailyHours, selectedDates]);
+  }, [activitySeed?.date, activitySeed?.hours, availablePontajHoursByDate, defaultDailyHours, selectedActivityDates]);
   const getDefaultHoursForDate = useCallback(
     (date: string) => Object.prototype.hasOwnProperty.call(defaultHoursByDate, date)
       ? defaultHoursByDate[date]
       : String(defaultDailyHours),
     [defaultDailyHours, defaultHoursByDate],
   );
-  const defaultHours = Number(getDefaultHoursForDate(selectedDates[0] || activitySeed?.date || '') || defaultDailyHours);
+  const defaultHours = Number(getDefaultHoursForDate(selectedActivityDates[0] || activitySeed?.date || '') || defaultDailyHours);
   const getHourOptionsForDate = useCallback(
     (date: string) => getAvailablePontajHourOptions(availablePontajHoursByDate[date] ?? defaultDailyHours),
     [availablePontajHoursByDate, defaultDailyHours],
@@ -584,7 +585,7 @@ export function ActivityForm({
   const normalizedSelectedHours = useMemo(
     () => {
       const nextHours: Record<string, string> = {};
-      [...new Set(selectedDates)].sort().forEach((date) => {
+      [...new Set(selectedActivityDates)].sort().forEach((date) => {
         nextHours[date] = normalizePontajHoursForAvailableCapacity(
           selectedHours?.[date],
           availablePontajHoursByDate[date] ?? defaultDailyHours,
@@ -593,7 +594,7 @@ export function ActivityForm({
       });
       return nextHours;
     },
-    [availablePontajHoursByDate, defaultDailyHours, getDefaultHoursForDate, selectedDates, selectedHours],
+    [availablePontajHoursByDate, defaultDailyHours, getDefaultHoursForDate, selectedActivityDates, selectedHours],
   );
   const setHoursPerDay = useCallback((nextHoursOrUpdater: SetStateAction<Record<string, string>>) => {
     const nextHours = typeof nextHoursOrUpdater === 'function'
@@ -601,7 +602,7 @@ export function ActivityForm({
       : nextHoursOrUpdater;
 
     const normalizedNextHours: Record<string, string> = {};
-    [...new Set(selectedDates)].sort().forEach((date) => {
+    [...new Set(selectedActivityDates)].sort().forEach((date) => {
       normalizedNextHours[date] = normalizePontajHoursForAvailableCapacity(
         nextHours[date],
         availablePontajHoursByDate[date] ?? defaultDailyHours,
@@ -610,7 +611,7 @@ export function ActivityForm({
     });
 
     onSelectedHoursChange?.(normalizedNextHours);
-  }, [availablePontajHoursByDate, defaultDailyHours, getDefaultHoursForDate, normalizedSelectedHours, onSelectedHoursChange, selectedDates]);
+  }, [availablePontajHoursByDate, defaultDailyHours, getDefaultHoursForDate, normalizedSelectedHours, onSelectedHoursChange, selectedActivityDates]);
   
   // Legacy single hours for backward compatibility (used when saving)
   const [, setHours] = useState(normalizePontajHoursValue(activitySeed?.hours, defaultHours));
@@ -642,9 +643,9 @@ export function ActivityForm({
   }, [availablePontajHoursByDate, defaultDailyHours, getDefaultHoursForDate, normalizedSelectedHours, onSelectedHoursChange]);
 
   const removeSelectedDate = useCallback((dateToRemove: string) => {
-    const nextDates = selectedDates.filter((date) => date !== dateToRemove);
+    const nextDates = selectedActivityDates.filter((date) => date !== dateToRemove);
     onSelectedDatesChange?.(nextDates, normalizedSelectedHours);
-  }, [normalizedSelectedHours, onSelectedDatesChange, selectedDates]);
+  }, [normalizedSelectedHours, onSelectedDatesChange, selectedActivityDates]);
 
   const [activityTitle, setActivityTitle] = useState(activitySeed?.activityType || '');
   const [selectedCatalogActivityId, setSelectedCatalogActivityId] = useState(activitySeed?.catalogActivityId || '');
@@ -684,7 +685,7 @@ export function ActivityForm({
     reportMonthLabel: reportMonthName,
     year,
     month,
-    selectedDates,
+    selectedDates: selectedActivityDates,
     defaultHours,
     description,
     expertName,
@@ -823,7 +824,7 @@ export function ActivityForm({
   }, [resolutionHint, resolutionTargetId]);
 
   const duplicateInfoByDeliverableId = useMemo(() => {
-    const referenceMonthKey = (selectedDates[0] || `${year}-${String(month + 1).padStart(2, '0')}-01`).slice(0, 7);
+    const referenceMonthKey = (selectedActivityDates[0] || `${year}-${String(month + 1).padStart(2, '0')}-01`).slice(0, 7);
     const matches = new Map<string, DeliverableDuplicateInfo>();
 
     deliverables.forEach((deliverable) => {
@@ -865,7 +866,7 @@ export function ActivityForm({
     });
 
     return matches;
-  }, [deliverables, documents, expertId, month, selectedDates, year]);
+  }, [deliverables, documents, expertId, month, selectedActivityDates, year]);
 
   useEffect(() => {
     if (duplicateInfoByDeliverableId.size === 0) return;
@@ -966,10 +967,10 @@ export function ActivityForm({
       : [],
   }), [activityCommon, allExpertsById, collaborators]);
   const activityAutofillHours = useMemo(() => {
-    if (selectedDates.length === 0) return undefined;
-    const firstDate = selectedDates[0];
+    if (selectedActivityDates.length === 0) return undefined;
+    const firstDate = selectedActivityDates[0];
     return Number(normalizePontajHoursValue(normalizedSelectedHours[firstDate], getDefaultHoursForDate(firstDate)));
-  }, [getDefaultHoursForDate, normalizedSelectedHours, selectedDates]);
+  }, [getDefaultHoursForDate, normalizedSelectedHours, selectedActivityDates]);
   const currentDeliverablesForEligibility = useMemo(
     () => deliverables.filter((d) => d.uploaded && !d.isPhoto),
     [deliverables],
@@ -1012,7 +1013,7 @@ export function ActivityForm({
     saCode,
     activityName: activityTitle,
     currentDescription: description,
-    selectedDates,
+    selectedDates: selectedActivityDates,
     collaborationContext: activityAutofillCollaborationContext,
     setDescription,
     setActivitySummary,
@@ -1109,7 +1110,7 @@ export function ActivityForm({
 
   const collaboratorSuggestions = useMemo(() => {
     const suggestionScores = new Map<string, { score: number; reasons: Set<string> }>();
-    const selectedDateSet = new Set(selectedDates);
+    const selectedDateSet = new Set(selectedActivityDates);
 
     const addSuggestion = (id: string | undefined, score: number, reason: string) => {
       if (!id || id === expertId) return;
@@ -1160,7 +1161,7 @@ export function ActivityForm({
       })
       .filter((item): item is { expert: Expert; score: number; reason: string } => Boolean(item))
       .sort((a, b) => b.score - a.score || a.expert.name.localeCompare(b.expert.name));
-  }, [allActivities, allExpertsById, activityTitle, expertId, initialCollaborators, saCode, selectedDates]);
+  }, [allActivities, allExpertsById, activityTitle, expertId, initialCollaborators, saCode, selectedActivityDates]);
   
   const deliverableOptions = useMemo(() => {
     return resolveActivityDeliverableOptions(
@@ -1170,7 +1171,7 @@ export function ActivityForm({
     );
   }, [deliverables, expertCategory, selectedCatalogItem?.deliverables]);
 
-  const businessHubMetaDate = selectedDates[0] || initialActivity?.date || '';
+  const businessHubMetaDate = selectedActivityDates[0] || initialActivity?.date || '';
   const businessHubMetaDraft = useMemo(() => ({
     entityName: businessHubEntityName,
     eventTitle: businessHubEventTitle,
@@ -1242,7 +1243,7 @@ export function ActivityForm({
   const needsCommonDesc = activityCommon && (description || '').trim().length < 30;
   
   // Check if extended event description is needed
-  const totalHours = selectedDates.reduce((sum, date) => (
+  const totalHours = selectedActivityDates.reduce((sum, date) => (
     sum + Number(normalizePontajHoursValue(normalizedSelectedHours[date], getDefaultHoursForDate(date)))
   ), 0);
   const eventDur = parseFloat(eventDuration) || 0;
@@ -1252,10 +1253,10 @@ export function ActivityForm({
     title: effectiveActivityTitle,
   });
   const baseSaveBlockers = [
-    selectedDates.length === 0 ? 'Selecteaza cel putin o zi din calendar.' : null,
+    selectedActivityDates.length === 0 ? 'Selecteaza cel putin o zi din calendar.' : null,
     (!effectiveActivityTitle.trim() && !isLeave) ? 'Selecteaza tipul activitatii.' : null,
     isSaving ? 'Salvarea este deja in curs.' : null,
-    (isBusinessHubTabActive && selectedDates.length !== 1) ? 'Registrul Business Hub se completeaza pentru o singura zi selectata.' : null,
+    (isBusinessHubTabActive && selectedActivityDates.length !== 1) ? 'Registrul Business Hub se completeaza pentru o singura zi selectata.' : null,
     (isBusinessHubTabActive && getBusinessHubMetaMissingFields(businessHubMetaDraft).length > 0)
       ? `Completeaza campurile Business Hub: ${getBusinessHubMetaMissingFields(businessHubMetaDraft).join(', ')}.`
       : null,
@@ -1419,7 +1420,7 @@ export function ActivityForm({
       {
         id: generateId(),
         expertId,
-        date: selectedDates[0] || new Date().toISOString().split('T')[0],
+        date: selectedActivityDates[0] || new Date().toISOString().split('T')[0],
         year: new Date().getFullYear(),
         month: new Date().getMonth(),
         activityType: activityTitle,
@@ -1427,7 +1428,7 @@ export function ActivityForm({
         participantsCount: 0,
       },
     ]);
-  }, [activityTitle, expertId, selectedDates]);
+  }, [activityTitle, expertId, selectedActivityDates]);
 
   const updateGrupTintaEntry = useCallback((id: string, field: keyof GrupTintaEntry, value: string | number | string[]) => {
     setGrupTinta((prev) => prev.map((g) => (g.id === id ? { ...g, [field]: value } : g)));
@@ -1506,7 +1507,7 @@ export function ActivityForm({
       uploadedByExpertName: expertName,
       projectId,
       projectName,
-      activityDate: initialActivity?.date || selectedDates[0],
+      activityDate: initialActivity?.date || selectedActivityDates[0],
       saCode,
       deliverableType: deliverable.type || deliverable.slotType,
       isCommonDeliverable: Boolean(deliverable.common),
@@ -1522,7 +1523,7 @@ export function ActivityForm({
     expertName,
     initialActivity?.date,
     saCode,
-    selectedDates,
+    selectedActivityDates,
   ]);
 
   const handleSave = useCallback(async (
@@ -1631,7 +1632,7 @@ export function ActivityForm({
       }
     }
 
-    const safeSelectedDates = Array.isArray(selectedDates) ? selectedDates : [];
+    const safeSelectedDates = selectedActivityDates;
     const activityDatesForSave = initialActivity
       ? (safeSelectedDates.length > 0 ? safeSelectedDates : [initialActivity.date])
       : safeSelectedDates;
@@ -2051,7 +2052,7 @@ export function ActivityForm({
     onSave,
     saCode,
     selectedCatalogItem?.id,
-    selectedDates,
+    selectedActivityDates,
     showStandardActivityWorkflow,
     skipMainDeliverableForNow,
     uploadDeliverableFile,
@@ -2102,7 +2103,7 @@ export function ActivityForm({
         }));
     }
 
-    return selectedDates.map((date) => ({
+    return selectedActivityDates.map((date) => ({
       date,
       activityType: activityTitle,
       title: activityTitle,
@@ -2110,7 +2111,7 @@ export function ActivityForm({
       expertId,
       expertName,
     }));
-  }, [activityTitle, allActivities, expertId, expertName, initialActivity, saCode, selectedDates]);
+  }, [activityTitle, allActivities, expertId, expertName, initialActivity, saCode, selectedActivityDates]);
   const eligibilityCollaborators = useMemo(() => (
     activityCommon
       ? collaborators
@@ -2193,8 +2194,8 @@ export function ActivityForm({
     {
       id: 'time',
       label: 'Pontaj',
-      description: selectedDates.length > 0 ? `${selectedDates.length} zile, ${totalHours}h` : 'Zile si ore',
-      blocked: selectedDates.length === 0 || (isBusinessHubTabActive && selectedDates.length !== 1),
+      description: selectedActivityDates.length > 0 ? `${selectedActivityDates.length} zile, ${totalHours}h` : 'Zile si ore',
+      blocked: selectedActivityDates.length === 0 || (isBusinessHubTabActive && selectedActivityDates.length !== 1),
     },
     {
       id: 'type',
@@ -2252,7 +2253,7 @@ export function ActivityForm({
     mainDeliverables.length,
     needsCommonDesc,
     needsExtendedDesc,
-    selectedDates.length,
+    selectedActivityDates.length,
     skipMainDeliverableForNow,
     totalHours,
     usesMonthlyComDeliverable,
@@ -2689,11 +2690,11 @@ export function ActivityForm({
             <h2 className="text-lg font-semibold leading-tight text-foreground">
               {initialActivity ? 'Actualizeaza raportarea' : 'Completeaza activitatea selectata'}
             </h2>
-            {selectedDates.length > 0 && (
+            {selectedActivityDates.length > 0 && (
               <p className="text-xs text-muted-foreground">
-                {selectedDates.length === 1
-                  ? `Data: ${formatDateRo(selectedDates[0])}`
-                  : `${selectedDates.length} zile selectate`}
+                {selectedActivityDates.length === 1
+                  ? `Data: ${formatDateRo(selectedActivityDates[0])}`
+                  : `${selectedActivityDates.length} zile selectate`}
               </p>
             )}
           </div>
@@ -2707,11 +2708,11 @@ export function ActivityForm({
           <CardTitle className="text-lg">
             {initialActivity ? 'Editare Activitate' : 'Adaugare Activitate'}
           </CardTitle>
-          {selectedDates.length > 0 && (
+          {selectedActivityDates.length > 0 && (
             <p className="text-sm text-muted-foreground">
-              {selectedDates.length === 1
-                ? `Data: ${formatDateRo(selectedDates[0])}`
-                : `${selectedDates.length} zile selectate`}
+              {selectedActivityDates.length === 1
+                ? `Data: ${formatDateRo(selectedActivityDates[0])}`
+                : `${selectedActivityDates.length} zile selectate`}
             </p>
           )}
         </CardHeader>
@@ -2967,20 +2968,20 @@ export function ActivityForm({
                 </Select>
               </Field>
 
-              {!isLeave && selectedDates.length === 1 && (
+              {!isLeave && selectedActivityDates.length === 1 && (
                 <Field>
                   <FieldLabel htmlFor="hours">
-                    Ore lucrate (max {getAvailableHoursForDate(selectedDates[0])}h disponibile, norma {expertNorma}h)
+                    Ore lucrate (max {getAvailableHoursForDate(selectedActivityDates[0])}h disponibile, norma {expertNorma}h)
                   </FieldLabel>
                   <Select 
-                    value={normalizedSelectedHours[selectedDates[0]] ?? defaultHours.toString()}
-                    onValueChange={(v) => updateHoursForDate(selectedDates[0], v)}
+                    value={normalizedSelectedHours[selectedActivityDates[0]] ?? defaultHours.toString()}
+                    onValueChange={(v) => updateHoursForDate(selectedActivityDates[0], v)}
                   >
                     <SelectTrigger id="hours">
                       <SelectValue placeholder="Selecteaza orele" />
                     </SelectTrigger>
                     <SelectContent>
-                      {getHourOptionsForDate(selectedDates[0])
+                      {getHourOptionsForDate(selectedActivityDates[0])
                         .map(h => (
                           <SelectItem key={h} value={h.toString()}>
                             {h} {h === 1 ? 'ora' : 'ore'}
@@ -2994,11 +2995,11 @@ export function ActivityForm({
             </div>
 
             {/* Per-day hours when multiple days selected */}
-            {!isLeave && selectedDates.length > 1 && (
+            {!isLeave && selectedActivityDates.length > 1 && (
               <div className="space-y-3">
                 <FieldLabel>Ore pentru fiecare zi (max disponibil pe zi, norma {expertNorma}h)</FieldLabel>
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                  {[...selectedDates].sort().map(date => (
+                  {[...selectedActivityDates].sort().map(date => (
                     <div key={date} className="flex items-center gap-2 p-2 bg-muted/50 rounded-md">
                       <span className="text-xs font-medium min-w-[70px]">
                         {formatDateRo(date)}
@@ -3040,7 +3041,7 @@ export function ActivityForm({
                   ))}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Total: {selectedDates.reduce((sum, date) => sum + Number(normalizePontajHoursValue(normalizedSelectedHours[date], getDefaultHoursForDate(date))), 0)}h pentru {selectedDates.length} zile
+                  Total: {selectedActivityDates.reduce((sum, date) => sum + Number(normalizePontajHoursValue(normalizedSelectedHours[date], getDefaultHoursForDate(date))), 0)}h pentru {selectedActivityDates.length} zile
                 </p>
               </div>
             )}
@@ -4125,7 +4126,7 @@ export function ActivityForm({
                         deliverables={deliverables}
                         subActivity={saCode}
                         activityTitle={activityTitle}
-                        date={selectedDates[0] || ''}
+                        date={selectedActivityDates[0] || ''}
                         description={description}
                         expertName={expertName}
                         allExperts={allExperts}
@@ -4203,7 +4204,7 @@ export function ActivityForm({
             </div>
             <div>
               <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pontaj</div>
-              <div className="font-medium text-foreground">{selectedDates.length} zile / {totalHours}h</div>
+              <div className="font-medium text-foreground">{selectedActivityDates.length} zile / {totalHours}h</div>
             </div>
             <div>
               <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Activitate</div>
