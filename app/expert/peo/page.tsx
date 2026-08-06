@@ -2289,6 +2289,7 @@ function ExpertDashboardContent() {
       year={currentYear}
       onSave={handleSaveActivities}
       onCancel={isClarificationScopedAccess ? () => router.push(`/expert/clarificari?month=${currentMonth}&year=${currentYear}`) : closeActivityForm}
+      onDelete={handleDeleteActivity}
       onDeleteBrokenExistingDeliverable={handleDeleteBrokenExistingDeliverable}
       initialActivity={editingActivity || undefined}
       prefillActivity={sharedActivityPrefill || undefined}
