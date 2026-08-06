@@ -2,7 +2,7 @@
 
 import { Suspense, useState, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, CalendarDays, CheckCircle, ChevronLeft, ChevronRight, ClipboardList, FileText, Loader2, Plus, RotateCcw, Send, Lock, AlertTriangle, Upload, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CalendarDays, CheckCircle, ChevronLeft, ChevronRight, ClipboardList, FileText, Loader2, Plus, RotateCcw, Send, Lock, AlertTriangle, Upload, X } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { DashboardShell, expertNavItems } from '@/components/layout/dashboard-shell';
@@ -1510,6 +1510,8 @@ function ExpertDashboardContent() {
   const isApproved = currentStatus === 'approved';
   const isSent = currentStatus === 'sent';
   const isInReview = currentStatus === 'in_review';
+  const isClarifications = currentStatus === 'clarifications';
+  const clarificationHref = `/expert/clarificari?month=${currentMonth}&year=${currentYear}`;
   const statusMeta = statusLabels[currentStatus as ReportStatus['status']] || statusLabels.draft;
   const statusDescription = isApproved
     ? 'Luna este aprobată de PM.'
@@ -1517,11 +1519,15 @@ function ExpertDashboardContent() {
       ? 'Raportarea este în verificare la PM.'
       : isSent
         ? 'Luna a fost trimisă către PM și așteaptă verificarea.'
+        : isClarifications
+          ? 'PM a solicitat clarificări. Deschide panoul de clarificări pentru detalii.'
         : 'Completează pontajul și trimite luna către PM când pachetul este pregătit.';
   const submitButtonIcon = isApproved
     ? <Lock className="h-4 w-4" />
     : isSent || isInReview
       ? <CheckCircle className="h-4 w-4" />
+      : isClarifications
+        ? <ArrowRight className="h-4 w-4" />
       : <Send className="h-4 w-4" />;
   const submitButtonLabel = isApproved
     ? 'Lună aprobată'
@@ -1529,6 +1535,8 @@ function ExpertDashboardContent() {
       ? 'În verificare PM'
       : isSent
         ? 'Luna trimisă către PM'
+        : isClarifications
+          ? 'Vezi clarificări PM'
         : 'Trimite luna către PM';
   const submitReadiness = useMemo(() => {
     if (!submissionDataReady) {
@@ -1769,6 +1777,8 @@ function ExpertDashboardContent() {
       ? 'Raportarea este deja în verificare la PM.'
       : isSent
         ? 'Luna a fost deja trimisă către PM.'
+        : isClarifications
+          ? 'Deschide panoul de clarificări solicitate de PM.'
         : !submissionDataReady
           ? SUBMISSION_DATA_LOADING_MESSAGE
         : submitReadiness.disabledReason || undefined;
@@ -2686,15 +2696,24 @@ function ExpertDashboardContent() {
                 </div>
               </div>
               <span className="block" title={submitButtonTitle}>
-                <Button
-                  type="button"
-                  className="w-full md:w-auto"
-                  onClick={handleSubmitMonth}
-                  disabled={isApproved || isSent || isInReview || isClarificationScopedAccess}
-                >
-                  {submitButtonIcon}
-                  {submitButtonLabel}
-                </Button>
+                {isClarifications ? (
+                  <Button asChild className="w-full md:w-auto">
+                    <Link href={clarificationHref}>
+                      {submitButtonIcon}
+                      {submitButtonLabel}
+                    </Link>
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    className="w-full md:w-auto"
+                    onClick={handleSubmitMonth}
+                    disabled={isApproved || isSent || isInReview || isClarificationScopedAccess}
+                  >
+                    {submitButtonIcon}
+                    {submitButtonLabel}
+                  </Button>
+                )}
               </span>
             </div>
 
@@ -2787,15 +2806,24 @@ function ExpertDashboardContent() {
                       </p>
                     )}
                     <span className="mt-3 block" title={submitButtonTitle}>
-                      <Button
-                        type="button"
-                        className="w-full"
-                        onClick={handleSubmitMonth}
-                        disabled={isApproved || isSent || isInReview || !submissionDataReady}
-                      >
-                        {submitButtonIcon}
-                        {submitButtonLabel}
-                      </Button>
+                      {isClarifications ? (
+                        <Button asChild className="w-full">
+                          <Link href={clarificationHref}>
+                            {submitButtonIcon}
+                            {submitButtonLabel}
+                          </Link>
+                        </Button>
+                      ) : (
+                        <Button
+                          type="button"
+                          className="w-full"
+                          onClick={handleSubmitMonth}
+                          disabled={isApproved || isSent || isInReview || !submissionDataReady}
+                        >
+                          {submitButtonIcon}
+                          {submitButtonLabel}
+                        </Button>
+                      )}
                     </span>
                   </div>
 
