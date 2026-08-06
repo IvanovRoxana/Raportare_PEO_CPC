@@ -1,7 +1,7 @@
 'use client';
 
 import { Suspense, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Download, Loader2, Lock } from 'lucide-react';
+import { ArrowLeft, CheckCircle, Download, Loader2, Lock, Send } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { AdminViewAsBanner } from '@/components/admin/admin-view-as-banner';
@@ -16,11 +16,13 @@ import { getSignedInUser } from '@/lib/aws/auth';
 import { getMonthName } from '@/lib/backend-store';
 import { isAnexa10DeterministicDocxEnabledClient, isReportingWorkBlocksEnabledClient } from '@/lib/feature-flags';
 import type { Expert } from '@/lib/types';
+import type { ReportStatus } from '@/lib/types';
 import {
   useActivitiesByMonth,
   useConcurrentProjects,
   useConcurrentProjectTimesheetByMonth,
   useExperts,
+  useReportStatus,
   useReportingWorkBlockBundles,
 } from '@/hooks/use-backend-data';
 
@@ -60,6 +62,11 @@ function ExportRaContent() {
   const { activities: allMonthActivities, isLoading: activitiesLoading } = useActivitiesByMonth(currentMonth, currentYear);
   const { projects: concurrentProjects } = useConcurrentProjects(selectedExpertId);
   const { entries: concurrentTimesheetEntries } = useConcurrentProjectTimesheetByMonth(currentMonth, currentYear);
+  const { status: reportStatus, updateStatus: updateReportStatus, isLoading: reportStatusLoading } = useReportStatus(
+    selectedExpertId,
+    currentMonth,
+    currentYear,
+  );
   const {
     bundles: persistedWorkBlockBundles,
     status: bundlesStatus,
@@ -144,6 +151,45 @@ function ExportRaContent() {
   const deterministicWorkBlockBundles = usePersistedWorkBlockBundles || useActivityWorkBlockFallback
     ? persistedWorkBlockBundles
     : undefined;
+  const currentStatus = reportStatus?.status || 'draft';
+  const isApproved = currentStatus === 'approved';
+  const isSent = currentStatus === 'sent';
+  const isInReview = currentStatus === 'in_review';
+  const submitButtonIcon = isApproved
+    ? <Lock className="h-4 w-4" />
+    : isSent || isInReview
+      ? <CheckCircle className="h-4 w-4" />
+      : <Send className="h-4 w-4" />;
+  const submitButtonLabel = isApproved
+    ? 'Luna aprobata'
+    : isInReview
+      ? 'In verificare PM'
+      : isSent
+        ? 'Luna trimisa catre PM'
+        : 'Trimite luna catre PM';
+  const submitButtonTitle = activities.length === 0
+    ? 'Adauga cel putin o activitate inainte de trimitere.'
+    : isApproved
+      ? 'Luna este aprobata.'
+      : isInReview
+        ? 'Raportarea este deja in verificare la PM.'
+        : isSent
+          ? 'Luna a fost deja trimisa catre PM.'
+          : undefined;
+  const handleSubmitMonth = async () => {
+    if (!selectedExpertId || isApproved || isSent || isInReview || activities.length === 0) return;
+
+    await updateReportStatus({
+      expertId: selectedExpertId,
+      year: currentYear,
+      month: currentMonth,
+      status: 'sent',
+      sentDate: new Date().toISOString(),
+      expertAccessApproved: reportStatus?.expertAccessApproved ?? false,
+      expertAccessApprovedAt: reportStatus?.expertAccessApprovedAt,
+      pmNotes: reportStatus?.pmNotes,
+    } satisfies Omit<ReportStatus, 'id'>);
+  };
 
   if (isLoading && (experts.length === 0 || !selectedExpertId)) {
     return (
@@ -217,9 +263,21 @@ function ExportRaContent() {
                   {selectedExpert.name} - {getMonthName(currentMonth)} {currentYear}
                 </p>
               </div>
-              <div className="inline-flex items-center gap-2 rounded-lg border bg-background px-3 py-2 text-sm font-medium">
-                <Download className="h-4 w-4" />
-                {activities.length} activitati, {activities.reduce((sum, activity) => sum + (Number(activity.hours) || 0), 0)}h
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleSubmitMonth}
+                  disabled={isApproved || isSent || isInReview || reportStatusLoading || activities.length === 0}
+                  title={submitButtonTitle}
+                >
+                  {reportStatusLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : submitButtonIcon}
+                  {submitButtonLabel}
+                </Button>
+                <div className="inline-flex items-center gap-2 rounded-lg border bg-background px-3 py-2 text-sm font-medium">
+                  <Download className="h-4 w-4" />
+                  {activities.length} activitati, {activities.reduce((sum, activity) => sum + (Number(activity.hours) || 0), 0)}h
+                </div>
               </div>
             </div>
           </div>
