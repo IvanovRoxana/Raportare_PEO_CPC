@@ -78,6 +78,82 @@ export const DEFAULT_ELIGIBILITY_RULE_VERSION_ID = 'default-code-rules-v1';
 type EligibilityStatus = z.infer<typeof deliverableEligibilitySchema>['status'];
 type EligibilityCheckStatus = z.infer<typeof deliverableEligibilityCheckSchema>['status'];
 type EligibilityResult = z.infer<typeof deliverableEligibilitySchema>;
+type NormalizedEligibilitySuggestedSettings = {
+  saCode?: string;
+  activityName?: string;
+  selectedActivityId?: string;
+  deliverableType?: string;
+  confidence: 'high' | 'medium' | 'low';
+  reason: string;
+  changes: Array<'activity' | 'deliverableType'>;
+};
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+}
+
+function normalizeSuggestedSettingChanges(value: unknown, suggestion?: {
+  saCode?: unknown;
+  activityName?: unknown;
+  selectedActivityId?: unknown;
+  deliverableType?: unknown;
+}) {
+  const explicitChanges = stringArray(value).filter((item) => item === 'activity' || item === 'deliverableType');
+  if (explicitChanges.length > 0) return explicitChanges;
+
+  const inferredChanges: Array<'activity' | 'deliverableType'> = [];
+  if (suggestion?.saCode || suggestion?.activityName || suggestion?.selectedActivityId) {
+    inferredChanges.push('activity');
+  }
+  if (suggestion?.deliverableType) {
+    inferredChanges.push('deliverableType');
+  }
+  return inferredChanges;
+}
+
+function normalizeEligibilitySuggestedSettings(value: unknown): NormalizedEligibilitySuggestedSettings | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const suggestion = value as Partial<NormalizedEligibilitySuggestedSettings>;
+  return {
+    ...(typeof suggestion.saCode === 'string' && suggestion.saCode ? { saCode: suggestion.saCode } : {}),
+    ...(typeof suggestion.activityName === 'string' && suggestion.activityName ? { activityName: suggestion.activityName } : {}),
+    ...(typeof suggestion.selectedActivityId === 'string' && suggestion.selectedActivityId ? { selectedActivityId: suggestion.selectedActivityId } : {}),
+    ...(typeof suggestion.deliverableType === 'string' && suggestion.deliverableType ? { deliverableType: suggestion.deliverableType } : {}),
+    confidence: suggestion.confidence === 'high' || suggestion.confidence === 'medium' || suggestion.confidence === 'low'
+      ? suggestion.confidence
+      : 'low',
+    reason: typeof suggestion.reason === 'string' ? suggestion.reason : '',
+    changes: normalizeSuggestedSettingChanges(suggestion.changes, suggestion),
+  };
+}
+
+export function normalizeDeliverableEligibilityCheck<T extends object>(value: T | null | undefined) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const check = value as T & Partial<EligibilityResult> & Record<string, unknown>;
+  const status = check.status === 'eligibil'
+    || check.status === 'eligibil_cu_observatii'
+    || check.status === 'neeligibil'
+    || check.status === 'neconcludent'
+    ? check.status
+    : 'neconcludent';
+  const score = Number(check.score);
+
+  return {
+    ...check,
+    status,
+    score: Number.isFinite(score) ? Math.max(0, Math.min(100, score)) : 0,
+    summary: typeof check.summary === 'string' ? check.summary : '',
+    checks: Array.isArray(check.checks)
+      ? check.checks.filter((item): item is EligibilityResult['checks'][number] => (
+          Boolean(item && typeof item === 'object' && !Array.isArray(item))
+        ))
+      : [],
+    missingElements: stringArray(check.missingElements),
+    recommendations: stringArray(check.recommendations),
+    riskFlags: stringArray(check.riskFlags),
+    suggestedSettings: normalizeEligibilitySuggestedSettings(check.suggestedSettings),
+  };
+}
 type EligibilityDocument = z.infer<typeof deliverableEligibilityDocumentSchema>;
 
 export type EligibilityRubricCriterion = {
@@ -620,7 +696,7 @@ export function validateEligibilitySuggestedSettings(input: {
   const suggestion = input.suggestedSettings;
   if (!suggestion) return undefined;
 
-  const requestedChanges = new Set(suggestion.changes);
+  const requestedChanges = new Set(normalizeSuggestedSettingChanges(suggestion.changes, suggestion));
   const output: NonNullable<z.infer<typeof deliverableEligibilitySchema>['suggestedSettings']> = {
     saCode: null,
     activityName: null,

@@ -11,6 +11,7 @@ import {
   hasSufficientDeliverableEvidenceForEligibility,
   isConcordiaPublishedDeliverableType,
   normalizeDeliverableEligibilityAiOutput,
+  normalizeDeliverableEligibilityCheck,
   normalizeDeliverableEligibilityDocuments,
   protectConcordiaPublicationEligibility,
   validateEligibilitySuggestedSettings,
@@ -110,6 +111,49 @@ test('nu pastreaza sugestii identice cu setarile curente', () => {
   });
 
   assert.equal(suggestion, undefined);
+});
+
+test('valideaza suggestedSettings persistat fara changes prin inferenta din campuri', () => {
+  const suggestion = validateEligibilitySuggestedSettings({
+    suggestedSettings: {
+      selectedActivityId: 'cat-2',
+      saCode: 'SA3.4',
+      activityName: 'Intalnire cu reprezentanti membri',
+      deliverableType: 'Minute intalnire / MOM',
+      confidence: 'medium',
+      reason: 'Structura veche fara changes.',
+    } as never,
+    activityCatalogCandidates,
+    deliverableOptions,
+    currentSaCode: 'SA3.4',
+    currentActivityName: 'Elaborare materiale suport eveniment',
+    currentDeliverableType: 'Material prezentare / suport eveniment',
+  });
+
+  assert.deepEqual(suggestion?.changes, ['activity', 'deliverableType']);
+});
+
+test('normalizeaza eligibilityCheck persistat cu array-uri lipsa', () => {
+  const check = normalizeDeliverableEligibilityCheck({
+    status: 'eligibil',
+    score: 89,
+    summary: 'Verificat anterior.',
+    suggestedSettings: {
+      saCode: 'SA3.4',
+      activityName: 'Intalnire cu reprezentanti membri',
+      confidence: 'high',
+      reason: 'Structura veche.',
+    },
+    checkedAt: '2026-07-01T00:00:00.000Z',
+  });
+
+  assert.equal(check?.status, 'eligibil');
+  assert.deepEqual(check?.checks, []);
+  assert.deepEqual(check?.missingElements, []);
+  assert.deepEqual(check?.recommendations, []);
+  assert.deepEqual(check?.riskFlags, []);
+  assert.deepEqual(check?.suggestedSettings?.changes, ['activity']);
+  assert.equal(check?.checkedAt, '2026-07-01T00:00:00.000Z');
 });
 
 test('fallbackul pentru esec AI ramane raspuns neconcludent controlat', () => {

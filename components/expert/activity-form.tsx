@@ -89,6 +89,7 @@ import {
   type ActivityAutofillSuggestion,
 } from '@/lib/activity-autofill';
 import { isDeliverableEligibilityCheckEnabledClient } from '@/lib/feature-flags';
+import { normalizeDeliverableEligibilityCheck } from '@/lib/deliverable-eligibility';
 import {
   buildExistingDeliverableSourceContext,
   type ExistingDeliverableSourceAction,
@@ -250,6 +251,7 @@ function dedupeDeliverableSlotsBySignature(deliverables: DeliverableSlot[]) {
 }
 
 function mapSavedDeliverableToSlot(deliverable: Deliverable, preserveId: boolean): DeliverableSlot {
+  const eligibilityCheck = normalizeDeliverableEligibilityCheck(deliverable.eligibilityCheck ?? null);
   return {
     id: preserveId ? deliverable.id : generateId(),
     slotType: resolveSavedSlotType(deliverable.deliverableType, deliverable.category),
@@ -299,6 +301,7 @@ function mapSavedDeliverableToSlot(deliverable: Deliverable, preserveId: boolean
     titleMatch: deliverable.titleMatch ?? null,
     titleCheckStatus: deliverable.titleCheckStatus as DeliverableSlot['titleCheckStatus'],
     titleCheckMessage: deliverable.titleCheckMessage,
+    eligibilityCheck,
     isPendingConfirm: false,
   };
 }
@@ -1847,7 +1850,7 @@ export function ActivityForm({
                   ? 'review'
                   : undefined,
             aiReason: d.aiCheck?.reason,
-            eligibilityCheck: d.eligibilityCheck || undefined,
+            eligibilityCheck: normalizeDeliverableEligibilityCheck(d.eligibilityCheck ?? null) || undefined,
             fileData: d.fileData,
           })) : [],
         location,
@@ -2382,7 +2385,7 @@ export function ActivityForm({
     },
   });
   const attachExistingDeliverable = useCallback((candidate: ExistingDeliverableCandidate) => {
-    const savedEligibilityCheck = candidate.eligibilityCheck;
+    const savedEligibilityCheck = normalizeDeliverableEligibilityCheck(candidate.eligibilityCheck ?? null);
     const hasReusableEligibility = Boolean(
       savedEligibilityCheck
       && ['eligibil', 'eligibil_cu_observatii'].includes(savedEligibilityCheck.status),
