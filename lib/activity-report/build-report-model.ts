@@ -13,6 +13,26 @@ import {
 } from './work-blocks.ts';
 
 const ADMIN_ACTIVITY_CATALOG = activityCatalogSeed as ActivityCatalog[];
+const MAX_TABLE_PERFORMED_ACTIVITY_WORDS = 50;
+
+const SUBACTIVITY_TO_FINANCING_ACTIVITY_CODE = new Map([
+  ['SA1.1', 'A1'],
+  ['SA2.1', 'A2'],
+  ['SA3.2', 'A3'],
+  ['SA3.3', 'A3'],
+  ['SA3.4', 'A3'],
+  ['SA3.5', 'A3'],
+  ['SA4.1', 'A4'],
+  ['SA6.1', 'A6'],
+]);
+
+const FINANCING_ACTIVITY_TITLES = new Map([
+  ['A1', 'A1 - Informare, recrutare, selectie GT'],
+  ['A2', 'A2 - Realizarea de analize cu privire la tendintele manifestate la nivel national'],
+  ['A3', 'A3 - Asigurarea infrastructurii dialogului social; dezvoltarea serviciilor suport si informare pentru membri; schimb de bune practici la nivel European'],
+  ['A4', 'A4 - Programe Formare'],
+  ['A6', 'A6 - Managementul proiectului'],
+]);
 
 export type ProjectReportingSettings = {
   includeLeaveInTable?: boolean;
@@ -295,14 +315,20 @@ function getBundleDeliverableTitles(activities: Activity[]) {
 }
 
 function getOfficialActivityTitle(bundle: ReportingWorkBlockBundle, activities: Activity[]) {
-  return bundle.workBlock.activityCategory
+  const saCode = normalizeSaCode(bundle.workBlock.saCode || activities.find((activity) => activity.saCode)?.saCode);
+  const financingActivityCode = saCode ? SUBACTIVITY_TO_FINANCING_ACTIVITY_CODE.get(saCode) : undefined;
+  return (financingActivityCode ? FINANCING_ACTIVITY_TITLES.get(financingActivityCode) : undefined)
+    || bundle.workBlock.activityCategory
     || activities.find((activity) => activity.activityType)?.activityType
     || bundle.workBlock.saCode
     || '-';
 }
 
 function getPerformedActivity(bundle: ReportingWorkBlockBundle, activities: Activity[]) {
-  return normalizeAnexa10ReportText(selectPerformedActivityText(bundle, activities));
+  return limitWords(
+    normalizeAnexa10ReportText(selectPerformedActivityText(bundle, activities)),
+    MAX_TABLE_PERFORMED_ACTIVITY_WORDS,
+  );
 }
 
 function selectPerformedActivityText(bundle: ReportingWorkBlockBundle, activities: Activity[]) {
@@ -478,10 +504,20 @@ function hasDistinctShortExpertDetail(
 }
 
 function getCommonDeliverableLabel(activities: Activity[]) {
-  const hasCommonDeliverable = activities.some((activity) => (
-    activity.deliverables?.some((deliverable) => deliverable.isCommonDeliverable)
-  ));
-  return hasCommonDeliverable ? 'Da' : 'Nu';
+  const commonDeliverables = activities.flatMap((activity) => activity.deliverables ?? [])
+    .filter((deliverable) => (
+      deliverable.isCommonDeliverable
+      || (deliverable.sharedWithExpertIds?.length ?? 0) > 0
+    ));
+
+  if (commonDeliverables.length === 0) return 'Nu';
+
+  const expertNames = uniqueStrings(commonDeliverables.flatMap((deliverable) => [
+    deliverable.uploadedByExpertName,
+    activities.find((activity) => activity.deliverables?.includes(deliverable))?.expertName,
+  ]));
+
+  return expertNames.length > 0 ? `Da - ${expertNames.join('; ')}` : 'Da';
 }
 
 function getSaSectionTitle(saCode: string, bundles: ReportingWorkBlockBundle[]) {
@@ -515,6 +551,27 @@ function roundHours(value: number) {
 
 function normalizeWhitespace(value: string) {
   return value.replace(/\s+/g, ' ').trim();
+}
+
+function normalizeSaCode(value?: string) {
+  return normalizeWhitespace(value || '').toLocaleUpperCase('ro').replace(/\s+/g, '');
+}
+
+function uniqueStrings(values: Array<string | undefined | null>) {
+  return [...new Set(values
+    .map((value) => normalizeWhitespace(value || ''))
+    .filter(Boolean))];
+}
+
+function limitWords(value: string, maxWords: number) {
+  const normalized = normalizeWhitespace(value);
+  if (!normalized) return normalized;
+
+  const words = normalized.match(/\S+/g) ?? [];
+  if (words.length <= maxWords) return normalized;
+
+  const truncated = words.slice(0, maxWords).join(' ');
+  return truncated.replace(/[,:;.!?]+$/u, '');
 }
 
 function normalizeAnexa10ReportText(value: string) {
