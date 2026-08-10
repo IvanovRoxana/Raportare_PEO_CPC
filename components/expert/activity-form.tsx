@@ -557,7 +557,7 @@ export function ActivityForm({
   }, [activityTabCatalog]);
   
   const activitySeed = initialActivity || prefillActivity;
-  const selectedActivityDates = Array.isArray(selectedDates) ? selectedDates : [];
+  const selectedActivityDates = normalizeStringList(selectedDates);
   const expertNorma = expert?.norma || 8;
   const defaultDailyHours = Number(normalizePontajHoursValue(Math.min(expertNorma, MAX_PONTAJ_HOURS)));
   const editedActivityGroupId = initialActivity ? getActivityEditGroupId(initialActivity) : undefined;
@@ -1862,7 +1862,7 @@ export function ActivityForm({
               stadiu: d.stadiu,
               uploaded: true,
               isCommonDeliverable: Boolean(d.common || d.isCommonDeliverable),
-              sharedWithExpertIds: d.common ? collaborators : (d.sharedWithExpertIds || []),
+              sharedWithExpertIds: d.common ? normalizeStringList(collaborators) : normalizeStringList(d.sharedWithExpertIds),
               possibleDuplicateOfDocumentId: d.possibleDuplicateOfDocumentId,
               duplicateStatus: d.duplicateStatus,
               uploadedAt: d.uploadedAt,
@@ -1871,7 +1871,7 @@ export function ActivityForm({
               docText: d.docText || undefined,
               suggestedTitle: d.suggestedTitle || undefined,
               titleSuggestionConfidence: d.titleSuggestionConfidence,
-              titleSuggestionAlternatives: d.titleSuggestionAlternatives,
+              titleSuggestionAlternatives: normalizeStringList(d.titleSuggestionAlternatives),
               titleSuggestionReason: d.titleSuggestionReason,
               firstPageText: d.firstPageText || undefined,
               titleSource: d.titleSource,
