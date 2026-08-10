@@ -2094,7 +2094,7 @@ export function ActivityForm({
 
   // Filter deliverables by type
   const mainDeliverables = deliverables.filter(d => !d.slotType || d.slotType === 'livrabil');
-  const mainDeliverableForEligibility = mainDeliverables.find((d) => d.uploaded && !d.isPhoto);
+  const mainDeliverablesForEligibility = mainDeliverables.filter((d) => d.uploaded && !d.isPhoto);
   const eligibilityWorkingGroupId = initialActivity?.workingGroupId || initialActivity?.periodGroupId;
   const eligibilityPeriodGroupId = initialActivity?.periodGroupId;
   const eligibilityWorkingGroupActivities = useMemo(() => {
@@ -3458,55 +3458,69 @@ export function ActivityForm({
               </div>
             )}
 
-            {showStandardActivityWorkflow && currentWizardStep === 'deliverables' && mainDeliverableForEligibility && !isEvent && !isLeave && !isException && (
-              <div className="rounded-lg border border-indigo-100 bg-white p-3 shadow-sm">
-                <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 text-sm font-medium text-slate-950">
-                      <Sparkles className="h-4 w-4 text-indigo-600" />
-                      Eligibilitate livrabil principal
-                    </div>
-                    <div className="mt-0.5 truncate text-xs text-muted-foreground">
-                      {mainDeliverableForEligibility.declaredTitle
-                        || mainDeliverableForEligibility.docTitle
-                        || mainDeliverableForEligibility.filename
-                        || mainDeliverableForEligibility.name}
-                    </div>
-                  </div>
+            {showStandardActivityWorkflow && currentWizardStep === 'deliverables' && mainDeliverablesForEligibility.length > 0 && !isEvent && !isLeave && !isException && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-sm font-medium text-slate-950">
+                  <Sparkles className="h-4 w-4 text-indigo-600" />
+                  Eligibilitate livrabile principale
+                  <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700">
+                    {mainDeliverablesForEligibility.length}
+                  </span>
                 </div>
-                <DeliverableEligibilityControl
-                  deliverable={mainDeliverableForEligibility}
-                  relatedDeliverables={deliverablesForEligibility}
-                  subActivity={saCode}
-                  activityTitle={activityTitle}
-                  selectedActivityId={selectedCatalogItem?.id}
-                  catalogDescription={selectedCatalogItem?.description}
-                  catalogObjectives={selectedCatalogItem?.objectives}
-                  catalogComponent={selectedCatalogItem?.serviceComponent}
-                  catalogBeneficiaries={selectedCatalogItem?.beneficiaries}
-                  catalogExpectedResults={selectedCatalogItem?.expectedResults}
-                  catalogDeliverables={selectedCatalogItem?.deliverables}
-                  catalogIndicators={selectedCatalogItem?.indicators}
-                  activityCatalogCandidates={filteredCatalog}
-                  deliverableOptions={deliverableOptions}
-                  projectCode={expert?.projectCode}
-                  month={month}
-                  year={year}
-                  expertId={expertId}
-                  expertCategory={expertCategory}
-                  expertFunction={expert?.positionInProject || expert?.role}
-                  expertProjectRole={expert?.role}
-                  workingGroupId={eligibilityWorkingGroupId}
-                  periodGroupId={eligibilityPeriodGroupId}
-                  workingGroupActivities={eligibilityWorkingGroupActivities}
-                  collaborators={eligibilityCollaborators}
-                  catalogSource={catalog.length > 0 ? 'aws-activity-catalog' : 'fallback-activity-catalog'}
-                  expertName={expertName}
-                  onUpdate={(patch) => updateDeliverable(mainDeliverableForEligibility.id, patch)}
-                  canCheckEligibility={canCheckDeliverableEligibility}
-                  eligibilityBlockedReason={eligibilityBlockedReason}
-                  onApplyEligibilitySuggestion={applyEligibilitySuggestion}
-                />
+                {mainDeliverablesForEligibility.map((deliverableForEligibility, index) => (
+                  <div
+                    key={deliverableForEligibility.id}
+                    className="rounded-lg border border-indigo-100 bg-white p-3 shadow-sm"
+                  >
+                    <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 text-sm font-medium text-slate-950">
+                          <Sparkles className="h-4 w-4 text-indigo-600" />
+                          Livrabil principal {index + 1}
+                        </div>
+                        <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                          {deliverableForEligibility.declaredTitle
+                            || deliverableForEligibility.docTitle
+                            || deliverableForEligibility.filename
+                            || deliverableForEligibility.name}
+                        </div>
+                      </div>
+                    </div>
+                    <DeliverableEligibilityControl
+                      deliverable={deliverableForEligibility}
+                      relatedDeliverables={deliverablesForEligibility}
+                      subActivity={saCode}
+                      activityTitle={activityTitle}
+                      selectedActivityId={selectedCatalogItem?.id}
+                      catalogDescription={selectedCatalogItem?.description}
+                      catalogObjectives={selectedCatalogItem?.objectives}
+                      catalogComponent={selectedCatalogItem?.serviceComponent}
+                      catalogBeneficiaries={selectedCatalogItem?.beneficiaries}
+                      catalogExpectedResults={selectedCatalogItem?.expectedResults}
+                      catalogDeliverables={selectedCatalogItem?.deliverables}
+                      catalogIndicators={selectedCatalogItem?.indicators}
+                      activityCatalogCandidates={filteredCatalog}
+                      deliverableOptions={deliverableOptions}
+                      projectCode={expert?.projectCode}
+                      month={month}
+                      year={year}
+                      expertId={expertId}
+                      expertCategory={expertCategory}
+                      expertFunction={expert?.positionInProject || expert?.role}
+                      expertProjectRole={expert?.role}
+                      workingGroupId={eligibilityWorkingGroupId}
+                      periodGroupId={eligibilityPeriodGroupId}
+                      workingGroupActivities={eligibilityWorkingGroupActivities}
+                      collaborators={eligibilityCollaborators}
+                      catalogSource={catalog.length > 0 ? 'aws-activity-catalog' : 'fallback-activity-catalog'}
+                      expertName={expertName}
+                      onUpdate={(patch) => updateDeliverable(deliverableForEligibility.id, patch)}
+                      canCheckEligibility={canCheckDeliverableEligibility}
+                      eligibilityBlockedReason={eligibilityBlockedReason}
+                      onApplyEligibilitySuggestion={applyEligibilitySuggestion}
+                    />
+                  </div>
+                ))}
               </div>
             )}
 
