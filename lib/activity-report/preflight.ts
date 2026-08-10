@@ -50,6 +50,8 @@ const GENERIC_NARRATIVE_PATTERNS = [
   /\bSunt urmărite\b/i,
 ];
 
+const MAX_TABLE_PERFORMED_ACTIVITY_WORDS = 50;
+
 export function buildDeterministicAnexa10Preflight(model: Anexa10ReportModel): Anexa10PreflightReport {
   const deterministicFindings: Anexa10PreflightFinding[] = [
     ...checkHeader(model),
@@ -159,6 +161,46 @@ function checkTable(model: Anexa10ReportModel) {
       title: 'Text prea lung in „Activitate prestata”',
       detail: `${longRows.length} rand(uri) au peste 1800 caractere in celula de activitate.`,
       suggestion: 'Scurteaza summary-ul work block-ului sau consolideaza activitatile similare.',
+    }));
+  }
+
+  const nonFinancingActivityRows = model.tableRows
+    .map((row, index) => ({ row, index }))
+    .filter(({ row }) => !/^A\d+\s+-\s+/.test(row.officialActivityTitle.trim()));
+  if (nonFinancingActivityRows.length > 0) {
+    findings.push(finding({
+      id: 'non-financing-activity-title',
+      severity: 'critical',
+      area: 'table',
+      title: 'Titlul activitatii nu este din cererea de finantare',
+      detail: `${nonFinancingActivityRows.length} rand(uri) nu folosesc formatul A1/A2/A3 in coloana „Nr. / titlul activitatii...”.`,
+      suggestion: 'Foloseste activitatea generala din cererea de finantare, nu titlul operativ al activitatii.',
+    }));
+  }
+
+  const overWordLimitRows = model.tableRows
+    .map((row, index) => ({ row, index }))
+    .filter(({ row }) => countWords(row.performedActivity) > MAX_TABLE_PERFORMED_ACTIVITY_WORDS);
+  if (overWordLimitRows.length > 0) {
+    findings.push(finding({
+      id: 'performed-activity-over-word-limit',
+      severity: 'critical',
+      area: 'table',
+      title: 'Rezumat prea lung in „Activitate prestata”',
+      detail: `${overWordLimitRows.length} rand(uri) depasesc limita de ${MAX_TABLE_PERFORMED_ACTIVITY_WORDS} cuvinte.`,
+      suggestion: 'Pastreaza in tabel doar un rezumat scurt; detaliile raman in sectiunea narativa.',
+    }));
+  }
+
+  const unnamedCommonDeliverableRows = model.tableRows.filter((row) => /^Da\s*$/i.test(row.commonDeliverable.trim()));
+  if (unnamedCommonDeliverableRows.length > 0) {
+    findings.push(finding({
+      id: 'common-deliverable-missing-expert-name',
+      severity: 'warning',
+      area: 'deliverables',
+      title: 'Lipseste numele expertului pentru livrabil comun',
+      detail: `${unnamedCommonDeliverableRows.length} rand(uri) au livrabil comun marcat „Da”, dar fara nume de expert.`,
+      suggestion: 'Completeaza numele expertului care a incarcat sau a lucrat pe livrabilul comun.',
     }));
   }
 
@@ -300,4 +342,8 @@ function finding(input: Anexa10PreflightFinding): Anexa10PreflightFinding {
 
 function round(value: number) {
   return Math.round(value * 100) / 100;
+}
+
+function countWords(value: string) {
+  return value.trim().match(/\S+/g)?.length ?? 0;
 }
