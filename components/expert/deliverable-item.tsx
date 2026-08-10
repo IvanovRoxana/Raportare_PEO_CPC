@@ -27,7 +27,7 @@ export interface DeliverableDuplicateInfo {
 
 type EligibilitySuggestedSettings = NonNullable<NonNullable<DeliverableSlot['eligibilityCheck']>['suggestedSettings']>;
 type EligibilitySuggestedSettingsChange = 'activity' | 'deliverableType';
-function hasEnoughExtractedTextForEligibility(deliverable: DeliverableSlot) {
+function hasEnoughExtractedTextForEligibility(deliverable: DeliverableSlot, expertCategory?: string) {
   return hasSufficientDeliverableEvidenceForEligibility({
     extractedText: deliverable.docText,
     firstPageText: deliverable.firstPageText,
@@ -36,6 +36,7 @@ function hasEnoughExtractedTextForEligibility(deliverable: DeliverableSlot) {
     fileName: deliverable.filename || deliverable.name,
     fileType: deliverable.fileType,
     deliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
+    expertCategory,
   });
 }
 
@@ -46,9 +47,9 @@ function getEligibilityDeliverables(deliverable: DeliverableSlot, relatedDeliver
   ).filter((item) => item.uploaded && !item.isPhoto);
 }
 
-function getTextExtractionGateReason(deliverable: DeliverableSlot, relatedDeliverables?: DeliverableSlot[]) {
+function getTextExtractionGateReason(deliverable: DeliverableSlot, relatedDeliverables?: DeliverableSlot[], expertCategory?: string) {
   const eligibilityDeliverables = getEligibilityDeliverables(deliverable, relatedDeliverables);
-  if (eligibilityDeliverables.some(hasEnoughExtractedTextForEligibility)) return null;
+  if (eligibilityDeliverables.some((item) => hasEnoughExtractedTextForEligibility(item, expertCategory))) return null;
   if (eligibilityDeliverables.length > 1) {
     return 'Textul extras din livrabilele incarcate pentru grupul activitatii este prea scurt pentru verificarea AI. Reincarca documentele ca PDF/DOCX cu text selectabil sau exporta-le cu OCR.';
   }
@@ -686,7 +687,7 @@ export function DeliverableItem({
   const step2ok = deliverable.isPhoto || (deliverable.uploaded && deliverable.titleConfirmed);
   const step3ok = deliverable.isPhoto || (deliverable.uploaded && !!deliverable.stadiu);
   const step4ok = deliverable.isPhoto || !eligibilityCheckEnabled || (deliverable.uploaded && !!deliverable.aiCheck);
-  const textExtractionGateReason = visibleEligibilityCheck ? null : getTextExtractionGateReason(deliverable);
+  const textExtractionGateReason = visibleEligibilityCheck ? null : getTextExtractionGateReason(deliverable, undefined, expertCategory);
   const eligibilityGateReason = textExtractionGateReason
     || (!deliverable.titleConfirmed
       ? 'Confirma titlul livrabilului inainte de verificarea eligibilitatii.'
@@ -1272,7 +1273,7 @@ export function DeliverableEligibilityControl({
 
   if (!deliverable.uploaded || deliverable.isPhoto) return null;
 
-  const textExtractionGateReason = visibleEligibilityCheck ? null : getTextExtractionGateReason(deliverable, relatedDeliverables);
+  const textExtractionGateReason = visibleEligibilityCheck ? null : getTextExtractionGateReason(deliverable, relatedDeliverables, expertCategory);
   const eligibilityGateReason = textExtractionGateReason
     || (!deliverable.titleConfirmed
       ? 'Confirma titlul livrabilului inainte de verificarea eligibilitatii.'

@@ -47,6 +47,7 @@ export const deliverableEligibilityAiSchema = z.object({
 
 export const deliverableEligibilityActivityCandidateSchema = z.object({
   id: z.string(),
+  category: z.string().optional(),
   saCode: z.string(),
   activityName: z.string(),
   serviceCategory: z.string().optional(),
@@ -87,9 +88,29 @@ type NormalizedEligibilitySuggestedSettings = {
   reason: string;
   changes: Array<'activity' | 'deliverableType'>;
 };
+type NormalizedEligibilityAnalyzedDeliverable = {
+  id?: string;
+  documentTitle?: string;
+  fileName?: string;
+  deliverableType?: string;
+  isPrimary?: boolean;
+};
 
 function stringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+}
+
+function analyzedDeliverablesArray(value: unknown): NormalizedEligibilityAnalyzedDeliverable[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object' && !Array.isArray(item)))
+    .map((item) => ({
+      ...(typeof item.id === 'string' && item.id ? { id: item.id } : {}),
+      ...(typeof item.documentTitle === 'string' && item.documentTitle ? { documentTitle: item.documentTitle } : {}),
+      ...(typeof item.fileName === 'string' && item.fileName ? { fileName: item.fileName } : {}),
+      ...(typeof item.deliverableType === 'string' && item.deliverableType ? { deliverableType: item.deliverableType } : {}),
+      ...(typeof item.isPrimary === 'boolean' ? { isPrimary: item.isPrimary } : {}),
+    }));
 }
 
 function normalizeSuggestedSettingChanges(value: unknown, suggestion?: {
@@ -152,6 +173,7 @@ export function normalizeDeliverableEligibilityCheck<T extends object>(value: T 
     recommendations: stringArray(check.recommendations),
     riskFlags: stringArray(check.riskFlags),
     suggestedSettings: normalizeEligibilitySuggestedSettings(check.suggestedSettings),
+    analyzedDeliverables: analyzedDeliverablesArray(check.analyzedDeliverables),
   };
 }
 type EligibilityDocument = z.infer<typeof deliverableEligibilityDocumentSchema>;
@@ -231,6 +253,33 @@ export function isConcordiaPublishedDeliverableType(deliverableType: unknown) {
 
 export const MIN_ELIGIBILITY_TEXT_LENGTH = 80;
 
+function isCommunicationEligibilityContext(input: {
+  expertCategory?: unknown;
+  deliverableType?: unknown;
+  documentTitle?: unknown;
+  fileName?: unknown;
+}) {
+  const category = normalizeEligibilityText(input.expertCategory);
+  const text = normalizeEligibilityText([
+    input.deliverableType,
+    input.documentTitle,
+    input.fileName,
+  ].filter(Boolean).join(' '));
+
+  return (
+    category === 'com'
+    || category === 'comunicare'
+    || text.includes('newsletter')
+    || text.includes('comunicat')
+    || text.includes('material informativ')
+    || text.includes('materiale informative')
+    || text.includes('postare')
+    || text.includes('social media')
+    || text.includes('link')
+    || text.includes('articol')
+  );
+}
+
 export function hasSufficientDeliverableEvidenceForEligibility(input: {
   extractedText?: unknown;
   firstPageText?: unknown;
@@ -239,6 +288,7 @@ export function hasSufficientDeliverableEvidenceForEligibility(input: {
   fileName?: unknown;
   fileType?: unknown;
   deliverableType?: unknown;
+  expertCategory?: unknown;
 }) {
   const extractedText = String(input.extractedText || input.firstPageText || '')
     .replace(/\s+/g, ' ')
@@ -248,9 +298,14 @@ export function hasSufficientDeliverableEvidenceForEligibility(input: {
   const fileName = String(input.fileName || '').trim();
   const fileType = String(input.fileType || '').trim().toLowerCase();
   const isPdf = /\.pdf$/i.test(fileName) || fileType === 'application/pdf';
+  const isImage = /\.(png|jpe?g|webp)$/i.test(fileName) || fileType.startsWith('image/');
   const hasConfirmedTitle = Boolean(input.titleConfirmed && String(input.documentTitle || '').trim());
+  const hasNamedFile = Boolean(fileName);
 
-  return isPdf && hasConfirmedTitle && isConcordiaPublishedDeliverableType(input.deliverableType);
+  return (
+    (isPdf && hasConfirmedTitle && isConcordiaPublishedDeliverableType(input.deliverableType))
+    || (hasNamedFile && hasConfirmedTitle && isCommunicationEligibilityContext(input) && (isPdf || isImage || fileType === 'text/html'))
+  );
 }
 
 export function getConcordiaPublicationEvidence(input: {
@@ -692,6 +747,7 @@ export function validateEligibilitySuggestedSettings(input: {
   currentSaCode?: string;
   currentActivityName?: string;
   currentDeliverableType?: string;
+  currentCategory?: string;
 }) {
   const suggestion = input.suggestedSettings;
   if (!suggestion) return undefined;
@@ -715,7 +771,13 @@ export function validateEligibilitySuggestedSettings(input: {
         && candidate.activityName === suggestion.activityName
       )
     ));
+    const sameCategory = (
+      !input.currentCategory
+      || !activityMatch?.category
+      || normalizeEligibilityText(activityMatch.category) === normalizeEligibilityText(input.currentCategory)
+    );
     const isDifferentActivity = activityMatch
+      && sameCategory
       && (
         activityMatch.saCode !== input.currentSaCode
         || activityMatch.activityName !== input.currentActivityName

@@ -22,5 +22,6 @@ test("staging foundation removes only Expert relations whose models arrive later
   assert.doesNotMatch(foundation, /activities: a\.hasMany\("Activity"/);
   assert.doesNotMatch(foundation, /reportingWorkBlocks: a\.hasMany\("ReportingWorkBlock"/);
   assert.doesNotMatch(foundation, /grupTintaEntries: a\.hasMany\("GrupTintaEntry"/);
+  assert.doesNotMatch(foundation, /financialPersonLinks: a\.hasMany\("FinancialPersonLink"/);
   assert.match(foundation, /historicalReports: a\.hasMany\("MonthlyExpertReport"/);
 });

@@ -215,6 +215,48 @@ test('nu relaxeaza pragul pentru un PDF generic fara tip de articol Concordia', 
   }), false);
 });
 
+test('permite verificarea livrabilelor COM cu titlu confirmat si OCR scurt', () => {
+  assert.equal(hasSufficientDeliverableEvidenceForEligibility({
+    extractedText: 'Newsletter iunie',
+    documentTitle: 'Newsletter informativ lunar CPC',
+    titleConfirmed: true,
+    fileName: 'newsletter-iunie.pdf',
+    fileType: 'application/pdf',
+    deliverableType: 'Newsletter informativ lunar CPC',
+    expertCategory: 'com',
+  }), true);
+});
+
+test('nu accepta sugestii de activitate din alta categorie cand categoria curenta este COM', () => {
+  const suggestion = validateEligibilitySuggestedSettings({
+    suggestedSettings: {
+      selectedActivityId: 'cat-ap',
+      saCode: 'SA3.4',
+      activityName: 'Redactare Newsletter lunar CPC',
+      deliverableType: 'Newsletter informativ lunar CPC',
+      confidence: 'medium',
+      reason: 'Propunere AP pentru livrabil COM.',
+      changes: ['activity', 'deliverableType'],
+    },
+    activityCatalogCandidates: [
+      {
+        id: 'cat-ap',
+        category: 'ap',
+        saCode: 'SA3.4',
+        activityName: 'Redactare Newsletter lunar CPC',
+      },
+    ],
+    deliverableOptions: ['Newsletter informativ lunar CPC'],
+    currentSaCode: 'SA3.4',
+    currentActivityName: 'Alta activitate COM',
+    currentDeliverableType: 'Material publicat + link',
+    currentCategory: 'com',
+  });
+
+  assert.deepEqual(suggestion?.changes, ['deliverableType']);
+  assert.equal(suggestion?.selectedActivityId, null);
+});
+
 test('nu respinge articol Concordia Daniel Apostol doar pentru mentiunea publicarii initiale pe profit.ro', () => {
   const protectedResult = protectConcordiaPublicationEligibility({
     deliverableType: 'Articole pe concordia.ro',
@@ -376,7 +418,7 @@ test('formularul trimite toate livrabilele incarcate din grupul activitatii la e
 
 test('poarta de text pentru eligibilitate verifica toate livrabilele grupului activitatii', () => {
   assert.match(deliverableItemSource, /function getEligibilityDeliverables\(deliverable: DeliverableSlot, relatedDeliverables\?: DeliverableSlot\[\]\)/);
-  assert.match(deliverableItemSource, /eligibilityDeliverables\.some\(hasEnoughExtractedTextForEligibility\)/);
+  assert.match(deliverableItemSource, /eligibilityDeliverables\.some\(\(item\) => hasEnoughExtractedTextForEligibility\(item, expertCategory\)\)/);
   assert.match(deliverableItemSource, /const eligibilityDeliverables = getEligibilityDeliverables\(deliverable, relatedDeliverables\)/);
   assert.match(deliverableItemSource, /Textul extras din livrabilele incarcate pentru grupul activitatii/);
 });

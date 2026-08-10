@@ -76,7 +76,8 @@ export function buildFoundationSchema(source) {
             (line) =>
               !line.includes('activities: a.hasMany("Activity"') &&
               !line.includes('reportingWorkBlocks: a.hasMany("ReportingWorkBlock"') &&
-              !line.includes('grupTintaEntries: a.hasMany("GrupTintaEntry"'),
+              !line.includes('grupTintaEntries: a.hasMany("GrupTintaEntry"') &&
+              !line.includes('financialPersonLinks: a.hasMany("FinancialPersonLink"'),
           )
           .join("\n"),
       };

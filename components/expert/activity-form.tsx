@@ -253,6 +253,10 @@ function dedupeDeliverableSlotsBySignature(deliverables: DeliverableSlot[]) {
   });
 }
 
+function normalizeStringList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+}
+
 function mapSavedDeliverableToSlot(deliverable: Deliverable, preserveId: boolean): DeliverableSlot {
   const eligibilityCheck = normalizeDeliverableEligibilityCheck(deliverable.eligibilityCheck ?? null);
   return {
@@ -278,7 +282,7 @@ function mapSavedDeliverableToSlot(deliverable: Deliverable, preserveId: boolean
     saCode: deliverable.saCode,
     deliverableType: deliverable.deliverableType,
     isCommonDeliverable: deliverable.isCommonDeliverable,
-    sharedWithExpertIds: deliverable.sharedWithExpertIds,
+    sharedWithExpertIds: normalizeStringList(deliverable.sharedWithExpertIds),
     common: Boolean(deliverable.isCommonDeliverable),
     possibleDuplicateOfDocumentId: deliverable.possibleDuplicateOfDocumentId,
     duplicateStatus: deliverable.duplicateStatus,

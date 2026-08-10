@@ -44,11 +44,19 @@ function shortlistActivityCandidates(
   candidates: ReturnType<typeof normalizeDeliverableEligibilityActivityCandidates>,
   context: string,
   currentSaCode?: string,
+  currentCategory?: string,
 ) {
   const query = normalizeForSearch(context);
-  return candidates
+  const normalizedCategory = normalizeForSearch(currentCategory);
+  const categoryMatches = normalizedCategory
+    ? candidates.filter((candidate) => normalizeForSearch(candidate.category) === normalizedCategory)
+    : [];
+  const scopedCandidates = categoryMatches.length > 0 ? categoryMatches : candidates;
+
+  return scopedCandidates
     .map((candidate, index) => {
       const text = normalizeForSearch([
+        candidate.category,
         candidate.saCode,
         candidate.activityName,
         candidate.serviceCategory,
@@ -58,6 +66,7 @@ function shortlistActivityCandidates(
         candidate.indicators,
       ].filter(Boolean).join(' '));
       let score = candidate.saCode === currentSaCode ? 15 : 0;
+      if (normalizedCategory && normalizeForSearch(candidate.category) === normalizedCategory) score += 25;
       text.split(' ').forEach((token) => {
         if (token.length >= 4 && query.includes(token)) score += 1;
       });
@@ -194,6 +203,7 @@ export async function POST(req: Request) {
         trimmedExtractedText.slice(0, 3000),
       ].filter(Boolean).join(' '),
       currentSaCode,
+      expertCategory,
     );
 
     let result;
@@ -278,6 +288,7 @@ Reguli:
 - Nu recomanda modificarea documentului cand documentul pare coerent, dar activitatea sau tipul de livrabil selectat sunt gresite. In acel caz foloseste suggestedSettings si explica motivul.
 - suggestedSettings.saCode/activityName/selectedActivityId trebuie sa existe exact in activitatile disponibile.
 - suggestedSettings.deliverableType trebuie sa existe exact in tipurile de livrabil disponibile.
+- Pentru categoria expertului COM, nu recomanda activitati din alta categorie daca exista activitati COM disponibile.
 - Daca alternativa nu este clara, seteaza suggestedSettings.hasSuggestion=false si lasa campurile text goale.
 - Daca exista alternativa clara, seteaza suggestedSettings.hasSuggestion=true si completeaza campurile relevante.
 - „eligibil” doar dacă documentul pare clar corelat cu activitatea și tipul de livrabil.
@@ -378,6 +389,7 @@ suggestedSettings trebuie sa fie mereu obiect cu: hasSuggestion, saCode, activit
         currentSaCode,
         currentActivityName: selectedActivityName,
         currentDeliverableType,
+        currentCategory: expertCategory,
       }) ?? null,
       modelAuditId: result.auditId,
     });
