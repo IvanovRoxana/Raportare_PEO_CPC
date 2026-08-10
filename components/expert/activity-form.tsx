@@ -65,6 +65,7 @@ import {
 import { shouldAttachUploadedDeliverablesToDate } from '@/lib/activity-deliverables';
 import { getActivityEditGroupId, isSameEditableActivity } from '@/lib/activity-edit';
 import { isComCommunicationMultiGroupActivity } from '@/lib/activity-multigroup-rules';
+import { hasSufficientDeliverableEvidenceForEligibility } from '@/lib/deliverable-eligibility';
 import { createActivityPeriodGroupId } from '@/lib/submit-readiness';
 import {
   MAX_PONTAJ_HOURS,
@@ -341,6 +342,29 @@ async function getDeliverableFileForExtraction(deliverable: DeliverableSlot) {
   }
 
   return new File([await response.blob()], fileName, { type: fileType });
+}
+
+function canRequireDeliverableEligibilityCheck(
+  deliverable: DeliverableSlot,
+  relatedDeliverables: DeliverableSlot[],
+  expertCategory?: string,
+) {
+  const eligibilityDeliverables = (
+    relatedDeliverables.length > 0
+      ? relatedDeliverables
+      : [deliverable]
+  ).filter((item) => item.uploaded && !item.isPhoto);
+
+  return eligibilityDeliverables.some((item) => hasSufficientDeliverableEvidenceForEligibility({
+    extractedText: item.docText,
+    firstPageText: item.firstPageText,
+    documentTitle: item.declaredTitle || item.suggestedTitle,
+    titleConfirmed: item.titleConfirmed,
+    fileName: item.filename || item.name,
+    fileType: item.fileType,
+    deliverableType: item.type || item.deliverableType || item.slotType,
+    expertCategory,
+  }));
 }
 
 async function extractDeliverableTextForActivityAutofill(deliverable: DeliverableSlot): Promise<Partial<DeliverableSlot> | null> {
@@ -1566,6 +1590,9 @@ export function ActivityForm({
           ))
           .map((deliverable): string | null => {
             if (!deliverable.eligibilityCheck) {
+              if (!canRequireDeliverableEligibilityCheck(deliverable, deliverablesForEligibility, expertCategory)) {
+                return null;
+              }
               return 'Ruleaza verificarea eligibilitatii pentru livrabilul principal.';
             }
             if (
@@ -2163,6 +2190,9 @@ export function ActivityForm({
         .filter((deliverable) => deliverable.uploaded && !deliverable.isPhoto && Boolean(deliverable.filename || deliverable.name))
         .map((deliverable): string | null => {
           if (!deliverable.eligibilityCheck) {
+            if (!canRequireDeliverableEligibilityCheck(deliverable, deliverablesForEligibility, expertCategory)) {
+              return null;
+            }
             return 'Ruleaza verificarea eligibilitatii pentru livrabilul principal.';
           }
           if (
