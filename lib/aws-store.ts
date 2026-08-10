@@ -411,7 +411,7 @@ function withSupportedDeliverableFields(payload: Record<string, unknown>, delive
   };
 
   Object.entries(extendedFields).forEach(([field, value]) => {
-    if (modelHasField('Deliverable', field)) {
+    if (value !== undefined && modelHasField('Deliverable', field)) {
       payload[field] = value;
     }
   });
