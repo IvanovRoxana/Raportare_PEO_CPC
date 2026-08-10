@@ -468,6 +468,12 @@ function withSupportedActivityShareFields(payload: Record<string, unknown>, acti
   return payload;
 }
 
+function omitUndefinedFields<T extends Record<string, unknown>>(payload: T) {
+  return Object.fromEntries(
+    Object.entries(payload).filter(([, value]) => value !== undefined),
+  ) as Partial<T>;
+}
+
 function withSupportedSharedDeliverableFields(payload: Record<string, unknown>, relation: Partial<SharedDeliverable>) {
   const extendedFields: Record<string, unknown> = {
     sourceExpertName: relation.sourceExpertName,
@@ -1697,12 +1703,12 @@ async function validateActivityBatchForWrite(
             || !duplicate.existingActivity.workingGroupId
           )
         ) {
-          await client.models.Activity.update(withSupportedActivityShareFields({
+          await client.models.Activity.update(omitUndefinedFields(withSupportedActivityShareFields({
             id: duplicate.existingActivity.id,
             workingGroupId: duplicate.existingActivity.workingGroupId ?? periodGroupId,
           }, {
             periodGroupId,
-          }));
+          })));
           duplicate.existingActivity.periodGroupId = periodGroupId;
           duplicate.existingActivity.workingGroupId = duplicate.existingActivity.workingGroupId ?? periodGroupId;
         }
@@ -1794,12 +1800,12 @@ async function attachActivitiesToExistingDeliverableGroups(
       sourceActivity.periodGroupId !== periodGroupId
       || !sourceActivity.workingGroupId
     ) {
-      await client.models.Activity.update(withSupportedActivityShareFields({
+      await client.models.Activity.update(omitUndefinedFields(withSupportedActivityShareFields({
         id: sourceActivity.id,
         workingGroupId: sourceActivity.workingGroupId ?? periodGroupId,
       }, {
         periodGroupId,
-      }));
+      })));
       sourceActivity.periodGroupId = periodGroupId;
       sourceActivity.workingGroupId = sourceActivity.workingGroupId ?? periodGroupId;
     }
@@ -1866,7 +1872,7 @@ async function createActivityUnchecked(
   client: any,
   activity: Omit<Activity, 'id' | 'createdAt' | 'updatedAt'>,
 ): Promise<Activity> {
-  const created = await client.models.Activity.create(withSupportedActivityShareFields({
+  const created = await client.models.Activity.create(omitUndefinedFields(withSupportedActivityShareFields({
     expertId: activity.expertId,
     expertName: activity.expertName,
     date: activity.date,
@@ -1899,7 +1905,7 @@ async function createActivityUnchecked(
     originActivityId: activity.originActivityId,
     takenByExperts: activity.takenByExperts ?? [],
     periodGroupId: activity.periodGroupId,
-  }));
+  })));
   assertNoErrors(created, 'AWS create activity');
 
   const activityId = created.data.id;
@@ -2494,7 +2500,7 @@ export const activitiesService = {
       };
     }
 
-    const result = await client.models.Activity.update(withSupportedActivityShareFields({
+    const result = await client.models.Activity.update(omitUndefinedFields(withSupportedActivityShareFields({
       id,
       expertId: preparedUpdates.expertId,
       expertName: preparedUpdates.expertName,
@@ -2524,7 +2530,7 @@ export const activitiesService = {
       businessHubMetaJson: preparedUpdates.businessHubMetaJson,
       eventDurationHours: preparedUpdates.eventDurationHours,
       eventExtendedDescription: preparedUpdates.eventExtendedDescription,
-    }, preparedUpdates));
+    }, preparedUpdates)));
     assertNoErrors(result, 'AWS update activity');
 
     if (existing.data) {
