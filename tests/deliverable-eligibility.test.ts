@@ -55,17 +55,18 @@ test('formularul pastreaza tipul livrabilului nou incarcat in aceleasi campuri c
   assert.match(activityFormSource, /category: resolvedDeliverableType,\s*deliverableType: resolvedDeliverableType,/);
 });
 
-test('formularul opreste salvarea cand uploadul S3 al livrabilului esueaza', () => {
+test('formularul salveaza activitatea cu livrabil pending cand uploadul S3 esueaza', () => {
   assert.match(activityFormSource, /const uploadFailures: string\[\] = \[\]/);
   assert.match(activityFormSource, /Fisierul nu mai este disponibil in formular\. Reincarca livrabilul\./);
-  assert.match(activityFormSource, /Uploadul S3 nu a confirmat cheia fisierului\. Reincarca livrabilul\./);
-  assert.match(activityFormSource, /if \(uploadFailures\.length > 0\) \{/);
-  assert.match(activityFormSource, /Activitatea nu a fost salvata pentru ca livrabilul nu a putut fi incarcat/);
+  assert.match(activityFormSource, /for \(let attempt = 0; attempt < 3; attempt \+= 1\)/);
+  assert.match(activityFormSource, /duplicateStatus: 'pending_upload'/);
+  assert.match(activityFormSource, /Activitatea se salveaza, dar urmatoarele livrabile nu au ajuns in S3 dupa reincercari automate/);
   assert.ok(
     activityFormSource.indexOf('if (uploadFailures.length > 0) {')
       < activityFormSource.indexOf('await onSave(activities);'),
-    'formularul trebuie sa opreasca salvarea inainte de onSave cand uploadul livrabilului esueaza',
+    'formularul trebuie sa afiseze avertismentul inainte de onSave cand uploadul livrabilului esueaza',
   );
+  assert.doesNotMatch(activityFormSource, /Activitatea nu a fost salvata pentru ca livrabilul nu a putut fi incarcat/);
 });
 
 test('accepta sugestii de activitate si tip livrabil cand exista in listele permise', () => {

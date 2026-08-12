@@ -453,16 +453,6 @@ async function extractDeliverableTextForActivityAutofill(deliverable: Deliverabl
   };
 }
 
-function isStaleMultipartUploadError(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error || '');
-  return (
-    message.includes('specified upload does not exist')
-    || message.includes('upload ID may be invalid')
-    || message.includes('upload may have been aborted or completed')
-    || message.includes('NoSuchUpload')
-  );
-}
-
 const EMPTY_INITIAL_COLLABORATORS: string[] = [];
 
 function areStringArraysEqual(left: string[], right: string[]) {
@@ -1515,27 +1505,34 @@ export function ActivityForm({
         contentType: deliverable.fileType || blob.type || 'application/octet-stream',
       },
     }).result;
-    let result;
+    let uploadedPath = '';
+    let lastUploadError: unknown;
 
-    try {
-      result = await uploadBlob(s3Key);
-    } catch (error) {
-      if (!isStaleMultipartUploadError(error)) {
-        throw error;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      if (attempt > 0) {
+        documentId = `doc_${deliverable.id}_${Date.now()}_${attempt}`;
+        s3Key = buildDocumentS3Key({
+          projectId,
+          documentId,
+          originalFileName: safeName,
+        });
       }
 
-      documentId = `doc_${deliverable.id}_${Date.now()}`;
-      s3Key = buildDocumentS3Key({
-        projectId,
-        documentId,
-        originalFileName: safeName,
-      });
-      result = await uploadBlob(s3Key);
+      try {
+        const result = await uploadBlob(s3Key);
+        uploadedPath = typeof result?.path === 'string' ? result.path.trim() : '';
+        if (uploadedPath && uploadedPath === s3Key) {
+          break;
+        }
+        lastUploadError = new Error('Uploadul S3 nu a confirmat cheia fisierului.');
+      } catch (error) {
+        lastUploadError = error;
+      }
     }
 
-    const uploadedPath = typeof result?.path === 'string' ? result.path.trim() : '';
     if (!uploadedPath || uploadedPath !== s3Key) {
-      throw new Error('Uploadul S3 nu a confirmat cheia fisierului. Reincarca livrabilul.');
+      const detail = lastUploadError instanceof Error ? lastUploadError.message : 'Eroare necunoscuta la upload.';
+      throw new Error(`${detail} Reincarca livrabilul din activitatea salvata.`);
     }
 
     return {
@@ -1790,18 +1787,24 @@ export function ActivityForm({
         uploadFailures.push(
           `Livrabilul "${deliverableLabel}" nu a putut fi incarcat in S3 (${errorMessage}).`,
         );
+        uploadedDeliverables.push({
+          ...deliverable,
+          filePath: undefined,
+          s3Key: undefined,
+          uploaded: true,
+          duplicateStatus: 'pending_upload',
+          titleCheckStatus: deliverable.titleCheckStatus || 'extraction_failed',
+          titleCheckMessage: deliverable.titleCheckMessage || 'Fisierul trebuie reincarcat pentru salvarea livrabilului in S3.',
+        });
       }
     }
 
     if (uploadFailures.length > 0) {
-      setValidationError([
-        'Activitatea nu a fost salvata pentru ca livrabilul nu a putut fi incarcat.',
+      reportingWarnings.push([
+        'Activitatea se salveaza, dar urmatoarele livrabile nu au ajuns in S3 dupa reincercari automate:',
         ...uploadFailures,
-        'Reincarca fisierul si incearca din nou.',
+        'Dupa salvare, redeschide activitatea si reincarca fisierele ramase in asteptare.',
       ].join('\n'));
-      setCurrentWizardStep('deliverables');
-      setIsSubmittingActivity(false);
-      return;
     }
 
     if (reportingWarnings.length > 0) {
