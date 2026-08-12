@@ -55,6 +55,17 @@ test('formularul pastreaza tipul livrabilului nou incarcat in aceleasi campuri c
   assert.match(activityFormSource, /category: resolvedDeliverableType,\s*deliverableType: resolvedDeliverableType,/);
 });
 
+test('formularul opreste salvarea cand uploadul S3 al livrabilului esueaza', () => {
+  assert.match(activityFormSource, /const uploadFailures: string\[\] = \[\]/);
+  assert.match(activityFormSource, /if \(uploadFailures\.length > 0\) \{/);
+  assert.match(activityFormSource, /Activitatea nu a fost salvata pentru ca livrabilul nu a putut fi incarcat/);
+  assert.ok(
+    activityFormSource.indexOf('if (uploadFailures.length > 0) {')
+      < activityFormSource.indexOf('await onSave(activities);'),
+    'formularul trebuie sa opreasca salvarea inainte de onSave cand uploadul livrabilului esueaza',
+  );
+});
+
 test('accepta sugestii de activitate si tip livrabil cand exista in listele permise', () => {
   const suggestion = validateEligibilitySuggestedSettings({
     suggestedSettings: {

@@ -1769,6 +1769,7 @@ export function ActivityForm({
     setIsSubmittingActivity(true);
     const deliverablesToProcess = deliverables.filter((d) => d.uploaded && (d.filename || d.name));
     const uploadedDeliverables: DeliverableSlot[] = [];
+    const uploadFailures: string[] = [];
 
     for (const deliverable of deliverablesToProcess) {
       try {
@@ -1777,17 +1778,21 @@ export function ActivityForm({
       } catch (error) {
         const deliverableLabel = deliverable.filename || deliverable.name || 'livrabil';
         const errorMessage = error instanceof Error ? error.message : 'Eroare necunoscuta la upload.';
-        reportingWarnings.push(
-          `Livrabilul "${deliverableLabel}" nu a putut fi incarcat in S3 (${errorMessage}). Activitatea se salveaza ca draft si livrabilul poate fi reincarcat ulterior.`,
+        uploadFailures.push(
+          `Livrabilul "${deliverableLabel}" nu a putut fi incarcat in S3 (${errorMessage}).`,
         );
-
-        uploadedDeliverables.push({
-          ...deliverable,
-          duplicateStatus: 'pending_upload',
-          titleCheckStatus: deliverable.titleCheckStatus || 'extraction_failed',
-          titleCheckMessage: deliverable.titleCheckMessage || 'Upload incomplet. Reincarca livrabilul pentru validare completa.',
-        });
       }
+    }
+
+    if (uploadFailures.length > 0) {
+      setValidationError([
+        'Activitatea nu a fost salvata pentru ca livrabilul nu a putut fi incarcat.',
+        ...uploadFailures,
+        'Reincarca fisierul si incearca din nou.',
+      ].join('\n'));
+      setCurrentWizardStep('deliverables');
+      setIsSubmittingActivity(false);
+      return;
     }
 
     if (reportingWarnings.length > 0) {

@@ -892,8 +892,10 @@ async function createDocumentMetadataForDeliverable(
         ? 'same_first_page_hash'
         : deliverable.duplicateStatus ?? 'possible_common_unmarked'
     : deliverable.duplicateStatus;
+  const uploadedByExpertId = deliverable.uploadedByExpertId || activity.expertId || '';
+  const uploadedByExpertName = deliverable.uploadedByExpertName || activity.expertName || uploadedByExpertId;
 
-  const payload = {
+  const payload = omitUndefinedFields({
     id: deliverable.documentId,
     s3Bucket: deliverable.s3Bucket,
     s3Key: deliverable.s3Key || deliverable.filePath || '',
@@ -903,8 +905,8 @@ async function createDocumentMetadataForDeliverable(
     fileHash: deliverable.fileHash,
     firstPageTextHash: deliverable.firstPageTextHash,
     contentFingerprint: deliverable.contentFingerprint,
-    uploadedByExpertId: deliverable.uploadedByExpertId || activity.expertId || '',
-    uploadedByExpertName: deliverable.uploadedByExpertName || activity.expertName,
+    uploadedByExpertId,
+    uploadedByExpertName,
     uploadDate: deliverable.uploadedAt || new Date().toISOString(),
     projectId: deliverable.projectId || activity.projectCode,
     projectName: deliverable.projectName,
@@ -929,7 +931,7 @@ async function createDocumentMetadataForDeliverable(
     isCommonDeliverable: deliverable.isCommonDeliverable ?? false,
     possibleDuplicateOfDocumentId: duplicate?.document.id || deliverable.possibleDuplicateOfDocumentId,
     duplicateStatus,
-  };
+  });
 
   const result = await client.models.Document.create(payload);
   if (hasConditionalCheckFailedError(result.errors)) return;
@@ -938,12 +940,12 @@ async function createDocumentMetadataForDeliverable(
   if (duplicate && client.models.AuditLog) {
     await auditLogsService.create({
       actionType: 'document_duplicate_detected',
-      actorId: payload.uploadedByExpertId,
-      actorName: payload.uploadedByExpertName,
+      actorId: uploadedByExpertId,
+      actorName: uploadedByExpertName,
       actorRole: 'admin',
-      affectedExpertId: payload.uploadedByExpertId,
-      affectedExpertName: payload.uploadedByExpertName,
-      projectCode: payload.projectId,
+      affectedExpertId: uploadedByExpertId,
+      affectedExpertName: uploadedByExpertName,
+      projectCode: deliverable.projectId || activity.projectCode,
       month: activity.date ? monthFromDate(activity.date) : undefined,
       year: activity.date ? yearFromDate(activity.date) : undefined,
       fieldName: 'document',

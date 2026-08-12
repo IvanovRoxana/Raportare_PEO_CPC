@@ -35,6 +35,21 @@ test('CRUD-ul livrabilelor din update citeste starea existenta prin indexul acti
   );
 });
 
+test('payloadurile Document si Deliverable omit campurile undefined la scriere', () => {
+  const documentMetadataSource = getActivityMethodSource(
+    'async function createDocumentMetadataForDeliverable(',
+    'function mapBusinessHubEntityDirectoryEntry',
+  );
+  const deliverablePayloadSource = getActivityMethodSource(
+    'function buildDeliverableWritePayload(',
+    'function withSupportedActivityShareFields',
+  );
+
+  assert.match(documentMetadataSource, /const payload = omitUndefinedFields\(\{/);
+  assert.match(documentMetadataSource, /client\.models\.Document\.create\(payload\)/);
+  assert.match(deliverablePayloadSource, /return omitUndefinedFields\(withSupportedDeliverableFields\(\{/);
+});
+
 test('scrierile activitatilor verifica autorizarea Expert/PM inainte de sincronizarea livrabilelor', () => {
   const createSource = getActivityMethodSource(
     "async create(activity: Omit<Activity, 'id' | 'createdAt' | 'updatedAt'>): Promise<Activity>",
