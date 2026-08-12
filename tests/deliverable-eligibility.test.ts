@@ -57,6 +57,8 @@ test('formularul pastreaza tipul livrabilului nou incarcat in aceleasi campuri c
 
 test('formularul opreste salvarea cand uploadul S3 al livrabilului esueaza', () => {
   assert.match(activityFormSource, /const uploadFailures: string\[\] = \[\]/);
+  assert.match(activityFormSource, /Fisierul nu mai este disponibil in formular\. Reincarca livrabilul\./);
+  assert.match(activityFormSource, /Uploadul S3 nu a confirmat cheia fisierului\. Reincarca livrabilul\./);
   assert.match(activityFormSource, /if \(uploadFailures\.length > 0\) \{/);
   assert.match(activityFormSource, /Activitatea nu a fost salvata pentru ca livrabilul nu a putut fi incarcat/);
   assert.ok(

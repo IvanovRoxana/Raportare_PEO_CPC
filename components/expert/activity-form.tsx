@@ -1486,8 +1486,12 @@ export function ActivityForm({
   }, []);
 
   const uploadDeliverableFile = useCallback(async (deliverable: DeliverableSlot): Promise<DeliverableSlot> => {
-    if (!deliverable.fileData || deliverable.filePath) {
+    if (deliverable.filePath) {
       return deliverable;
+    }
+
+    if (!deliverable.fileData) {
+      throw new Error('Fisierul nu mai este disponibil in formular. Reincarca livrabilul.');
     }
 
     let documentId = deliverable.documentId || `doc_${deliverable.id}`;
@@ -1529,11 +1533,16 @@ export function ActivityForm({
       result = await uploadBlob(s3Key);
     }
 
+    const uploadedPath = typeof result?.path === 'string' ? result.path.trim() : '';
+    if (!uploadedPath || uploadedPath !== s3Key) {
+      throw new Error('Uploadul S3 nu a confirmat cheia fisierului. Reincarca livrabilul.');
+    }
+
     return {
       ...deliverable,
       documentId,
-      filePath: result.path,
-      s3Key: result.path,
+      filePath: uploadedPath,
+      s3Key: uploadedPath,
       fileHash,
       firstPageTextHash,
       contentFingerprint,
