@@ -927,7 +927,7 @@ test('gruparea livrabilului accepta doar activitati cu aceeasi identitate', () =
   assert.equal(areActivitiesCompatibleForDeliverableGroup(current, incompatible), false);
 });
 
-test('activitatile COM de comunicare sunt compatibile multi-group in aceeasi serie', () => {
+test('activitatile COM lunare pot partaja livrabilul fara sa devina aceeasi activitate editabila', () => {
   const aliniere = activity('com-aliniere', {
     catalogActivityId: 'catalog-aliniere',
     activityType: 'Aliniere experti in comunicare',
@@ -960,14 +960,14 @@ test('activitatile COM de comunicare sunt compatibile multi-group in aceeasi ser
       { ...some, periodGroupId: 'activity-period:com-june' },
       { ...other, periodGroupId: 'activity-period:com-june' },
     ]).map((item) => item.id),
-    ['com-aliniere', 'com-articole', 'com-some'],
+    ['com-aliniere'],
   );
   assert.equal(compileActivitiesByPeriodGroup([
     groupedAliniere,
     { ...articole, periodGroupId: 'activity-period:com-june' },
     { ...some, periodGroupId: 'activity-period:com-june' },
     { ...other, periodGroupId: 'activity-period:com-june' },
-  ]).length, 2);
+  ]).length, 4);
 });
 
 test('gruparea livrabilului nu considera compatibile activitati fara identitate', () => {

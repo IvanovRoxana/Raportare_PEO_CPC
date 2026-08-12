@@ -31,7 +31,6 @@ import {
   validateGdprActivityDraft,
 } from '@/lib/gdpr-reporting';
 import { cn } from '@/lib/utils';
-import { getComCommunicationMultiGroupKey } from '@/lib/activity-multigroup-rules';
 import { inferLegacyActivityPeriodGroups } from '@/lib/submit-readiness';
 import type { Activity, Deliverable } from '@/lib/types';
 
@@ -104,10 +103,6 @@ function isActivityPeriodGroupId(value?: string | null) {
   return Boolean(value && ACTIVITY_PERIOD_GROUP_PREFIXES.some((prefix) => value.startsWith(prefix)));
 }
 
-function normalizeGroupKeyPart(value?: string | null) {
-  return String(value ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
-}
-
 function getActivityGroupKey(activity: Activity, inferredLegacyGroups: Map<string, string>) {
   if (activity.workingGroupId && !isActivityPeriodGroupId(activity.workingGroupId)) {
     return `working:${activity.workingGroupId}`;
@@ -117,17 +112,6 @@ function getActivityGroupKey(activity: Activity, inferredLegacyGroups: Map<strin
 
   const inferredGroupId = inferredLegacyGroups.get(activity.id);
   if (inferredGroupId) return `legacy:${inferredGroupId}`;
-
-  const multiGroupKey = getComCommunicationMultiGroupKey(activity);
-  if (multiGroupKey) {
-    return [
-      'multi',
-      normalizeGroupKeyPart(activity.expertId),
-      activity.date.slice(0, 7),
-      normalizeGroupKeyPart(activity.projectCode),
-      multiGroupKey,
-    ].join(':');
-  }
 
   return `activity:${activity.id}`;
 }
