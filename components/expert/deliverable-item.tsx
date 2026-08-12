@@ -390,6 +390,7 @@ export function DeliverableItem({
         titleConfirmed: false,
         declaredTitle: titleSuggestionPatch.declaredTitle,
         duplicateStatus: firstPageTextHash ? 'fingerprinted' : undefined,
+        uploadError: undefined,
         possibleDuplicateOfDocumentId: undefined,
       };
     } catch (error) {
@@ -683,7 +684,8 @@ export function DeliverableItem({
     if (fileRef.current) fileRef.current.value = '';
   };
 
-  const step1ok = deliverable.uploaded;
+  const hasPendingUpload = deliverable.duplicateStatus === 'pending_upload' || Boolean(deliverable.uploadError);
+  const step1ok = deliverable.uploaded && !hasPendingUpload;
   const step2ok = deliverable.isPhoto || (deliverable.uploaded && deliverable.titleConfirmed);
   const step3ok = deliverable.isPhoto || (deliverable.uploaded && !!deliverable.stadiu);
   const step4ok = deliverable.isPhoto || !eligibilityCheckEnabled || (deliverable.uploaded && !!deliverable.aiCheck);
@@ -710,6 +712,7 @@ export function DeliverableItem({
   const hasSideNotes = renderInlineNotes && deliverable.uploaded && !deliverable.isPhoto && Boolean(
     (!deliverable.titleConfirmed && (deliverable.docText || deliverable.firstPageText || deliverable.suggestedTitle || deliverable.declaredTitle))
     || hasDuplicateSignal
+    || hasPendingUpload
     || deliverable.common
     || deliverable.isCommonDeliverable
     || (showEligibilityControl && eligibilityCheckEnabled)
@@ -845,6 +848,18 @@ export function DeliverableItem({
           {deliverable.textExtractionSource === 'ocr'
             ? 'Text OCR extras pentru autocompletare.'
             : 'Text extras disponibil pentru autocompletare.'}
+        </div>
+      )}
+
+      {deliverable.uploaded && hasPendingUpload && (
+        <div className={`rounded-md border border-amber-300 bg-amber-50 px-2 py-1.5 text-[10px] text-amber-900 ${renderInlineNotes ? 'xl:col-start-2' : ''}`}>
+          <div className="flex items-start gap-1.5 font-semibold">
+            <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+            <span>Livrabil in asteptare upload S3</span>
+          </div>
+          <div className="mt-1">
+            {deliverable.uploadError || 'Fisierul nu a fost confirmat in S3. Sterge atasarea si reincarca documentul.'}
+          </div>
         </div>
       )}
 

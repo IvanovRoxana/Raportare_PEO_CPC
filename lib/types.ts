@@ -431,6 +431,7 @@ export interface Deliverable {
   sharedWithExpertIds?: string[];
   possibleDuplicateOfDocumentId?: string;
   duplicateStatus?: string;
+  uploadError?: string;
   uploadedAt?: string;
   declaredTitle?: string;
   docTitle?: string;

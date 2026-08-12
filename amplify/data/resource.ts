@@ -233,6 +233,7 @@ const schema = a.schema({
       sharedWithExpertIds: a.string().array(),
       possibleDuplicateOfDocumentId: a.id(),
       duplicateStatus: a.string(),
+      uploadError: a.string(),
       uploadedAt: a.datetime(),
       declaredTitle: a.string(),
       docTitle: a.string(),

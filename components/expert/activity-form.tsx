@@ -286,6 +286,7 @@ function mapSavedDeliverableToSlot(deliverable: Deliverable, preserveId: boolean
     common: Boolean(deliverable.isCommonDeliverable),
     possibleDuplicateOfDocumentId: deliverable.possibleDuplicateOfDocumentId,
     duplicateStatus: deliverable.duplicateStatus,
+    uploadError: deliverable.uploadError,
     fileData: deliverable.fileData,
     uploadedAt: deliverable.uploadedAt,
     uploaded: true,
@@ -1510,6 +1511,7 @@ export function ActivityForm({
 
     for (let attempt = 0; attempt < 3; attempt += 1) {
       if (attempt > 0) {
+        await new Promise((resolve) => setTimeout(resolve, attempt * 750));
         documentId = `doc_${deliverable.id}_${Date.now()}_${attempt}`;
         s3Key = buildDocumentS3Key({
           projectId,
@@ -1553,6 +1555,7 @@ export function ActivityForm({
       isCommonDeliverable: Boolean(deliverable.common),
       sharedWithExpertIds: deliverable.common ? collaborators : [],
       duplicateStatus: firstPageTextHash ? 'fingerprinted' : undefined,
+      uploadError: undefined,
     };
   }, [
     collaborators,
@@ -1793,6 +1796,7 @@ export function ActivityForm({
           s3Key: undefined,
           uploaded: true,
           duplicateStatus: 'pending_upload',
+          uploadError: errorMessage,
           titleCheckStatus: deliverable.titleCheckStatus || 'extraction_failed',
           titleCheckMessage: deliverable.titleCheckMessage || 'Fisierul trebuie reincarcat pentru salvarea livrabilului in S3.',
         });
@@ -1882,6 +1886,7 @@ export function ActivityForm({
               sharedWithExpertIds: d.common ? normalizeStringList(collaborators) : normalizeStringList(d.sharedWithExpertIds),
               possibleDuplicateOfDocumentId: d.possibleDuplicateOfDocumentId,
               duplicateStatus: d.duplicateStatus,
+              uploadError: d.uploadError,
               uploadedAt: d.uploadedAt,
               declaredTitle: d.declaredTitle,
               docTitle: d.docTitle || undefined,

@@ -407,6 +407,7 @@ function withSupportedDeliverableFields(payload: Record<string, unknown>, delive
     sharedWithExpertIds: deliverable.sharedWithExpertIds,
     possibleDuplicateOfDocumentId: deliverable.possibleDuplicateOfDocumentId,
     duplicateStatus: deliverable.duplicateStatus,
+    uploadError: deliverable.uploadError,
     eligibilityCheck: serializeAwsJsonField(deliverable.eligibilityCheck),
   };
 
@@ -736,6 +737,7 @@ function mapDeliverable(item: any): Deliverable {
     sharedWithExpertIds: item.sharedWithExpertIds ?? [],
     possibleDuplicateOfDocumentId: item.possibleDuplicateOfDocumentId ?? undefined,
     duplicateStatus: item.duplicateStatus ?? undefined,
+    uploadError: item.uploadError ?? undefined,
     uploadedAt: item.uploadedAt ?? undefined,
     declaredTitle: item.declaredTitle ?? undefined,
     docTitle: item.docTitle ?? undefined,

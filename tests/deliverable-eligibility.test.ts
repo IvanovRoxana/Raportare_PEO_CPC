@@ -59,7 +59,9 @@ test('formularul salveaza activitatea cu livrabil pending cand uploadul S3 esuea
   assert.match(activityFormSource, /const uploadFailures: string\[\] = \[\]/);
   assert.match(activityFormSource, /Fisierul nu mai este disponibil in formular\. Reincarca livrabilul\./);
   assert.match(activityFormSource, /for \(let attempt = 0; attempt < 3; attempt \+= 1\)/);
+  assert.match(activityFormSource, /setTimeout\(resolve, attempt \* 750\)/);
   assert.match(activityFormSource, /duplicateStatus: 'pending_upload'/);
+  assert.match(activityFormSource, /uploadError: errorMessage/);
   assert.match(activityFormSource, /Activitatea se salveaza, dar urmatoarele livrabile nu au ajuns in S3 dupa reincercari automate/);
   assert.ok(
     activityFormSource.indexOf('if (uploadFailures.length > 0) {')
@@ -67,6 +69,13 @@ test('formularul salveaza activitatea cu livrabil pending cand uploadul S3 esuea
     'formularul trebuie sa afiseze avertismentul inainte de onSave cand uploadul livrabilului esueaza',
   );
   assert.doesNotMatch(activityFormSource, /Activitatea nu a fost salvata pentru ca livrabilul nu a putut fi incarcat/);
+});
+
+test('livrabilele pending upload pastreaza diagnosticul si il afiseaza in formular', () => {
+  assert.match(amplifyDataResourceSource, /uploadError: a\.string\(\)/);
+  assert.match(deliverableItemSource, /const hasPendingUpload = deliverable\.duplicateStatus === 'pending_upload' \|\| Boolean\(deliverable\.uploadError\)/);
+  assert.match(deliverableItemSource, /Livrabil in asteptare upload S3/);
+  assert.match(deliverableItemSource, /deliverable\.uploadError \|\| 'Fisierul nu a fost confirmat in S3/);
 });
 
 test('accepta sugestii de activitate si tip livrabil cand exista in listele permise', () => {

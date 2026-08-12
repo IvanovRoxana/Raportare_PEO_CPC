@@ -50,6 +50,20 @@ test('payloadurile Document si Deliverable omit campurile undefined la scriere',
   assert.match(deliverablePayloadSource, /return omitUndefinedFields\(withSupportedDeliverableFields\(\{/);
 });
 
+test('diagnosticul pentru upload pending este persistat pe livrabil', () => {
+  const deliverableFieldsSource = getActivityMethodSource(
+    'function withSupportedDeliverableFields(',
+    'function buildDeliverableWritePayload(',
+  );
+  const mapDeliverableSource = getActivityMethodSource(
+    'function mapDeliverable(',
+    'function mapDocument(',
+  );
+
+  assert.match(deliverableFieldsSource, /uploadError: deliverable\.uploadError/);
+  assert.match(mapDeliverableSource, /uploadError: item\.uploadError \?\? undefined/);
+});
+
 test('scrierile activitatilor verifica autorizarea Expert/PM inainte de sincronizarea livrabilelor', () => {
   const createSource = getActivityMethodSource(
     "async create(activity: Omit<Activity, 'id' | 'createdAt' | 'updatedAt'>): Promise<Activity>",
