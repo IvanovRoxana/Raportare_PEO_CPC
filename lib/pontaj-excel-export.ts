@@ -166,6 +166,12 @@ async function generatePeoWorkbook(payload: ExportPayload): Promise<GeneratedWor
   const monthEndSerial = excelSerial(payload.year, payload.month, daysInMonth);
   const grouped = groupActivitiesByDate(payload.activities);
   const timesheetRows = buildPeoTimesheetRows(payload.year, payload.month, grouped);
+  const concurrentLeaveByDate = getConcurrentLeaveCodeByDate(
+    payload.concurrentProjects ?? [],
+    payload.concurrentTimesheetEntries ?? [],
+    payload.month,
+    payload.year,
+  );
   const dailyHours = getExpertDailyHours(payload.expert);
   const cimDailyHours = getExpertCimDailyHours(payload.expert);
   const hourlyRate = getExpertHourlyRate(payload.expert);
@@ -188,19 +194,22 @@ async function generatePeoWorkbook(payload: ExportPayload): Promise<GeneratedWor
     const activities = detail?.activities ?? [];
     const leaveCode = getLeaveCode(activities);
     const hours = detail?.isWorking ? sumHours(activities) : 0;
+    const concurrentLeaveCode = detail ? concurrentLeaveByDate.get(detail.dateKey) ?? null : null;
+    const peoHours = leaveCode ? dailyHours : hours;
+    const otherActivities = concurrentLeaveCode ?? Math.max(0, cimDailyHours - peoHours);
 
     sheetXml = setCell(sheetXml, `A${row}`, detail ? detail.dateSerial : null);
     sheetXml = setCell(sheetXml, `B${row}`, hours > 0 || leaveCode ? joinUnique(activities.map((activity) => activityCode(activity, payload.expert))) : null);
     sheetXml = setCell(sheetXml, `D${row}`, hours > 0 || leaveCode ? joinUnique(activities.map(activitySubactivity)) : null);
     sheetXml = setCell(sheetXml, `G${row}`, hourlyRate && (hours > 0 || leaveCode) ? hourlyRate : null);
     sheetXml = setCell(sheetXml, `H${row}`, leaveCode ?? (hours > 0 ? hours : null));
-    sheetXml = setCell(sheetXml, `I${row}`, detail?.isWorking ? Math.max(0, cimDailyHours - hours) : null);
+    sheetXml = setCell(sheetXml, `I${row}`, detail?.isWorking ? otherActivities : null);
   }
 
   const lastDayRow = 13 + timesheetRows.length;
   sheetXml = setCell(sheetXml, `A${totalRow}`, 'NR. TOTAL DE ORE');
   sheetXml = setCell(sheetXml, `H${totalRow}`, { formula: `SUM(H14:H${lastDayRow})+COUNTIF(H14:H${lastDayRow},"CO")*${dailyHours}` });
-  sheetXml = setCell(sheetXml, `I${totalRow}`, { formula: `SUM(I14:I${lastDayRow})` });
+  sheetXml = setCell(sheetXml, `I${totalRow}`, { formula: `SUM(I14:I${lastDayRow})+COUNTIF(I14:I${lastDayRow},"CO")*${Math.max(0, cimDailyHours - dailyHours)}` });
   sheetXml = setCell(sheetXml, `D${totalRow + 5}`, lastPeoWorkedDateSerial);
   sheetXml = setCell(sheetXml, `D${totalRow + 9}`, lastPeoWorkedDateSerial);
 
@@ -226,6 +235,12 @@ async function generateConsolidatedWorkbook(payload: ExportPayload): Promise<Gen
   const grouped = groupActivitiesByDate(payload.activities);
   const goodworksEntries = getGoodworksEntries(payload.concurrentProjects ?? [], payload.concurrentTimesheetEntries ?? [], payload.month, payload.year);
   const goodworksByDate = getGoodworksHours(payload.concurrentProjects ?? [], goodworksEntries, payload.month, payload.year);
+  const concurrentLeaveByDate = getConcurrentLeaveCodeByDate(
+    payload.concurrentProjects ?? [],
+    payload.concurrentTimesheetEntries ?? [],
+    payload.month,
+    payload.year,
+  );
   let peoSection = getPeoDetailSection(sheetXml, sharedStrings);
   const goodworksSection = hasGoodworks ? getGoodworksDetailSection(sheetXml, sharedStrings) : null;
   const detailRows = buildPeoDetailRows(payload.year, payload.month, grouped);
@@ -262,11 +277,16 @@ async function generateConsolidatedWorkbook(payload: ExportPayload): Promise<Gen
     const isWorking = !!info && !info.isNonWorkingDay;
     const peoLeaveCode = inMonth ? getLeaveCode(grouped.get(dateKey) ?? []) : null;
     const goodworksLeaveCode = inMonth ? getLeaveCode(goodworksByDate.get(dateKey) ?? []) : null;
-    const hasLeave = !!peoLeaveCode || !!goodworksLeaveCode;
+    const concurrentLeaveCode = inMonth ? concurrentLeaveByDate.get(dateKey) ?? null : null;
+    const hasLeave = !!peoLeaveCode || !!goodworksLeaveCode || !!concurrentLeaveCode;
 
     sheetXml = setCell(sheetXml, `${col}13`, inMonth ? day : null);
     sheetXml = setCell(sheetXml, `${col}14`, inMonth ? WEEKDAYS_EN[new Date(payload.year, payload.month, day).getDay()] : null);
-    sheetXml = setCell(sheetXml, `${col}${summaryRows.concordia}`, isWorking && !hasLeave ? { formula: `MAX(0,${cimDailyHours}-SUM(${col}${hasGoodworks ? summaryRows.goodworks : summaryRows.peo}:${col}${summaryRows.peo}))` } : null);
+    sheetXml = setCell(
+      sheetXml,
+      `${col}${summaryRows.concordia}`,
+      concurrentLeaveCode ?? (isWorking && !hasLeave ? { formula: `MAX(0,${cimDailyHours}-SUM(${col}${hasGoodworks ? summaryRows.goodworks : summaryRows.peo}:${col}${summaryRows.peo}))` } : null),
+    );
     if (hasGoodworks) {
       const goodworksCell = goodworksLeaveCode ?? (isWorking ? { formula: `SUMIFS($E$${goodworksSection!.startRow}:$E$${goodworksSection!.totalRow - 1},$A$${goodworksSection!.startRow}:$A$${goodworksSection!.totalRow - 1},"="&DATE(${payload.year},${payload.month + 1},${col}13))` } : null);
       sheetXml = setCell(sheetXml, `${col}${summaryRows.goodworks}`, goodworksCell);
@@ -314,6 +334,12 @@ async function generateConsolidatedWorkbook(payload: ExportPayload): Promise<Gen
     const activity = detail?.activity;
     const leaveCode = activity ? getLeaveCode([activity]) : null;
     const hours = detail?.isWorking && activity ? Number(activity.hours) || 0 : 0;
+    const concurrentLeaveCode = detail ? concurrentLeaveByDate.get(detail.dateKey) ?? null : null;
+    const otherActivitiesCell = leaveCode
+      ? concurrentLeaveCode ?? Math.max(0, cimDailyHours - dailyHours)
+      : {
+          formula: `IF(COUNTIF(AO:AO,A${row})=0,0,(${cimDailyHours}-SUMIF(AO:AO,A${row},AL:AL))/COUNTIF(AO:AO,A${row}))`,
+        };
 
     sheetXml = setCell(sheetXml, `A${row}`, detail ? detail.dateSerial : null);
     sheetXml = setCell(sheetXml, `B${row}`, (hours > 0 || leaveCode) && activity ? activityCode(activity, payload.expert) : null);
@@ -323,11 +349,7 @@ async function generateConsolidatedWorkbook(payload: ExportPayload): Promise<Gen
     sheetXml = setCell(
       sheetXml,
       `AM${row}`,
-      detail?.isWorking
-        ? {
-            formula: `IF(OR(AL${row}="CO",AL${row}="CM"),AL${row},IF(COUNTIF(AO:AO,A${row})=0,0,(${cimDailyHours}-SUMIF(AO:AO,A${row},AL:AL))/COUNTIF(AO:AO,A${row})))`,
-          }
-        : null,
+      detail?.isWorking ? otherActivitiesCell : null,
     );
     sheetXml = setCell(sheetXml, `AN${row}`, (hours > 0 || leaveCode) && activity ? activityDescription(activity) : null);
     sheetXml = setCell(sheetXml, `AO${row}`, detail?.isWorking ? detail.dateSerial : null);
@@ -814,6 +836,37 @@ function getCellText(sheetXml: string, ref: string, sharedStrings: string[]) {
     return sharedStrings[Number(value)] ?? value;
   }
   return value;
+}
+
+function getConcurrentLeaveCodeByDate(
+  projects: Partial<ConcurrentProject>[],
+  entries: Partial<ConcurrentProjectTimesheetEntry>[],
+  month: number,
+  year: number,
+) {
+  const goodworksProjectIds = new Set(
+    projects
+      .filter(isGoodworksProject)
+      .map((project) => project.id)
+      .filter(Boolean),
+  );
+  const leaveByDate = new Map<string, 'CO' | 'CM'>();
+
+  for (const entry of entries) {
+    if (!entry.date || entry.month !== month || entry.year !== year) continue;
+    if (entry.status === 'rejected') continue;
+    if (entry.concurrentProjectId && goodworksProjectIds.has(entry.concurrentProjectId)) continue;
+
+    const leaveCode = getLeaveCode([entry]);
+    if (!leaveCode) continue;
+
+    const dateKey = toDateKey(entry.date);
+    if (leaveCode === 'CO' || !leaveByDate.has(dateKey)) {
+      leaveByDate.set(dateKey, leaveCode);
+    }
+  }
+
+  return leaveByDate;
 }
 
 function getGoodworksEntries(

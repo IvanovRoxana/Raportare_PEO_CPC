@@ -166,7 +166,46 @@ describe('export pontaj Excel', () => {
     assert.match(cellXml(sheet, 'AG16'), /COUNTIF\(B16:AF16,&quot;DE&quot;\)\*8/);
     assert.match(cellXml(sheet, 'AI16'), /COUNTIF\(B16:AF16,&quot;CO&quot;\)\*8/);
     assert.match(cellXml(sheet, 'AL79'), /CO/);
-    assert.match(cellXml(sheet, 'AM79'), /OR\(AL79=&quot;CO&quot;,AL79=&quot;CM&quot;\)/);
+    assert.match(cellXml(sheet, 'AM79'), /<v>0<\/v>/);
+  });
+
+  it('scrie CO si in alte activitati cand concediul financiar acopera PEO si CPC', async () => {
+    const workbook = await generatePontajExcel({
+      kind: 'consolidated',
+      month: 4,
+      year: 2026,
+      expert: { id: 'expert-co-cpc', name: 'Expert CO CPC', role: 'Expert GT', category: 'Expert', oreZi: 6, norma: 8, saCodes: ['SA1.1'] },
+      activities: [
+        { date: '2026-05-22', hours: 0, activityType: 'CO - Concediu odihna', title: 'CO - Concediu odihna', dayType: 'CO', saCode: 'SA1.1', status: 'approved' },
+      ],
+      concurrentProjects: [
+        { id: 'cpc-project', expertId: 'expert-co-cpc', projectName: 'CPC', dailyHours: 2, startDate: '2026-05-01', isActive: true },
+      ],
+      concurrentTimesheetEntries: [
+        {
+          id: 'cpc-co',
+          concurrentProjectId: 'cpc-project',
+          expertId: 'expert-co-cpc',
+          date: '2026-05-22',
+          month: 4,
+          year: 2026,
+          hours: 2,
+          dayType: 'CO',
+          status: 'verified',
+          source: 'import',
+        },
+      ],
+    });
+
+    const files = readXlsx(workbook.buffer);
+    const sheet = files.get('xl/worksheets/sheet5.xml')!.toString('utf8');
+
+    assert.match(cellXml(sheet, 'W15'), /CO/);
+    assert.match(cellXml(sheet, 'W16'), /CO/);
+    assert.match(cellXml(sheet, 'AI15'), /COUNTIF\(B15:AF15,&quot;CO&quot;\)\*2/);
+    assert.match(cellXml(sheet, 'AI16'), /COUNTIF\(B16:AF16,&quot;CO&quot;\)\*6/);
+    assert.match(cellXml(sheet, 'AL79'), /CO/);
+    assert.match(cellXml(sheet, 'AM79'), /CO/);
   });
 
   it('scrie CO in Pontaj_PEO simplu pentru ca formula lunara sa il totalizeze', async () => {
@@ -174,7 +213,7 @@ describe('export pontaj Excel', () => {
       kind: 'peo',
       month: 4,
       year: 2026,
-      expert: { id: 'expert-co', name: 'Expert CO', role: 'Expert GT', category: 'Expert', oreZi: 8, saCodes: ['SA1.1'], hourlyRate: 99 },
+      expert: { id: 'expert-co', name: 'Expert CO', role: 'Expert GT', category: 'Expert', oreZi: 8, norma: 8, saCodes: ['SA1.1'], hourlyRate: 99 },
       activities: [
         { date: '2026-05-22', hours: 0, activityType: 'CO - Concediu odihna', title: 'CO - Concediu odihna', dayType: 'CO', saCode: 'SA1.1', status: 'approved' },
       ],
@@ -186,8 +225,46 @@ describe('export pontaj Excel', () => {
     const sheet = files.get('xl/worksheets/sheet1.xml')!.toString('utf8');
 
     assert.match(cellXml(sheet, 'H35'), /CO/);
+    assert.match(cellXml(sheet, 'I35'), /<v>0<\/v>/);
     assert.match(cellXml(sheet, 'G35'), /<v>99<\/v>/);
     assert.match(cellXml(sheet, 'H45'), /COUNTIF\(H14:H44,&quot;CO&quot;\)\*8/);
+  });
+
+  it('scrie CO in alte activitati in Pontaj_PEO simplu cand exista CO CPC financiar', async () => {
+    const workbook = await generatePontajExcel({
+      kind: 'peo',
+      month: 4,
+      year: 2026,
+      expert: { id: 'expert-co-cpc', name: 'Expert CO CPC', role: 'Expert GT', category: 'Expert', oreZi: 6, norma: 8, saCodes: ['SA1.1'] },
+      activities: [
+        { date: '2026-05-22', hours: 0, activityType: 'CO - Concediu odihna', title: 'CO - Concediu odihna', dayType: 'CO', saCode: 'SA1.1', status: 'approved' },
+      ],
+      concurrentProjects: [
+        { id: 'cpc-project', expertId: 'expert-co-cpc', projectName: 'CPC', dailyHours: 2, startDate: '2026-05-01', isActive: true },
+      ],
+      concurrentTimesheetEntries: [
+        {
+          id: 'cpc-co',
+          concurrentProjectId: 'cpc-project',
+          expertId: 'expert-co-cpc',
+          date: '2026-05-22',
+          month: 4,
+          year: 2026,
+          hours: 2,
+          dayType: 'CO',
+          status: 'verified',
+          source: 'import',
+        },
+      ],
+    });
+
+    const files = readXlsx(workbook.buffer);
+    const sheet = files.get('xl/worksheets/sheet1.xml')!.toString('utf8');
+
+    assert.match(cellXml(sheet, 'H35'), /CO/);
+    assert.match(cellXml(sheet, 'I35'), /CO/);
+    assert.match(cellXml(sheet, 'H45'), /COUNTIF\(H14:H44,&quot;CO&quot;\)\*6/);
+    assert.match(cellXml(sheet, 'I45'), /COUNTIF\(I14:I44,&quot;CO&quot;\)\*2/);
   });
 
   it('calculeaza alte activitati ca norma CIM minus orele PEO pontate in zi', async () => {
