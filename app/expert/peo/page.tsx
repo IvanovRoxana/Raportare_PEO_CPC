@@ -1001,6 +1001,21 @@ function ExpertDashboardContent() {
     setActivitySaveNotice(null);
     setWorkBlockSaveNotice(null);
     setIsSaving(true);
+    const hasDeliverablesToSave = newActivities.some((activity) => (activity.deliverables ?? []).length > 0);
+    const formatActivitySaveError = (error: unknown) => {
+      const rawMessage = error instanceof Error ? error.message : String(error || '');
+      if (rawMessage.includes("Cannot read properties of undefined (reading 'includes')")) {
+        return hasDeliverablesToSave
+          ? 'Activitatea a fost salvata, dar livrabilul nu a putut fi atasat din cauza unor date incomplete trimise catre AWS. Reincarca pagina si adauga livrabilul din nou pe activitatea salvata.'
+          : 'Activitatea nu a putut fi salvata din cauza unor date incomplete. Reincarca pagina si incearca din nou.';
+      }
+
+      if (rawMessage.toLowerCase().includes('aws create deliverable')) {
+        return 'Activitatea a fost salvata, dar AWS nu a acceptat livrabilul. Verifica fisierul incarcat si incearca sa il atasezi din nou pe activitatea salvata.';
+      }
+
+      return rawMessage || 'Activitatea nu a fost creata. Verifica norma disponibila sau contacteaza administratorul.';
+    };
     try {
       const safeSelectedDates = Array.isArray(selectedDates) ? selectedDates : [];
       if (!selectedExpertId) {
@@ -1264,9 +1279,7 @@ function ExpertDashboardContent() {
       });
     } catch (error) {
       console.error('Error saving activities:', error);
-      const message = error instanceof Error
-        ? error.message
-        : 'Activitatea nu a fost creată. Verifică norma disponibilă sau contactează administratorul.';
+      const message = formatActivitySaveError(error);
       setActivitySaveError(message);
       setSaveError(message);
     } finally {

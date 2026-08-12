@@ -420,7 +420,7 @@ function withSupportedDeliverableFields(payload: Record<string, unknown>, delive
 }
 
 function buildDeliverableWritePayload(activityId: string, deliverable: Deliverable, includeId = false) {
-  return withSupportedDeliverableFields({
+  return omitUndefinedFields(withSupportedDeliverableFields({
     ...(includeId ? { id: deliverable.id } : {}),
     activityId,
     fileName: deliverable.fileName,
@@ -437,7 +437,7 @@ function buildDeliverableWritePayload(activityId: string, deliverable: Deliverab
     ...deliverable,
     activityId,
     sourceActivityId: deliverable.sourceActivityId || activityId,
-  });
+  }));
 }
 
 function withSupportedActivityShareFields(payload: Record<string, unknown>, activity: Partial<Activity>) {
@@ -1915,7 +1915,9 @@ async function createActivityUnchecked(
       await createDocumentMetadataForDeliverable(client, activity, activityId, deliverable);
       await createRecoveredSharedDeliverableAudit(client, activity, activityId, deliverable);
       await createSharedDeliverablesForDocument(client, activity, activityId, deliverable);
-      return client.models.Deliverable.create(buildDeliverableWritePayload(activityId, deliverable));
+      const result = await client.models.Deliverable.create(buildDeliverableWritePayload(activityId, deliverable));
+      assertNoErrors(result, 'AWS create deliverable');
+      return result;
     }),
     ...(activity.grupTinta ?? []).map((entry) =>
       client.models.GrupTintaEntry.create({
