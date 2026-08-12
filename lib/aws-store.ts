@@ -149,7 +149,7 @@ function buildActivityBatchThrottleError(createdCount: number, totalCount: numbe
 }
 
 function hasConditionalCheckFailedError(errors: unknown) {
-  return JSON.stringify(errors).includes('ConditionalCheckFailedException');
+  return String(JSON.stringify(errors) ?? '').includes('ConditionalCheckFailedException');
 }
 
 async function listAll<T>(

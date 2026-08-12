@@ -87,6 +87,17 @@ test('createBatch trateaza throttling-ul inainte si dupa prima scriere fara retr
   assert.doesNotMatch(createBatchSource, /setTimeout|retry|Retry|while\s*\(/);
 });
 
+test('verificarea ConditionalCheckFailedException nu apeleaza includes pe JSON.stringify(undefined)', () => {
+  assert.match(
+    awsStoreSource,
+    /String\(JSON\.stringify\(errors\) \?\? ''\)\.includes\('ConditionalCheckFailedException'\)/,
+  );
+  assert.doesNotMatch(
+    awsStoreSource,
+    /JSON\.stringify\(errors\)\.includes\('ConditionalCheckFailedException'\)/,
+  );
+});
+
 test('fluxurile pentru livrabil existent sau comun nu scaneaza Deliverable dupa activityId', () => {
   assert.match(
     awsStoreSource,
