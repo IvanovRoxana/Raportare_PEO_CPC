@@ -31,6 +31,7 @@ import {
 } from '@/lib/pontaj-rules';
 import { assertCanLogHoursOnDate, getNonWorkingDayInfo } from '@/lib/non-working-days';
 import { allocateLeaveEntries, assertCapacity, calculateCapacitySnapshot, resolveNormContract } from './time-capacity';
+import { applyFinancialReferenceNorms } from './financial-norm-contracts';
 import type {
   Activity,
   ActivityCatalog,
@@ -1640,9 +1641,10 @@ async function validateActivityBatchForWrite(
       concurrentProjectTimesheetService.getAllByMonth(month, year),
       leaveEntriesService.getByMonth(month, year),
     ]);
+    const effectiveNormContracts = applyFinancialReferenceNorms(expert, normContracts, month, year);
     assertCapacity(calculateCapacitySnapshot({
       expert,
-      contracts: normContracts,
+      contracts: effectiveNormContracts,
       activities: [...existingActivities, ...groupActivities],
       concurrentProjects,
       concurrentEntries: concurrentEntries.filter((entry) => entry.expertId === sample.expertId),
@@ -3287,9 +3289,10 @@ export const concurrentProjectTimesheetService = {
       concurrentProjectTimesheetService.getAllByMonth(entry.month, entry.year),
       leaveEntriesService.getByMonth(entry.month, entry.year),
     ]);
+    const effectiveNormContracts = applyFinancialReferenceNorms(expert, normContracts, entry.month, entry.year);
     assertCapacity(calculateCapacitySnapshot({
       expert,
-      contracts: normContracts,
+      contracts: effectiveNormContracts,
       activities: activities.filter((item) => item.expertId === entry.expertId),
       concurrentProjects: projects,
       concurrentEntries: [...monthEntries.filter((item) => item.expertId === entry.expertId && item.id !== entry.id), entry],
@@ -3613,9 +3616,10 @@ export const reportStatusService = {
       if (expertLeaves.some((leave) => leave.status !== 'VALIDATED' && leave.status !== 'REJECTED')) {
         throw new Error('Pontajul nu poate fi trimis sau aprobat cat timp exista CO nevalidat.');
       }
+      const effectiveNormContracts = applyFinancialReferenceNorms(expert, contracts, status.month, status.year);
       assertCapacity(calculateCapacitySnapshot({
         expert,
-        contracts,
+        contracts: effectiveNormContracts,
         activities: activities.filter((activity) => activity.expertId === status.expertId),
         concurrentProjects: projects,
         concurrentEntries: entries.filter((entry) => entry.expertId === status.expertId),
@@ -4188,9 +4192,10 @@ export const leaveEntriesService = {
       concurrentProjectTimesheetService.getAllByMonth(month, year),
       leaveEntriesService.getByMonth(month, year),
     ]);
+    const effectiveNormContracts = applyFinancialReferenceNorms(expert, contracts, month, year);
     const allocations = allocateLeaveEntries({
       expert,
-      contracts,
+      contracts: effectiveNormContracts,
       activities: activities.filter((item) => item.expertId === args.expertId),
       concurrentProjects: projects,
       concurrentEntries: entries.filter((item) => item.expertId === args.expertId),
@@ -4225,7 +4230,8 @@ export const leaveEntriesService = {
       concurrentProjectTimesheetService.getAllByMonth(entry.month, entry.year),
       leaveEntriesService.getByMonth(entry.month, entry.year),
     ]);
-    const contract = resolveNormContract(expert, contracts, entry.date);
+    const effectiveNormContracts = applyFinancialReferenceNorms(expert, contracts, entry.month, entry.year);
+    const contract = resolveNormContract(expert, effectiveNormContracts, entry.date);
     const candidate = {
       ...entry,
       source: 'FINANCIAL' as const,
@@ -4241,7 +4247,7 @@ export const leaveEntriesService = {
     };
     assertCapacity(calculateCapacitySnapshot({
       expert,
-      contracts,
+      contracts: effectiveNormContracts,
       activities: activities.filter((item) => item.expertId === entry.expertId),
       concurrentProjects: projects,
       concurrentEntries: entries.filter((item) => item.expertId === entry.expertId),

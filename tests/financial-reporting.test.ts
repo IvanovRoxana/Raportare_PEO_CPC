@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { buildFinancialReportingSummary } from '../lib/financial-reporting.ts';
-import type { Activity, ConcurrentProject, ConcurrentProjectTimesheetEntry, Expert, LeaveEntry } from '../lib/types.ts';
+import type { Activity, ConcurrentProject, ConcurrentProjectTimesheetEntry, Expert, ExpertNormContract, LeaveEntry } from '../lib/types.ts';
 
 const expert: Expert = {
   id: 'expert-1',
@@ -131,6 +131,43 @@ test('randul financiar expune normele din Excel cand nu exista contract activ', 
 
   assert.equal(summary.rows[0].peoNorm, '6 h/zi');
   assert.equal(summary.rows[0].cimNorm, '8 h/zi');
+});
+
+test('norma financiara corecteaza contractul persistent gresit care ar limita CIM la PEO', () => {
+  const radu = {
+    id: 'radu-ianos',
+    name: 'Radu Ianos',
+    role: 'Expert',
+    norma: 6,
+    oreZi: 6,
+    dailyHours: 6,
+  } as Expert;
+  const badContract: ExpertNormContract = {
+    id: 'bad-contract',
+    expertId: radu.id,
+    validFrom: '2026-07-01',
+    peoNormUnit: 'HOURS_PER_DAY',
+    peoNormValue: 6,
+    peoDailyCap: 6,
+    cimNormUnit: 'HOURS_PER_DAY',
+    cimNormValue: 6,
+    cimDailyCap: 6,
+    leaveHoursPerDay: 6,
+    status: 'ACTIVE',
+    justification: 'contract persistent gresit',
+  };
+  const summary = buildFinancialReportingSummary({
+    experts: [radu],
+    activities: [{ id: 'a1', expertId: radu.id, date: '2026-07-07', hours: 8, activityType: 'SA3.4', title: 'Activitate', status: 'draft' }],
+    month: 6,
+    year: 2026,
+    normContracts: [badContract],
+  });
+
+  const row = summary.rows.find((item) => item.expertId === radu.id);
+  assert.equal(row?.peoNorm, '6 h/zi');
+  assert.equal(row?.cimNorm, '8 h/zi');
+  assert.equal(row?.conflicts.some((conflict) => conflict.message.includes('peste norma CIM de 6')), false);
 });
 
 test('leaga automat persoanele financiare de expertii PEO cand numele are ordinea inversata', () => {

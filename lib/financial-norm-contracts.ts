@@ -1,0 +1,63 @@
+import referenceSeed from '../data/staging/seed.json' with { type: 'json' };
+import { normalizeFinancialPersonKey } from './financial-person-matching.ts';
+import type { Expert, ExpertNormContract, NormUnit } from './types.ts';
+
+function parseNormLabel(value?: string) {
+  if (!value || value === '-') return null;
+  const match = value.match(/(\d+(?:[.,]\d+)?)/);
+  if (!match) return null;
+  const unit: NormUnit = /h\s*\/\s*luna/i.test(value) ? 'HOURS_PER_MONTH' : 'HOURS_PER_DAY';
+  return {
+    value: Number(match[1].replace(',', '.')) || 0,
+    unit,
+  };
+}
+
+function monthStart(month: number, year: number) {
+  return `${year}-${String(month + 1).padStart(2, '0')}-01`;
+}
+
+function monthEnd(month: number, year: number) {
+  const lastDay = new Date(year, month + 1, 0).getDate();
+  return `${year}-${String(month + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+}
+
+export function applyFinancialReferenceNorms(
+  expert: Partial<Expert>,
+  contracts: ExpertNormContract[] | undefined,
+  month: number,
+  year: number,
+  referencePeople: Array<{ name: string; peoNorm?: string; cimNorm?: string }> = referenceSeed.people,
+) {
+  const reference = referencePeople.find(
+    (person) => normalizeFinancialPersonKey(person.name) === normalizeFinancialPersonKey(expert.name),
+  );
+  const peoNorm = parseNormLabel(reference?.peoNorm);
+  const cimNorm = parseNormLabel(reference?.cimNorm);
+  if (!reference || !peoNorm || !cimNorm || !expert.id) return contracts ?? [];
+
+  const start = monthStart(month, year);
+  const end = monthEnd(month, year);
+  const financialContract: ExpertNormContract = {
+    id: `financial-reference:${expert.id}:${year}-${String(month + 1).padStart(2, '0')}`,
+    expertId: expert.id,
+    validFrom: start,
+    validTo: end,
+    peoNormUnit: peoNorm.unit,
+    peoNormValue: peoNorm.value,
+    peoDailyCap: peoNorm.unit === 'HOURS_PER_DAY' ? peoNorm.value : 0,
+    cimNormUnit: cimNorm.unit,
+    cimNormValue: cimNorm.value,
+    cimDailyCap: cimNorm.unit === 'HOURS_PER_DAY' ? cimNorm.value : 8,
+    leaveHoursPerDay: cimNorm.unit === 'HOURS_PER_DAY' ? cimNorm.value : 8,
+    status: 'ACTIVE',
+    justification: 'Norme preluate din tabelul Financiar',
+  };
+
+  const monthContracts = (contracts ?? []).filter((contract) => (
+    contract.expertId !== expert.id
+    || contract.validTo && contract.validTo < start
+    || contract.validFrom > end
+  ));
+  return [...monthContracts, financialContract];
+}

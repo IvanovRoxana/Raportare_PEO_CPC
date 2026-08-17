@@ -2,6 +2,7 @@ import referenceSeed from '../data/staging/seed.json' with { type: 'json' };
 import { normalizeFinancialPersonKey, rankFinancialPersonMatches, type FinancialPersonMatchSuggestion } from './financial-person-matching.ts';
 import type { Activity, ConcurrentProject, ConcurrentProjectTimesheetEntry, Expert, ExpertNormContract, FinancialPersonLink, LeaveEntry } from './types.ts';
 import { calculateCapacitySnapshot, getEffectiveNormContract, resolveNormContract } from './time-capacity.ts';
+import { applyFinancialReferenceNorms } from './financial-norm-contracts.ts';
 
 export type FinancialConflictCode =
   | 'missing_expert'
@@ -311,9 +312,12 @@ export function buildFinancialReportingSummary(input: {
       dailyTotals.set(leave.date, (dailyTotals.get(leave.date) ?? 0) + (Number(leave.totalHours) || 0));
     }
 
+    const effectiveNormContracts = expert
+      ? applyFinancialReferenceNorms(expert, normContracts, input.month, input.year, referencePeople)
+      : normContracts;
     const capacity = expert ? calculateCapacitySnapshot({
       expert,
-      contracts: normContracts,
+      contracts: effectiveNormContracts,
       activities,
       concurrentProjects: expertProjects,
       concurrentEntries: entries,
@@ -322,10 +326,10 @@ export function buildFinancialReportingSummary(input: {
       year: input.year,
     }) : undefined;
     const realActiveContract = expert
-      ? getEffectiveNormContract(normContracts, expert.id, input.year + '-' + String(input.month + 1).padStart(2, '0') + '-01')
+      ? getEffectiveNormContract(effectiveNormContracts, expert.id, input.year + '-' + String(input.month + 1).padStart(2, '0') + '-01')
       : undefined;
     const activeContract = expert
-      ? resolveNormContract(expert, normContracts, input.year + '-' + String(input.month + 1).padStart(2, '0') + '-01')
+      ? resolveNormContract(expert, effectiveNormContracts, input.year + '-' + String(input.month + 1).padStart(2, '0') + '-01')
       : undefined;
     const totalLeave = peoLeave + medicalLeave + concordiaLeave;
     const concordiaWorked = capacity
