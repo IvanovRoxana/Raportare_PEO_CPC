@@ -50,6 +50,12 @@ test('coloana perioada CO foloseste calendar pentru selectia zilelor', () => {
   assert.match(source, /updateLeaveGridPeriod\(row, dates\)/);
 });
 
+test('salvarea CO financiar pastreaza CIM din coloana financiara, nu il deduce din PEO si CPC', () => {
+  const source = readFileSync('components/financial/financial-reporting-dashboard.tsx', 'utf8');
+  assert.doesNotMatch(source, /const cimDailyCap = peoNorm \+ cpcDailyCap/);
+  assert.match(source, /const cimDailyCap = Math\.max\(0, parseDailyHoursLabel\(row\.cimNorm\)/);
+});
+
 test('modulul financiar preia CO doar din modulul CO manual', () => {
   const activities: Activity[] = [
     { id: 'a1', expertId: expert.id, date: '2026-06-02', hours: 8, activityType: 'A', title: 'Activitate', status: 'approved' },

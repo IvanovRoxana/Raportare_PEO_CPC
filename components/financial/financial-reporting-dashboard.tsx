@@ -717,7 +717,7 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
       const validFrom = isoDate(year, month, 1);
       const sameDateContract = contracts.find((contract) => contract.expertId === row.expertId && contract.validFrom === validFrom);
       const cpcDailyCap = Math.max(0, cpcNorm);
-      const cimDailyCap = peoNorm + cpcDailyCap;
+      const cimDailyCap = Math.max(0, parseDailyHoursLabel(row.cimNorm) || Number(sameDateContract?.cimDailyCap) || 0);
       if (sameDateContract) {
         await updateNormContract(sameDateContract.id, {
           peoNormUnit: 'HOURS_PER_DAY',
