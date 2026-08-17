@@ -227,7 +227,7 @@ describe('export pontaj Excel', () => {
     assert.match(cellXml(sheet, 'H35'), /CO/);
     assert.match(cellXml(sheet, 'I35'), /<v>0<\/v>/);
     assert.match(cellXml(sheet, 'G35'), /<v>99<\/v>/);
-    assert.match(cellXml(sheet, 'H45'), /COUNTIF\(H14:H44,&quot;CO&quot;\)\*8/);
+    assert.match(cellXml(sheet, 'H45'), /<v>8<\/v>/);
   });
 
   it('scrie CO in alte activitati in Pontaj_PEO simplu cand exista CO CPC financiar', async () => {
@@ -263,8 +263,8 @@ describe('export pontaj Excel', () => {
 
     assert.match(cellXml(sheet, 'H35'), /CO/);
     assert.match(cellXml(sheet, 'I35'), /CO/);
-    assert.match(cellXml(sheet, 'H45'), /COUNTIF\(H14:H44,&quot;CO&quot;\)\*6/);
-    assert.match(cellXml(sheet, 'I45'), /COUNTIF\(I14:I44,&quot;CO&quot;\)\*2/);
+    assert.match(cellXml(sheet, 'H45'), /<v>6<\/v>/);
+    assert.match(cellXml(sheet, 'I45'), /<v>154<\/v>/);
   });
 
   it('calculeaza alte activitati ca norma CIM minus orele PEO pontate in zi', async () => {
@@ -326,7 +326,7 @@ describe('export pontaj Excel', () => {
     assert.match(cellXml(sheet, 'H16'), /<v>8<\/v>/);
     assert.match(cellXml(sheet, 'D15'), /SA3\.3 Realizarea unor campanii/);
     assert.match(cellXml(sheet, 'D15'), /SA3\.4 Dezvoltarea si derularea/);
-    assert.match(cellXml(sheet, 'H44'), /SUM\(H14:H43\)\+COUNTIF\(H14:H43,&quot;CO&quot;\)\*8/);
+    assert.match(cellXml(sheet, 'H44'), /<v>64<\/v>/);
     assert.equal(cellXml(sheet, 'A54'), '');
   });
 

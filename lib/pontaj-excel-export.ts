@@ -176,6 +176,8 @@ async function generatePeoWorkbook(payload: ExportPayload): Promise<GeneratedWor
   const cimDailyHours = getExpertCimDailyHours(payload.expert);
   const hourlyRate = getExpertHourlyRate(payload.expert);
   const lastPeoWorkedDateSerial = getLastPeoWorkedDateSerial(payload.activities, payload.year, payload.month) ?? monthEndSerial;
+  let peoTotalHours = 0;
+  let otherTotalHours = 0;
 
   if (daysInMonth === 31) {
     sheetXml = insertPeoDay31Row(sheetXml);
@@ -197,6 +199,10 @@ async function generatePeoWorkbook(payload: ExportPayload): Promise<GeneratedWor
     const concurrentLeaveCode = detail ? concurrentLeaveByDate.get(detail.dateKey) ?? null : null;
     const peoHours = leaveCode ? dailyHours : hours;
     const otherActivities = concurrentLeaveCode ?? Math.max(0, cimDailyHours - peoHours);
+    peoTotalHours += peoHours;
+    if (detail?.isWorking) {
+      otherTotalHours += concurrentLeaveCode ? Math.max(0, cimDailyHours - dailyHours) : Number(otherActivities) || 0;
+    }
 
     sheetXml = setCell(sheetXml, `A${row}`, detail ? detail.dateSerial : null);
     sheetXml = setCell(sheetXml, `B${row}`, hours > 0 || leaveCode ? joinUnique(activities.map((activity) => activityCode(activity, payload.expert))) : null);
@@ -206,10 +212,9 @@ async function generatePeoWorkbook(payload: ExportPayload): Promise<GeneratedWor
     sheetXml = setCell(sheetXml, `I${row}`, detail?.isWorking ? otherActivities : null);
   }
 
-  const lastDayRow = 13 + timesheetRows.length;
   sheetXml = setCell(sheetXml, `A${totalRow}`, 'NR. TOTAL DE ORE');
-  sheetXml = setCell(sheetXml, `H${totalRow}`, { formula: `SUM(H14:H${lastDayRow})+COUNTIF(H14:H${lastDayRow},"CO")*${dailyHours}` });
-  sheetXml = setCell(sheetXml, `I${totalRow}`, { formula: `SUM(I14:I${lastDayRow})+COUNTIF(I14:I${lastDayRow},"CO")*${Math.max(0, cimDailyHours - dailyHours)}` });
+  sheetXml = setCell(sheetXml, `H${totalRow}`, peoTotalHours);
+  sheetXml = setCell(sheetXml, `I${totalRow}`, otherTotalHours);
   sheetXml = setCell(sheetXml, `D${totalRow + 5}`, lastPeoWorkedDateSerial);
   sheetXml = setCell(sheetXml, `D${totalRow + 9}`, lastPeoWorkedDateSerial);
 
