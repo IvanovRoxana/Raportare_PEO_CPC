@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   buildDeterministicWorkBlockConsolidation,
+  buildWorkBlockConsolidationRequest,
   buildWorkBlockConsolidationPrompt,
   type WorkBlockConsolidationRequest,
 } from '../lib/activity-report/work-block-consolidation.ts';
@@ -65,6 +66,136 @@ test('consolidarea determinista prefera activity summary fata de descrierea lung
     1,
   );
   assert.equal(result.generatedTableSummary.includes('Detaliu lung'), false);
+});
+
+test('requestul de consolidare pastreaza descrierea expertului, continutul livrabilului si eligibilitatea', () => {
+  const activities: Activity[] = [
+    {
+      id: 'a-1',
+      expertId: 'e-1',
+      date: '2026-07-08',
+      hours: 8,
+      activityType: 'A3',
+      saCode: 'SA3.4',
+      title: 'Redactare pozitie B406/2026',
+      description: 'Am redactat pozitia Concordia privind propunerea legislativa B406/2026.',
+      activitySummary: 'Redactare pozitie institutionala B406/2026.',
+      deliverables: [
+        {
+          id: 'd-1',
+          fileName: '20260708-CP.Concordia-Pozitie.B406.pdf',
+          fileType: 'application/pdf',
+          fileSize: 1024,
+          declaredTitle: 'Pozitie Concordia B406/2026',
+          deliverableType: 'pozitie_institutionala',
+          docText: 'Propunere legislativa privind protectia minorilor in utilizarea serviciilor de retele sociale online.',
+          eligibilityCheck: {
+            status: 'eligibil',
+            score: 92,
+            summary: 'Livrabilul corespunde activitatii declarate.',
+            checks: [],
+            missingElements: [],
+            recommendations: [],
+            riskFlags: [],
+          },
+        },
+      ],
+    } as Activity,
+  ];
+  const bundle: ReportingWorkBlockBundle = {
+    workBlock: {
+      id: 'wb-1',
+      expertId: 'e-1',
+      projectCode: '302141',
+      month: 6,
+      year: 2026,
+      title: 'Redactare pozitii institutionale',
+      saCode: 'SA3.4',
+      reportingFlowType: 'deliverable',
+      status: 'draft',
+    },
+    activityLinks: [
+      { id: 'l-1', workBlockId: 'wb-1', activityId: 'a-1', allocatedHours: 8, activityDate: '2026-07-08' },
+    ],
+    deliverableLinks: [],
+  };
+
+  const built = buildWorkBlockConsolidationRequest(bundle, activities);
+
+  assert.equal(built.activities[0].description, activities[0].description);
+  assert.equal(built.activities[0].summary, activities[0].activitySummary);
+  assert.equal(built.activities[0].deliverables?.[0].documentTitle, 'Pozitie Concordia B406/2026');
+  assert.match(built.activities[0].deliverables?.[0].extractedText || '', /protectia minorilor/);
+  assert.equal(built.activities[0].deliverables?.[0].eligibilityCheck?.status, 'eligibil');
+});
+
+test('fallbackul foloseste livrabile eligibile cand descrierea expertului lipseste', () => {
+  const result = buildDeterministicWorkBlockConsolidation({
+    ...request,
+    activities: [
+      {
+        id: 'a-1',
+        date: '2026-07-08',
+        hours: 8,
+        title: '',
+        description: '',
+        deliverables: [
+          {
+            fileName: '20260708-CP.Concordia-Pozitie.B406.pdf',
+            documentTitle: 'Pozitie Concordia B406/2026',
+            deliverableType: 'pozitie_institutionala',
+            firstPageText: 'Analiza propunerii legislative B406/2026.',
+            eligibilityCheck: {
+              status: 'eligibil',
+              score: 90,
+              summary: 'Livrabil eligibil.',
+              checks: [],
+              missingElements: [],
+              recommendations: [],
+              riskFlags: [],
+            },
+          },
+        ],
+      },
+    ],
+  });
+
+  assert.match(result.cleanedActivitySummary, /Pozitie Concordia B406\/2026/);
+  assert.match(result.cleanedActivitySummary, /Analiza propunerii legislative B406\/2026/);
+});
+
+test('fallbackul nu prezinta livrabile neeligibile ca rezultat valid', () => {
+  const result = buildDeterministicWorkBlockConsolidation({
+    ...request,
+    activities: [
+      {
+        id: 'a-1',
+        date: '2026-07-08',
+        hours: 8,
+        title: '',
+        description: '',
+        deliverables: [
+          {
+            fileName: 'document-neeligibil.pdf',
+            documentTitle: 'Document neeligibil',
+            firstPageText: 'Text care nu trebuie folosit ca rezultat.',
+            eligibilityCheck: {
+              status: 'neeligibil',
+              score: 15,
+              summary: 'Livrabilul nu corespunde activitatii.',
+              checks: [],
+              missingElements: [],
+              recommendations: [],
+              riskFlags: [],
+            },
+          },
+        ],
+      },
+    ],
+  });
+
+  assert.doesNotMatch(result.cleanedActivitySummary, /Document neeligibil/);
+  assert.match(result.generatedNarrative, /Am realizat activitatea Centralizare documente GT/);
 });
 
 test('consolidarea determinista limiteaza generatedTableSummary pentru tabel', () => {
@@ -131,6 +262,8 @@ test('promptul cere explicit JSON si deduplicare inainte de summary', () => {
 
   assert.match(prompt, /Nu repeta aceeasi descriere/);
   assert.match(prompt, /campul summary/);
+  assert.match(prompt, /Descrierea introdusa de expert este sursa principala/);
+  assert.match(prompt, /eligibilityCheck ca guardrail/);
   assert.match(prompt, /generatedTableSummary/);
   assert.match(prompt, /generatedNarrative/);
 });

@@ -108,6 +108,30 @@ test('promptul cere doar rescrierea descrierii activitatii', () => {
   assert.match(prompt, /fieldInstructions\.description/);
   assert.match(prompt, /persoana I singular/);
   assert.match(prompt, /Ghid de incadrare AP\/PA/);
+  assert.match(prompt, /Verificarea eligibilitatii este guardrail/);
+  assert.match(prompt, /eligibilityStatus "neeligibil"/);
+});
+
+test('fallbackul optimizeaza prudent cand livrabilul este neeligibil', () => {
+  const fallback = buildFallbackActivityAutofillSuggestion({
+    deliverables: [
+      {
+        fileName: 'document-neeligibil.pdf',
+        documentTitle: 'Document neeligibil',
+        extractedText: 'Text care nu trebuie prezentat ca rezultat valid al activitatii.',
+        eligibilityStatus: 'neeligibil',
+        eligibilitySummary: 'Livrabilul nu corespunde activitatii selectate.',
+      },
+    ],
+    catalogCandidates,
+    ...selectedActivityContext,
+    expertName: 'Expert Test',
+  });
+
+  assert.ok(fallback);
+  assert.doesNotMatch(fallback.description, /In raport cu livrabilul Document neeligibil/);
+  assert.match(fallback.description, /necesitatea verificarii manuale/);
+  assert.match(fallback.warnings.join(' '), /marcate neeligibile/);
 });
 
 test('promptul Agentului PEO pastreaza activitatea selectata ca tinta fixa', () => {

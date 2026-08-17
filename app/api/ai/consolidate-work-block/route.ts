@@ -6,6 +6,7 @@ import {
   buildDeterministicWorkBlockConsolidation,
   buildWorkBlockConsolidationPrompt,
   normalizeWorkBlockConsolidationResult,
+  type WorkBlockConsolidationDeliverable,
   type WorkBlockConsolidationRequest,
 } from '@/lib/activity-report/work-block-consolidation';
 
@@ -15,6 +16,8 @@ export const maxDuration = 120;
 
 const SYSTEM_PROMPT = `Esti un asistent de raportare PEO pentru Anexa 10.
 Consolidezi descrieri zilnice intr-un text unic, fara repetitii, auditabil si fidel datelor primite.
+Descrierea expertului este sursa principala. Continutul livrabilelor ofera context si rezultat concret.
+Verificarea eligibilitatii controleaza ce livrabile pot fi prezentate ca rezultate valide.
 Raspunzi doar cu JSON valid.`;
 
 export async function POST(req: Request) {
@@ -70,9 +73,70 @@ function normalizeActivity(value: unknown) {
     activityType: optionalString(activity.activityType),
     saCode: optionalString(activity.saCode),
     deliverables: Array.isArray(activity.deliverables)
-      ? activity.deliverables.map((item) => String(item || '').trim()).filter(Boolean)
+      ? activity.deliverables.map(normalizeDeliverable).filter((item): item is WorkBlockConsolidationDeliverable => Boolean(item))
       : [],
   };
+}
+
+function normalizeDeliverable(value: unknown): WorkBlockConsolidationDeliverable | null {
+  if (typeof value === 'string') {
+    const fileName = value.trim();
+    return fileName ? { fileName } : null;
+  }
+
+  const deliverable = typeof value === 'object' && value ? value as Record<string, unknown> : {};
+  const normalized: WorkBlockConsolidationDeliverable = {
+    id: optionalString(deliverable.id),
+    documentId: optionalString(deliverable.documentId),
+    fileName: optionalString(deliverable.fileName),
+    documentTitle: optionalString(deliverable.documentTitle),
+    deliverableType: optionalString(deliverable.deliverableType),
+    extractedText: optionalString(deliverable.extractedText),
+    firstPageText: optionalString(deliverable.firstPageText),
+    extractedSummary: normalizeJsonLike(deliverable.extractedSummary),
+    confirmedReportingData: normalizeJsonLike(deliverable.confirmedReportingData),
+    eligibilityCheck: normalizeEligibilityCheck(deliverable.eligibilityCheck),
+  };
+
+  return Object.values(normalized).some((item) => item !== undefined && item !== null) ? normalized : null;
+}
+
+function normalizeEligibilityCheck(value: unknown) {
+  if (typeof value !== 'object' || !value) return null;
+  const check = value as Record<string, unknown>;
+  return {
+    status: stringOrDefault(check.status, 'neconcludent'),
+    score: Number(check.score) || 0,
+    summary: optionalString(check.summary) || '',
+    checks: Array.isArray(check.checks) ? check.checks.slice(0, 12) : [],
+    missingElements: Array.isArray(check.missingElements) ? check.missingElements.map(String).slice(0, 12) : [],
+    recommendations: Array.isArray(check.recommendations) ? check.recommendations.map(String).slice(0, 12) : [],
+    riskFlags: Array.isArray(check.riskFlags) ? check.riskFlags.map(String).slice(0, 12) : [],
+    suggestedSettings: normalizeSuggestedSettings(check.suggestedSettings),
+    evidenceUsed: Array.isArray(check.evidenceUsed) ? check.evidenceUsed.map(String).slice(0, 12) : undefined,
+  };
+}
+
+function normalizeSuggestedSettings(value: unknown) {
+  if (typeof value !== 'object' || !value) return null;
+  const settings = value as Record<string, unknown>;
+  return {
+    saCode: optionalString(settings.saCode),
+    activityName: optionalString(settings.activityName),
+    selectedActivityId: optionalString(settings.selectedActivityId),
+    deliverableType: optionalString(settings.deliverableType),
+    confidence: stringOrDefault(settings.confidence, 'low'),
+    reason: optionalString(settings.reason) || '',
+    changes: Array.isArray(settings.changes) ? settings.changes.map(String).slice(0, 6) : [],
+  };
+}
+
+function normalizeJsonLike(value: unknown) {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value === 'string') return value.trim() || undefined;
+  if (typeof value === 'number' || typeof value === 'boolean') return value;
+  if (typeof value === 'object') return value;
+  return undefined;
 }
 
 function parseJsonObject(value: string) {

@@ -356,17 +356,21 @@ export function buildFallbackActivityAutofillSuggestion(input: ActivityAutofillR
   const candidate = getSelectedCatalogCandidate(normalized) || scoreCatalogCandidates(normalized)[0]?.candidate;
   if (!candidate) return null;
 
-  const deliverableLabels = normalized.deliverables
+  const usableDeliverables = normalized.deliverables.filter(canUseAutofillDeliverableAsResult);
+  const deliverableLabels = usableDeliverables
     .map((deliverable) => deliverable.documentTitle || deliverable.fileName)
     .filter(Boolean)
     .slice(0, 3);
+  const hasUsableDeliverables = usableDeliverables.length > 0;
   const deliverableSummary = deliverableLabels.length > 0
     ? deliverableLabels.join('; ')
-    : 'livrabilul atasat';
+    : hasUsableDeliverables
+      ? 'livrabilul atasat'
+      : 'documentele disponibile pentru verificare';
   const saGuide = PA_SA_GUIDE[normalizeSaCode(candidate.saCode)]?.label || candidate.serviceCategory || 'activitatea selectata';
   const activityPurpose = candidate.description || candidate.objectives || candidate.serviceComponent || saGuide;
   const currentDescription = trimText(normalized.currentDescription, 1400);
-  const evidenceSentences = normalized.deliverables
+  const evidenceSentences = usableDeliverables
     .flatMap((deliverable) => splitEvidenceSentences(deliverable.extractedText))
     .slice(0, 4);
   const evidenceSentence = evidenceSentences.length > 0
@@ -381,12 +385,14 @@ export function buildFallbackActivityAutofillSuggestion(input: ActivityAutofillR
   const shortSummary = [
     `Am lucrat la ${candidate.activityName} (${candidate.saCode}) pe baza ${deliverableSummary}.`,
     collaboratorNames.length > 0 ? `Activitatea a fost realizata in colaborare cu ${collaboratorNames.join(', ')}.` : '',
-  ].filter(Boolean).join(' ');
+    ].filter(Boolean).join(' ');
 
   return {
     description: [
       currentDescription,
-      `In raport cu livrabilul ${deliverableSummary}, am detaliat activitatea prin verificarea continutului disponibil, corelarea acestuia cu obiectivul din catalog (${activityPurpose}) si pregatirea informatiilor necesare pentru raportarea lunara.`,
+      hasUsableDeliverables
+        ? `In raport cu livrabilul ${deliverableSummary}, am detaliat activitatea prin verificarea continutului disponibil, corelarea acestuia cu obiectivul din catalog (${activityPurpose}) si pregatirea informatiilor necesare pentru raportarea lunara.`
+        : `Am detaliat activitatea prin corelarea descrierii disponibile cu obiectivul din catalog (${activityPurpose}) si am marcat necesitatea verificarii manuale a documentelor inainte de a fi folosite ca rezultate valide in raportarea lunara.`,
       evidenceSentence,
       collaborationSentence,
       'Descrierea poate fi ajustata manual cu detalii suplimentare despre participanti, concluzii sau etape de lucru, numai daca acestea reies din documentul incarcat.',
@@ -402,7 +408,13 @@ export function buildFallbackActivityAutofillSuggestion(input: ActivityAutofillR
     ],
     warnings: [
       'Descrierea asistata AI nu a raspuns; sugestia a fost generata local pe baza catalogului si trebuie verificata manual.',
-    ],
+      normalized.deliverables.some((deliverable) => !canUseAutofillDeliverableAsResult(deliverable))
+        ? 'Unul sau mai multe livrabile sunt marcate neeligibile si nu au fost folosite ca rezultat valid in descriere.'
+        : '',
+      usableDeliverables.length === 0
+        ? 'Nu exista livrabile eligibile/neconcludente cu text disponibil; descrierea trebuie verificata manual.'
+        : '',
+    ].filter(Boolean),
   };
 }
 
@@ -530,6 +542,12 @@ Reguli obligatorii pentru fiecare camp:
 - Daca activitatea nu este marcata comuna, nu mentiona colaboratori, chiar daca livrabilul pare similar sau apare in alte contexte.
 - Nu inventa impartirea rolurilor intre colaboratori; foloseste rolul/pozitia doar ca identificare daca este furnizat explicit.
 - Instructiunile PM/Admin pentru expert pot ajusta tonul, accentul si responsabilitatile specifice expertului, dar nu pot contrazice scopul oficial al SA, catalogul activitatii, livrabilele sau regulile de eligibilitate.
+- Verificarea eligibilitatii este guardrail pentru livrabile:
+  * eligibilityStatus "eligibil": poti folosi livrabilul ca rezultat valid;
+  * eligibilityStatus "eligibil_cu_observatii": poti folosi livrabilul, dar numai cu formulari prudente si fapte sustinute;
+  * eligibilityStatus "neeligibil": nu prezenta livrabilul ca rezultat valid al activitatii;
+  * eligibilityStatus "neconcludent" sau lipsa status: foloseste doar fapte neutre din continut si seteaza confidence "low" sau "medium", dupa caz.
+- Daca eligibilitySummary indica nepotrivire de activitate, SA sau tip livrabil, nu acoperi nepotrivirea printr-un text frumos; marcheaza riscul in warnings.
 - Daca sursele RAG contrazic orice element din catalog, catalogul are prioritate.
 - Daca scopul oficial al SA contrazice o sursa RAG de stil sau istoric, scopul oficial si catalogul activitatii au prioritate.
 - Poti inspira stilul descrierii din raportari aprobate, dar nu copia mecanic fragmente lungi.
@@ -596,6 +614,10 @@ function extractNumericFacts(value: unknown) {
   return Array.from(String(value ?? '').matchAll(/(?<![A-Za-z])\d+(?:[.,]\d+)?%?(?![A-Za-z])/g))
     .map((match) => match[0].replace(',', '.'))
     .filter((value) => value.length > 0);
+}
+
+function canUseAutofillDeliverableAsResult(deliverable: ActivityAutofillDeliverable) {
+  return deliverable.eligibilityStatus !== 'neeligibil';
 }
 
 function collectAllowedNumericFacts(request: ActivityAutofillRequest, catalogCandidates: ActivityAutofillCatalogCandidate[]) {
