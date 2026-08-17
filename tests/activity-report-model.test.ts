@@ -59,7 +59,7 @@ test('un work block multi-day produce un singur rand cu totalul orelor', () => {
 
   assert.equal(model.tableRows.length, 1);
   assert.equal(model.tableRows[0].hours, 5);
-  assert.match(model.saSections[0].items[0].heading, /2 și 5 iunie 2026/);
+  assert.match(model.saSections[0].items[0].timing, /2 și 5 iunie 2026/);
 });
 
 test('modelul determinist prefera activitySummary cand nu exista consolidare work block', () => {
@@ -104,10 +104,10 @@ test('coloana Activitate prestata foloseste generatedTableSummary inaintea activ
 
   assert.equal(model.tableRows[0].performedActivity, 'Text tabel vechi din work block.');
   assert.equal(
-    model.saSections[0].items[0].heading,
-    'Analiza acte normative (în data de 2 iunie 2026, 2 ore)',
+    model.saSections[0].items[0].timing,
+    'în data de 2 iunie 2026, 2 ore',
   );
-  assert.doesNotMatch(model.saSections[0].items[0].heading, /Text tabel vechi|Am actualizat sinteza/);
+  assert.doesNotMatch(model.saSections[0].items[0].timing, /Text tabel vechi|Am actualizat sinteza/);
 });
 
 test('coloana Activitate prestata cade la descrierea din admin cand summary-ul este generic si prea scurt', () => {
@@ -332,7 +332,7 @@ test('narativul combina catalogul admin cu detaliile scurte distincte ale expert
   assert.match(model.saSections[0].items[0].body, /OUG 52\/2026 privind salarizarea minima/);
 });
 
-test('sectiunea narativa foloseste heading scurt si pastreaza detaliul in body', () => {
+test('sectiunea narativa separa timpul de detaliul din body', () => {
   const longNarrative = [
     'Am redactat newsletterul lunar CPC pe baza informatiilor colectate din grupurile tematice.',
     'Am verificat acuratetea informatiilor si am structurat continutul intr-un format editorial unitar.',
@@ -360,7 +360,7 @@ test('sectiunea narativa foloseste heading scurt si pastreaza detaliul in body',
   const model = buildAnexa10ReportModel({ expert, activities, month: 5, year: 2026, workBlockBundles: bundles });
 
   assert.equal(model.tableRows[0].performedActivity, 'Am redactat newsletterul lunar CPC.');
-  assert.equal(model.saSections[0].items[0].heading, 'Redactare Newsletter lunar CPC (în data de 9 iunie 2026, 6 ore)');
+  assert.equal(model.saSections[0].items[0].timing, 'în data de 9 iunie 2026, 6 ore');
   assert.equal(model.saSections[0].items[0].body, longNarrative);
 });
 
@@ -413,7 +413,7 @@ test('modelul determinist elimina propozitiile repetate din sumarul work block-u
     `${repeatedSentence} Am formulat concluzii si recomandari.`,
   );
   assert.equal(model.saSections[0].items[0].body, model.tableRows[0].performedActivity);
-  assert.notEqual(model.saSections[0].items[0].heading, model.saSections[0].items[0].body);
+  assert.notEqual(model.saSections[0].items[0].timing, model.saSections[0].items[0].body);
 });
 
 test('modelul determinist converteste formularile generice in persoana I singular', () => {
@@ -463,6 +463,58 @@ test('mai multe livrabile apar in acelasi rand cand apartin aceluiasi flux', () 
   const model = buildAnexa10ReportModel({ expert, activities, month: 5, year: 2026 });
 
   assert.deepEqual(model.tableRows[0].resultsAndDeliverables, ['Agenda TF Consumers.docx', 'Minuta TF Consumers.docx']);
+});
+
+test('activitatea RA OPIS este ultima, fara livrabil si fara narativ dedicat', () => {
+  const activities = [
+    activity({
+      id: 'work',
+      date: '2026-06-02',
+      hours: 6,
+      periodGroupId: 'work',
+      title: 'Elaborare document de pozitie / analiza legislativa',
+      description: 'Am analizat modificarile legislative si am sintetizat impactul pentru membrii CPC.',
+    }),
+    activity({
+      id: 'report',
+      date: '2026-06-30',
+      hours: 2,
+      periodGroupId: 'report',
+      title: 'Elaborare RA / OPIS',
+      activityType: 'Elaborare RA / OPIS',
+      description: 'Elaborarea Raportului de Activitate lunar si a OPIS-ului livrabilelor.',
+    }),
+  ];
+
+  const model = buildAnexa10ReportModel({ expert, activities, month: 5, year: 2026 });
+
+  assert.match(model.tableRows.at(-1)?.performedActivity || '', /Raportului de Activitate lunar si a OPIS-ului livrabilelor/);
+  assert.deepEqual(model.tableRows.at(-1)?.resultsAndDeliverables, ['N/A']);
+  assert.equal(model.tableRows.at(-1)?.commonDeliverable, 'Nu');
+  assert.equal(model.reportPreparationHours, 2);
+  assert.equal(model.saSections.flatMap((section) => section.items).some((item) => /Raportului de Activitate|OPIS/.test(item.body)), false);
+});
+
+test('livrabilul comun foloseste numele expertului selectat pe livrabil', () => {
+  const activities = [
+    activity({
+      id: 'a1',
+      date: '2026-06-02',
+      deliverables: [{
+        id: 'd1',
+        fileName: 'Livrabil comun.docx',
+        fileType: 'docx',
+        fileSize: 10,
+        isCommonDeliverable: true,
+        uploadedByExpertName: 'Expert Selectat',
+      }],
+      expertName: 'Expert Test',
+    }),
+  ];
+
+  const model = buildAnexa10ReportModel({ expert, activities, month: 5, year: 2026 });
+
+  assert.equal(model.tableRows[0].commonDeliverable, 'Da - Expert Selectat');
 });
 
 test('narativul este grupat pe SA si pastreaza totalul fiecarei sectiuni', () => {

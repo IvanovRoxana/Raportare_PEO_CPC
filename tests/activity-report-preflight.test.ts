@@ -140,7 +140,7 @@ test('preflight semnaleaza heading narativ duplicat in corp', () => {
     month: 5,
     year: 2026,
   });
-  model.saSections[0].items[0].heading = `${model.saSections[0].items[0].body} (2 iunie 2026, 2 ore lucrate)`;
+  model.saSections[0].items[0].timing = `${model.saSections[0].items[0].body} (2 iunie 2026, 2 ore lucrate)`;
 
   const report = buildDeterministicAnexa10Preflight(model);
 

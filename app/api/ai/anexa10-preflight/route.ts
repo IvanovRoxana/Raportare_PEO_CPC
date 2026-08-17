@@ -73,7 +73,7 @@ function buildPreflightPrompt(model: Anexa10ReportModel, deterministicFindings: 
   }));
   const narrativeItems = model.saSections.flatMap((section) => section.items.map((item) => ({
     saCode: section.saCode,
-    heading: item.heading,
+    timing: item.timing,
     body: item.body.slice(0, 1600),
   })));
 

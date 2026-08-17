@@ -56,7 +56,7 @@ export type Anexa10SaSection = {
   saCode: string;
   title?: string;
   items: {
-    heading: string;
+    timing: string;
     body: string;
   }[];
   totalHours: number;
@@ -78,6 +78,7 @@ export type Anexa10ReportModel = {
   tableRows: Anexa10TableRow[];
   saSections: Anexa10SaSection[];
   totalHours: number;
+  reportPreparationHours: number;
   problems: WorkBlockAllocationProblem[];
   warnings: string[];
   signature: {
@@ -106,10 +107,16 @@ export function buildAnexa10ReportModel({
   const bundles = workBlockBundles ?? buildWorkBlocks(activities);
   const activityById = new Map(activities.map((activity) => [activity.id, activity]));
   const filteredBundles = bundles.filter((bundle) => shouldIncludeBundle(bundle, settings));
+  const orderedBundles = moveReportPreparationBundlesLast(filteredBundles);
   const problems = validateWorkBlockAllocation(activities, filteredBundles);
   const warnings = buildReportWarnings(filteredBundles, activityById, settings);
-  const tableRows = filteredBundles.map((bundle) => buildTableRow(bundle, activityById, expert));
-  const saSections = buildSaSections(filteredBundles, activityById, sentenceMonthName, year);
+  const tableRows = orderedBundles.map((bundle) => buildTableRow(bundle, activityById, expert));
+  const saSections = buildSaSections(
+    orderedBundles.filter((bundle) => !isReportPreparationBundle(bundle)),
+    activityById,
+    sentenceMonthName,
+    year,
+  );
   const projectCode = expert.projectCode || activities.find((activity) => activity.projectCode)?.projectCode || '302141';
 
   return {
@@ -128,6 +135,7 @@ export function buildAnexa10ReportModel({
     tableRows,
     saSections,
     totalHours: calculateIncludedTotalHours(filteredBundles, settings),
+    reportPreparationHours: calculateReportPreparationHours(filteredBundles),
     problems,
     warnings,
     signature: {
@@ -145,14 +153,17 @@ function buildTableRow(
   const activities = getBundleActivities(bundle, activityById);
   const deliverables = getBundleDeliverableTitles(activities);
   const hours = calculateWorkBlockHours(bundle.activityLinks);
+  const isReportPreparation = isReportPreparationBundle(bundle);
 
   return {
     workBlockId: bundle.workBlock.id,
     officialActivityTitle: getOfficialActivityTitle(bundle, activities),
     responsibilities: expert.jobDescriptionText || bundle.workBlock.expertContribution || '-',
     performedActivity: getPerformedActivity(bundle, activities),
-    resultsAndDeliverables: deliverables.length > 0 ? deliverables : [getResultWithoutDeliverable(bundle)],
-    commonDeliverable: getCommonDeliverableLabel(activities),
+    resultsAndDeliverables: isReportPreparation
+      ? ['N/A']
+      : deliverables.length > 0 ? deliverables : [getResultWithoutDeliverable(bundle)],
+    commonDeliverable: isReportPreparation ? 'Nu' : getCommonDeliverableLabel(activities),
     hours,
   };
 }
@@ -177,7 +188,7 @@ function buildSaSections(
         : ` Rezultat raportabil fara fisier: ${getResultWithoutDeliverable(bundle)}.`;
       const hours = calculateWorkBlockHours(bundle.activityLinks);
       return {
-        heading: `${getNarrativeHeading(bundle, activities)} (${formatNarrativeTiming(days, hours)})`,
+        timing: formatNarrativeTiming(days, hours),
         body: getNarrativeBody(bundle, activities, saCode, deliverableText),
       };
     }),
@@ -203,16 +214,16 @@ function getNarrativeBody(
 
   for (const candidate of candidates) {
     if (isUsefulNarrativeText(candidate, bundle, activities, activityDescriptions)) {
-      return normalizeAnexa10ReportText(candidate || '');
+      return stripNarrativeTitleLead(normalizeAnexa10ReportText(candidate || ''), bundle, activities);
     }
     shouldPreferActivityDescription ||= shouldUseActivityDescriptionInstead(candidate, bundle, activities, activityDescriptions);
   }
 
-  return normalizeAnexa10ReportText(
+  return stripNarrativeTitleLead(normalizeAnexa10ReportText(
     (shouldPreferActivityDescription ? activityDescriptions : '')
     || activityDescriptions
     || fallback,
-  );
+  ), bundle, activities);
 }
 
 function isUsefulNarrativeText(
@@ -226,10 +237,42 @@ function isUsefulNarrativeText(
   return !shouldUseActivityDescriptionInstead(normalized, bundle, activities, activityDescriptions);
 }
 
+function stripNarrativeTitleLead(value: string, bundle: ReportingWorkBlockBundle, activities: Activity[]) {
+  const titles = uniqueStrings([
+    bundle.workBlock.title,
+    bundle.workBlock.activityCategory,
+    ...activities.flatMap((activity) => [activity.title, activity.activityType]),
+  ]).sort((first, second) => second.length - first.length);
+
+  for (const title of titles) {
+    const titlePattern = title.split(/\s+/).map(escapeRegExp).join('\\s+');
+    const pattern = new RegExp(`^am\\s+realizat\\s+${titlePattern}\\s*,?\\s*(?:prin\\s+)?`, 'iu');
+    const stripped = value.replace(pattern, '');
+    if (stripped !== value) return sentenceCaseFirst(stripped);
+  }
+
+  return value;
+}
+
+function sentenceCaseFirst(value: string) {
+  const normalized = normalizeWhitespace(value);
+  if (!normalized) return normalized;
+  return normalized.charAt(0).toLocaleUpperCase('ro') + normalized.slice(1);
+}
+
 function formatNarrativeTiming(days: string, hours: number) {
-  if (!days) return `${hours} ore lucrate`;
-  if (/\bc(?:a|â)te\b|\bdistribu/i.test(days)) return `${days}, ${hours} ore lucrate`;
+  if (!days) return `${hours} ore`;
+  if (/\bc(?:a|â)te\b|\bdistribu/i.test(days)) return `${days}, ${hours} ore`;
   return days;
+}
+
+function moveReportPreparationBundlesLast(bundles: ReportingWorkBlockBundle[]) {
+  return [...bundles].sort((first, second) => {
+    const firstIsReportPreparation = isReportPreparationBundle(first);
+    const secondIsReportPreparation = isReportPreparationBundle(second);
+    if (firstIsReportPreparation === secondIsReportPreparation) return 0;
+    return firstIsReportPreparation ? 1 : -1;
+  });
 }
 
 function shouldIncludeBundle(bundle: ReportingWorkBlockBundle, settings: ProjectReportingSettings) {
@@ -248,6 +291,17 @@ function calculateIncludedTotalHours(bundles: ReportingWorkBlockBundle[], settin
     if (bundle.workBlock.reportingFlowType === 'report_preparation' && settings.includeReportPreparationHours === false) return sum;
     return sum + calculateWorkBlockHours(bundle.activityLinks);
   }, 0));
+}
+
+function calculateReportPreparationHours(bundles: ReportingWorkBlockBundle[]) {
+  return roundHours(bundles.reduce((sum, bundle) => {
+    if (!isReportPreparationBundle(bundle)) return sum;
+    return sum + calculateWorkBlockHours(bundle.activityLinks);
+  }, 0));
+}
+
+function isReportPreparationBundle(bundle: ReportingWorkBlockBundle) {
+  return bundle.workBlock.reportingFlowType === 'report_preparation';
 }
 
 function buildReportWarnings(
@@ -389,17 +443,6 @@ function shouldUseActivityDescriptionInstead(
   return false;
 }
 
-function getNarrativeHeading(bundle: ReportingWorkBlockBundle, activities: Activity[]) {
-  return normalizeWhitespace(
-    bundle.workBlock.title
-    || bundle.workBlock.activityCategory
-    || activities.find((activity) => activity.title)?.title
-    || activities.find((activity) => activity.activityType)?.activityType
-    || bundle.workBlock.saCode
-    || 'Activitate raportabila',
-  );
-}
-
 function getActivitySummariesText(activities: Activity[]) {
   return activities
     .map((activity) => activity.activitySummary)
@@ -512,10 +555,7 @@ function getCommonDeliverableLabel(activities: Activity[]) {
 
   if (commonDeliverables.length === 0) return 'Nu';
 
-  const expertNames = uniqueStrings(commonDeliverables.flatMap((deliverable) => [
-    deliverable.uploadedByExpertName,
-    activities.find((activity) => activity.deliverables?.includes(deliverable))?.expertName,
-  ]));
+  const expertNames = uniqueStrings(commonDeliverables.map((deliverable) => deliverable.uploadedByExpertName));
 
   return expertNames.length > 0 ? `Da - ${expertNames.join('; ')}` : 'Da';
 }
