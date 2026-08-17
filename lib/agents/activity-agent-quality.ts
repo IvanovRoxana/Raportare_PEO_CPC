@@ -47,6 +47,12 @@ export function hasForbiddenDescriptionContent(value: string) {
   return forbiddenPatterns.some((pattern) => pattern.test(normalized));
 }
 
+export function hasFirstPersonSingularDescription(value: string) {
+  const normalized = normalizePolicyText(value);
+  return /\bam\s+(analizat|elaborat|formulat|corelat|fundamentat|realizat|structurat|sintetizat|redactat|revizuit|pregatit|identificat|consolidat|verificat|monitorizat|transmis|contribuit|urmarit|oferit)\b/.test(normalized)
+    || /\bam\s+(colectat|centralizat|comparat|evaluat|documentat|pregatit|participat|colaborat|sprijinit)\b/.test(normalized);
+}
+
 export function countWords(value: string) {
   return (value.match(/\b[\w\u0103\u00e2\u00ee\u0219\u021b\u0102\u00c2\u00ce\u0218\u021a-]+\b/g) || []).length;
 }
@@ -276,7 +282,7 @@ export function evaluateFinalActivityDescription(description: string, request: A
   const evidenceSupport = evaluateDescriptionEvidenceSupport(description, request);
   const hasSelectedDates = Boolean(request.selectedDates?.length || request.date);
   const startsWithDate = /^in (data|zilele) de\b/.test(normalized);
-  const hasFirstPerson = /\bam\s+(analizat|elaborat|formulat|corelat|fundamentat|realizat|structurat|sintetizat|redactat|revizuit|pregatit|identificat|consolidat)\b/.test(normalized);
+  const hasFirstPerson = hasFirstPersonSingularDescription(description);
   const hasConcreteObject = Boolean(
     (request.activityName && normalized.includes(normalizePolicyText(request.activityName).split(' ')[0] || ''))
     || (request.currentDescription && normalizePolicyText(request.currentDescription).split(/\s+/).some((term) => term.length >= 7 && normalized.includes(term)))

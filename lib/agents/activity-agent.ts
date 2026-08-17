@@ -18,6 +18,7 @@ import {
   classifyDeliverableKind,
   evaluateFinalActivityDescription,
   hasForbiddenDescriptionContent,
+  hasFirstPersonSingularDescription,
   splitSentences,
   trimText,
   uniqueMessages,
@@ -67,6 +68,18 @@ function buildMinimalFinalDescription(request: ActivityAgentRequest) {
   }
 
   return `Am realizat activitati de ${activity}${sa}, prin analiza, structurarea si formularea elementelor relevante pentru obiectivele proiectului. ${resultSentence}`;
+}
+
+function firstPersonCurrentDescription(request: ActivityAgentRequest) {
+  const current = trimText(request.currentDescription, 700);
+  if (!current) return '';
+  if (hasFirstPersonSingularDescription(current)) return current;
+
+  const activity = request.activityName || request.title || 'activitatea raportata';
+  const cleanedCurrent = current
+    .replace(/^activitatea\s+(?:reprezinta|presupune|consta\s+in)\s+/i, '')
+    .replace(/[.;]\s*$/, '');
+  return `Am realizat ${activity}, prin ${lowerFirst(cleanedCurrent)}.`;
 }
 
 function cleanFinalDescription(value: unknown, request: ActivityAgentRequest) {
@@ -151,13 +164,14 @@ function fallbackDescription(request: ActivityAgentRequest) {
   const activity = request.activityName || request.title || 'activitatea raportata';
   const sa = request.saCode ? ` pentru ${request.saCode}` : '';
   const evidence = extractFallbackEvidence(request);
+  const currentDescription = firstPersonCurrentDescription(request);
   const factualContext = evidence.length > 0
     ? `Am analizat si sintetizat elementele factuale disponibile privind ${evidence.slice(0, 3).join(' ')}`
     : `Am analizat informatiile disponibile si am formulat o descriere prudenta a activitatii de ${activity}.`;
   const result = `Activitatea a contribuit la documentarea si fundamentarea rezultatelor aferente${sa}, prin structurarea unei descrieri coerente si relevante pentru raportarea tehnica a proiectului.`;
 
   return cleanFinalDescription([
-    request.currentDescription || `Am realizat activitati de ${activity}.`,
+    currentDescription || `Am realizat activitati de ${activity}.`,
     factualContext,
     result,
   ].filter(Boolean).join(' '), request);
@@ -166,6 +180,7 @@ function fallbackDescription(request: ActivityAgentRequest) {
 function selectDisplaySafeDescription(generatedDescription: string, request: ActivityAgentRequest) {
   const generatedQuality = evaluateFinalActivityDescription(generatedDescription, request);
   const shouldUseFallback = generatedQuality.evidenceSupport.score < 0.55
+    || !hasFirstPersonSingularDescription(generatedDescription)
     || generatedQuality.evidenceSupport.unsupportedNumbers.length > 0
     || generatedQuality.evidenceSupport.unsupportedTerms.length >= 8;
   if (!shouldUseFallback) {
@@ -179,12 +194,20 @@ function selectDisplaySafeDescription(generatedDescription: string, request: Act
 
   const fallback = fallbackDescription(request);
   const fallbackQuality = evaluateFinalActivityDescription(fallback, request);
+  const hasEvidenceGroundingIssue = generatedQuality.evidenceSupport.score < 0.55
+    || generatedQuality.evidenceSupport.unsupportedNumbers.length > 0
+    || generatedQuality.evidenceSupport.unsupportedTerms.length >= 8;
   return {
     description: fallback,
     quality: fallbackQuality,
     warnings: uniqueMessages([
       ...generatedQuality.warnings,
-      'Descrierea generata initial a fost inlocuita cu fallback prudent deoarece continea teme sau cifre nesustinute de date.',
+      !hasFirstPersonSingularDescription(generatedDescription)
+        ? 'Descrierea generata initial a fost inlocuita deoarece nu respecta persoana I singular.'
+        : '',
+      hasEvidenceGroundingIssue
+        ? 'Descrierea generata initial a fost inlocuita cu fallback prudent deoarece continea teme sau cifre nesustinute de date.'
+        : '',
       ...fallbackQuality.warnings,
     ]),
     replaced: true,

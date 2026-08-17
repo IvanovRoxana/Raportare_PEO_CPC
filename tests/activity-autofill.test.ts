@@ -258,6 +258,28 @@ test('promptul include instructiunile PM/Admin pentru expert sub regulile princi
   assert.match(prompt, /Instructiuni PM\/Admin pentru expert/);
   assert.match(prompt, /Accentueaza analiza legislativa/);
   assert.match(prompt, /nu pot contrazice scopul oficial al SA/);
+  assert.match(prompt, /aplica-le obligatoriu in description/);
+});
+
+test('fallbackul local transforma descrierea curenta impersonala in persoana I', () => {
+  const fallback = buildFallbackActivityAutofillSuggestion({
+    deliverables: [
+      {
+        fileName: 'pozitie.docx',
+        documentTitle: 'Document de pozitie',
+        extractedText: 'Documentul contine observatii si propuneri de revizuire pentru proiectul legislativ.',
+      },
+    ],
+    catalogCandidates,
+    ...selectedActivityContext,
+    currentDescription: 'Activitatea reprezinta un demers de analiza legislativa si formulare de observatii.',
+    expertName: 'Expert Test',
+    expertReportingInstructions: 'Foloseste formulari precum: am analizat, am formulat, am transmis.',
+  });
+
+  assert.ok(fallback);
+  assert.match(fallback.description, /^Am realizat/i);
+  assert.doesNotMatch(fallback.description, /activitatea reprezinta/i);
 });
 
 test('promptul pentru activitate privata interzice mentionarea colaboratorilor', () => {

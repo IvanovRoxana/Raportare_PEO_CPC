@@ -369,7 +369,10 @@ export function buildFallbackActivityAutofillSuggestion(input: ActivityAutofillR
       : 'documentele disponibile pentru verificare';
   const saGuide = PA_SA_GUIDE[normalizeSaCode(candidate.saCode)]?.label || candidate.serviceCategory || 'activitatea selectata';
   const activityPurpose = candidate.description || candidate.objectives || candidate.serviceComponent || saGuide;
-  const currentDescription = trimText(normalized.currentDescription, 1400);
+  const currentDescription = firstPersonAutofillDescription(
+    normalized.currentDescription || '',
+    candidate.activityName,
+  );
   const evidenceSentences = usableDeliverables
     .flatMap((deliverable) => splitEvidenceSentences(deliverable.extractedText))
     .slice(0, 4);
@@ -542,6 +545,7 @@ Reguli obligatorii pentru fiecare camp:
 - Daca activitatea nu este marcata comuna, nu mentiona colaboratori, chiar daca livrabilul pare similar sau apare in alte contexte.
 - Nu inventa impartirea rolurilor intre colaboratori; foloseste rolul/pozitia doar ca identificare daca este furnizat explicit.
 - Instructiunile PM/Admin pentru expert pot ajusta tonul, accentul si responsabilitatile specifice expertului, dar nu pot contrazice scopul oficial al SA, catalogul activitatii, livrabilele sau regulile de eligibilitate.
+- Daca instructiunile PM/Admin includ exemple la persoana I sau formulari interzise, aplica-le obligatoriu in description. Evita formularile impersonale precum "activitatea reprezinta", "s-au realizat", "documentele au fost elaborate".
 - Verificarea eligibilitatii este guardrail pentru livrabile:
   * eligibilityStatus "eligibil": poti folosi livrabilul ca rezultat valid;
   * eligibilityStatus "eligibil_cu_observatii": poti folosi livrabilul, dar numai cu formulari prudente si fapte sustinute;
@@ -618,6 +622,21 @@ function extractNumericFacts(value: unknown) {
 
 function canUseAutofillDeliverableAsResult(deliverable: ActivityAutofillDeliverable) {
   return deliverable.eligibilityStatus !== 'neeligibil';
+}
+
+function hasFirstPersonAutofillDescription(value: string) {
+  return /\bam\s+(analizat|elaborat|formulat|corelat|fundamentat|realizat|structurat|sintetizat|redactat|revizuit|pregatit|identificat|consolidat|verificat|monitorizat|transmis|contribuit|colectat|centralizat|comparat|evaluat|documentat|participat|colaborat|sprijinit)\b/i.test(value);
+}
+
+function firstPersonAutofillDescription(value: string, activityName: string) {
+  const current = trimText(value, 900);
+  if (!current) return '';
+  if (hasFirstPersonAutofillDescription(current)) return current;
+
+  const cleanedCurrent = current
+    .replace(/^activitatea\s+(?:reprezinta|presupune|consta\s+in)\s+/i, '')
+    .replace(/[.;]\s*$/, '');
+  return `Am realizat ${activityName || 'activitatea raportata'}, prin ${cleanedCurrent.charAt(0).toLocaleLowerCase('ro-RO')}${cleanedCurrent.slice(1)}.`;
 }
 
 function collectAllowedNumericFacts(request: ActivityAutofillRequest, catalogCandidates: ActivityAutofillCatalogCandidate[]) {
