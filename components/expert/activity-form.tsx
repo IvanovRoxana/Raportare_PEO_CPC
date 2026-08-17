@@ -1589,38 +1589,6 @@ export function ActivityForm({
       && deliverable.uploaded
       && Boolean(deliverable.filename || deliverable.name)
     ));
-    const requiresMainDeliverableEligibilityForSave = (
-      showStandardActivityWorkflow
-      && !isLeave
-      && !isException
-      && !isEvent
-      && !usesMonthlyComDeliverable
-    );
-    const mainDeliverableEligibilityBlockersForSave = eligibilityCheckEnabled && requiresMainDeliverableEligibilityForSave
-      ? deliverables
-          .filter((deliverable) => (
-            (!deliverable.slotType || deliverable.slotType === 'livrabil')
-            && deliverable.uploaded
-            && !deliverable.isPhoto
-            && Boolean(deliverable.filename || deliverable.name)
-          ))
-          .map((deliverable): string | null => {
-            if (!deliverable.eligibilityCheck) {
-              if (!canRequireDeliverableEligibilityCheck(deliverable, deliverablesForEligibility, expertCategory)) {
-                return null;
-              }
-              return 'Ruleaza verificarea eligibilitatii pentru livrabilul principal.';
-            }
-            if (
-              deliverable.eligibilityCheck.status === 'neeligibil'
-              && !deliverable.eligibilityCheck.pmUnlockApproved
-            ) {
-              return 'Livrabilul este neeligibil. Solicita deblocare PM si asteapta aprobarea sau corecteaza livrabilul.';
-            }
-            return null;
-          })
-          .filter((message): message is string => Boolean(message))
-      : [];
     if (
       showStandardActivityWorkflow
       && !isLeave
@@ -1631,12 +1599,6 @@ export function ActivityForm({
         : (!hasMainDeliverableForSave && !skipMainDeliverableForNow))
     ) {
       reportingWarnings.push(isEvent ? MISSING_EVENT_DOCUMENTATION_MESSAGE : MISSING_MAIN_DELIVERABLE_MESSAGE);
-    }
-
-    if (mainDeliverableEligibilityBlockersForSave.length > 0) {
-      setValidationError(mainDeliverableEligibilityBlockersForSave[0]);
-      setCurrentWizardStep('deliverables');
-      return;
     }
 
     const invalidTitleDeliverable = deliverables.find((d) => (
@@ -2214,7 +2176,7 @@ export function ActivityForm({
     && !isEvent
     && !usesMonthlyComDeliverable
   );
-  const mainDeliverableEligibilityBlockers = eligibilityCheckEnabled && requiresMainDeliverableEligibility
+  const mainDeliverableEligibilityWarnings = eligibilityCheckEnabled && requiresMainDeliverableEligibility
     ? mainDeliverables
         .filter((deliverable) => deliverable.uploaded && !deliverable.isPhoto && Boolean(deliverable.filename || deliverable.name))
         .map((deliverable): string | null => {
@@ -2246,7 +2208,6 @@ export function ActivityForm({
   const saveBlockers = [
     ...baseSaveBlockers,
     ...(isMissingRequiredMainDeliverable && isEvent ? [MISSING_EVENT_DOCUMENTATION_MESSAGE] : []),
-    ...mainDeliverableEligibilityBlockers,
   ];
   const isSaveDisabled = saveBlockers.length > 0;
   const footerValidationMessage = validationError || saveBlockers[0] || null;
@@ -2282,7 +2243,7 @@ export function ActivityForm({
           : skipMainDeliverableForNow
             ? 'Incarcare mai tarziu'
             : 'Documente',
-      blocked: !canOpenDeliverablesStep || (isEvent && isMissingRequiredMainDeliverable) || mainDeliverableEligibilityBlockers.length > 0,
+      blocked: !canOpenDeliverablesStep || (isEvent && isMissingRequiredMainDeliverable),
       disabled: !canOpenDeliverablesStep,
     },
     {
@@ -2318,7 +2279,7 @@ export function ActivityForm({
     isException,
     isSaveDisabled,
     isMissingRequiredMainDeliverable,
-    mainDeliverableEligibilityBlockers.length,
+    mainDeliverableEligibilityWarnings.length,
     mainDeliverables.length,
     needsCommonDesc,
     needsExtendedDesc,
@@ -4349,6 +4310,20 @@ export function ActivityForm({
               <ul className="mt-1 list-disc pl-4">
                 {saveBlockers.map((blocker) => (
                   <li key={blocker}>{blocker}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )}
+
+        {currentWizardStep === 'review' && mainDeliverableEligibilityWarnings.length > 0 && (
+          <div className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+            <Sparkles className="mt-0.5 h-4 w-4 shrink-0" />
+            <div>
+              <div className="font-medium">Verificarea eligibilitatii este consultativa si nu blocheaza salvarea:</div>
+              <ul className="mt-1 list-disc pl-4">
+                {mainDeliverableEligibilityWarnings.map((warning) => (
+                  <li key={warning}>{warning}</li>
                 ))}
               </ul>
             </div>

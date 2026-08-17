@@ -71,6 +71,23 @@ test('formularul salveaza activitatea cu livrabil pending cand uploadul S3 esuea
   assert.doesNotMatch(activityFormSource, /Activitatea nu a fost salvata pentru ca livrabilul nu a putut fi incarcat/);
 });
 
+test('verificarea eligibilitatii livrabilului ramane consultativa la salvarea activitatii', () => {
+  const saveBlockersStart = activityFormSource.indexOf('const saveBlockers = [');
+  const saveBlockersEnd = activityFormSource.indexOf('];', saveBlockersStart);
+  const saveBlockersBlock = activityFormSource.slice(saveBlockersStart, saveBlockersEnd);
+  const deliverablesStepStart = activityFormSource.indexOf("id: 'deliverables'");
+  const deliverablesStepEnd = activityFormSource.indexOf("id: 'description'", deliverablesStepStart);
+  const deliverablesStepBlock = activityFormSource.slice(deliverablesStepStart, deliverablesStepEnd);
+
+  assert.ok(saveBlockersStart >= 0, 'formularul trebuie sa aiba lista explicita de saveBlockers');
+  assert.match(activityFormSource, /const mainDeliverableEligibilityWarnings =/);
+  assert.doesNotMatch(saveBlockersBlock, /mainDeliverableEligibilityWarnings/);
+  assert.doesNotMatch(saveBlockersBlock, /Ruleaza verificarea eligibilitatii/);
+  assert.doesNotMatch(saveBlockersBlock, /Livrabilul este neeligibil/);
+  assert.doesNotMatch(deliverablesStepBlock, /mainDeliverableEligibilityWarnings\.length/);
+  assert.match(activityFormSource, /Verificarea eligibilitatii este consultativa si nu blocheaza salvarea/);
+});
+
 test('livrabilele pending upload pastreaza diagnosticul si il afiseaza in formular', () => {
   assert.match(amplifyDataResourceSource, /uploadError: a\.string\(\)/);
   assert.match(deliverableItemSource, /const hasPendingUpload = deliverable\.duplicateStatus === 'pending_upload' \|\| Boolean\(deliverable\.uploadError\)/);
