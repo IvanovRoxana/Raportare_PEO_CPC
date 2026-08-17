@@ -1,0 +1,39 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+
+const repoRoot = process.cwd();
+const adminPageSource = fs.readFileSync(path.join(repoRoot, 'app/admin/page.tsx'), 'utf8');
+const panelSource = fs.readFileSync(path.join(repoRoot, 'components/admin/peo-eligibility-agent-panel.tsx'), 'utf8');
+const envExampleSource = fs.readFileSync(path.join(repoRoot, '.env.example'), 'utf8');
+
+test('Admin AI tab includes the PEO Eligibility Agent panel', () => {
+  assert.match(adminPageSource, /PeoEligibilityAgentPanel/);
+  assert.match(adminPageSource, /<PeoEligibilityAgentPanel \/>/);
+});
+
+test('PEO Eligibility Agent panel defines controlled knowledge and tools', () => {
+  [
+    'getExpertProfile()',
+    'getActivityCatalog()',
+    'getProjectRules()',
+    'getTimesheet()',
+    'getDeliverableText()',
+    'findPriorValidatedReports()',
+    'checkDuplicateDeliverable()',
+    'checkHoursConsistency()',
+  ].forEach((expected) => {
+    assert.match(panelSource, new RegExp(expected.replace(/[()]/g, '\\$&')));
+  });
+});
+
+test('PEO Eligibility Agent remains advisory and does not expose an activation control', () => {
+  assert.match(panelSource, /Consultativ/);
+  assert.match(panelSource, /Feature flag oprit/);
+  assert.match(panelSource, /nu blocheaza salvarea activitatii/);
+  assert.doesNotMatch(panelSource, /Switch/);
+  assert.doesNotMatch(panelSource, /onCheckedChange/);
+  assert.match(envExampleSource, /NEXT_PUBLIC_ENABLE_DELIVERABLE_ELIGIBILITY_CHECK=false/);
+  assert.match(envExampleSource, /ENABLE_DELIVERABLE_ELIGIBILITY_CHECK=false/);
+});
