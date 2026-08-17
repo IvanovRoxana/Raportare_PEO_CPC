@@ -549,8 +549,8 @@ export function ActivityForm({
   
   const activitySeed = initialActivity || prefillActivity;
   const selectedActivityDates = normalizeStringList(selectedDates);
-  const expertNorma = expert?.norma || 8;
-  const defaultDailyHours = Number(normalizePontajHoursValue(Math.min(expertNorma, MAX_PONTAJ_HOURS)));
+  const peoDailyNorm = expert?.norma || 8;
+  const defaultDailyHours = Number(normalizePontajHoursValue(MAX_PONTAJ_HOURS));
   const editedActivityGroupId = initialActivity ? getActivityEditGroupId(initialActivity) : undefined;
   const existingPontajHoursByDate = useMemo(() => {
     const hoursByDate: Record<string, number> = {};
@@ -1762,7 +1762,7 @@ export function ActivityForm({
         businessHubMetaJson: activity.businessHubMetaJson,
       }));
     const validation = validateActivitiesBeforeCreate({
-      expert: expert ?? { id: expertId, name: expertName, norma: expertNorma },
+      expert: expert ?? { id: expertId, name: expertName, norma: peoDailyNorm },
       existingActivities: existingActivityDrafts,
       newActivities: newActivityDrafts,
       month,
@@ -2092,7 +2092,7 @@ export function ActivityForm({
     expert,
     expertId,
     expertName,
-    expertNorma,
+    peoDailyNorm,
     gdprConclusionCode,
     gdprGeneratedText,
     gdprMeta,
@@ -3037,7 +3037,7 @@ export function ActivityForm({
               {!isLeave && selectedActivityDates.length === 1 && (
                 <Field>
                   <FieldLabel htmlFor="hours">
-                    Ore lucrate (max {getAvailableHoursForDate(selectedActivityDates[0])}h disponibile, norma {expertNorma}h)
+                    Ore lucrate (max {getAvailableHoursForDate(selectedActivityDates[0])}h disponibile, limita CIM {MAX_PONTAJ_HOURS}h/zi; norma PEO {peoDailyNorm}h pentru plafon lunar)
                   </FieldLabel>
                   <Select 
                     value={normalizedSelectedHours[selectedActivityDates[0]] ?? defaultHours.toString()}
@@ -3063,7 +3063,7 @@ export function ActivityForm({
             {/* Per-day hours when multiple days selected */}
             {!isLeave && selectedActivityDates.length > 1 && (
               <div className="space-y-3">
-                <FieldLabel>Ore pentru fiecare zi (max disponibil pe zi, norma {expertNorma}h)</FieldLabel>
+                <FieldLabel>Ore pentru fiecare zi (max disponibil pe zi, limita CIM {MAX_PONTAJ_HOURS}h/zi; norma PEO {peoDailyNorm}h pentru plafon lunar)</FieldLabel>
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
                   {[...selectedActivityDates].sort().map(date => (
                     <div key={date} className="flex items-center gap-2 p-2 bg-muted/50 rounded-md">

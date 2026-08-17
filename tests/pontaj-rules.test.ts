@@ -8,6 +8,7 @@ import {
 import {
   buildSelectedHoursForDates,
   calculateMonthlyNormInfo,
+  getAvailablePontajHourOptions,
   isValidPontajHours,
   normalizeNormType,
   validateActivitiesBeforeCreate,
@@ -233,6 +234,11 @@ test('accepta doar ore intregi intre 1 si 8 pentru pontaj nou', () => {
 
   assert.equal(result.ok, false);
   assert.equal(result.code, 'INVALID_HOURS');
+});
+
+test('optiunile zilnice de pontaj raman plafonate de CIM 8h, nu de norma PEO', () => {
+  assert.deepEqual(getAvailablePontajHourOptions(8), [1, 2, 3, 4, 5, 6, 7, 8]);
+  assert.deepEqual(getAvailablePontajHourOptions(6), [1, 2, 3, 4, 5, 6]);
 });
 
 test('pastreaza orele selectate cand lista de rubrici/date se resincronizeaza', () => {

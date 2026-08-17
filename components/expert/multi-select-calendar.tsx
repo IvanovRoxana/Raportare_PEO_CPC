@@ -50,7 +50,7 @@ export function MultiSelectCalendar({
   const [currentDate, setCurrentDate] = useState(new Date());
   const [isSelecting, setIsSelecting] = useState(false);
   const [selectionStart, setSelectionStart] = useState<string | null>(null);
-  const [defaultHours, setDefaultHours] = useState(Number(normalizePontajHoursValue(Math.min(expertNorma, MAX_PONTAJ_HOURS))));
+  const [defaultHours, setDefaultHours] = useState(Number(normalizePontajHoursValue(MAX_PONTAJ_HOURS)));
 
   const month = currentDate.getMonth();
   const year = currentDate.getFullYear();
