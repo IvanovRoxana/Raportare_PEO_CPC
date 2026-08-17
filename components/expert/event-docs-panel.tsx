@@ -20,6 +20,17 @@ import { type DeliverableSlot, extractEventDate, createDeliverableSlot } from '@
 import { generateDocx, downloadBlob } from '@/lib/document-utils';
 import type { Expert } from '@/lib/types';
 
+const DOCX_CONTENT_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+function blobToDataUrl(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
 interface EventDocsPanelProps {
   deliverables: DeliverableSlot[];
   subActivity: string;
@@ -129,9 +140,18 @@ export function EventDocsPanel({
     onUpsertSlot('event_mom', 'Raport de participare eveniment', {
       uploaded: false,
       filename: '',
+      rawFilename: '',
+      fileType: '',
+      fileSize: 0,
+      fileData: undefined,
+      filePath: undefined,
+      documentId: undefined,
+      s3Key: undefined,
       declaredTitle: title,
       requiresEventProof: true,
       isPendingConfirm: true,
+      uploadError: undefined,
+      duplicateStatus: undefined,
     });
   };
 
@@ -182,16 +202,34 @@ export function EventDocsPanel({
     // Generate and download DOCX
     const blob = await generateDocx(previewTitle, previewText, { images: eventReportPhotos });
     const filename = `Raport_eveniment_${date}.docx`;
+    const fileData = await blobToDataUrl(blob);
     downloadBlob(blob, filename);
 
     setConfirmed(true);
     onUpsertSlot('event_mom', 'Raport de participare eveniment', {
       uploaded: true,
       filename,
+      rawFilename: filename.replace(/\.[^.]+$/, ''),
+      fileType: blob.type || DOCX_CONTENT_TYPE,
+      fileSize: blob.size,
+      fileData,
+      filePath: undefined,
+      documentId: undefined,
+      s3Key: undefined,
+      isPhoto: false,
+      docTitle: previewTitle,
+      docText: previewText,
+      firstPageText: previewText,
+      textExtractionSource: 'native',
       declaredTitle: previewTitle,
+      titleMatch: true,
+      titleCheckStatus: 'matched',
+      titleCheckMessage: undefined,
       titleConfirmed: true,
       requiresEventProof: true,
       isPendingConfirm: false,
+      uploadError: undefined,
+      duplicateStatus: undefined,
     });
   };
 
