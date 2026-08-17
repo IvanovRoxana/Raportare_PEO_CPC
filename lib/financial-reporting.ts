@@ -1,7 +1,7 @@
 import referenceSeed from '../data/staging/seed.json' with { type: 'json' };
 import { normalizeFinancialPersonKey, rankFinancialPersonMatches, type FinancialPersonMatchSuggestion } from './financial-person-matching.ts';
 import type { Activity, ConcurrentProject, ConcurrentProjectTimesheetEntry, Expert, ExpertNormContract, FinancialPersonLink, LeaveEntry } from './types.ts';
-import { calculateCapacitySnapshot, resolveNormContract } from './time-capacity.ts';
+import { calculateCapacitySnapshot, getEffectiveNormContract, resolveNormContract } from './time-capacity.ts';
 
 export type FinancialConflictCode =
   | 'missing_expert'
@@ -321,6 +321,9 @@ export function buildFinancialReportingSummary(input: {
       month: input.month,
       year: input.year,
     }) : undefined;
+    const realActiveContract = expert
+      ? getEffectiveNormContract(normContracts, expert.id, input.year + '-' + String(input.month + 1).padStart(2, '0') + '-01')
+      : undefined;
     const activeContract = expert
       ? resolveNormContract(expert, normContracts, input.year + '-' + String(input.month + 1).padStart(2, '0') + '-01')
       : undefined;
@@ -339,8 +342,12 @@ export function buildFinancialReportingSummary(input: {
       goodworksFunction,
       appNorm: expertNormLabel(expert),
       workbookNorm: reference?.peoNorm ?? 'Nu există în Excel',
-      peoNorm: activeContract ? activeContract.peoNormValue + ' ' + (activeContract.peoNormUnit === 'HOURS_PER_MONTH' ? 'h/luna' : 'h/zi') : 'Nedefinita',
-      cimNorm: activeContract ? activeContract.cimNormValue + ' ' + (activeContract.cimNormUnit === 'HOURS_PER_MONTH' ? 'h/luna' : 'h/zi') : 'Nedefinita',
+      peoNorm: realActiveContract
+        ? realActiveContract.peoNormValue + ' ' + (realActiveContract.peoNormUnit === 'HOURS_PER_MONTH' ? 'h/luna' : 'h/zi')
+        : reference?.peoNorm ?? 'Nedefinita',
+      cimNorm: realActiveContract
+        ? realActiveContract.cimNormValue + ' ' + (realActiveContract.cimNormUnit === 'HOURS_PER_MONTH' ? 'h/luna' : 'h/zi')
+        : reference?.cimNorm ?? 'Nedefinita',
       peoRemaining: capacity?.peoRemaining ?? 0,
       cimRemaining: capacity?.cimRemaining ?? 0,
       leaveEntries: leaves,

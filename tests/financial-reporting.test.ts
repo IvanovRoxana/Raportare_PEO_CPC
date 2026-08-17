@@ -117,6 +117,22 @@ test('auditul evidentiaza persoanele lipsa si diferentele de norma fara a inlocu
   assert.equal(summary.missingExperts, 1);
 });
 
+test('randul financiar expune normele din Excel cand nu exista contract activ', () => {
+  const summary = buildFinancialReportingSummary({
+    experts: [{ ...expert, norma: 7, oreZi: 7, dailyHours: 7 }],
+    activities: [],
+    month: 6,
+    year: 2026,
+    normContracts: [],
+    referencePeople: [
+      { name: 'Roxana Ivanov', basePosition: '-', peoPosition: expert.role, peoNorm: '6 h/zi', cimNorm: '8 h/zi', concordiaWorked: 0, concordiaLeave: 0, peoWorked: 0, peoLeave: 0, goodworksPosition: '-', goodworksWorked: 0 },
+    ],
+  });
+
+  assert.equal(summary.rows[0].peoNorm, '6 h/zi');
+  assert.equal(summary.rows[0].cimNorm, '8 h/zi');
+});
+
 test('leaga automat persoanele financiare de expertii PEO cand numele are ordinea inversata', () => {
   const summary = buildFinancialReportingSummary({
     experts: [expert],

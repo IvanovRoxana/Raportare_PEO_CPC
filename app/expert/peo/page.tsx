@@ -47,6 +47,7 @@ import {
   useActivityCatalog,
   useActivityMutations,
   useCollaborationExperts,
+  useFinancialPersonLinks,
   useColleagueDocumentsByMonth,
   useConcurrentProjects,
   useConcurrentProjectTimesheetByMonth,
@@ -63,6 +64,7 @@ import {
   useSharedDeliverables,
 } from '@/hooks/use-backend-data';
 import type { Activity, Deliverable, Expert, ReportStatus } from '@/lib/types';
+import { buildFinancialReportingSummary, normalizeFinancialPersonName } from '@/lib/financial-reporting';
 import { AdminViewAsBanner } from '@/components/admin/admin-view-as-banner';
 import { UserMenu } from '@/components/user-menu';
 import { getSignedInUser } from '@/lib/aws/auth';
@@ -170,6 +172,17 @@ function clearHashIfCurrent(hash: string) {
 
 function formatDisplayDate(date?: string) {
   return date ? formatDateRo(date) : 'Neprecizata';
+}
+
+function parseFinancialNormLabel(value?: string) {
+  if (!value || value === '-' || value.toLowerCase().includes('nedefinita')) {
+    return { value: 0, unit: 'HOURS_PER_DAY' as const };
+  }
+  const numeric = Number((value.match(/(\d+(?:[.,]\d+)?)/)?.[1] ?? '0').replace(',', '.')) || 0;
+  return {
+    value: numeric,
+    unit: /h\s*\/\s*luna/i.test(value) ? 'HOURS_PER_MONTH' as const : 'HOURS_PER_DAY' as const,
+  };
 }
 
 function getActivityDisplayTitle(activity: Activity) {
@@ -605,6 +618,7 @@ function ExpertDashboardContent() {
   const { contracts: selectedExpertNormContracts, isLoading: selectedExpertNormContractsLoading } = useExpertNormContracts(selectedExpertId);
   const { projects: concurrentProjects } = useConcurrentProjects(selectedExpertId);
   const { entries: concurrentTimesheetEntries } = useConcurrentProjectTimesheetByMonth(currentMonth, currentYear);
+  const { links: financialPersonLinks } = useFinancialPersonLinks();
   const reportingWorkBlocksEnabled = isReportingWorkBlocksEnabledClient();
   const { bundles: reportingWorkBlockBundles, isReady: reportingWorkBlockBundlesReady } = useReportingWorkBlockBundles(selectedExpertId, currentMonth, currentYear);
   const workBlocksReady = !reportingWorkBlocksEnabled || reportingWorkBlockBundlesReady;
@@ -685,6 +699,22 @@ function ExpertDashboardContent() {
     const expert = experts.find((e) => e.id === selectedExpertId) || experts[0];
     return expert || { id: '', name: 'Expert', role: '', norma: 8, saCodes: [] };
   }, [experts, selectedExpertId]);
+  const financialSummary = useMemo(() => buildFinancialReportingSummary({
+    experts,
+    activities: allMonthActivities,
+    concurrentProjects,
+    concurrentEntries: concurrentTimesheetEntries,
+    normContracts: selectedExpertNormContracts,
+    leaveEntries,
+    financialPersonLinks,
+    month: currentMonth,
+    year: currentYear,
+  }), [allMonthActivities, concurrentProjects, concurrentTimesheetEntries, currentMonth, currentYear, experts, financialPersonLinks, leaveEntries, selectedExpertNormContracts]);
+  const selectedExpertFinancialRow = useMemo(() => {
+    const selectedNameKey = normalizeFinancialPersonName(selectedExpert.name);
+    return financialSummary.rows.find((row) => row.expertId === selectedExpertId)
+      ?? financialSummary.rows.find((row) => normalizeFinancialPersonName(row.name) === selectedNameKey);
+  }, [financialSummary.rows, selectedExpert.name, selectedExpertId]);
   const selectedExpertCimDailyLimit = useMemo(() => {
     if (!selectedExpertId) return 0;
     const referenceDate = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-01`;
@@ -693,8 +723,12 @@ function ExpertDashboardContent() {
       .filter((item) => item.status === 'ACTIVE')
       .filter((item) => item.validFrom <= referenceDate && (!item.validTo || item.validTo >= referenceDate))
       .sort((left, right) => right.validFrom.localeCompare(left.validFrom))[0];
-    return Math.max(0, Math.min(8, Number(contract?.cimDailyCap) || 0));
-  }, [currentMonth, currentYear, selectedExpertId, selectedExpertNormContracts]);
+    const financialCimDaily = parseFinancialNormLabel(selectedExpertFinancialRow?.cimNorm);
+    const cimDailyValue = Number(contract?.cimDailyCap) || (
+      financialCimDaily.unit === 'HOURS_PER_DAY' ? financialCimDaily.value : 0
+    );
+    return Math.max(0, Math.min(8, cimDailyValue));
+  }, [currentMonth, currentYear, selectedExpertFinancialRow?.cimNorm, selectedExpertId, selectedExpertNormContracts]);
   const selectedExpertActiveNormContract = useMemo(() => {
     if (!selectedExpertId) return undefined;
     const referenceDate = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-01`;
@@ -706,18 +740,27 @@ function ExpertDashboardContent() {
   }, [currentMonth, currentYear, selectedExpertId, selectedExpertNormContracts]);
   const selectedExpertPeoMonthlyLimit = useMemo(() => {
     const contract = selectedExpertActiveNormContract;
-    if (!contract) return 0;
+    const financialPeoNorm = parseFinancialNormLabel(selectedExpertFinancialRow?.peoNorm || selectedExpertFinancialRow?.workbookNorm);
+    if (!contract) {
+      if (financialPeoNorm.unit === 'HOURS_PER_MONTH') return financialPeoNorm.value;
+      return financialPeoNorm.value * getWorkingDaysListInMonth(currentMonth + 1, currentYear).length;
+    }
     if (contract.peoNormUnit === 'HOURS_PER_MONTH') return Number(contract.peoNormValue) || 0;
     return (Number(contract.peoNormValue) || 0) * getWorkingDaysListInMonth(currentMonth + 1, currentYear).length;
-  }, [currentMonth, currentYear, selectedExpertActiveNormContract]);
+  }, [currentMonth, currentYear, selectedExpertActiveNormContract, selectedExpertFinancialRow?.peoNorm, selectedExpertFinancialRow?.workbookNorm]);
   const selectedExpertPeoDailyLimit = useMemo(() => {
     const contract = selectedExpertActiveNormContract;
-    if (!contract) return 0;
+    const financialPeoNorm = parseFinancialNormLabel(selectedExpertFinancialRow?.peoNorm || selectedExpertFinancialRow?.workbookNorm);
+    if (!contract) {
+      return financialPeoNorm.unit === 'HOURS_PER_DAY'
+        ? Math.max(0, Math.min(8, financialPeoNorm.value))
+        : 0;
+    }
     const dailyValue = contract.peoNormUnit === 'HOURS_PER_DAY'
       ? Number(contract.peoNormValue) || 0
       : Number(contract.peoDailyCap) || 0;
     return Math.max(0, Math.min(8, dailyValue));
-  }, [selectedExpertActiveNormContract]);
+  }, [selectedExpertActiveNormContract, selectedExpertFinancialRow?.peoNorm, selectedExpertFinancialRow?.workbookNorm]);
   const selectedExpertFinancialNorm = useMemo<Expert>(() => ({
     ...(selectedExpert as Expert),
     norma: selectedExpertCimDailyLimit,
