@@ -8,7 +8,6 @@ import { formatDate, getMonthName } from '@/lib/app-utils';
 import { getNonWorkingDayInfo } from '@/lib/non-working-days';
 import { getWorkingHoursInfo } from '@/lib/working-hours';
 import {
-  DAILY_HOURS_LIMIT,
   MAX_PONTAJ_HOURS,
   buildSelectedHoursForDates,
   isValidPontajHours,
@@ -28,6 +27,7 @@ interface MultiSelectCalendarProps {
   canGoToNextMonth?: boolean;
   monthAccessMessage?: string;
   expertNorma?: number;
+  dailyHoursLimit?: number;
   displayMonth?: number;
   displayYear?: number;
 }
@@ -44,17 +44,24 @@ export function MultiSelectCalendar({
   canGoToNextMonth = true,
   monthAccessMessage,
   expertNorma = 8,
+  dailyHoursLimit = MAX_PONTAJ_HOURS,
   displayMonth,
   displayYear,
 }: MultiSelectCalendarProps) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [isSelecting, setIsSelecting] = useState(false);
   const [selectionStart, setSelectionStart] = useState<string | null>(null);
-  const [defaultHours, setDefaultHours] = useState(Number(normalizePontajHoursValue(MAX_PONTAJ_HOURS)));
+  const cimDailyHoursLimit = Math.max(0, Math.min(MAX_PONTAJ_HOURS, Math.floor(Number(dailyHoursLimit) || 0)));
+  const [defaultHours, setDefaultHours] = useState(cimDailyHoursLimit > 0 ? Number(normalizePontajHoursValue(cimDailyHoursLimit)) : 0);
 
   const month = currentDate.getMonth();
   const year = currentDate.getFullYear();
   const sortedSelectedDates = useMemo(() => [...selectedDates].sort(), [selectedDates]);
+  const normalizeHoursWithinCim = (value: unknown, fallback: number | string = defaultHours) => {
+    if (cimDailyHoursLimit <= 0) return 0;
+    const normalized = Number(normalizePontajHoursValue(value, fallback || cimDailyHoursLimit));
+    return Math.min(normalized, cimDailyHoursLimit);
+  };
 
   useEffect(() => {
     if (displayMonth === undefined || displayYear === undefined) return;
@@ -62,13 +69,20 @@ export function MultiSelectCalendar({
     setCurrentDate(new Date(displayYear, displayMonth, 1));
   }, [displayMonth, displayYear, month, year]);
 
+  useEffect(() => {
+    setDefaultHours((current) => {
+      if (cimDailyHoursLimit <= 0) return 0;
+      return Math.min(Number(normalizePontajHoursValue(current, cimDailyHoursLimit)), cimDailyHoursLimit);
+    });
+  }, [cimDailyHoursLimit]);
+
   const workingInfo = useMemo(
     () => getWorkingHoursInfo(month, year, expertNorma, activities),
     [month, year, expertNorma, activities],
   );
   const selectedTotalHours = useMemo(
-    () => sortedSelectedDates.reduce((sum, date) => sum + Number(normalizePontajHoursValue(selectedHours[date], defaultHours)), 0),
-    [sortedSelectedDates, selectedHours, defaultHours],
+    () => sortedSelectedDates.reduce((sum, date) => sum + normalizeHoursWithinCim(selectedHours[date]), 0),
+    [sortedSelectedDates, selectedHours, defaultHours, cimDailyHoursLimit],
   );
 
   const daysInMonth = useMemo(() => {
@@ -107,7 +121,12 @@ export function MultiSelectCalendar({
 
   const syncSelectedDates = (dates: string[], baseHours = selectedHours) => {
     const uniqueDates = [...new Set(dates)].sort();
-    const nextHours = buildSelectedHoursForDates(uniqueDates, baseHours, defaultHours);
+    const nextHours = cimDailyHoursLimit > 0
+      ? Object.fromEntries(
+          Object.entries(buildSelectedHoursForDates(uniqueDates, baseHours, defaultHours))
+            .map(([date, hours]) => [date, String(normalizeHoursWithinCim(hours))]),
+        )
+      : Object.fromEntries(uniqueDates.map((date) => [date, '']));
 
     onSelectedHoursChange?.(nextHours);
     onSelectDates(uniqueDates, nextHours);
@@ -115,7 +134,7 @@ export function MultiSelectCalendar({
 
   const updateSelectedHour = (date: string, value: string | number) => {
     if (!isValidPontajHours(value)) return;
-    const numericValue = Number(normalizePontajHoursValue(value, selectedHours[date] || defaultHours));
+    const numericValue = normalizeHoursWithinCim(value, selectedHours[date] || defaultHours);
     onSelectedHoursChange?.({
       ...selectedHours,
       [date]: numericValue.toString(),
@@ -124,7 +143,7 @@ export function MultiSelectCalendar({
 
   const applyHoursToAll = (value: string | number) => {
     if (!isValidPontajHours(value)) return;
-    const numericValue = Number(normalizePontajHoursValue(value, defaultHours));
+    const numericValue = normalizeHoursWithinCim(value, defaultHours);
     setDefaultHours(numericValue);
     onSelectedHoursChange?.(
       Object.fromEntries(sortedSelectedDates.map((date) => [date, numericValue.toString()])),
@@ -241,11 +260,11 @@ export function MultiSelectCalendar({
           const hasActivities = getDateActivities(date).length > 0;
           const totalHours = getTotalHours(date);
           const isToday = formatDate(new Date()) === dateStr;
-          const selectedHour = normalizePontajHoursValue(selectedHours[dateStr], defaultHours);
+          const selectedHour = normalizeHoursWithinCim(selectedHours[dateStr]);
           const projectedDailyHours = totalHours + (isSelected ? Number(selectedHour) || 0 : 0);
           const exceedsDailyLimit = isCurrentMonth
             && !isNonWorkingDay
-            && projectedDailyHours > DAILY_HOURS_LIMIT;
+            && projectedDailyHours > cimDailyHoursLimit;
 
           return (
             <div
@@ -372,9 +391,10 @@ export function MultiSelectCalendar({
                 <input
                   type="number"
                   min={1}
-                  max={8}
+                  max={cimDailyHoursLimit}
                   value={defaultHours}
                   onChange={(event) => applyHoursToAll(event.target.value)}
+                  disabled={cimDailyHoursLimit <= 0}
                   className="h-8 w-16 rounded-md border border-input bg-background px-2 text-center text-xs"
                 />
                 <span className="text-xs text-muted-foreground">h</span>
@@ -384,9 +404,9 @@ export function MultiSelectCalendar({
             <div className="max-h-44 space-y-1 overflow-y-auto pr-1">
               {sortedSelectedDates.map((date) => {
                 const existingHours = (activityMap[date] || []).reduce((sum, activity) => sum + activity.hours, 0);
-                const selectedValue = Number(normalizePontajHoursValue(selectedHours[date], defaultHours));
+                const selectedValue = normalizeHoursWithinCim(selectedHours[date]);
                 const projectedHours = existingHours + selectedValue;
-                const isOverDailyLimit = projectedHours > DAILY_HOURS_LIMIT;
+                const isOverDailyLimit = projectedHours > cimDailyHoursLimit;
 
                 return (
                   <div
@@ -411,10 +431,11 @@ export function MultiSelectCalendar({
                     <input
                       type="number"
                       min={1}
-                      max={MAX_PONTAJ_HOURS}
+                      max={cimDailyHoursLimit}
                       step={1}
-                      value={normalizePontajHoursValue(selectedHours[date], defaultHours)}
+                      value={normalizeHoursWithinCim(selectedHours[date])}
                       onChange={(event) => updateSelectedHour(date, event.target.value)}
+                      disabled={cimDailyHoursLimit <= 0}
                       className="h-8 w-16 rounded-md border border-input bg-background px-2 text-center text-xs"
                     />
                     <span className="text-xs text-muted-foreground">h</span>

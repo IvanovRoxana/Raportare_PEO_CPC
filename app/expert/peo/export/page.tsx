@@ -21,10 +21,12 @@ import {
   useActivitiesByMonth,
   useConcurrentProjects,
   useConcurrentProjectTimesheetByMonth,
+  useExpertNormContracts,
   useExperts,
   useReportStatus,
   useReportingWorkBlockBundles,
 } from '@/hooks/use-backend-data';
+import { getWorkingDaysListInMonth } from '@/lib/working-hours';
 
 function readMonthParam(value: string | null, fallback: number) {
   const parsed = Number(value);
@@ -60,6 +62,7 @@ function ExportRaContent() {
 
   const { experts, isLoading: expertsLoading } = useExperts();
   const { activities: allMonthActivities, isLoading: activitiesLoading } = useActivitiesByMonth(currentMonth, currentYear);
+  const { contracts: selectedExpertNormContracts, isLoading: selectedExpertNormContractsLoading } = useExpertNormContracts(selectedExpertId);
   const { projects: concurrentProjects } = useConcurrentProjects(selectedExpertId);
   const { entries: concurrentTimesheetEntries } = useConcurrentProjectTimesheetByMonth(currentMonth, currentYear);
   const { status: reportStatus, updateStatus: updateReportStatus, isLoading: reportStatusLoading } = useReportStatus(
@@ -132,13 +135,48 @@ function ExportRaContent() {
     const expert = experts.find((item) => item.id === selectedExpertId) || experts[0];
     return expert || { id: '', name: 'Expert', role: '', norma: 8, saCodes: [] };
   }, [experts, selectedExpertId]);
+  const selectedExpertActiveNormContract = useMemo(() => {
+    if (!selectedExpertId) return undefined;
+    const referenceDate = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-01`;
+    return selectedExpertNormContracts
+      .filter((item) => item.expertId === selectedExpertId)
+      .filter((item) => item.status === 'ACTIVE')
+      .filter((item) => item.validFrom <= referenceDate && (!item.validTo || item.validTo >= referenceDate))
+      .sort((left, right) => right.validFrom.localeCompare(left.validFrom))[0];
+  }, [currentMonth, currentYear, selectedExpertId, selectedExpertNormContracts]);
+  const selectedExpertCimDailyLimit = useMemo(() => {
+    const contract = selectedExpertActiveNormContract;
+    return Math.max(0, Math.min(8, Number(contract?.cimDailyCap) || 0));
+  }, [selectedExpertActiveNormContract]);
+  const selectedExpertPeoMonthlyLimit = useMemo(() => {
+    const contract = selectedExpertActiveNormContract;
+    if (!contract) return 0;
+    if (contract.peoNormUnit === 'HOURS_PER_MONTH') return Number(contract.peoNormValue) || 0;
+    return (Number(contract.peoNormValue) || 0) * getWorkingDaysListInMonth(currentMonth + 1, currentYear).length;
+  }, [currentMonth, currentYear, selectedExpertActiveNormContract]);
+  const selectedExpertPeoDailyLimit = useMemo(() => {
+    const contract = selectedExpertActiveNormContract;
+    if (!contract) return 0;
+    const dailyValue = contract.peoNormUnit === 'HOURS_PER_DAY'
+      ? Number(contract.peoNormValue) || 0
+      : Number(contract.peoDailyCap) || 0;
+    return Math.max(0, Math.min(8, dailyValue));
+  }, [selectedExpertActiveNormContract]);
+  const selectedExpertFinancialNorm = useMemo<Expert>(() => ({
+    ...(selectedExpert as Expert),
+    norma: selectedExpertCimDailyLimit,
+    oreZi: selectedExpertPeoDailyLimit,
+    dailyHours: selectedExpertPeoDailyLimit,
+    normType: 'project',
+    projectMonthlyNorm: selectedExpertPeoMonthlyLimit,
+  }), [selectedExpert, selectedExpertCimDailyLimit, selectedExpertPeoDailyLimit, selectedExpertPeoMonthlyLimit]);
 
   const activities = useMemo(() => {
     if (!selectedExpertId) return [];
     return allMonthActivities.filter((activity) => activity.expertId === selectedExpertId);
   }, [allMonthActivities, selectedExpertId]);
 
-  const isLoading = isAuthLoading || expertsLoading || activitiesLoading;
+  const isLoading = isAuthLoading || expertsLoading || activitiesLoading || selectedExpertNormContractsLoading;
   const backHref = buildPeoHref(selectedExpertId, currentMonth, currentYear);
   const reportingWorkBlocksEnabled = isReportingWorkBlocksEnabledClient();
   const deterministicAnexa10DocxEnabled = isAnexa10DeterministicDocxEnabledClient();
@@ -242,7 +280,7 @@ function ExportRaContent() {
               </Link>
             </Button>
             <MonthlyReportExport
-              expert={selectedExpert as Expert}
+              expert={selectedExpertFinancialNorm}
               activities={activities}
               concurrentProjects={concurrentProjects}
               concurrentTimesheetEntries={concurrentTimesheetEntries.filter((entry) => entry.expertId === selectedExpertId)}
@@ -305,7 +343,7 @@ function ExportRaContent() {
             month={currentMonth}
             year={currentYear}
             expertName={selectedExpert.name}
-            expert={selectedExpert as Expert}
+            expert={selectedExpertFinancialNorm}
             enableDeterministicAnexa10Docx={deterministicAnexa10DocxEnabled}
             isLoadingDeterministicWorkBlocks={isLoadingDeterministicWorkBlocks}
             workBlockBundles={deterministicWorkBlockBundles}

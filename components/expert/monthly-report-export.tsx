@@ -66,7 +66,13 @@ export function MonthlyReportExport({
   const [attachBusinessHubDeliverables, setAttachBusinessHubDeliverables] = useState(true);
   const [exportError, setExportError] = useState<string | null>(null);
 
-  const workingInfo = getWorkingHoursInfo(month, year, expert.norma || 8, activities);
+  const peoDailyHours = Number(expert.oreZi ?? expert.dailyHours ?? expert.norma ?? 8) || 8;
+  const workingInfo = getWorkingHoursInfo(month, year, peoDailyHours, activities);
+  const peoMonthlyNorm = Number(expert.projectMonthlyNorm) || 0;
+  const displayWorkingInfo = {
+    ...workingInfo,
+    maxHoursWithNorma: peoMonthlyNorm > 0 ? peoMonthlyNorm : workingInfo.maxHoursWithNorma,
+  };
   const totalHours = workingInfo.totalHours;
   const normalizedExpertCategory = normalizePeoCategory(expert.category);
   const hasBusinessHubActivities = activities.some((activity) => Boolean(activity.businessHubMetaJson));
@@ -329,7 +335,7 @@ export function MonthlyReportExport({
           {/* Summary */}
           <div className="bg-muted/50 p-3 rounded-lg text-sm">
             <p><strong>Expert:</strong> {expert.name}</p>
-            <p><strong>Total ore:</strong> {totalHours}h / {workingInfo.maxHoursWithNorma}h</p>
+            <p><strong>Total ore:</strong> {totalHours}h / {displayWorkingInfo.maxHoursWithNorma}h</p>
             <p><strong>Activități:</strong> {activities.length}</p>
           </div>
 
@@ -465,6 +471,7 @@ function generateTimesheet(
 ) {
   const monthName = getMonthName(month);
   const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const peoDailyHours = Number(expert.oreZi ?? expert.dailyHours ?? expert.norma ?? 8) || 8;
   
   // Group activities by date
   const byDate = new Map<string, Activity[]>();
@@ -482,7 +489,7 @@ Cod proiect: 302141
 Expert: ${expert.name}
 Funcție: ${expert.role}
 Luna: ${monthName} ${year}
-Normă: ${expert.norma || 8} ore/zi
+Normă: ${peoDailyHours} ore/zi
 
 ---
 Data\t\tOre\tActivitate

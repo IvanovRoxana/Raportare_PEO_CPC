@@ -51,6 +51,7 @@ import {
   useConcurrentProjects,
   useConcurrentProjectTimesheetByMonth,
   useDocuments,
+  useExpertNormContracts,
   useExperts,
   useReportStatus,
   useLeaveEntries,
@@ -305,6 +306,7 @@ function FloatingActivityWindow({
 
 function OutlookMonthCalendar({
   expert,
+  dailyHoursLimit,
   activities,
   month,
   year,
@@ -317,6 +319,7 @@ function OutlookMonthCalendar({
   canGoToNextMonth,
 }: {
   expert: Expert;
+  dailyHoursLimit: number;
   activities: Activity[];
   month: number;
   year: number;
@@ -353,12 +356,12 @@ function OutlookMonthCalendar({
     });
     return grouped;
   }, [activities]);
-  const norma = expert.norma || 8;
+  const dailyLimit = Math.max(0, Math.min(8, Math.floor(Number(dailyHoursLimit) || 0)));
   const selectedDateSet = useMemo(() => new Set(selectedDates), [selectedDates]);
   const getDayTotalHours = (date: string) =>
     (activitiesByDate.get(date) ?? []).reduce((sum, activity) => sum + (Number(activity.hours) || 0), 0);
   const isClosedWorkingDay = (date: string, nativeDate: Date) =>
-    !getNonWorkingDayInfo(nativeDate).isNonWorkingDay && getDayTotalHours(date) >= norma;
+    !getNonWorkingDayInfo(nativeDate).isNonWorkingDay && dailyLimit > 0 && getDayTotalHours(date) >= dailyLimit;
   const syncSelectedDates = (dates: string[]) => {
     onSelectDates([...new Set(dates)].sort());
   };
@@ -442,7 +445,7 @@ function OutlookMonthCalendar({
           const nonWorking = getNonWorkingDayInfo(day.nativeDate);
           const isWeekend = nonWorking.isWeekend;
           const isNonWorkingDay = nonWorking.isNonWorkingDay;
-          const isDayClosed = !isNonWorkingDay && totalHours >= norma;
+          const isDayClosed = !isNonWorkingDay && dailyLimit > 0 && totalHours >= dailyLimit;
           const isToday = day.nativeDate.toDateString() === today.toDateString();
           const isSelected = selectedDateSet.has(day.date);
           const visibleActivities = dayActivities.slice(0, 4);
@@ -450,9 +453,9 @@ function OutlookMonthCalendar({
           const dayClassName = cn(
             'min-h-[124px] border-b border-r p-2 text-left transition hover:bg-blue-50/60',
             isWeekend ? 'bg-slate-50/70' : 'bg-white',
-            !isWeekend && totalHours > 0 && totalHours < norma && 'bg-emerald-50/45',
-            !isWeekend && totalHours === norma && 'bg-slate-100/80',
-            !isWeekend && totalHours > norma && 'bg-red-50/70',
+            !isWeekend && dailyLimit > 0 && totalHours > 0 && totalHours < dailyLimit && 'bg-emerald-50/45',
+            !isWeekend && dailyLimit > 0 && totalHours === dailyLimit && 'bg-slate-100/80',
+            !isWeekend && dailyLimit > 0 && totalHours > dailyLimit && 'bg-red-50/70',
             isDayClosed && !isSelected && 'cursor-not-allowed hover:bg-slate-100/80',
             isSelected && 'outline outline-2 -outline-offset-2 outline-blue-500',
           );
@@ -481,7 +484,7 @@ function OutlookMonthCalendar({
                 <span className={cn('font-semibold text-slate-700', isToday && 'rounded-full bg-blue-600 px-1.5 py-0.5 text-white')}>
                   {day.day}
                 </span>
-                <span className="text-[11px] font-semibold text-slate-500">{totalHours}h / {norma}h</span>
+                <span className="text-[11px] font-semibold text-slate-500">{totalHours}h / {dailyLimit}h</span>
               </div>
               <div className="space-y-1">
                 {visibleActivities.map((activity) => {
@@ -599,12 +602,14 @@ function ExpertDashboardContent() {
   const nextMonthDate = useMemo(() => new Date(baseYear, baseMonth + 1, 1), [baseMonth, baseYear]);
   const { status: previousMonthStatus } = useReportStatus(selectedExpertId, previousMonthDate.getMonth(), previousMonthDate.getFullYear());
   const { status: nextMonthStatus } = useReportStatus(selectedExpertId, nextMonthDate.getMonth(), nextMonthDate.getFullYear());
+  const { contracts: selectedExpertNormContracts, isLoading: selectedExpertNormContractsLoading } = useExpertNormContracts(selectedExpertId);
   const { projects: concurrentProjects } = useConcurrentProjects(selectedExpertId);
   const { entries: concurrentTimesheetEntries } = useConcurrentProjectTimesheetByMonth(currentMonth, currentYear);
   const reportingWorkBlocksEnabled = isReportingWorkBlocksEnabledClient();
   const { bundles: reportingWorkBlockBundles, isReady: reportingWorkBlockBundlesReady } = useReportingWorkBlockBundles(selectedExpertId, currentMonth, currentYear);
   const workBlocksReady = !reportingWorkBlocksEnabled || reportingWorkBlockBundlesReady;
-  const submissionDataReady = activitiesReady && documentsReady && reportStatusReady && workBlocksReady;
+  const normContractsReady = !selectedExpertId || !selectedExpertNormContractsLoading;
+  const submissionDataReady = activitiesReady && documentsReady && reportStatusReady && workBlocksReady && normContractsReady;
   const { saveDraft: saveReportingWorkBlockDraft } = useReportingWorkBlockDraft();
   const { sharedDeliverables, isLoading: sharedDeliverablesLoading, mutate: refreshSharedDeliverables } = useSharedDeliverables(selectedExpertId || undefined);
   const visibleSharedDeliverables = useMemo(() => filterSharedRelationsForMonths({
@@ -680,6 +685,47 @@ function ExpertDashboardContent() {
     const expert = experts.find((e) => e.id === selectedExpertId) || experts[0];
     return expert || { id: '', name: 'Expert', role: '', norma: 8, saCodes: [] };
   }, [experts, selectedExpertId]);
+  const selectedExpertCimDailyLimit = useMemo(() => {
+    if (!selectedExpertId) return 0;
+    const referenceDate = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-01`;
+    const contract = selectedExpertNormContracts
+      .filter((item) => item.expertId === selectedExpertId)
+      .filter((item) => item.status === 'ACTIVE')
+      .filter((item) => item.validFrom <= referenceDate && (!item.validTo || item.validTo >= referenceDate))
+      .sort((left, right) => right.validFrom.localeCompare(left.validFrom))[0];
+    return Math.max(0, Math.min(8, Number(contract?.cimDailyCap) || 0));
+  }, [currentMonth, currentYear, selectedExpertId, selectedExpertNormContracts]);
+  const selectedExpertActiveNormContract = useMemo(() => {
+    if (!selectedExpertId) return undefined;
+    const referenceDate = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-01`;
+    return selectedExpertNormContracts
+      .filter((item) => item.expertId === selectedExpertId)
+      .filter((item) => item.status === 'ACTIVE')
+      .filter((item) => item.validFrom <= referenceDate && (!item.validTo || item.validTo >= referenceDate))
+      .sort((left, right) => right.validFrom.localeCompare(left.validFrom))[0];
+  }, [currentMonth, currentYear, selectedExpertId, selectedExpertNormContracts]);
+  const selectedExpertPeoMonthlyLimit = useMemo(() => {
+    const contract = selectedExpertActiveNormContract;
+    if (!contract) return 0;
+    if (contract.peoNormUnit === 'HOURS_PER_MONTH') return Number(contract.peoNormValue) || 0;
+    return (Number(contract.peoNormValue) || 0) * getWorkingDaysListInMonth(currentMonth + 1, currentYear).length;
+  }, [currentMonth, currentYear, selectedExpertActiveNormContract]);
+  const selectedExpertPeoDailyLimit = useMemo(() => {
+    const contract = selectedExpertActiveNormContract;
+    if (!contract) return 0;
+    const dailyValue = contract.peoNormUnit === 'HOURS_PER_DAY'
+      ? Number(contract.peoNormValue) || 0
+      : Number(contract.peoDailyCap) || 0;
+    return Math.max(0, Math.min(8, dailyValue));
+  }, [selectedExpertActiveNormContract]);
+  const selectedExpertFinancialNorm = useMemo<Expert>(() => ({
+    ...(selectedExpert as Expert),
+    norma: selectedExpertCimDailyLimit,
+    oreZi: selectedExpertPeoDailyLimit,
+    dailyHours: selectedExpertPeoDailyLimit,
+    normType: 'project',
+    projectMonthlyNorm: selectedExpertPeoMonthlyLimit,
+  }), [selectedExpert, selectedExpertCimDailyLimit, selectedExpertPeoDailyLimit, selectedExpertPeoMonthlyLimit]);
   const isGtExpert = isGtExpertCategory(selectedExpert.category);
   const isComExpert = normalizePeoCategory(selectedExpert.category) === 'com';
 
@@ -860,12 +906,12 @@ function ExpertDashboardContent() {
   const monthlyBlocking = useMemo(
     () =>
       getMonthlyBlockingState({
-        expert: selectedExpert,
+        expert: selectedExpertFinancialNorm,
         activities,
         month: currentMonth,
         year: currentYear,
       }),
-    [selectedExpert, activities, currentMonth, currentYear],
+    [selectedExpertFinancialNorm, activities, currentMonth, currentYear],
   );
 
   const getMonthOffsetFromBase = (month: number, year: number) =>
@@ -1024,6 +1070,9 @@ function ExpertDashboardContent() {
       if (safeSelectedDates.length === 0) {
         throw new Error('Selecteaza cel putin o zi din calendar inainte de salvare.');
       }
+      if (selectedExpertCimDailyLimit <= 0) {
+        throw new Error('Plafonul CIM/zi lipseste din Financiar pentru luna selectata. Completeaza coloana Plafon CIM/zi in Financiar inainte de raportare.');
+      }
 
       const editingGroupMembers = editingActivity
         ? getActivityGroupMembersForSelectedDates(editingActivity, activities, safeSelectedDates)
@@ -1060,7 +1109,7 @@ function ExpertDashboardContent() {
         };
 
         const validation = validateActivitiesBeforeCreate({
-          expert: selectedExpert,
+          expert: selectedExpertFinancialNorm,
           existingActivities: activities
             .filter((activity) => activity.id !== editingActivity.id)
             .map((activity): ActivityDraftForValidation => ({
@@ -1174,7 +1223,7 @@ function ExpertDashboardContent() {
         businessHubMetaJson: activity.businessHubMetaJson,
       });
       const validation = validateActivitiesBeforeCreate({
-        expert: selectedExpert,
+        expert: selectedExpertFinancialNorm,
         existingActivities: activities
           .filter((activity) => !editingActivity || !editingGroupMemberIds.has(activity.id))
           .filter((activity) => !submittedActivityIds.has(activity.id))
@@ -1851,7 +1900,7 @@ function ExpertDashboardContent() {
     return getFirstWorkingDateInMonth();
   };
 
-  const getDefaultHours = () => Math.min(selectedExpert.norma || 8, 8).toString();
+  const getDefaultHours = () => selectedExpertCimDailyLimit > 0 ? selectedExpertCimDailyLimit.toString() : '';
   const getDefaultHoursForDate = (date: string) => {
     const editingGroupMemberIds = editingActivity
       ? new Set(getActivityGroupMembers(editingActivity, activities).map((activity) => activity.id))
@@ -1859,9 +1908,9 @@ function ExpertDashboardContent() {
     const existingHours = activities
       .filter((activity) => activity.date === date && !editingGroupMemberIds.has(activity.id))
       .reduce((sum, activity) => sum + (Number(activity.hours) || 0), 0);
-    const remainingDailyHours = Math.max(0, 8 - existingHours);
-    const preferredHours = Math.min(Number(getDefaultHours()) || 8, remainingDailyHours || 1);
-    return Math.max(1, preferredHours).toString();
+    const remainingDailyHours = Math.max(0, selectedExpertCimDailyLimit - existingHours);
+    const preferredHours = Math.min(Number(getDefaultHours()) || 0, remainingDailyHours);
+    return preferredHours > 0 ? preferredHours.toString() : '';
   };
 
   const syncSelectedDates = (dates: string[], baseHours = selectedHours) => {
@@ -1869,7 +1918,9 @@ function ExpertDashboardContent() {
     const nextHours = Object.fromEntries(
       uniqueDates.map((date) => [
         date,
-        normalizePontajHoursValue(baseHours[date], getDefaultHoursForDate(date)),
+        selectedExpertCimDailyLimit > 0
+          ? normalizePontajHoursValue(baseHours[date], getDefaultHoursForDate(date))
+          : '',
       ]),
     );
     setSelectedDates(uniqueDates);
@@ -2303,7 +2354,8 @@ function ExpertDashboardContent() {
       onSelectedHoursChange={setSelectedHours}
       expertId={selectedExpertId || ''}
       expertName={selectedExpert.name}
-      expert={selectedExpert as import('@/lib/types').Expert}
+      expert={selectedExpertFinancialNorm}
+      dailyHoursLimit={selectedExpertCimDailyLimit}
       allExperts={collaborationExperts.length > 0 ? collaborationExperts : experts}
       allActivities={activities}
       documents={documents}
@@ -2458,7 +2510,7 @@ function ExpertDashboardContent() {
             )}
             {!showForm && normalizePeoCategory(selectedExpert.category) === 'bh' && (
               <MonthlyReportExport
-                expert={selectedExpert as Expert}
+                expert={selectedExpertFinancialNorm}
                 activities={activities}
                 concurrentProjects={concurrentProjects}
                 concurrentTimesheetEntries={concurrentTimesheetEntries.filter((entry) => entry.expertId === selectedExpertId)}
@@ -2765,7 +2817,8 @@ function ExpertDashboardContent() {
                   canGoToPreviousMonth={canOpenMonth(previousCalendarDate.getMonth(), previousCalendarDate.getFullYear())}
                   canGoToNextMonth={canOpenMonth(nextCalendarDate.getMonth(), nextCalendarDate.getFullYear())}
                   monthAccessMessage={monthAccessMessage}
-                  expertNorma={selectedExpert.norma || 8}
+                  expertNorma={selectedExpertPeoDailyLimit}
+                  dailyHoursLimit={selectedExpertCimDailyLimit}
                   displayMonth={currentMonth}
                   displayYear={currentYear}
                 />
@@ -2884,7 +2937,8 @@ function ExpertDashboardContent() {
                 </div>
               </aside>
               <OutlookMonthCalendar
-                expert={selectedExpert as Expert}
+                expert={selectedExpertFinancialNorm}
+                dailyHoursLimit={selectedExpertCimDailyLimit}
                 activities={activities}
                 month={currentMonth}
                 year={currentYear}

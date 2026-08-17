@@ -436,8 +436,8 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
         const goodworksProjects = expertProjects.filter((project) => `${project.projectName} ${project.projectCode} ${project.fundingSource}`.toUpperCase().includes('GOODWORKS4ALL'));
         const otherProjects = expertProjects.filter((project) => !goodworksProjects.some((goodworks) => goodworks.id === project.id));
         const otherDailyHours = otherProjects.reduce((sum, project) => sum + (Number(project.dailyHours) || 0), 0);
-        const peoDailyCap = contract?.peoDailyCap ?? expert.dailyHours ?? expert.oreZi ?? expert.norma ?? 0;
-        const cimDailyCap = contract?.cimDailyCap ?? 8;
+        const peoDailyCap = contract?.peoDailyCap ?? 0;
+        const cimDailyCap = contract?.cimDailyCap ?? 0;
         const cpcFormulaHours = Math.max(0, cimDailyCap - peoDailyCap - otherDailyHours);
         return {
           id: expert.id,

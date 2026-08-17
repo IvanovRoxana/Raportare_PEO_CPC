@@ -48,7 +48,6 @@ type EditFormState = {
   email: string;
   phone: string;
   role: RoleOption;
-  norma: string;
   category: string;
   contract: string;
   expertExperienceCategory: string;
@@ -120,7 +119,6 @@ function buildEditForm(expert: Expert): EditFormState {
     email: expert.email || '',
     phone: expert.phone || '',
     role,
-    norma: String(expert.norma ?? 8),
     category: expert.category || '',
     contract: formatContractDisplay(expert),
     expertExperienceCategory: expert.expertExperienceCategory || '',
@@ -163,12 +161,12 @@ function buildExpertCreateInput(expert: Expert, updates: Partial<Expert>): Omit<
     email: updates.email ?? expert.email,
     phone: updates.phone ?? expert.phone,
     category: updates.category ?? expert.category,
-    norma: updates.norma ?? expert.norma ?? 8,
-    normType: updates.normType ?? expert.normType,
-    oreZi: updates.oreZi ?? expert.oreZi,
-    dailyHours: updates.dailyHours ?? expert.dailyHours,
-    manualMonthlyNorm: updates.manualMonthlyNorm ?? expert.manualMonthlyNorm,
-    projectMonthlyNorm: updates.projectMonthlyNorm ?? expert.projectMonthlyNorm,
+    norma: expert.norma ?? 8,
+    normType: expert.normType,
+    oreZi: expert.oreZi,
+    dailyHours: expert.dailyHours,
+    manualMonthlyNorm: expert.manualMonthlyNorm,
+    projectMonthlyNorm: expert.projectMonthlyNorm,
     positionInProject: updates.positionInProject ?? expert.positionInProject,
     projectCode: updates.projectCode ?? expert.projectCode,
     projectTitle: updates.projectTitle ?? expert.projectTitle,
@@ -190,7 +188,6 @@ function auditProfileValue(expert: Expert | (Partial<Expert> & { name?: string; 
     email: expert.email || '',
     phone: expert.phone || '',
     role: expert.role || '',
-    norma: expert.norma ?? '',
     category: expert.category || '',
     contractNumber: expert.contractNumber || '',
     contractType: expert.contractType || '',
@@ -394,12 +391,6 @@ export function AdminUsersTable() {
       return;
     }
 
-    const norma = Number(form.norma);
-    if (!Number.isFinite(norma) || norma <= 0) {
-      setError('Norma trebuie sa fie un numar pozitiv.');
-      return;
-    }
-
     setSavingId(editingExpert.id);
     setError(null);
     setOk(null);
@@ -409,7 +400,6 @@ export function AdminUsersTable() {
       name: form.name.trim(),
       email: form.email.trim(),
       phone: form.phone.trim(),
-      norma,
       category: form.category.trim(),
       contractNumber: contractFields.contractNumber,
       contractType: contractFields.contractType,
@@ -772,17 +762,6 @@ export function AdminUsersTable() {
                   id="admin-user-phone"
                   value={form.phone}
                   onChange={(event) => setForm({ ...form, phone: event.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="admin-user-norma">Norma zilnica</Label>
-                <Input
-                  id="admin-user-norma"
-                  type="number"
-                  min="0"
-                  step="0.5"
-                  value={form.norma}
-                  onChange={(event) => setForm({ ...form, norma: event.target.value })}
                 />
               </div>
               <div className="space-y-2">
