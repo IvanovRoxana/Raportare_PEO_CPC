@@ -25,6 +25,7 @@ export async function buildAnexa10DocxBlob(model: Anexa10ReportModel): Promise<B
     TableCell,
     TableRow,
     TextRun,
+    VerticalMergeType,
     WidthType,
   } = await import('docx');
 
@@ -36,6 +37,7 @@ export async function buildAnexa10DocxBlob(model: Anexa10ReportModel): Promise<B
     TableCell,
     TableRow,
     TextRun,
+    VerticalMergeType,
     WidthType,
   };
 
@@ -96,9 +98,9 @@ function buildAnexa10DocxChildren(model: Anexa10ReportModel, docx: Record<string
     buildTable(model.tableRows, model.totalHours, docx),
     spacer(docx),
     sectionTitle('2. Detalierea activitatilor realizate si a rezultatelor obtinute', docx),
-    ...model.saSections.flatMap((section) => buildSaSection(section, model.header.month.toLocaleLowerCase('ro'), model.header.year, docx)),
+    ...model.saSections.flatMap((section) => buildSaSection(section, docx)),
     paragraph(
-      `In luna ${model.header.month.toLocaleLowerCase('ro')} ${model.header.year}, activitatea pontata in cadrul proiectului PEO ${model.header.projectCode} a fost de ${model.totalHours} ore.`,
+      buildTotalHoursSentence(model),
       docx,
       { italic: true, alignment: docx.AlignmentType.JUSTIFIED },
     ),
@@ -114,6 +116,28 @@ function buildAnexa10DocxChildren(model: Anexa10ReportModel, docx: Record<string
 
 function buildTable(rows: Anexa10TableRow[], totalHours: number, docx: Record<string, any>) {
   const { BorderStyle, Table, TableRow, WidthType } = docx;
+  let deliverableNumber = 1;
+  const dataRows = rows.map((row, index) => {
+    const isFirstDataRow = index === 0;
+    const formattedDeliverables = formatDeliverables(row.resultsAndDeliverables, deliverableNumber);
+    deliverableNumber += countNumberedDeliverables(row.resultsAndDeliverables);
+
+    return new TableRow({
+      children: [
+        bodyCell(`${index + 1}.`, docx, TABLE_WIDTHS[0]),
+        bodyCell(isFirstDataRow ? row.officialActivityTitle : '', docx, TABLE_WIDTHS[1], {
+          verticalMerge: isFirstDataRow ? docx.VerticalMergeType.RESTART : docx.VerticalMergeType.CONTINUE,
+        }),
+        bodyCell(isFirstDataRow ? row.responsibilities : '', docx, TABLE_WIDTHS[2], {
+          verticalMerge: isFirstDataRow ? docx.VerticalMergeType.RESTART : docx.VerticalMergeType.CONTINUE,
+        }),
+        bodyCell(row.performedActivity, docx, TABLE_WIDTHS[3]),
+        bodyCell(formattedDeliverables, docx, TABLE_WIDTHS[4]),
+        bodyCell(row.commonDeliverable, docx, TABLE_WIDTHS[5]),
+        bodyCell(String(row.hours), docx, TABLE_WIDTHS[6], { alignment: docx.AlignmentType.CENTER }),
+      ],
+    });
+  });
   const tableRows = [
     new TableRow({
       tableHeader: true,
@@ -127,17 +151,7 @@ function buildTable(rows: Anexa10TableRow[], totalHours: number, docx: Record<st
         headerCell('Nr. ore lucrate', docx, TABLE_WIDTHS[6]),
       ],
     }),
-    ...rows.map((row, index) => new TableRow({
-      children: [
-        bodyCell(`${index + 1}.`, docx, TABLE_WIDTHS[0]),
-        bodyCell(row.officialActivityTitle, docx, TABLE_WIDTHS[1]),
-        bodyCell(row.responsibilities, docx, TABLE_WIDTHS[2]),
-        bodyCell(row.performedActivity, docx, TABLE_WIDTHS[3]),
-        bodyCell(formatDeliverables(row.resultsAndDeliverables), docx, TABLE_WIDTHS[4]),
-        bodyCell(row.commonDeliverable, docx, TABLE_WIDTHS[5]),
-        bodyCell(String(row.hours), docx, TABLE_WIDTHS[6], { alignment: docx.AlignmentType.CENTER }),
-      ],
-    })),
+    ...dataRows,
     new TableRow({
       children: [
         bodyCell('', docx, TABLE_WIDTHS[0], { bold: true }),
@@ -165,17 +179,14 @@ function buildTable(rows: Anexa10TableRow[], totalHours: number, docx: Record<st
   });
 }
 
-function buildSaSection(section: Anexa10SaSection, monthName: string, year: number, docx: Record<string, any>) {
+function buildSaSection(section: Anexa10SaSection, docx: Record<string, any>) {
   return [
-    paragraph(`Pentru subactivitatea ${section.title || section.saCode}, in luna de raportare ${monthName} ${year}:`, docx, {
+    paragraph(`Pentru subactivitatea ${section.title || section.saCode}:`, docx, {
       bold: true,
       italic: true,
       alignment: docx.AlignmentType.JUSTIFIED,
     }),
-    ...section.items.flatMap((item) => [
-      paragraph(item.heading, docx, { bold: true, alignment: docx.AlignmentType.JUSTIFIED }),
-      paragraph(item.body, docx, { alignment: docx.AlignmentType.JUSTIFIED }),
-    ]),
+    ...section.items.map((item) => narrativeParagraph(item.timing, item.body, docx)),
   ];
 }
 
@@ -198,22 +209,36 @@ function headerCell(text: string, docx: Record<string, any>, width: number) {
   return cell(text, docx, width, { bold: true, alignment: docx.AlignmentType.CENTER });
 }
 
-function bodyCell(text: string, docx: Record<string, any>, width: number, options: { bold?: boolean; alignment?: any } = {}) {
+function bodyCell(text: string, docx: Record<string, any>, width: number, options: { bold?: boolean; alignment?: any; verticalMerge?: any } = {}) {
   return cell(text, docx, width, options);
 }
 
-function cell(text: string, docx: Record<string, any>, width: number, options: { bold?: boolean; alignment?: any } = {}) {
+function cell(text: string, docx: Record<string, any>, width: number, options: { bold?: boolean; alignment?: any; verticalMerge?: any } = {}) {
   const { Paragraph, TableCell, TextRun, WidthType } = docx;
   const lines = String(text || '').split('\n').filter((line) => line.trim().length > 0);
 
   return new TableCell({
     width: { size: width, type: WidthType.DXA },
+    verticalMerge: options.verticalMerge,
     margins: { top: 90, bottom: 90, left: 90, right: 90 },
     children: (lines.length > 0 ? lines : ['']).map((line) => new Paragraph({
       alignment: options.alignment,
       spacing: { after: 40 },
       children: [new TextRun({ text: line, bold: options.bold, size: 18 })],
     })),
+  });
+}
+
+function narrativeParagraph(timing: string, body: string, docx: Record<string, any>) {
+  const { Paragraph, TextRun } = docx;
+  const intro = buildNarrativeIntro(timing);
+  return new Paragraph({
+    alignment: docx.AlignmentType.JUSTIFIED,
+    spacing: { after: 80 },
+    children: [
+      new TextRun({ text: intro, bold: true, size: 20 }),
+      new TextRun({ text: body ? `, ${lowercaseFirst(body)}` : '.', size: 20 }),
+    ],
   });
 }
 
@@ -234,9 +259,45 @@ function spacer(docx: Record<string, any>) {
   return new docx.Paragraph({ text: '', spacing: { after: 80 } });
 }
 
-function formatDeliverables(items: string[]) {
-  if (items.length <= 1) return items[0] ?? '';
-  return items.map((item, index) => `${index + 1}. ${item}`).join('\n');
+function formatDeliverables(items: string[], startIndex: number) {
+  let current = startIndex;
+  return items.map((item) => {
+    if (!shouldNumberDeliverable(item)) return item;
+    return `${current++}. ${item}`;
+  }).join('\n');
+}
+
+function countNumberedDeliverables(items: string[]) {
+  return items.filter(shouldNumberDeliverable).length;
+}
+
+function shouldNumberDeliverable(item: string) {
+  return item.trim().toLocaleUpperCase('ro') !== 'N/A';
+}
+
+function buildNarrativeIntro(timing: string) {
+  const normalizedTiming = timing.trim();
+  const match = normalizedTiming.match(/^((?:in|în) data de .+?),\s*(\d+(?:[.,]\d+)?)\s*ore$/i);
+  if (match) return `${uppercaseFirst(match[1])} (${match[2]} ore)`;
+  return uppercaseFirst(normalizedTiming);
+}
+
+function buildTotalHoursSentence(model: Anexa10ReportModel) {
+  const base = `In luna ${model.header.month.toLocaleLowerCase('ro')} ${model.header.year}, activitatea pontata in cadrul proiectului PEO ${model.header.projectCode} a fost de ${model.totalHours} ore`;
+  if (model.reportPreparationHours > 0) {
+    return `${base} din care ${model.reportPreparationHours} ore pentru elaborarea raportului de activitate.`;
+  }
+  return `${base}.`;
+}
+
+function uppercaseFirst(value: string) {
+  if (!value) return value;
+  return value.charAt(0).toLocaleUpperCase('ro') + value.slice(1);
+}
+
+function lowercaseFirst(value: string) {
+  if (!value) return value;
+  return value.charAt(0).toLocaleLowerCase('ro') + value.slice(1);
 }
 
 function formatSignatureDate(value?: string) {

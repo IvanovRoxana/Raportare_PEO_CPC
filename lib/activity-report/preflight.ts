@@ -265,7 +265,7 @@ function checkNarrative(model: Anexa10ReportModel) {
   }
 
   const duplicatedHeadingBlocks = model.saSections.reduce((count, section) => (
-    count + section.items.filter((item) => hasSimilarHeadingAndBody(item.heading, item.body)).length
+    count + section.items.filter((item) => hasSimilarHeadingAndBody(item.timing, item.body)).length
   ), 0);
   if (duplicatedHeadingBlocks > 0) {
     findings.push(finding({
