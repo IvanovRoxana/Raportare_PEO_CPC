@@ -115,6 +115,7 @@ import { PmAlertsPanel } from '@/components/pm/pm-alerts-panel';
 import { PmMonthlyStatusTable } from '@/components/pm/pm-monthly-status-table';
 import { PmSubmittedReportsPanel, type PmSubmittedReportRow } from '@/components/pm/pm-submitted-reports-panel';
 import { AiRagAuditTab } from '@/components/pm/ai-rag-audit-tab';
+import { PmWorkspace } from '@/components/pm/workspace/pm-workspace';
 
 const EMPTY_PONTAJ_ROWS: PontajRow[] = [];
 const EMPTY_RAPORT_ROWS: RaportRow[] = [];
@@ -1038,48 +1039,44 @@ export default function PMDashboard() {
       eyebrow="Modul PM"
       title="Verificări PM"
       description="Revizuiește activitățile, livrabilele și rapoartele transmise de experți."
-      actions={
-        <>
-          <Select value={selectedMonth.toString()} onValueChange={(v) => setSelectedMonth(parseInt(v, 10))}>
-            <SelectTrigger className="h-10 w-[9.5rem] bg-white">
-              <CalendarDays className="h-4 w-4 text-primary" />
-              <SelectValue placeholder="Luna" />
-            </SelectTrigger>
-            <SelectContent>
-              {months.map((m) => (
-                <SelectItem key={m.value} value={m.value.toString()}>
-                  {m.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button variant="outline">
-            <Download className="h-4 w-4" />
-            Export situație
-          </Button>
-          <Button variant="outline" onClick={handleDownloadTotalOpisXls} disabled={isExportingOpisTotal}>
-            {isExportingOpisTotal ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}
-            OPIS total XLS
-          </Button>
-          <Button asChild>
-            <a href="#pm-tabs">
-              Deschide verificare
-              <ArrowRight className="h-4 w-4" />
-            </a>
-          </Button>
-          <UserMenu />
-        </>
-      }
-      quickTabs={[
-        { label: 'KPI', href: '#pm-kpi', icon: ShieldCheck, active: true },
-        { label: 'Pontaj', href: '#pm-tabs', icon: CalendarDays },
-        { label: 'Rapoarte', href: '#pm-tabs', icon: FileText },
-        { label: 'Livrabile', href: '#pm-tabs', icon: Upload },
-        { label: 'Neconformitati', href: '#pm-tabs', icon: SearchIcon },
-        { label: 'Note', href: '#pm-tabs', icon: ClipboardList },
-      ]}
-      aside={
-        <>
+      hideHeader
+      contentClassName="max-w-none p-0 sm:p-0 lg:p-0"
+    >
+      <PmWorkspace
+        currentUserName={currentUser?.displayName || currentUser?.email}
+        experts={visibleExperts}
+        dashboardRows={dashboardRows}
+        reportStatusByExpertId={reportStatusByExpertId}
+        statusLabels={statusLabels}
+        selectedMonth={selectedMonth}
+        selectedYear={selectedYear}
+        months={months}
+        onMonthChange={setSelectedMonth}
+        pmSummary={pmSummary}
+        dashboardTotals={dashboardTotals}
+        activities={monthActivities}
+        documents={documents}
+        submittedReportRows={submittedReportRows}
+        clarificationThreads={clarificationThreads}
+        neconformitati={localNeconformitati}
+        monthAccessRequests={monthAccessRequests}
+        activeMonthAccesses={activeMonthAccesses}
+        pendingSharedDeliverables={pendingSharedDeliverables}
+        titleIssues={titleIssues}
+        pmUnlockRequests={pmUnlockRequests}
+        eventDocumentIssues={eventDocumentIssues}
+        isExportingOpisTotal={isExportingOpisTotal}
+        onOpenDossier={openReviewReport}
+        onOpenDossierById={openReviewReportById}
+        onApproveMonthAccessRequest={approveMonthAccessRequest}
+        onRejectMonthAccessRequest={rejectMonthAccessRequest}
+        onCloseMonthAccess={closeMonthAccess}
+        onRequestDocumentClarification={requestDocumentClarification}
+        onApprovePmUnlock={approvePmUnlockRequest}
+        onDownloadTotalOpisXls={handleDownloadTotalOpisXls}
+      />
+
+      <div className="hidden">
           <RightInfoCard title="Rezumat verificări" icon={CalendarDays}>
             <div className="flex items-center justify-between">
               <div>
@@ -1315,9 +1312,6 @@ export default function PMDashboard() {
               )}
             </div>
           </RightInfoCard>
-        </>
-      }
-    >
       <PmSubmittedReportsPanel
         rows={submittedReportRows}
         statusLabels={statusLabels}
@@ -1530,6 +1524,7 @@ export default function PMDashboard() {
             <NotesTab data={localNotes} onDataChange={handleNotesChange} />
           </TabsContent>
         </Tabs>
+      </div>
       </div>
       <DosarExpertModal
         open={reviewOpen}
