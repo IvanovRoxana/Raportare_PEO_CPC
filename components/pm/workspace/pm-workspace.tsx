@@ -57,7 +57,6 @@ type PendingSharedDeliverable = {
 };
 
 type PmWorkspaceProps = {
-  currentUserName?: string;
   experts: Expert[];
   dashboardRows: DashboardComplianceRow[];
   reportStatusByExpertId: Map<string, ReportStatus>;
@@ -150,29 +149,15 @@ function MiniAvatar({ expert }: { expert: Expert }) {
 function PmTopBar({
   activeView,
   onViewChange,
-  currentUserName,
   props,
 }: {
   activeView: WorkspaceView;
   onViewChange: (view: WorkspaceView) => void;
-  currentUserName?: string;
   props: PmWorkspaceProps;
 }) {
   return (
-    <header className="sticky top-0 z-20 -mx-4 -mt-5 border-b border-[#17396c] bg-[#1f3f75] px-4 pt-3 text-white shadow-md sm:-mx-6 sm:px-6 lg:-mx-8 lg:-mt-7 lg:px-8">
-      <div className="mx-auto flex max-w-screen-2xl items-center justify-between gap-4">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="rounded bg-white px-3 py-1.5 text-[10px] font-bold text-[#1f3f75]">CONCORDIA</div>
-          <div className="hidden text-xs text-blue-100 sm:block">PEO 302141</div>
-          <div className="hidden text-xs text-blue-100 sm:block">Modul PM</div>
-          <div className="text-xs font-semibold">Verificări PM</div>
-        </div>
-        <div className="flex items-center gap-2 rounded-md border border-blue-400/40 bg-blue-700/50 px-3 py-1.5 text-xs font-semibold">
-          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-500 text-[10px]">MC</span>
-          <span className="hidden sm:inline">{currentUserName || 'Utilizator PM'}</span>
-        </div>
-      </div>
-      <nav className="mx-auto mt-3 flex max-w-screen-2xl gap-2 overflow-x-auto">
+    <header className="sticky top-0 z-20 -mx-4 -mt-5 border-b border-[#17396c] bg-[#1f3f75] px-4 text-white shadow-md sm:-mx-6 sm:px-6 lg:-mx-8 lg:-mt-7 lg:px-8">
+      <nav className="mx-auto flex min-h-12 max-w-screen-2xl items-end gap-2 overflow-x-auto pt-2">
         {views.map((view) => {
           const count = view.badge?.(props) || 0;
           const active = view.id === activeView;
@@ -887,7 +872,7 @@ export function PmWorkspace(props: PmWorkspaceProps) {
 
   return (
     <div className="min-h-screen bg-[#eef3f8]">
-      <PmTopBar activeView={activeView} onViewChange={setActiveView} currentUserName={props.currentUserName} props={props} />
+      <PmTopBar activeView={activeView} onViewChange={setActiveView} props={props} />
       <main className="mx-auto max-w-screen-2xl px-2 py-4 sm:px-4 lg:px-0">{content}</main>
     </div>
   );

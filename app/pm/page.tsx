@@ -1043,7 +1043,6 @@ export default function PMDashboard() {
       contentClassName="max-w-none p-0 sm:p-0 lg:p-0"
     >
       <PmWorkspace
-        currentUserName={currentUser?.displayName || currentUser?.email}
         experts={visibleExperts}
         dashboardRows={dashboardRows}
         reportStatusByExpertId={reportStatusByExpertId}
