@@ -193,3 +193,20 @@ test('proiectul GOODWORKS4ALL implicit nu dubleaza o inregistrare backend existe
   assert.equal(andreeaGwProjects.length, 1);
   assert.equal(andreeaGwProjects[0].id, 'backend-gw-andreea');
 });
+
+test('pontajul consolidat separa CO intre PEO si CPC conform repartizarii financiare', () => {
+  const activities = [{ id: 'co-peo', expertId: 'roxana', expertName: 'Roxana', date: '2026-05-11', hours: 6, dayType: 'CO' }] as Activity[];
+  const rows = buildConsolidatedTimesheet({
+    activities,
+    concurrentProjects: [],
+    entries: [],
+    leaveEntries: [{ id: 'co', expertId: 'roxana', date: '2026-05-11', month: 4, year: 2026, type: 'CO', totalHours: 8, peoHours: 6, cpcHours: 2, source: 'FINANCIAL', status: 'VALIDATED', lockedForExpert: true }],
+    month: 4,
+    year: 2026,
+  });
+
+  assert.equal(rows[10].peoHours, 6);
+  assert.equal(rows[10].cpcLeaveHours, 2);
+  assert.equal(rows[10].totalHours, 8);
+  assert.equal(rows[10].status, 'OK');
+});

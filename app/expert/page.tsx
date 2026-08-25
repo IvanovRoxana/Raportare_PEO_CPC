@@ -559,15 +559,17 @@ export default function ExpertHomeDashboard() {
 
   const peoActivities = useMemo(() => {
     if (!currentExpert || !selectedMonthHasAccess) return [];
-    const reportedActivities = monthActivities.filter((activity) => activity.expertId === currentExpert.id);
-    const leaveActivities: Activity[] = leaveEntries
-      .filter((leave) => leave.expertId === currentExpert.id && leave.status !== 'REJECTED')
+    const expertLeaves = leaveEntries.filter((leave) => leave.expertId === currentExpert.id && leave.status !== 'REJECTED');
+    const financialLeaveDates = new Set(expertLeaves.map((leave) => leave.date));
+    const reportedActivities = monthActivities.filter((activity) => activity.expertId === currentExpert.id
+      && (!financialLeaveDates.has(activity.date) || (activity.dayType !== 'CO' && activity.dayType !== 'CM')));
+    const leaveActivities: Activity[] = expertLeaves
       .map((leave) => ({
         id: 'leave-entry:' + leave.id,
         date: leave.date,
         expertId: leave.expertId,
         expertName: currentExpert.name,
-        hours: Number(leave.totalHours) || (Number(leave.peoHours) || 0) + (Number(leave.cpcHours) || 0),
+        hours: Number(leave.peoHours) || 0,
         activityType: leave.type === 'CM' ? 'CM - Concediu medical' : 'CO - Concediu de odihna',
         title: leave.type + ' (' + leave.peoHours + ' h PEO + ' + leave.cpcHours + ' h CPC)',
         description: leave.source === 'FINANCIAL' ? 'Concediu introdus de Financiar.' : 'Concediu repartizat automat.',
@@ -610,8 +612,8 @@ export default function ExpertHomeDashboard() {
   );
 
   const consolidatedRows = useMemo(
-    () => buildConsolidatedTimesheet({ activities: peoActivities, concurrentProjects: activeConcurrentProjects, entries: expertConcurrentEntries, month: currentMonth, year: currentYear }),
-    [activeConcurrentProjects, currentMonth, currentYear, expertConcurrentEntries, peoActivities]
+    () => buildConsolidatedTimesheet({ activities: peoActivities, concurrentProjects: activeConcurrentProjects, entries: expertConcurrentEntries, leaveEntries: leaveEntries.filter((leave) => leave.expertId === currentExpert?.id), month: currentMonth, year: currentYear }),
+    [activeConcurrentProjects, currentExpert, currentMonth, currentYear, expertConcurrentEntries, leaveEntries, peoActivities]
   );
   const consolidatedWarnings = useMemo(() => getConsolidatedWarnings(consolidatedRows), [consolidatedRows]);
   const dayTotals = useMemo(() => getDayTotals(projects), [projects]);
@@ -1270,7 +1272,7 @@ export default function ExpertHomeDashboard() {
                     {consolidatedRows.filter((row) => row.totalHours > 0 || row.dayTypes.length > 0).map((row) => (
                       <div key={row.date} className="rounded-md border p-2 text-xs">
                         <div className="flex justify-between gap-2 font-medium"><span>{row.date}</span><span>{row.totalHours}h · {row.status}</span></div>
-                        <div className="mt-1 text-muted-foreground">PEO {row.peoHours}h · paralele {Object.values(row.concurrentHoursByProject).reduce((sum, hours) => sum + hours, 0)}h · {row.dayTypes.join(', ') || 'lucrătoare'}</div>
+                        <div className="mt-1 text-muted-foreground">PEO {row.peoHours}h · CPC/Concordia CO {row.cpcLeaveHours}h · paralele {Object.values(row.concurrentHoursByProject).reduce((sum, hours) => sum + hours, 0)}h · {row.dayTypes.join(', ') || 'lucrătoare'}</div>
                         {row.observations.length > 0 && <div className="mt-1 text-amber-700">{row.observations.join(' · ')}</div>}
                       </div>
                     ))}
