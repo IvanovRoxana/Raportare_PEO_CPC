@@ -69,6 +69,49 @@ function relationBadge(relation?: SharedDeliverable) {
   return { label: relation.status || 'Status necunoscut', className: 'border-slate-200 bg-slate-50 text-slate-700' };
 }
 
+type ActivityNewsletterGroup = {
+  key: string;
+  title: string;
+  saCode?: string;
+  projectCode?: string;
+  activities: Activity[];
+  totalHours: number;
+  deliverableCount: number;
+  dateLabels: string[];
+};
+
+function buildNewsletterGroups(activities: Activity[]): ActivityNewsletterGroup[] {
+  const groups = new Map<string, ActivityNewsletterGroup>();
+
+  activities.forEach((activity) => {
+    const title = getActivityTitle(activity);
+    const key = [
+      title.trim().toLowerCase(),
+      activity.saCode || '',
+      activity.projectCode || '',
+    ].join('|');
+    const existing = groups.get(key);
+    const nextActivity: ActivityNewsletterGroup = {
+      key,
+      title,
+      saCode: activity.saCode,
+      projectCode: activity.projectCode,
+      activities: [...(existing?.activities ?? []), activity],
+      totalHours: (existing?.totalHours ?? 0) + (Number(activity.hours) || 0),
+      deliverableCount: (existing?.deliverableCount ?? 0) + getDeliverableCount(activity),
+      dateLabels: [],
+    };
+    nextActivity.dateLabels = [...new Set(nextActivity.activities.map((item) => formatDateRo(item.date)))];
+    groups.set(key, nextActivity);
+  });
+
+  return Array.from(groups.values()).sort((a, b) => {
+    const dateCompare = (a.activities[0]?.date || '').localeCompare(b.activities[0]?.date || '');
+    if (dateCompare !== 0) return dateCompare;
+    return a.title.localeCompare(b.title);
+  });
+}
+
 export function ColleagueActivitiesNewsletter({
   activities,
   experts,
@@ -219,7 +262,12 @@ export function ColleagueActivitiesNewsletter({
           </CardContent>
         </Card>
       ) : (
-        groupedActivities.map(([expertName, expertActivities]) => (
+        groupedActivities.map(([expertName, expertActivities]) => {
+          const activityGroups = buildNewsletterGroups(expertActivities);
+          const totalHours = expertActivities.reduce((sum, activity) => sum + (Number(activity.hours) || 0), 0);
+          const totalDeliverables = expertActivities.reduce((sum, activity) => sum + getDeliverableCount(activity), 0);
+
+          return (
           <Card key={expertName} className="overflow-hidden">
             <CardHeader className="border-b bg-slate-50">
               <CardTitle className="flex flex-wrap items-center gap-3 text-lg">
@@ -229,87 +277,109 @@ export function ColleagueActivitiesNewsletter({
                 <span>{expertName} in {getMonthName(month)}</span>
                 <Badge variant="outline">{expertActivities.length} activitati</Badge>
               </CardTitle>
+              <p className="text-sm leading-6 text-muted-foreground">
+                {expertName} a raportat {totalHours}h in {activityGroups.length} grupuri de lucru,
+                cu {totalDeliverables} livrabile atasate sau reutilizabile.
+              </p>
             </CardHeader>
-            <CardContent className="divide-y p-0">
-              {expertActivities.map((activity) => {
-                const deliverableCount = getDeliverableCount(activity);
-                const relation = getRelationForActivity(activity, selectedExpertId, sharedRelations);
-                const status = relationBadge(relation);
-                const isRegistered = relation?.status === 'registered';
-                const isBusy = activeActivityId === activity.id;
-                const disabled = isActionDisabled || isRegistered || isBusy;
-
-                return (
-                  <article key={activity.id} className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_auto]">
-                    <div className="min-w-0 space-y-3">
+            <CardContent className="space-y-4 p-4">
+              {activityGroups.map((group) => (
+                <section key={group.key} className="rounded-lg border bg-white p-4 shadow-sm">
+                  <div className="flex flex-wrap items-start justify-between gap-3 border-b pb-3">
+                    <div className="min-w-0 space-y-2">
                       <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant="outline" className={status.className}>{status.label}</Badge>
-                        {activity.saCode && <Badge variant="secondary">{activity.saCode}</Badge>}
-                        {deliverableCount > 0 ? (
+                        {group.saCode && <Badge variant="secondary">{group.saCode}</Badge>}
+                        {group.projectCode && <Badge variant="outline">{group.projectCode}</Badge>}
+                        <Badge variant="outline">{group.totalHours}h total</Badge>
+                        {group.deliverableCount > 0 ? (
                           <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-800">
-                            {deliverableCount} livrabile
+                            {group.deliverableCount} livrabile
                           </Badge>
                         ) : (
                           <Badge variant="outline">Fara livrabil atasat</Badge>
                         )}
                       </div>
-                      <div>
-                        <h3 className="text-base font-semibold leading-6 text-slate-950">{getActivityTitle(activity)}</h3>
-                        <div className="mt-1 flex flex-wrap gap-3 text-xs font-medium text-muted-foreground">
-                          <span className="inline-flex items-center gap-1">
-                            <CalendarDays className="h-3.5 w-3.5" />
-                            {formatDateRo(activity.date)}
-                          </span>
-                          <span>{Number(activity.hours) || 0}h declarate</span>
-                          {activity.projectCode && <span>{activity.projectCode}</span>}
-                        </div>
+                      <h3 className="text-base font-semibold leading-6 text-slate-950">{group.title}</h3>
+                      <div className="flex flex-wrap gap-2 text-xs font-medium text-muted-foreground">
+                        <span className="inline-flex items-center gap-1">
+                          <CalendarDays className="h-3.5 w-3.5" />
+                          {group.dateLabels.join(', ')}
+                        </span>
+                        <span>{group.activities.length} inregistrari grupate</span>
                       </div>
-                      <p className="text-sm leading-6 text-slate-700">{getActivitySummary(activity)}</p>
-                      {(activity.deliverables ?? []).length > 0 && (
-                        <div className="flex flex-wrap gap-2">
-                          {(activity.deliverables ?? []).slice(0, 3).map((deliverable) => (
-                            <span
-                              key={deliverable.id}
-                              className="inline-flex max-w-full items-center gap-1 rounded-md border bg-white px-2 py-1 text-xs text-slate-700"
+                    </div>
+                  </div>
+
+                  <div className="mt-3 space-y-3">
+                    {group.activities.map((activity) => {
+                      const deliverableCount = getDeliverableCount(activity);
+                      const relation = getRelationForActivity(activity, selectedExpertId, sharedRelations);
+                      const status = relationBadge(relation);
+                      const isRegistered = relation?.status === 'registered';
+                      const isBusy = activeActivityId === activity.id;
+                      const disabled = isActionDisabled || isRegistered || isBusy;
+
+                      return (
+                        <article key={activity.id} className="grid gap-3 rounded-md bg-slate-50 p-3 lg:grid-cols-[minmax(0,1fr)_auto]">
+                          <div className="min-w-0 space-y-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Badge variant="outline" className={status.className}>{status.label}</Badge>
+                              <span className="text-xs font-medium text-muted-foreground">{formatDateRo(activity.date)}</span>
+                              <span className="text-xs font-semibold text-slate-700">{Number(activity.hours) || 0}h</span>
+                              {deliverableCount > 0 && <span className="text-xs text-muted-foreground">{deliverableCount} livrabile</span>}
+                            </div>
+                            <p className="text-sm leading-6 text-slate-700">{getActivitySummary(activity)}</p>
+                            {(activity.deliverables ?? []).length > 0 && (
+                              <div className="flex flex-wrap gap-2">
+                                {(activity.deliverables ?? []).slice(0, 3).map((deliverable) => (
+                                  <span
+                                    key={deliverable.id}
+                                    className="inline-flex max-w-full items-center gap-1 rounded-md border bg-white px-2 py-1 text-xs text-slate-700"
+                                  >
+                                    <FileText className="h-3.5 w-3.5 shrink-0 text-slate-500" />
+                                    <span className="truncate">{deliverable.declaredTitle || deliverable.fileName || deliverable.originalFileName || 'Livrabil'}</span>
+                                  </span>
+                                ))}
+                                {(activity.deliverables ?? []).length > 3 && (
+                                  <span className="rounded-md border bg-white px-2 py-1 text-xs text-slate-600">
+                                    +{(activity.deliverables ?? []).length - 3}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex flex-wrap gap-2 lg:w-56 lg:flex-col">
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={() => onAddToTimesheet(activity)}
+                              disabled={disabled}
+                              title={isActionDisabled ? actionDisabledReason : undefined}
                             >
-                              <FileText className="h-3.5 w-3.5 shrink-0 text-slate-500" />
-                              <span className="truncate">{deliverable.declaredTitle || deliverable.fileName || deliverable.originalFileName || 'Livrabil'}</span>
-                            </span>
-                          ))}
-                          {(activity.deliverables ?? []).length > 3 && (
-                            <span className="rounded-md border bg-slate-50 px-2 py-1 text-xs text-slate-600">
-                              +{(activity.deliverables ?? []).length - 3}
-                            </span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex flex-col gap-2 lg:w-56">
-                      <Button
-                        type="button"
-                        onClick={() => onAddToTimesheet(activity)}
-                        disabled={disabled}
-                        title={isActionDisabled ? actionDisabledReason : undefined}
-                      >
-                        {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                        Adauga la mine in pontaj
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => onAssociateExisting(activity)}
-                        disabled={disabled}
-                        title={isActionDisabled ? actionDisabledReason : undefined}
-                      >
-                        Asociaza la activitate existenta
-                      </Button>
-                    </div>
-                  </article>
-                );
-              })}
+                              {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                              Adauga la mine
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => onAssociateExisting(activity)}
+                              disabled={disabled}
+                              title={isActionDisabled ? actionDisabledReason : undefined}
+                            >
+                              Asociaza existent
+                            </Button>
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                </section>
+              ))}
             </CardContent>
           </Card>
-        ))
+          );
+        })
       )}
     </section>
   );
