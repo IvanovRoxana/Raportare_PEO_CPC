@@ -992,7 +992,7 @@ export default function ExpertHomeDashboard() {
         eyebrow="Modul Expert"
         title="Pontaj lunar"
         reportingMonth={`${getMonthName(currentMonth)} ${currentYear}`}
-        description={`Centralizeaza activitatile si orele raportate pentru ${getMonthName(currentMonth)} ${currentYear}.`}
+        description={`Centralizeaza activitatile si orele raportate pentru toate proiectele CPC in luna ${getMonthName(currentMonth)} anul ${currentYear}.`}
         contentClassName="max-w-none"
         actions={welcomeExpertCard}
         quickTabs={[
