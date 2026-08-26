@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { ActivityCatalogGovernancePanel } from '@/components/admin/activity-description-editor';
 import {
   Dialog,
   DialogContent,
@@ -37,6 +38,7 @@ import { isActivePmUnlockRequest } from '@/lib/pm-unlock-status';
 import type {
   Activity,
   DashboardComplianceRow,
+  ActivityCatalog,
   DocumentMetadata,
   Expert,
   MonthAccessRequest,
@@ -104,6 +106,14 @@ type PmWorkspaceProps = {
   onRequestDocumentClarification: (document: DocumentMetadata) => void;
   onApprovePmUnlock: (document: DocumentMetadata) => void | Promise<void>;
   onDownloadTotalOpisXls: () => void;
+  fallbackCatalog?: ActivityCatalog[];
+  onEligibilityGovernanceAudit?: (input: {
+    actionType: string;
+    oldValue?: string;
+    newValue?: string;
+    justification: string;
+    source: 'manual' | 'import' | 'eligibility_review';
+  }) => Promise<unknown>;
 };
 
 type WorkspaceView = 'kpi' | 'access' | 'timesheets' | 'reports' | 'deliverables' | 'nonconformities' | 'actions';
@@ -1060,51 +1070,61 @@ function EligibilityRulesActionPanel({
   ];
 
   return (
-    <section className="overflow-hidden rounded-lg border bg-white shadow-sm">
-      <div className="border-b px-4 py-3">
-        <h3 className="font-semibold">Catalog eligibilitate - context Review</h3>
-        <p className="text-xs text-slate-500">Cazurile active pot actualiza regulile; cele auto-rezolvate rămân auditabile fără deblocare PM.</p>
-      </div>
-      {focusDocument ? (
-        <div className="border-b bg-blue-50 px-4 py-3 text-sm">
-          <span className="font-semibold text-[#1f3f75]">Focus:</span>{' '}
-          {focusDocument.declaredTitle || focusDocument.originalFileName}
-          <span className="ml-2 text-xs text-slate-500">{focusDocument.eligibilityCheck?.summary || focusDocument.eligibilityCheck?.status}</span>
+    <div className="space-y-4">
+      <ActivityCatalogGovernancePanel
+        fallbackCatalog={props.fallbackCatalog}
+        mode="pm"
+        activities={props.activities}
+        documents={props.documents}
+        onAudit={props.onEligibilityGovernanceAudit}
+      />
+
+      <section className="overflow-hidden rounded-lg border bg-white shadow-sm">
+        <div className="border-b px-4 py-3">
+          <h3 className="font-semibold">Catalog eligibilitate - context Review</h3>
+          <p className="text-xs text-slate-500">Cazurile active pot actualiza regulile; cele auto-rezolvate rămân auditabile fără deblocare PM.</p>
         </div>
-      ) : null}
-      <div className="divide-y">
-        {rows.length === 0 ? (
-          <div className="p-4 text-sm text-slate-500">Nu există cazuri cu cerere PM unlock pentru catalog.</div>
-        ) : rows.map(({ document, status }) => (
-          <div key={document.id} className="flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between">
-            <div>
-              <div className="font-semibold text-[#1f3f75]">{document.declaredTitle || document.originalFileName}</div>
-              <div className="mt-1 text-xs text-slate-500">
-                {status} · {document.eligibilityCheck?.checkedSaCode || document.eligibilityCheck?.checkedActivityName || 'SA neidentificată'}
-              </div>
-              <div className="mt-2 text-xs text-slate-600">{document.eligibilityCheck?.summary || 'Fără sumar AI.'}</div>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => props.onOpenDossierById(document.uploadedByExpertId, {
-                  activityId: document.sourceActivityId,
-                  documentId: document.id,
-                  issueType: 'eligibility_rules',
-                })}
-              >
-                <FileText className="h-4 w-4" />
-                Review
-              </Button>
-              <Badge variant="outline" className={status === 'Blocaj activ' ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}>
-                {status}
-              </Badge>
-            </div>
+        {focusDocument ? (
+          <div className="border-b bg-blue-50 px-4 py-3 text-sm">
+            <span className="font-semibold text-[#1f3f75]">Focus:</span>{' '}
+            {focusDocument.declaredTitle || focusDocument.originalFileName}
+            <span className="ml-2 text-xs text-slate-500">{focusDocument.eligibilityCheck?.summary || focusDocument.eligibilityCheck?.status}</span>
           </div>
-        ))}
-      </div>
-    </section>
+        ) : null}
+        <div className="divide-y">
+          {rows.length === 0 ? (
+            <div className="p-4 text-sm text-slate-500">Nu există cazuri cu cerere PM unlock pentru catalog.</div>
+          ) : rows.map(({ document, status }) => (
+            <div key={document.id} className="flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between">
+              <div>
+                <div className="font-semibold text-[#1f3f75]">{document.declaredTitle || document.originalFileName}</div>
+                <div className="mt-1 text-xs text-slate-500">
+                  {status} · {document.eligibilityCheck?.checkedSaCode || document.eligibilityCheck?.checkedActivityName || 'SA neidentificată'}
+                </div>
+                <div className="mt-2 text-xs text-slate-600">{document.eligibilityCheck?.summary || 'Fără sumar AI.'}</div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => props.onOpenDossierById(document.uploadedByExpertId, {
+                    activityId: document.sourceActivityId,
+                    documentId: document.id,
+                    issueType: 'eligibility_rules',
+                  })}
+                >
+                  <FileText className="h-4 w-4" />
+                  Review
+                </Button>
+                <Badge variant="outline" className={status === 'Blocaj activ' ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}>
+                  {status}
+                </Badge>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
   );
 }
 

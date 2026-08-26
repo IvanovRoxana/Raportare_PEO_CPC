@@ -1133,6 +1133,8 @@ export default function PMDashboard() {
         onRequestDocumentClarification={requestDocumentClarification}
         onApprovePmUnlock={approvePmUnlockRequest}
         onDownloadTotalOpisXls={handleDownloadTotalOpisXls}
+        fallbackCatalog={fallbackActivityCatalog as ActivityCatalog[]}
+        onEligibilityGovernanceAudit={recordEligibilityGovernanceAudit}
       />
 
       <div className="hidden">
