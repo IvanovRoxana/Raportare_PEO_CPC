@@ -1082,6 +1082,17 @@ function ExpertDashboardContent() {
     if (reportStatus?.status === 'approved') return;
     if (activitySaveInFlightRef.current || isSaving) return;
 
+    const closeActivityFormAfterConfirmedSave = () => {
+      setSelectedDates([]);
+      setSelectedHours({});
+      setEditingActivity(null);
+      setSharedActivityPrefill(null);
+      setActivityResolutionHint(null);
+      setPendingGroupedActivitySave(null);
+      setShowForm(false);
+      setDraftSessionId((current) => current + 1);
+    };
+
     if (editingActivity && !editScope && !isClarificationScopedAccess) {
       const groupMembers = getActivityGroupMembers(editingActivity, activities);
       if (groupMembers.length > 1) {
@@ -1216,11 +1227,7 @@ function ExpertDashboardContent() {
         });
         await refreshActivities();
         setActivitySaveNotice('Activitatea a fost salvata. Modificarile sunt vizibile in pontaj.');
-        setShowForm(false);
-        setEditingActivity(null);
-        setActivityResolutionHint(null);
-        setSelectedDates([]);
-        setSelectedHours({});
+        closeActivityFormAfterConfirmedSave();
         return;
       }
 
@@ -1249,11 +1256,7 @@ function ExpertDashboardContent() {
         });
         await refreshLeaveEntries();
         setActivitySaveNotice('Concediul a fost salvat. Modificarile sunt vizibile in pontaj.');
-        setShowForm(false);
-        setEditingActivity(null);
-        setActivityResolutionHint(null);
-        setSelectedDates([]);
-        setSelectedHours({});
+        closeActivityFormAfterConfirmedSave();
         return;
       }
 
@@ -1359,12 +1362,7 @@ function ExpertDashboardContent() {
           ? 'Modificarile au fost salvate. Pontajul a fost actualizat.'
           : 'Activitatea a fost salvata. Pontajul a fost actualizat.',
       );
-      setShowForm(false);
-      setEditingActivity(null);
-      setSharedActivityPrefill(null);
-      setActivityResolutionHint(null);
-      setSelectedDates([]);
-      setSelectedHours({});
+      closeActivityFormAfterConfirmedSave();
       void saveAutomaticReportingWorkBlock({
         savedActivities: savedActivitiesForWorkBlock,
         deletedActivityIds: deletedActivityIdsForWorkBlock,
