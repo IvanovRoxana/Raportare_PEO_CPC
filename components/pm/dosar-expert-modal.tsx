@@ -6,8 +6,23 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { useReportingWorkBlockBundles } from '@/hooks/use-backend-data';
+import {
+  useActivityCatalog,
+  useActivityMutations,
+  useDocumentMutations,
+  useReportingWorkBlockBundles,
+} from '@/hooks/use-backend-data';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   Building2,
   CheckCircle,
@@ -33,7 +48,10 @@ import type {
   ReportStatus,
   VerificationData,
   PmClarificationThread,
+  ActivityCatalog,
 } from '@/lib/types';
+import fallbackActivityCatalog from '@/data/import/activity-catalog.json';
+import { mergeActivityCatalogs } from '@/lib/activity-catalog-merge';
 import { generateOpisDocument, downloadOpis } from '@/lib/opis-generator';
 import { getSecureDocumentUrl } from '@/lib/document-retrieval';
 import { getDocumentAuditTitle } from '@/lib/document-sharing';
@@ -149,6 +167,25 @@ function getEligibilityBadgeClass(status?: string) {
   return 'border-slate-300 bg-slate-50 text-slate-700';
 }
 
+function splitCatalogDeliverables(value?: string | null) {
+  return (value || '')
+    .split(/\s*\|\s*|\r?\n|\s*;\s*/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function getFileExtension(fileName?: string) {
+  const match = fileName?.toLowerCase().match(/\.([a-z0-9]+)$/);
+  return match?.[1] || '';
+}
+
+function canEmbedPreview(fileName?: string, mimeType?: string) {
+  const extension = getFileExtension(fileName);
+  return mimeType?.includes('pdf')
+    || mimeType?.startsWith('image/')
+    || ['pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'txt'].includes(extension);
+}
+
 function GdprPmSummary({ activity }: { activity: Activity }) {
   const template = getGdprTemplate(activity.gdprTemplateCode);
   const meta = parseGdprMetaJson(activity.gdprMetaJson);
@@ -232,6 +269,16 @@ export function DosarExpertModal({
   const [inlinePreview, setInlinePreview] = useState<{ url: string; fileName: string; objectUrl?: string } | null>(null);
   const [inlinePreviewLoading, setInlinePreviewLoading] = useState(false);
   const [locallyApprovedActivityIds, setLocallyApprovedActivityIds] = useState<Set<string>>(new Set());
+  const [selectedEligibilityCategories, setSelectedEligibilityCategories] = useState<string[]>([]);
+  const [eligibilitySaCode, setEligibilitySaCode] = useState('');
+  const [eligibilityCatalogActivityId, setEligibilityCatalogActivityId] = useState('');
+  const [eligibilityDeliverableType, setEligibilityDeliverableType] = useState('');
+  const [eligibilityNotes, setEligibilityNotes] = useState('');
+  const [isSavingEligibilityAssignment, setIsSavingEligibilityAssignment] = useState(false);
+  const [eligibilityAssignmentMessage, setEligibilityAssignmentMessage] = useState<string | null>(null);
+  const { catalog: backendActivityCatalog } = useActivityCatalog();
+  const { update: updateActivity } = useActivityMutations();
+  const { updateEligibilityCheck: updateDocumentEligibilityCheck } = useDocumentMutations();
   const {
     bundles: persistedRaWorkBlockBundles,
     isLoading: isLoadingRaWorkBlockBundles,
@@ -381,6 +428,7 @@ export function DosarExpertModal({
     return dedupeDeliverablesBySignature(activities.flatMap(act => 
       (act.deliverables || []).map((d): DossierDeliverable => ({
         ...d,
+        activityId: d.activityId || act.id,
         activityDate: act.date,
         activityTitle: act.title,
         activityType: act.activityType,
@@ -397,6 +445,61 @@ export function DosarExpertModal({
     focusedDocument?.eligibilityCheck,
     focusedDeliverable?.eligibilityCheck,
   );
+  const focusedSourceActivity = useMemo(() => {
+    if (focusedDeliverable?.activityId) {
+      const directActivity = activities.find((activity) => activity.id === focusedDeliverable.activityId);
+      if (directActivity) return directActivity;
+    }
+    if (focusedDocument?.sourceActivityId) {
+      const documentActivity = activities.find((activity) => activity.id === focusedDocument.sourceActivityId);
+      if (documentActivity) return documentActivity;
+    }
+    return activities.find((activity) => (activity.deliverables || []).some((deliverable) => (
+      deliverable.documentId === focusedDocument?.id
+      || deliverable.id === focusedDocument?.id
+      || deliverable.id === focusedDeliverable?.id
+    ))) || null;
+  }, [activities, focusedDeliverable?.activityId, focusedDeliverable?.id, focusedDocument?.id, focusedDocument?.sourceActivityId]);
+  const activityCatalog = useMemo(() => {
+    return mergeActivityCatalogs(fallbackActivityCatalog as ActivityCatalog[], backendActivityCatalog);
+  }, [backendActivityCatalog]);
+  const categoryOptions = useMemo(() => {
+    return Array.from(new Set(activityCatalog.map((item) => item.category).filter(Boolean))).sort();
+  }, [activityCatalog]);
+  const filteredEligibilityCatalog = useMemo(() => {
+    return activityCatalog.filter((item) => (
+      item.isActive !== false
+      && (selectedEligibilityCategories.length === 0 || selectedEligibilityCategories.includes(item.category))
+    ));
+  }, [activityCatalog, selectedEligibilityCategories]);
+  const eligibilitySaOptions = useMemo(() => {
+    return Array.from(new Set(filteredEligibilityCatalog.map((item) => item.saCode).filter(Boolean))).sort();
+  }, [filteredEligibilityCatalog]);
+  const eligibilityActivityOptions = useMemo(() => {
+    return filteredEligibilityCatalog
+      .filter((item) => !eligibilitySaCode || item.saCode === eligibilitySaCode)
+      .sort((a, b) => (a.activityNumber || 0) - (b.activityNumber || 0) || a.activityName.localeCompare(b.activityName));
+  }, [eligibilitySaCode, filteredEligibilityCatalog]);
+  const selectedEligibilityCatalogActivity = useMemo(() => {
+    return activityCatalog.find((item) => item.id === eligibilityCatalogActivityId) || null;
+  }, [activityCatalog, eligibilityCatalogActivityId]);
+  const eligibilityDeliverableOptions = useMemo(() => {
+    return splitCatalogDeliverables(selectedEligibilityCatalogActivity?.deliverables);
+  }, [selectedEligibilityCatalogActivity?.deliverables]);
+  const focusedPreviewFileName = inlinePreview?.fileName
+    || focusedDocument?.originalFileName
+    || (focusedDeliverable ? getDeliverableFileName(focusedDeliverable) : 'Fisier');
+  const focusedPreviewText = (
+    focusedDocument?.docText
+    || focusedDocument?.firstPageText
+    || focusedDeliverable?.docText
+    || focusedDeliverable?.firstPageText
+    || ''
+  ).trim();
+  const shouldEmbedFocusedPreview = canEmbedPreview(
+    focusedPreviewFileName,
+    focusedDocument?.mimeType || focusedDeliverable?.fileType,
+  );
   const isFocusedEligibilityDossier = Boolean(
     initialFocus?.documentId
     && (
@@ -406,6 +509,48 @@ export function DosarExpertModal({
       || initialFocus.issueType === 'eligibility_rules'
     )
   );
+
+  useEffect(() => {
+    if (!open || !isFocusedEligibilityDossier) return;
+    const initialCatalogId = focusedEligibilityCheck?.checkedActivityId
+      || focusedSourceActivity?.catalogActivityId
+      || '';
+    const initialCatalogActivity = initialCatalogId
+      ? activityCatalog.find((item) => item.id === initialCatalogId)
+      : null;
+    const initialSaCode = focusedEligibilityCheck?.checkedSaCode
+      || initialCatalogActivity?.saCode
+      || focusedSourceActivity?.saCode
+      || focusedDeliverable?.saCode
+      || focusedDocument?.saCode
+      || '';
+    const initialDeliverableType = focusedEligibilityCheck?.checkedDeliverableType
+      || focusedDocument?.deliverableType
+      || focusedDeliverable?.deliverableType
+      || '';
+    const initialCategory = initialCatalogActivity?.category
+      || focusedDeliverable?.category
+      || '';
+
+    setEligibilitySaCode(initialSaCode);
+    setEligibilityCatalogActivityId(initialCatalogId);
+    setEligibilityDeliverableType(initialDeliverableType);
+    setEligibilityNotes('');
+    setEligibilityAssignmentMessage(null);
+    setSelectedEligibilityCategories(initialCategory ? [initialCategory] : []);
+  }, [
+    activityCatalog,
+    focusedDeliverable?.category,
+    focusedDeliverable?.deliverableType,
+    focusedDeliverable?.saCode,
+    focusedDocument?.deliverableType,
+    focusedDocument?.saCode,
+    focusedEligibilityCheck,
+    focusedSourceActivity?.catalogActivityId,
+    focusedSourceActivity?.saCode,
+    isFocusedEligibilityDossier,
+    open,
+  ]);
 
   const handleDownloadOpis = async () => {
     if (!expert) return;
@@ -469,6 +614,94 @@ export function DosarExpertModal({
       return { url: result.url, fileName: result.fileName, shouldRevoke: false };
     }
     throw new Error('Fisier indisponibil.');
+  };
+
+  const saveEligibilityAssignment = async () => {
+    if (!focusedSourceActivity || !focusedDocument) {
+      setEligibilityAssignmentMessage('Nu am gasit activitatea sursa pentru acest livrabil.');
+      return;
+    }
+    if (!selectedEligibilityCatalogActivity || !eligibilityDeliverableType.trim()) {
+      setEligibilityAssignmentMessage('Alege activitatea din catalog si tipul de livrabil.');
+      return;
+    }
+
+    setIsSavingEligibilityAssignment(true);
+    setEligibilityAssignmentMessage(null);
+    try {
+      const now = new Date().toISOString();
+      const checkedDeliverableType = eligibilityDeliverableType.trim();
+      const nextCheck: FocusedEligibilityCheck = {
+        ...(focusedEligibilityCheck || {
+          status: 'eligibil_cu_observatii',
+          score: 75,
+          summary: '',
+          checks: [],
+          missingElements: [],
+          recommendations: [],
+          riskFlags: [],
+        }),
+        status: 'eligibil_cu_observatii',
+        score: Math.max(Number(focusedEligibilityCheck?.score) || 0, 75),
+        summary: eligibilityNotes.trim()
+          || `Reincadrare PM: ${selectedEligibilityCatalogActivity.saCode} - ${selectedEligibilityCatalogActivity.activityName}; livrabil: ${checkedDeliverableType}.`,
+        checkedAt: now,
+        checkedBy: 'PM',
+        checkedActivityId: selectedEligibilityCatalogActivity.id,
+        checkedSaCode: selectedEligibilityCatalogActivity.saCode,
+        checkedActivityName: selectedEligibilityCatalogActivity.activityName,
+        checkedDeliverableType,
+        suggestedSettings: {
+          ...(focusedEligibilityCheck?.suggestedSettings || {
+            confidence: 'high',
+            reason: 'Reincadrare manuala PM.',
+            changes: ['activity', 'deliverableType'],
+          }),
+          saCode: selectedEligibilityCatalogActivity.saCode,
+          activityName: selectedEligibilityCatalogActivity.activityName,
+          selectedActivityId: selectedEligibilityCatalogActivity.id,
+          deliverableType: checkedDeliverableType,
+          confidence: 'high',
+          reason: eligibilityNotes.trim() || 'Reincadrare manuala PM.',
+          changes: ['activity', 'deliverableType'],
+        },
+        pmUnlockResolvedByCorrection: true,
+        pmUnlockResolvedAt: now,
+      };
+      const matchesFocusedDeliverable = (deliverable: Deliverable) => (
+        deliverable.documentId === focusedDocument.id
+        || deliverable.id === focusedDocument.id
+        || deliverable.id === focusedDeliverable?.id
+        || Boolean(focusedDocument.s3Key && deliverable.s3Key === focusedDocument.s3Key)
+        || Boolean(focusedDocument.fileHash && deliverable.fileHash === focusedDocument.fileHash)
+        || Boolean(focusedDocument.firstPageTextHash && deliverable.firstPageTextHash === focusedDocument.firstPageTextHash)
+        || Boolean(focusedDocument.contentFingerprint && deliverable.contentFingerprint === focusedDocument.contentFingerprint)
+      );
+
+      await updateActivity(focusedSourceActivity.id, {
+        saCode: selectedEligibilityCatalogActivity.saCode,
+        catalogActivityId: selectedEligibilityCatalogActivity.id,
+        activityType: selectedEligibilityCatalogActivity.activityName,
+        title: selectedEligibilityCatalogActivity.activityName,
+        deliverables: (focusedSourceActivity.deliverables || []).map((deliverable) => (
+          matchesFocusedDeliverable(deliverable)
+            ? {
+                ...deliverable,
+                saCode: selectedEligibilityCatalogActivity.saCode,
+                category: selectedEligibilityCatalogActivity.category,
+                deliverableType: checkedDeliverableType,
+                eligibilityCheck: nextCheck,
+              }
+            : deliverable
+        )),
+      });
+      await updateDocumentEligibilityCheck(focusedDocument.id, nextCheck);
+      setEligibilityAssignmentMessage('Reincadrarea a fost salvata in activitatea sursa si in metadatele documentului.');
+    } catch (error) {
+      setEligibilityAssignmentMessage(error instanceof Error ? error.message : 'Reincadrarea nu a putut fi salvata.');
+    } finally {
+      setIsSavingEligibilityAssignment(false);
+    }
   };
 
   useEffect(() => {
@@ -872,6 +1105,138 @@ export function DosarExpertModal({
                   </CardContent>
                 </Card>
 
+                {canManagePmReview && (
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm">Reincadrare PM</CardTitle>
+                      <CardDescription className="text-xs">
+                        Modifica incadrarea si salveaza direct in activitatea sursa.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-3 text-xs">
+                      <div className="space-y-2">
+                        <Label className="text-xs">Categorii expert</Label>
+                        <div className="flex flex-wrap gap-2">
+                          {categoryOptions.map((category) => {
+                            const checked = selectedEligibilityCategories.includes(category);
+                            return (
+                              <Label key={category} className="rounded-md border bg-white px-2 py-1 text-xs">
+                                <Checkbox
+                                  checked={checked}
+                                  onCheckedChange={(value) => {
+                                    setSelectedEligibilityCategories((current) => (
+                                      value
+                                        ? Array.from(new Set([...current, category]))
+                                        : current.filter((item) => item !== category)
+                                    ));
+                                    setEligibilityCatalogActivityId('');
+                                    setEligibilityDeliverableType('');
+                                  }}
+                                />
+                                {category.toUpperCase()}
+                              </Label>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <div className="space-y-1.5">
+                          <Label htmlFor="pm-eligibility-sa" className="text-xs">SA</Label>
+                          <Select
+                            value={eligibilitySaCode || undefined}
+                            onValueChange={(value) => {
+                              setEligibilitySaCode(value);
+                              setEligibilityCatalogActivityId('');
+                              setEligibilityDeliverableType('');
+                            }}
+                          >
+                            <SelectTrigger id="pm-eligibility-sa" className="h-8 text-xs">
+                              <SelectValue placeholder="Alege SA" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {eligibilitySaOptions.map((saCode) => (
+                                <SelectItem key={saCode} value={saCode}>{saCode}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <Label htmlFor="pm-eligibility-deliverable-type" className="text-xs">Tip livrabil</Label>
+                          <Select value={eligibilityDeliverableType || undefined} onValueChange={setEligibilityDeliverableType}>
+                            <SelectTrigger id="pm-eligibility-deliverable-type" className="h-8 text-xs">
+                              <SelectValue placeholder="Alege livrabil" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {eligibilityDeliverableOptions.map((deliverableType) => (
+                                <SelectItem key={deliverableType} value={deliverableType}>{deliverableType}</SelectItem>
+                              ))}
+                              {eligibilityDeliverableType && !eligibilityDeliverableOptions.includes(eligibilityDeliverableType) ? (
+                                <SelectItem value={eligibilityDeliverableType}>{eligibilityDeliverableType}</SelectItem>
+                              ) : null}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label htmlFor="pm-eligibility-activity" className="text-xs">Activitate catalog</Label>
+                        <Select
+                          value={eligibilityCatalogActivityId || undefined}
+                          onValueChange={(value) => {
+                            const catalogActivity = activityCatalog.find((item) => item.id === value);
+                            setEligibilityCatalogActivityId(value);
+                            setEligibilitySaCode(catalogActivity?.saCode || eligibilitySaCode);
+                            const firstDeliverable = splitCatalogDeliverables(catalogActivity?.deliverables)[0];
+                            setEligibilityDeliverableType(firstDeliverable || eligibilityDeliverableType);
+                          }}
+                        >
+                          <SelectTrigger id="pm-eligibility-activity" className="h-8 text-xs">
+                            <SelectValue placeholder="Alege activitatea" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {eligibilityActivityOptions.map((item) => (
+                              <SelectItem key={item.id} value={item.id}>
+                                {item.saCode} · {item.activityNumber || '-'} · {item.activityName}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label htmlFor="pm-eligibility-note" className="text-xs">Nota PM</Label>
+                        <Input
+                          id="pm-eligibility-note"
+                          value={eligibilityNotes}
+                          onChange={(event) => setEligibilityNotes(event.target.value)}
+                          placeholder="Motivul reincadrarii"
+                          className="h-8 text-xs"
+                        />
+                      </div>
+
+                      {eligibilityAssignmentMessage && (
+                        <p className="rounded-md border bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                          {eligibilityAssignmentMessage}
+                        </p>
+                      )}
+
+                      <div className="flex justify-end">
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => void saveEligibilityAssignment()}
+                          disabled={isSavingEligibilityAssignment || !selectedEligibilityCatalogActivity || !eligibilityDeliverableType.trim()}
+                        >
+                          {isSavingEligibilityAssignment ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                          Salveaza reincadrare
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
                 <Card>
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm">Verificare AI</CardTitle>
@@ -925,7 +1290,7 @@ export function DosarExpertModal({
               <div className="flex items-center justify-between border-b px-4 py-3">
                 <div>
                   <h3 className="text-sm font-semibold">Preview livrabil</h3>
-                  <p className="text-xs text-slate-500">{inlinePreview?.fileName || focusedDocument?.originalFileName || 'Fișier'}</p>
+                  <p className="text-xs text-slate-500">{focusedPreviewFileName}</p>
                 </div>
                 {inlinePreview ? (
                   <Button size="sm" variant="outline" onClick={() => window.open(inlinePreview.url, '_blank')}>
@@ -940,8 +1305,17 @@ export function DosarExpertModal({
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Se încarcă preview...
                   </div>
-                ) : inlinePreview ? (
+                ) : inlinePreview && shouldEmbedFocusedPreview ? (
                   <iframe title="Preview livrabil" src={inlinePreview.url} className="h-full w-full border-0 bg-white" />
+                ) : focusedPreviewText ? (
+                  <ScrollArea className="h-full bg-white">
+                    <pre className="whitespace-pre-wrap p-4 text-xs leading-5 text-slate-700">{focusedPreviewText}</pre>
+                  </ScrollArea>
+                ) : inlinePreview ? (
+                  <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center text-sm text-slate-500">
+                    <FileText className="h-8 w-8 text-slate-400" />
+                    <p>Preview intern indisponibil pentru acest format. Deschide fisierul in tab nou.</p>
+                  </div>
                 ) : (
                   <div className="flex h-full items-center justify-center p-6 text-center text-sm text-slate-500">
                     {documentError || 'Preview indisponibil pentru acest fișier.'}
