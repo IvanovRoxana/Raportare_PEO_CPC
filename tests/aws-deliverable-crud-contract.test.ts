@@ -116,6 +116,22 @@ test('createBatch trateaza throttling-ul inainte si dupa prima scriere fara retr
   assert.doesNotMatch(createBatchSource, /setTimeout|retry|Retry|while\s*\(/);
 });
 
+test('createActivityUnchecked pastreaza activitatea creata daca sincronizarea copiilor esueaza', () => {
+  const createUncheckedSource = getActivityMethodSource(
+    'async function createActivityUnchecked(',
+    'export const expertsService',
+  );
+
+  assert.ok(
+    createUncheckedSource.indexOf('const activityId = created.data.id')
+      < createUncheckedSource.indexOf('await syncSharedActivitySuggestions(client, activity, activityId)'),
+    'sincronizarea copiilor trebuie sa ruleze dupa crearea activitatii',
+  );
+  assert.match(createUncheckedSource, /assertNoErrors\(result, 'AWS create deliverable'\)/);
+  assert.doesNotMatch(createUncheckedSource, /Activity\.delete\(\{ id: activityId \}\)/);
+  assert.doesNotMatch(createUncheckedSource, /rollback activity after child sync failure/);
+});
+
 test('verificarea ConditionalCheckFailedException nu apeleaza includes pe JSON.stringify(undefined)', () => {
   assert.match(
     awsStoreSource,

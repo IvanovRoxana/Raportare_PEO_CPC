@@ -489,6 +489,7 @@ export function ActivityForm({
   showObservationRail = true,
 }: ActivityFormProps) {
   const isWorkspaceLayout = layout === 'workspace';
+  const isDeliverableSaveWarning = Boolean(saveError?.startsWith('Activitatea a fost salvata, dar livrabilul'));
   const eligibilityCheckEnabled = isDeliverableEligibilityCheckEnabledClient();
   // Fetch activity catalog from database
   const { catalog, isLoading: catalogLoading } = useActivityCatalog();
@@ -4444,10 +4445,14 @@ export function ActivityForm({
         {/* Actions */}
         <div className={isWorkspaceLayout ? 'sticky bottom-0 z-10 -mx-4 -mb-4 flex flex-col gap-3 border-t bg-white/95 px-4 py-3 shadow-[0_-10px_24px_rgba(15,23,42,0.08)] backdrop-blur sm:-mx-6 sm:-mb-6 sm:flex-row sm:items-center sm:justify-between sm:px-6' : 'flex justify-end gap-2 pt-4 border-t'}>
           {isWorkspaceLayout && saveError && !isSaving && !isSubmittingActivity ? (
-            <div className="flex min-w-0 items-start gap-2 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-900 sm:max-w-[min(720px,calc(100%-220px))]">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
+            <div className={`flex min-w-0 items-start gap-2 rounded-md border px-3 py-2 text-sm sm:max-w-[min(720px,calc(100%-220px))] ${
+              isDeliverableSaveWarning
+                ? 'border-amber-300 bg-amber-50 text-amber-950'
+                : 'border-red-300 bg-red-50 text-red-900'
+            }`}>
+              <AlertTriangle className={`mt-0.5 h-4 w-4 shrink-0 ${isDeliverableSaveWarning ? 'text-amber-600' : 'text-red-600'}`} />
               <div className="min-w-0">
-                <span className="font-medium">Nu s-a salvat: </span>
+                <span className="font-medium">{isDeliverableSaveWarning ? 'Livrabil neincarcat: ' : 'Nu s-a salvat: '}</span>
                 <span>{saveError}</span>
               </div>
             </div>

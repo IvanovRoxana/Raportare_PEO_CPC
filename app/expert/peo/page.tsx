@@ -1110,14 +1110,21 @@ function ExpertDashboardContent() {
     const hasDeliverablesToSave = newActivities.some((activity) => (activity.deliverables ?? []).length > 0);
     const formatActivitySaveError = (error: unknown) => {
       const rawMessage = error instanceof Error ? error.message : String(error || '');
+      const formatCause = (message: string) => {
+        const cause = message
+          .replace(/^AWS create deliverable failed:\s*/i, '')
+          .replace(/^Error:\s*/i, '')
+          .trim();
+        return cause ? ` Cauza raportata: ${cause}` : '';
+      };
       if (rawMessage.includes("Cannot read properties of undefined (reading 'includes')")) {
         return hasDeliverablesToSave
-          ? 'Activitatea a fost salvata, dar livrabilul nu a putut fi atasat din cauza unor date incomplete trimise catre AWS. Reincarca pagina si adauga livrabilul din nou pe activitatea salvata.'
+          ? 'Activitatea a fost salvata, dar livrabilul nu a putut fi atasat din cauza unor date incomplete trimise catre AWS. Editeaza activitatea salvata si reincarca livrabilul.'
           : 'Activitatea nu a putut fi salvata din cauza unor date incomplete. Reincarca pagina si incearca din nou.';
       }
 
       if (rawMessage.toLowerCase().includes('aws create deliverable')) {
-        return 'Activitatea a fost salvata, dar AWS nu a acceptat livrabilul. Verifica fisierul incarcat si incearca sa il atasezi din nou pe activitatea salvata.';
+        return `Activitatea a fost salvata, dar livrabilul nu a putut fi incarcat. Editeaza activitatea salvata si reincarca livrabilul.${formatCause(rawMessage)}`;
       }
 
       return rawMessage || 'Activitatea nu a fost creata. Verifica norma disponibila sau contacteaza administratorul.';
