@@ -71,6 +71,12 @@ test('formularul salveaza activitatea cu livrabil pending cand uploadul S3 esuea
   assert.doesNotMatch(activityFormSource, /Activitatea nu a fost salvata pentru ca livrabilul nu a putut fi incarcat/);
 });
 
+test('formularul afiseaza distinct erorile in care activitatea s-a salvat dar livrabilul nu', () => {
+  assert.match(activityFormSource, /const isDeliverableSaveWarning = Boolean\(saveError\?\.startsWith\('Activitatea a fost salvata, dar livrabilul'\)\)/);
+  assert.match(activityFormSource, /Livrabil neincarcat: /);
+  assert.match(activityFormSource, /border-amber-300 bg-amber-50 text-amber-950/);
+});
+
 test('verificarea eligibilitatii livrabilului ramane consultativa la salvarea activitatii', () => {
   const saveBlockersStart = activityFormSource.indexOf('const saveBlockers = [');
   const saveBlockersEnd = activityFormSource.indexOf('];', saveBlockersStart);
@@ -565,4 +571,11 @@ test('schema AWS are fundatia pentru ruleseturi AI versionate', () => {
   assert.match(amplifyDataResourceSource, /previousRulesJson: a\.json\(\)/);
   assert.match(amplifyDataResourceSource, /newRulesJson: a\.json\(\)/);
   assert.match(amplifyDataResourceSource, /allow\.groups\(\["pm", "admin"\]\)\.to\(\["create", "read", "update", "delete"\]\)/);
+});
+
+test('ruta de eligibilitate foloseste rulesetul activ cand requestul nu trimite ruleVersionId', () => {
+  assert.match(eligibilityRouteSource, /getActiveAiEligibilityRuleset/);
+  assert.match(eligibilityRouteSource, /effectiveRuleVersionId/);
+  assert.match(eligibilityRouteSource, /activeRulesetContext/);
+  assert.match(eligibilityRouteSource, /ruleVersionId: effectiveRuleVersionId/);
 });

@@ -106,6 +106,26 @@ export interface LeaveEntry {
   updatedAt?: string;
 }
 
+export type MonthAccessRequestStatus = 'pending' | 'approved' | 'rejected' | 'closed' | string;
+
+export interface MonthAccessRequest {
+  id: string;
+  expertId: string;
+  expertName?: string;
+  year: number;
+  month: number;
+  status: MonthAccessRequestStatus;
+  requestedAt?: string;
+  requestedBy?: string;
+  resolvedAt?: string;
+  resolvedBy?: string;
+  closedAt?: string;
+  closedBy?: string;
+  notes?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface Activity {
   id: string;
   date: string;
@@ -165,6 +185,14 @@ export type AuditActionType =
   | 'day_unlocked'
   | 'activity_admin_created'
   | 'activity_admin_updated'
+  | 'activity_catalog_created'
+  | 'activity_catalog_updated'
+  | 'activity_catalog_inactivated'
+  | 'activity_catalog_reactivated'
+  | 'activity_catalog_imported'
+  | 'ai_eligibility_ruleset_updated'
+  | 'ai_eligibility_ruleset_published'
+  | 'ai_eligibility_ruleset_rollback'
   | 'pm_hours_generated'
   | 'pm_hours_regenerated'
   | 'expert_deactivated'

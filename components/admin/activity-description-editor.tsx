@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, FileText, Loader2, Plus, RotateCcw, Save, SearchIcon, Trash2 } from 'lucide-react';
+import { CheckCircle2, Download, FileText, Loader2, Plus, RotateCcw, Save, SearchIcon, Trash2, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -9,6 +9,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { useActivityCatalog, useActivityCatalogMutations } from '@/hooks/use-backend-data';
 import type { ActivityCatalog } from '@/lib/types';
 import { activityCatalogMergeKey, mergeActivityCatalogs } from '@/lib/activity-catalog-merge';
+import {
+  buildActivityCatalogImportPlan,
+  exportActivityCatalogCsv,
+  type ActivityCatalogImportPlan,
+} from '@/lib/activity-catalog-governance';
 import { GDPR_TEMPLATES, resolveGdprTemplateCodeForCatalogActivity } from '@/lib/gdpr-reporting';
 import {
   isCatalogDeliverableNotApplicable,
@@ -22,8 +27,23 @@ const FALLBACK_CATEGORIES = ['ap', 'com', 'gdpr', 'gt', 'pm'];
 
 type ActivityCatalogDraft = Omit<ActivityCatalog, 'id' | 'createdAt'>;
 
-interface ActivityDescriptionEditorProps {
+interface ActivityCatalogGovernancePanelProps {
   fallbackCatalog?: ActivityCatalog[];
+  mode?: 'admin' | 'pm';
+  activities?: Array<{ id: string; catalogActivityId?: string; saCode?: string; title?: string; activityType?: string }>;
+  documents?: Array<{
+    id: string;
+    originalFileName?: string;
+    eligibilityCheck?: { status?: string; checkedActivityId?: string; pmUnlockRequested?: boolean; pmUnlockApproved?: boolean } | null;
+    sourceActivityId?: string;
+  }>;
+  onAudit?: (input: {
+    actionType: string;
+    oldValue?: string;
+    newValue?: string;
+    justification: string;
+    source: 'manual' | 'import' | 'eligibility_review';
+  }) => Promise<unknown>;
 }
 
 function matchesCatalogSearch(item: ActivityCatalog, query: string) {
@@ -93,7 +113,13 @@ function areDraftsEqual(left: ActivityCatalogDraft, right: ActivityCatalogDraft)
   return JSON.stringify(normalizeDraft(left)) === JSON.stringify(normalizeDraft(right));
 }
 
-export function ActivityDescriptionEditor({ fallbackCatalog = [] }: ActivityDescriptionEditorProps) {
+export function ActivityCatalogGovernancePanel({
+  fallbackCatalog = [],
+  mode = 'admin',
+  activities = [],
+  documents = [],
+  onAudit,
+}: ActivityCatalogGovernancePanelProps) {
   const { catalog: backendCatalog, isLoading, error } = useActivityCatalog();
   const { create, update, remove } = useActivityCatalogMutations();
   const [localCatalog, setLocalCatalog] = useState<ActivityCatalog[]>([]);
@@ -106,6 +132,9 @@ export function ActivityDescriptionEditor({ fallbackCatalog = [] }: ActivityDesc
   const [draft, setDraft] = useState<ActivityCatalogDraft>(() => draftFromActivity(null));
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [importPlan, setImportPlan] = useState<ActivityCatalogImportPlan | null>(null);
+  const [importMessage, setImportMessage] = useState<string | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
 
   const persistedCatalogKeys = useMemo(() => {
     return new Set([...backendCatalog, ...localCatalog].map(activityCatalogMergeKey));
@@ -147,6 +176,33 @@ export function ActivityDescriptionEditor({ fallbackCatalog = [] }: ActivityDesc
     if (isCreating) return null;
     return catalog.find((item) => item.id === selectedId) ?? null;
   }, [catalog, isCreating, selectedId]);
+
+  const selectedImpact = useMemo(() => {
+    if (!selectedActivity) return { activities: [], documents: [] };
+    const activityMatches = activities.filter((activity) => (
+      activity.catalogActivityId === selectedActivity.id
+      || (activity.saCode === selectedActivity.saCode && activity.title === selectedActivity.activityName)
+      || (activity.saCode === selectedActivity.saCode && activity.activityType === selectedActivity.activityName)
+    ));
+    const activityIds = new Set(activityMatches.map((activity) => activity.id));
+    return {
+      activities: activityMatches,
+      documents: documents.filter((document) => (
+        activityIds.has(document.sourceActivityId || '')
+        || document.eligibilityCheck?.checkedActivityId === selectedActivity.id
+        || document.eligibilityCheck?.checkedActivityId === selectedActivity.activityName
+      )),
+    };
+  }, [activities, documents, selectedActivity]);
+
+  const reviewQueueDocuments = useMemo(() => {
+    return documents.filter((document) => {
+      const status = document.eligibilityCheck?.status;
+      return status === 'neeligibil'
+        || status === 'neconcludent'
+        || Boolean(document.eligibilityCheck?.pmUnlockRequested && !document.eligibilityCheck?.pmUnlockApproved);
+    });
+  }, [documents]);
 
   useEffect(() => {
     if (isCreating) return;
@@ -221,10 +277,88 @@ export function ActivityDescriptionEditor({ fallbackCatalog = [] }: ActivityDesc
       setSelectedId(saved.id);
       setDraft(draftFromActivity(saved));
       setSaveMessage(isCreating ? 'Activitate adaugata.' : 'Activitate salvata.');
+      const changedStatus = selectedActivity && selectedActivity.isActive !== saved.isActive;
+      await onAudit?.({
+        actionType: isCreating
+          ? 'activity_catalog_created'
+          : changedStatus && saved.isActive === false
+            ? 'activity_catalog_inactivated'
+            : changedStatus && saved.isActive !== false
+              ? 'activity_catalog_reactivated'
+              : 'activity_catalog_updated',
+        oldValue: selectedActivity ? JSON.stringify(selectedActivity) : '',
+        newValue: JSON.stringify(saved),
+        justification: isCreating ? 'Activitate adaugata in catalogul de eligibilitate.' : 'Catalog eligibilitate actualizat.',
+        source: 'manual',
+      });
     } catch (saveError) {
       setSaveMessage(saveError instanceof Error ? saveError.message : 'Activitatea nu a putut fi salvata.');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleExportCsv = () => {
+    const csv = exportActivityCatalogCsv(catalog);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `catalog-eligibilitate-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportFile = async (file: File | null) => {
+    if (!file) return;
+    setImportMessage(null);
+    const text = await file.text();
+    const plan = buildActivityCatalogImportPlan(text, catalog);
+    setImportPlan(plan);
+    setImportMessage(
+      plan.errors.length > 0
+        ? 'Importul are erori si nu poate fi aplicat.'
+        : 'Preview import pregatit. Verifica diferentele inainte de aplicare.',
+    );
+  };
+
+  const handleApplyImport = async () => {
+    if (!importPlan || importPlan.errors.length > 0) return;
+    const actionableDiffs = importPlan.diffs.filter((diff) => diff.action !== 'unchanged');
+    if (actionableDiffs.length === 0) {
+      setImportMessage('Nu exista modificari de aplicat.');
+      return;
+    }
+
+    setIsImporting(true);
+    setImportMessage(null);
+    try {
+      const savedItems: ActivityCatalog[] = [];
+      for (const diff of actionableDiffs) {
+        const saved = diff.action === 'create'
+          ? await create(diff.row.draft)
+          : await update(diff.existing!.id, diff.row.draft, diff.existing!.saCode);
+        savedItems.push(saved);
+      }
+      setLocalCatalog((current) => {
+        const savedIds = new Set(savedItems.map((item) => item.id));
+        return [...current.filter((item) => !savedIds.has(item.id)), ...savedItems];
+      });
+      await onAudit?.({
+        actionType: 'activity_catalog_imported',
+        oldValue: `${importPlan.diffs.filter((diff) => diff.action === 'update').length} update-uri`,
+        newValue: `${importPlan.diffs.filter((diff) => diff.action === 'create').length} activitati noi`,
+        justification: 'Import catalog eligibilitate aplicat din PM.',
+        source: 'import',
+      });
+      setImportMessage(`Import aplicat: ${savedItems.length} modificari salvate.`);
+      setImportPlan(null);
+    } catch (importError) {
+      setImportMessage(importError instanceof Error ? importError.message : 'Importul nu a putut fi aplicat.');
+    } finally {
+      setIsImporting(false);
     }
   };
 
@@ -262,6 +396,87 @@ export function ActivityDescriptionEditor({ fallbackCatalog = [] }: ActivityDesc
 
   return (
     <div className="space-y-5">
+      {mode === 'pm' && (
+        <div className="grid gap-3 md:grid-cols-3">
+          <div className="rounded-md border bg-white p-4">
+            <p className="text-xs font-semibold uppercase text-muted-foreground">Catalog activ</p>
+            <p className="mt-2 text-2xl font-bold text-slate-950">
+              {catalog.filter((item) => item.isActive !== false).length}
+            </p>
+          </div>
+          <div className="rounded-md border bg-white p-4">
+            <p className="text-xs font-semibold uppercase text-muted-foreground">Inactive reactivabile</p>
+            <p className="mt-2 text-2xl font-bold text-slate-950">
+              {catalog.filter((item) => item.isActive === false).length}
+            </p>
+          </div>
+          <div className="rounded-md border bg-white p-4">
+            <p className="text-xs font-semibold uppercase text-muted-foreground">Cazuri eligibilitate PM</p>
+            <p className="mt-2 text-2xl font-bold text-slate-950">{reviewQueueDocuments.length}</p>
+          </div>
+        </div>
+      )}
+
+      {mode === 'pm' && (
+        <div className="rounded-md border bg-slate-50 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-slate-950">Import / export controlat</p>
+              <p className="text-sm text-muted-foreground">
+                Importul valideaza anteturile oficiale si nu sterge activitati absente din fisier.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button type="button" variant="outline" onClick={handleExportCsv}>
+                <Download className="h-4 w-4" />
+                Export CSV
+              </Button>
+              <Button type="button" variant="outline" asChild>
+                <label>
+                  <Upload className="h-4 w-4" />
+                  Import CSV
+                  <input
+                    type="file"
+                    accept=".csv,text/csv"
+                    className="hidden"
+                    onChange={(event) => void handleImportFile(event.target.files?.[0] ?? null)}
+                  />
+                </label>
+              </Button>
+            </div>
+          </div>
+          {importPlan && (
+            <div className="mt-4 space-y-3">
+              <div className="grid gap-2 text-sm md:grid-cols-3">
+                <div className="rounded-md bg-white p-3">Noi: {importPlan.diffs.filter((diff) => diff.action === 'create').length}</div>
+                <div className="rounded-md bg-white p-3">Actualizari: {importPlan.diffs.filter((diff) => diff.action === 'update').length}</div>
+                <div className="rounded-md bg-white p-3">Neschimbate: {importPlan.diffs.filter((diff) => diff.action === 'unchanged').length}</div>
+              </div>
+              {[...importPlan.errors, ...importPlan.warnings].slice(0, 6).map((message) => (
+                <p key={message} className={`text-sm ${importPlan.errors.includes(message) ? 'text-red-700' : 'text-amber-700'}`}>
+                  {message}
+                </p>
+              ))}
+              <div className="max-h-44 overflow-y-auto rounded-md border bg-white text-sm">
+                {importPlan.diffs.filter((diff) => diff.action !== 'unchanged').slice(0, 20).map((diff) => (
+                  <div key={`${diff.row.rowNumber}-${diff.row.stableKey}`} className="flex items-center justify-between gap-3 border-b px-3 py-2 last:border-b-0">
+                    <span>{diff.row.draft.saCode} · {diff.row.draft.activityName}</span>
+                    <span className="text-muted-foreground">{diff.action === 'create' ? 'nou' : diff.changedFields.join(', ')}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="flex justify-end">
+                <Button type="button" onClick={handleApplyImport} disabled={isImporting || importPlan.errors.length > 0}>
+                  {isImporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  Aplica import
+                </Button>
+              </div>
+            </div>
+          )}
+          {importMessage && <p className="mt-3 text-sm text-muted-foreground">{importMessage}</p>}
+        </div>
+      )}
+
       <div className="grid gap-3 border-b border-slate-100 pb-5 lg:grid-cols-[1.2fr_0.55fr_0.55fr_0.55fr_auto]">
         <div className="relative">
           <SearchIcon className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
@@ -379,7 +594,7 @@ export function ActivityDescriptionEditor({ fallbackCatalog = [] }: ActivityDesc
                     Modificarile se salveaza in ActivityCatalog si apar automat in formularul expertilor.
                   </p>
                 </div>
-                {!isCreating && selectedActivity && selectedActivityIsPersisted && (
+                {!isCreating && selectedActivity && selectedActivityIsPersisted && mode === 'admin' && (
                   <Button type="button" variant="outline" onClick={handleDelete} disabled={isSaving} className="text-red-700">
                     <Trash2 className="h-4 w-4" />
                     Elimina
@@ -497,6 +712,23 @@ export function ActivityDescriptionEditor({ fallbackCatalog = [] }: ActivityDesc
                   </div>
                 )}
               </div>
+
+              {mode === 'pm' && selectedActivity && (
+                <div className="grid gap-3 rounded-md border bg-slate-50 p-4 text-sm md:grid-cols-3">
+                  <div>
+                    <p className="font-semibold text-slate-950">Impact pontaj</p>
+                    <p className="text-muted-foreground">{selectedImpact.activities.length} activitati raportate in luna selectata.</p>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-slate-950">Impact documente</p>
+                    <p className="text-muted-foreground">{selectedImpact.documents.length} documente legate de verificari eligibilitate.</p>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-slate-950">Livrabile asteptate</p>
+                    <p className="text-muted-foreground">{selectedActivity.deliverables || 'Nespecificat'}</p>
+                  </div>
+                </div>
+              )}
 
               <div className="space-y-2">
                 <label htmlFor="activity-standard-description" className="text-sm font-semibold text-slate-900">
@@ -646,4 +878,8 @@ export function ActivityDescriptionEditor({ fallbackCatalog = [] }: ActivityDesc
       </div>
     </div>
   );
+}
+
+export function ActivityDescriptionEditor({ fallbackCatalog = [] }: { fallbackCatalog?: ActivityCatalog[] }) {
+  return <ActivityCatalogGovernancePanel fallbackCatalog={fallbackCatalog} mode="admin" />;
 }

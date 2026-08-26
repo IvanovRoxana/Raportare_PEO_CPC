@@ -54,6 +54,7 @@ import {
   useActivityMutations,
   useReportStatus,
   useReportStatusByMonth,
+  useReportStatusesForMonths,
   useActivitiesByMonth,
   useActivityCatalog,
   useAuditLogs,
@@ -104,6 +105,7 @@ import type {
   Activity,
   DocumentMetadata,
   PmClarificationThread,
+  ActivityCatalog,
 } from '@/lib/types';
 import { UserMenu } from '@/components/user-menu';
 import { ProgressReportTab } from '@/components/pm/progress-report-tab';
@@ -116,6 +118,8 @@ import { PmMonthlyStatusTable } from '@/components/pm/pm-monthly-status-table';
 import { PmSubmittedReportsPanel, type PmSubmittedReportRow } from '@/components/pm/pm-submitted-reports-panel';
 import { AiRagAuditTab } from '@/components/pm/ai-rag-audit-tab';
 import { PmWorkspace } from '@/components/pm/workspace/pm-workspace';
+import { EligibilityGovernancePanel } from '@/components/pm/eligibility-governance-panel';
+import fallbackActivityCatalog from '@/data/import/activity-catalog.json';
 
 const EMPTY_PONTAJ_ROWS: PontajRow[] = [];
 const EMPTY_RAPORT_ROWS: RaportRow[] = [];
@@ -216,6 +220,14 @@ export default function PMDashboard() {
     previousSelectedMonthDate.getMonth(),
     previousSelectedMonthDate.getFullYear()
   );
+  const olderMonthAccessMonthRefs = useMemo(
+    () => Array.from({ length: 12 }, (_, index) => {
+      const date = new Date(selectedYear, selectedMonth - (index + 2), 1);
+      return { month: date.getMonth(), year: date.getFullYear() };
+    }),
+    [selectedMonth, selectedYear]
+  );
+  const { statuses: allOlderMonthAccessStatuses } = useReportStatusesForMonths(olderMonthAccessMonthRefs);
   const { activities: allMonthActivities, mutate: refreshMonthActivities } = useActivitiesByMonth(selectedMonth, selectedYear);
   const { catalog: activityCatalog } = useActivityCatalog();
   const scopedAuditExpertId = hasExtendedExpertAccess ? null : dataAccessScope.currentExpertId ?? selectedExpertId;
@@ -240,6 +252,10 @@ export default function PMDashboard() {
   const previousMonthlyReportStatuses = useMemo(
     () => filterReportStatusesForScope(allPreviousMonthlyReportStatuses, dataAccessScope),
     [allPreviousMonthlyReportStatuses, dataAccessScope]
+  );
+  const olderMonthAccessStatuses = useMemo(
+    () => filterReportStatusesForScope(allOlderMonthAccessStatuses, dataAccessScope),
+    [allOlderMonthAccessStatuses, dataAccessScope]
   );
   const monthActivities = useMemo(
     () => filterActivitiesForScope(allMonthActivities, dataAccessScope),
@@ -819,6 +835,17 @@ export default function PMDashboard() {
         .filter((item): item is { status: ReportStatus; expert: Expert } => Boolean(item.expert)),
     [monthAccessStatuses, visibleExperts]
   );
+  const staleMonthAccesses = useMemo(
+    () =>
+      olderMonthAccessStatuses
+        .filter((status) => status.expertAccessApproved === true)
+        .map((status) => ({
+          status,
+          expert: visibleExperts.find((expert) => expert.id === status.expertId),
+        }))
+        .filter((item): item is { status: ReportStatus; expert: Expert } => Boolean(item.expert)),
+    [olderMonthAccessStatuses, visibleExperts]
+  );
   const dashboardRowByExpertId = useMemo(
     () => new Map(dashboardRows.map((row) => [row.expertId, row])),
     [dashboardRows]
@@ -961,6 +988,28 @@ export default function PMDashboard() {
   const openClarificationsOverview = () => {
     scrollToPmSection('pm-clarifications-overview');
   };
+  const recordEligibilityGovernanceAudit = async (input: {
+    actionType: string;
+    oldValue?: string;
+    newValue?: string;
+    justification: string;
+    source: 'manual' | 'import' | 'eligibility_review';
+  }) => {
+    if (!currentUser || !canManagePmReview) return null;
+    return createAuditLog({
+      actionType: input.actionType as any,
+      actorId: currentUser.id || currentUser.email || 'pm',
+      actorName: currentUser.displayName || currentUser.email || 'PM',
+      actorRole: currentUser.roles?.join(',') || 'pm',
+      month: selectedMonth,
+      year: selectedYear,
+      fieldName: 'eligibility_governance',
+      oldValue: input.oldValue || '',
+      newValue: input.newValue || '',
+      justification: input.justification,
+      source: input.source,
+    });
+  };
   const handleDownloadTotalOpisXls = () => {
     setIsExportingOpisTotal(true);
     try {
@@ -1060,6 +1109,7 @@ export default function PMDashboard() {
         neconformitati={localNeconformitati}
         monthAccessRequests={monthAccessRequests}
         activeMonthAccesses={activeMonthAccesses}
+        staleMonthAccesses={staleMonthAccesses}
         pendingSharedDeliverables={pendingSharedDeliverables}
         titleIssues={titleIssues}
         pmUnlockRequests={pmUnlockRequests}
@@ -1431,6 +1481,7 @@ export default function PMDashboard() {
             <TabsTrigger value="double-funding">Dublă finanțare</TabsTrigger>
             <TabsTrigger value="progres">Raport Progres</TabsTrigger>
             <TabsTrigger value="gt">Progres GT</TabsTrigger>
+            {hasExtendedExpertAccess && <TabsTrigger value="eligibility-governance">Catalog eligibilitate</TabsTrigger>}
             {hasExtendedExpertAccess && <TabsTrigger value="ai-rag">AI RAG</TabsTrigger>}
             <TabsTrigger value="neconformitati">
               Neconformitati
@@ -1504,6 +1555,18 @@ export default function PMDashboard() {
               year={selectedYear}
             />
           </TabsContent>
+
+          {hasExtendedExpertAccess && (
+            <TabsContent value="eligibility-governance">
+              <EligibilityGovernancePanel
+                fallbackCatalog={fallbackActivityCatalog as ActivityCatalog[]}
+                activities={monthActivities}
+                documents={documents}
+                actorName={currentUser?.displayName || currentUser?.email || 'PM'}
+                onAudit={recordEligibilityGovernanceAudit}
+              />
+            </TabsContent>
+          )}
 
           {hasExtendedExpertAccess && (
             <TabsContent value="ai-rag">

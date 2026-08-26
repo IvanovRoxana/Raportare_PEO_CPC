@@ -36,6 +36,8 @@ import type {
   Activity,
   ActivityCatalog,
   ActivityAutofillAudit,
+  AiEligibilityRuleset,
+  AiEligibilityRuleVersion,
   AdminInterventionRequest,
   AppSettings,
   AuditLog,
@@ -55,6 +57,7 @@ import type {
   HistoricalTimesheetDayEntry,
   MonthlyActivityItem,
   MonthlyExpertReport,
+  MonthAccessRequest,
   Neconformitate,
   PersistedReportingWorkBlock,
   PersistedWorkBlockActivityLink,
@@ -3095,6 +3098,138 @@ function mapActivityCatalog(item: any): ActivityCatalog {
   };
 }
 
+function mapAiEligibilityRuleset(item: any): AiEligibilityRuleset {
+  return {
+    id: item.id,
+    title: item.title,
+    status: item.status ?? 'draft',
+    version: item.version ?? 1,
+    rulesJson: item.rulesJson,
+    schemaVersion: item.schemaVersion ?? 'eligibility-rules-v1',
+    activeFrom: item.activeFrom ?? undefined,
+    publishedAt: item.publishedAt ?? undefined,
+    publishedBy: item.publishedBy ?? undefined,
+    createdBy: item.createdBy ?? undefined,
+    updatedBy: item.updatedBy ?? undefined,
+    changeReason: item.changeReason ?? undefined,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+  };
+}
+
+function mapAiEligibilityRuleVersion(item: any): AiEligibilityRuleVersion {
+  return {
+    id: item.id,
+    rulesetId: item.rulesetId,
+    version: item.version,
+    status: item.status,
+    previousRulesJson: item.previousRulesJson,
+    newRulesJson: item.newRulesJson,
+    changedBy: item.changedBy ?? undefined,
+    changeReason: item.changeReason ?? undefined,
+    publishedAt: item.publishedAt ?? undefined,
+    archivedAt: item.archivedAt ?? undefined,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+  };
+}
+
+export const aiEligibilityRulesetsService = {
+  async getAll(): Promise<AiEligibilityRuleset[]> {
+    const client = getAwsDataClient() as any;
+    const data = await listModel<any>(client.models.AiEligibilityRuleset);
+    return data.map(mapAiEligibilityRuleset).sort((a, b) => (b.version ?? 0) - (a.version ?? 0));
+  },
+
+  async getActive(): Promise<AiEligibilityRuleset | null> {
+    const client = getAwsDataClient() as any;
+    const data = await listModel<any>(client.models.AiEligibilityRuleset, { status: { eq: 'active' } });
+    return data.map(mapAiEligibilityRuleset).sort((a, b) => (b.version ?? 0) - (a.version ?? 0))[0] ?? null;
+  },
+
+  async create(input: Omit<AiEligibilityRuleset, 'id' | 'createdAt' | 'updatedAt'>): Promise<AiEligibilityRuleset> {
+    const client = getAwsDataClient() as any;
+    const result = await client.models.AiEligibilityRuleset.create({
+      title: input.title,
+      status: input.status ?? 'draft',
+      version: input.version ?? 1,
+      rulesJson: input.rulesJson,
+      schemaVersion: input.schemaVersion ?? 'eligibility-rules-v1',
+      activeFrom: input.activeFrom,
+      publishedAt: input.publishedAt,
+      publishedBy: input.publishedBy,
+      createdBy: input.createdBy,
+      updatedBy: input.updatedBy,
+      changeReason: input.changeReason,
+    });
+    assertNoErrors(result, 'AWS create AI eligibility ruleset');
+    return mapAiEligibilityRuleset(result.data);
+  },
+
+  async update(id: string, updates: Partial<Omit<AiEligibilityRuleset, 'id' | 'createdAt' | 'updatedAt'>>): Promise<AiEligibilityRuleset> {
+    const client = getAwsDataClient() as any;
+    const result = await client.models.AiEligibilityRuleset.update({
+      id,
+      title: updates.title,
+      status: updates.status,
+      version: updates.version,
+      rulesJson: updates.rulesJson,
+      schemaVersion: updates.schemaVersion,
+      activeFrom: updates.activeFrom,
+      publishedAt: updates.publishedAt,
+      publishedBy: updates.publishedBy,
+      createdBy: updates.createdBy,
+      updatedBy: updates.updatedBy,
+      changeReason: updates.changeReason,
+    });
+    assertNoErrors(result, 'AWS update AI eligibility ruleset');
+    return mapAiEligibilityRuleset(result.data);
+  },
+};
+
+export const aiEligibilityRuleVersionsService = {
+  async getByRuleset(rulesetId: string): Promise<AiEligibilityRuleVersion[]> {
+    const client = getAwsDataClient() as any;
+    const data = await listModel<any>(client.models.AiEligibilityRuleVersion, { rulesetId: { eq: rulesetId } });
+    return data.map(mapAiEligibilityRuleVersion).sort((a, b) => (b.version ?? 0) - (a.version ?? 0));
+  },
+
+  async create(input: Omit<AiEligibilityRuleVersion, 'id' | 'createdAt' | 'updatedAt'>): Promise<AiEligibilityRuleVersion> {
+    const client = getAwsDataClient() as any;
+    const result = await client.models.AiEligibilityRuleVersion.create({
+      rulesetId: input.rulesetId,
+      version: input.version,
+      status: input.status,
+      previousRulesJson: input.previousRulesJson,
+      newRulesJson: input.newRulesJson,
+      changedBy: input.changedBy,
+      changeReason: input.changeReason,
+      publishedAt: input.publishedAt,
+      archivedAt: input.archivedAt,
+    });
+    assertNoErrors(result, 'AWS create AI eligibility rule version');
+    return mapAiEligibilityRuleVersion(result.data);
+  },
+
+  async update(id: string, updates: Partial<Omit<AiEligibilityRuleVersion, 'id' | 'createdAt' | 'updatedAt'>>): Promise<AiEligibilityRuleVersion> {
+    const client = getAwsDataClient() as any;
+    const result = await client.models.AiEligibilityRuleVersion.update({
+      id,
+      rulesetId: updates.rulesetId,
+      version: updates.version,
+      status: updates.status,
+      previousRulesJson: updates.previousRulesJson,
+      newRulesJson: updates.newRulesJson,
+      changedBy: updates.changedBy,
+      changeReason: updates.changeReason,
+      publishedAt: updates.publishedAt,
+      archivedAt: updates.archivedAt,
+    });
+    assertNoErrors(result, 'AWS update AI eligibility rule version');
+    return mapAiEligibilityRuleVersion(result.data);
+  },
+};
+
 export const workingGroupsService = {
   async getAll(): Promise<WorkingGroup[]> {
     const client = getAwsDataClient() as any;
@@ -3664,6 +3799,113 @@ function mapReportStatus(item: any): ReportStatus {
     updatedAt: item.updatedAt,
   };
 }
+
+function mapMonthAccessRequest(item: any): MonthAccessRequest {
+  return {
+    id: item.id,
+    expertId: item.expertId,
+    expertName: item.expertName ?? undefined,
+    year: item.year,
+    month: item.month,
+    status: item.status ?? 'pending',
+    requestedAt: item.requestedAt ?? undefined,
+    requestedBy: item.requestedBy ?? undefined,
+    resolvedAt: item.resolvedAt ?? undefined,
+    resolvedBy: item.resolvedBy ?? undefined,
+    closedAt: item.closedAt ?? undefined,
+    closedBy: item.closedBy ?? undefined,
+    notes: item.notes ?? undefined,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+  };
+}
+
+function filterMonthAccessRequestsForScope(requests: MonthAccessRequest[], scope: DataAccessScope) {
+  if (scope.accessLevel === 'none') return [];
+  if (scope.canAccessAllExperts) return requests;
+  return scope.currentExpertId ? requests.filter((request) => request.expertId === scope.currentExpertId) : [];
+}
+
+export const monthAccessRequestsService = {
+  async getByMonth(month: number, year: number): Promise<MonthAccessRequest[]> {
+    const client = getAwsDataClient() as any;
+    const scope = await getCurrentDataAccessScope(client);
+    if (scope.accessLevel === 'none') return [];
+
+    const data = await listModel<any>(client.models.MonthAccessRequest, {
+      ...(scope.canAccessAllExperts ? {} : { expertId: { eq: scope.currentExpertId } }),
+      month: { eq: month },
+      year: { eq: year },
+    });
+
+    return filterMonthAccessRequestsForScope(data.map(mapMonthAccessRequest), scope);
+  },
+
+  async getByMonths(monthRefs: Array<{ month: number; year: number }>): Promise<MonthAccessRequest[]> {
+    const batches = await Promise.all(monthRefs.map((ref) => monthAccessRequestsService.getByMonth(ref.month, ref.year)));
+    const seen = new Set<string>();
+    return batches.flat().filter((request) => {
+      if (seen.has(request.id)) return false;
+      seen.add(request.id);
+      return true;
+    });
+  },
+
+  async getByExpertAndMonth(expertId: string, month: number, year: number): Promise<MonthAccessRequest | null> {
+    const client = getAwsDataClient() as any;
+    const allowedExpertId = await getAllowedExpertId(client, expertId);
+    if (!allowedExpertId || allowedExpertId !== expertId) return null;
+
+    const data = await listModel<any>(client.models.MonthAccessRequest, {
+      expertId: { eq: expertId },
+      month: { eq: month },
+      year: { eq: year },
+    });
+    const requests = data.map(mapMonthAccessRequest).sort((a, b) => String(b.updatedAt ?? '').localeCompare(String(a.updatedAt ?? '')));
+    return requests[0] ?? null;
+  },
+
+  async request(input: {
+    expertId: string;
+    expertName?: string;
+    month: number;
+    year: number;
+    requestedBy?: string;
+    notes?: string;
+  }): Promise<MonthAccessRequest> {
+    const client = getAwsDataClient() as any;
+    await assertCanAccessExpert(client, input.expertId);
+
+    const existing = await monthAccessRequestsService.getByExpertAndMonth(input.expertId, input.month, input.year);
+    const payload = {
+      expertId: input.expertId,
+      expertName: input.expertName,
+      month: input.month,
+      year: input.year,
+      status: 'pending',
+      requestedAt: new Date().toISOString(),
+      requestedBy: input.requestedBy,
+      resolvedAt: undefined,
+      resolvedBy: undefined,
+      closedAt: undefined,
+      closedBy: undefined,
+      notes: input.notes,
+    };
+
+    const result = existing
+      ? await client.models.MonthAccessRequest.update({ id: existing.id, ...payload })
+      : await client.models.MonthAccessRequest.create(payload);
+    assertNoErrors(result, 'AWS upsert month access request');
+    return mapMonthAccessRequest(result.data);
+  },
+
+  async update(id: string, updates: Partial<Omit<MonthAccessRequest, 'id' | 'createdAt' | 'updatedAt'>>): Promise<MonthAccessRequest> {
+    const client = getAwsDataClient() as any;
+    const result = await client.models.MonthAccessRequest.update({ id, ...updates });
+    assertNoErrors(result, 'AWS update month access request');
+    return mapMonthAccessRequest(result.data);
+  },
+};
 
 async function assertCanManageHistoricalImport(client: any) {
   const scope = await getCurrentDataAccessScope(client);

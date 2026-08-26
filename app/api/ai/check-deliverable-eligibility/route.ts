@@ -22,6 +22,7 @@ import {
   DELIVERABLE_ELIGIBILITY_DISABLED_STATUS,
   isDeliverableEligibilityCheckEnabled,
 } from '@/lib/feature-flags';
+import { getActiveAiEligibilityRuleset } from '@/lib/ai-eligibility-ruleset-runtime';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -205,6 +206,12 @@ export async function POST(req: Request) {
       currentSaCode,
       expertCategory,
     );
+    const activeRuleset = ruleVersionId ? null : await getActiveAiEligibilityRuleset();
+    const effectiveRuleVersionId = ruleVersionId
+      || (activeRuleset ? `${activeRuleset.id}:v${activeRuleset.version}` : DEFAULT_ELIGIBILITY_RULE_VERSION_ID);
+    const activeRulesetContext = activeRuleset?.rulesJson
+      ? `\nReguli administrate PM active:\n${trimText(JSON.stringify(activeRuleset.rulesJson, null, 2), 4000)}\n`
+      : '';
 
     let result;
     try {
@@ -226,7 +233,8 @@ export async function POST(req: Request) {
         expertFunction,
         expertProjectRole,
         catalogSource,
-        ruleVersionId: ruleVersionId || DEFAULT_ELIGIBILITY_RULE_VERSION_ID,
+        ruleVersionId: effectiveRuleVersionId,
+        activeRulesetId: activeRuleset?.id,
         extractedText: trimmedExtractedText,
         activityCatalogCandidates,
         deliverableOptions,
@@ -256,7 +264,8 @@ Context expert si proiect:
 - Colaboratori declarati: ${Array.isArray(collaborators) ? collaborators.length : 0}
 - Activitati in working group: ${Array.isArray(workingGroupActivities) ? workingGroupActivities.length : 0}
 - Sursa catalogului: ${catalogSource || 'catalog-filtrat-aplicatie'}
-- Versiune reguli: ${ruleVersionId || DEFAULT_ELIGIBILITY_RULE_VERSION_ID}
+- Versiune reguli: ${effectiveRuleVersionId}
+${activeRulesetContext}
 
 Activitate selectată:
 - ID: ${selectedActivityId || 'Nespecificat'}
@@ -336,7 +345,7 @@ suggestedSettings trebuie sa fie mereu obiect cu: hasSuggestion, saCode, activit
     const semanticAudit = buildDeliverableEligibilitySemanticAudit({
       result: protectedData,
       documents: eligibilityDocuments,
-      ruleVersionId,
+      ruleVersionId: effectiveRuleVersionId,
       selectedActivityId,
       selectedActivityName,
       saCode: currentSaCode,

@@ -10,6 +10,8 @@ import {
   settingsService,
   isBackendAvailable,
   activityCatalogService,
+  aiEligibilityRuleVersionsService,
+  aiEligibilityRulesetsService,
   workingGroupsService,
   concurrentProjectsService,
   concurrentProjectTimesheetService,
@@ -17,6 +19,7 @@ import {
   financialPersonLinksService,
   leaveEntriesService,
   reportStatusService,
+  monthAccessRequestsService,
   grupTintaService,
   gtDocumentsService,
   gtEntitiesService,
@@ -44,7 +47,7 @@ import {
   sharedDeliverablesService,
   reportingWorkBlocksService,
 } from '@/lib/backend-store';
-import type { Activity, Expert, ExpertNormContract, FinancialPersonLink, LeaveEntry, VerificationData, Neconformitate, VerificationNote, AppSettings, ActivityCatalog, WorkingGroup, ConcurrentProject, ConcurrentProjectTimesheetEntry, ReportStatus, GrupTintaEntry, BusinessHubEntityDirectoryEntry, AuditLog, ActivityAutofillAudit, AdminInterventionRequest, HistoricalImportBatch, HistoricalTimesheetDayEntry, MonthlyActivityItem, MonthlyExpertReport, UploadedReportingFile, DocumentMetadata } from '@/lib/types';
+import type { Activity, Expert, ExpertNormContract, FinancialPersonLink, LeaveEntry, VerificationData, Neconformitate, VerificationNote, AppSettings, ActivityCatalog, AiEligibilityRuleset, AiEligibilityRuleVersion, WorkingGroup, ConcurrentProject, ConcurrentProjectTimesheetEntry, ReportStatus, MonthAccessRequest, GrupTintaEntry, BusinessHubEntityDirectoryEntry, AuditLog, ActivityAutofillAudit, AdminInterventionRequest, HistoricalImportBatch, HistoricalTimesheetDayEntry, MonthlyActivityItem, MonthlyExpertReport, UploadedReportingFile, DocumentMetadata } from '@/lib/types';
 import { getContractedProcurementProjects, type ProcurementChecklist, type ProcurementContract, type ProcurementDeliverable, type ProcurementDocument, type ProcurementEvaluation, type ProcurementInvoice, type ProcurementLaunch, type ProcurementOffer, type ProcurementProject, type ProcurementReception, type ProcurementStatusHistory, type ProcurementSupplier } from '@/lib/procurement';
 import {
   buildDeterministicWorkBlockConsolidation,
@@ -826,6 +829,133 @@ export function useActivityCatalogMutations() {
   return { create, update, updateDescription, remove };
 }
 
+export function useAiEligibilityRulesets() {
+  const { data, error, isLoading } = useSWR(
+    isBackendAvailable() ? 'ai-eligibility-rulesets' : null,
+    safeFetcher(aiEligibilityRulesetsService.getAll)
+  );
+
+  return {
+    rulesets: stableList(data),
+    activeRuleset: stableList(data).find((ruleset) => ruleset.status === 'active') ?? null,
+    isLoading,
+    error,
+  };
+}
+
+export function useAiEligibilityRuleVersions(rulesetId: string | null) {
+  const { data, error, isLoading } = useSWR(
+    rulesetId && isBackendAvailable() ? `ai-eligibility-rule-versions-${rulesetId}` : null,
+    safeFetcher(() => aiEligibilityRuleVersionsService.getByRuleset(rulesetId!))
+  );
+
+  return {
+    versions: stableList(data),
+    isLoading,
+    error,
+  };
+}
+
+export function useAiEligibilityRulesetMutations() {
+  const refreshRulesets = (rulesetId?: string) => {
+    mutate('ai-eligibility-rulesets');
+    if (rulesetId) mutate(`ai-eligibility-rule-versions-${rulesetId}`);
+  };
+
+  const createDraft = async (input: {
+    title: string;
+    rulesJson: unknown;
+    actorName?: string;
+    changeReason?: string;
+  }) => {
+    const created = await aiEligibilityRulesetsService.create({
+      title: input.title,
+      status: 'draft',
+      version: 1,
+      rulesJson: input.rulesJson,
+      schemaVersion: 'eligibility-rules-v1',
+      createdBy: input.actorName,
+      updatedBy: input.actorName,
+      changeReason: input.changeReason,
+    });
+    refreshRulesets(created.id);
+    return created;
+  };
+
+  const updateDraft = async (
+    id: string,
+    updates: Partial<Pick<AiEligibilityRuleset, 'title' | 'rulesJson' | 'changeReason' | 'updatedBy'>>,
+  ) => {
+    const updated = await aiEligibilityRulesetsService.update(id, updates);
+    refreshRulesets(updated.id);
+    return updated;
+  };
+
+  const publish = async (ruleset: AiEligibilityRuleset, activeRuleset: AiEligibilityRuleset | null, actorName?: string) => {
+    const now = new Date().toISOString();
+    if (activeRuleset && activeRuleset.id !== ruleset.id) {
+      await aiEligibilityRulesetsService.update(activeRuleset.id, { status: 'archived' });
+      await aiEligibilityRuleVersionsService.create({
+        rulesetId: activeRuleset.id,
+        version: activeRuleset.version,
+        status: 'archived',
+        previousRulesJson: activeRuleset.rulesJson,
+        newRulesJson: activeRuleset.rulesJson,
+        changedBy: actorName,
+        changeReason: 'Arhivare automata la publicarea unei versiuni noi.',
+        archivedAt: now,
+      });
+    }
+
+    const published = await aiEligibilityRulesetsService.update(ruleset.id, {
+      status: 'active',
+      publishedAt: now,
+      publishedBy: actorName,
+      updatedBy: actorName,
+    });
+    await aiEligibilityRuleVersionsService.create({
+      rulesetId: published.id,
+      version: published.version,
+      status: 'active',
+      previousRulesJson: activeRuleset?.rulesJson,
+      newRulesJson: published.rulesJson,
+      changedBy: actorName,
+      changeReason: published.changeReason || 'Publicare reguli eligibilitate.',
+      publishedAt: now,
+    });
+    refreshRulesets(published.id);
+    if (activeRuleset) refreshRulesets(activeRuleset.id);
+    return published;
+  };
+
+  const rollbackToVersion = async (ruleset: AiEligibilityRuleset, version: AiEligibilityRuleVersion, actorName?: string) => {
+    const now = new Date().toISOString();
+    const rolledBack = await aiEligibilityRulesetsService.update(ruleset.id, {
+      rulesJson: version.newRulesJson,
+      version: version.version,
+      status: 'active',
+      publishedAt: now,
+      publishedBy: actorName,
+      updatedBy: actorName,
+      changeReason: `Rollback la versiunea ${version.version}.`,
+    });
+    await aiEligibilityRuleVersionsService.create({
+      rulesetId: ruleset.id,
+      version: version.version,
+      status: 'active',
+      previousRulesJson: ruleset.rulesJson,
+      newRulesJson: version.newRulesJson,
+      changedBy: actorName,
+      changeReason: `Rollback la versiunea ${version.version}.`,
+      publishedAt: now,
+    });
+    refreshRulesets(ruleset.id);
+    return rolledBack;
+  };
+
+  return { createDraft, updateDraft, publish, rollbackToVersion };
+}
+
 // ============================================
 // WORKING GROUPS HOOKS
 // ============================================
@@ -1055,6 +1185,98 @@ export function useReportStatusByMonth(month: number, year: number) {
     isLoading,
     error,
   };
+}
+
+export function useReportStatusesForMonths(monthRefs: Array<{ month: number; year: number }>) {
+  const key = `report-status-months-${monthRefs.map((ref) => `${ref.year}-${ref.month}`).join('|')}`;
+  const { data, error, isLoading } = useSWR(
+    isBackendAvailable() && monthRefs.length > 0 ? key : null,
+    safeFetcher(async () => {
+      const batches = await Promise.all(
+        monthRefs.map((ref) => reportStatusService.getAllByMonth(ref.month, ref.year))
+      );
+      return batches.flat();
+    })
+  );
+
+  return {
+    statuses: stableList(data),
+    isLoading,
+    error,
+  };
+}
+
+export function useMonthAccessRequestsByMonth(month: number, year: number) {
+  const key = `month-access-requests-${year}-${month}`;
+  const { data, error, isLoading } = useSWR(
+    isBackendAvailable() ? key : null,
+    safeFetcher(() => monthAccessRequestsService.getByMonth(month, year))
+  );
+
+  return {
+    requests: stableList(data),
+    isLoading,
+    error,
+  };
+}
+
+export function useMonthAccessRequestsForMonths(monthRefs: Array<{ month: number; year: number }>) {
+  const key = `month-access-requests-months-${monthRefs.map((ref) => `${ref.year}-${ref.month}`).join('|')}`;
+  const { data, error, isLoading } = useSWR(
+    isBackendAvailable() && monthRefs.length > 0 ? key : null,
+    safeFetcher(() => monthAccessRequestsService.getByMonths(monthRefs))
+  );
+
+  return {
+    requests: stableList(data),
+    isLoading,
+    error,
+  };
+}
+
+export function useMonthAccessRequest(expertId: string | null, month: number, year: number) {
+  const key = expertId ? `month-access-request-${expertId}-${year}-${month}` : null;
+  const { data, error, isLoading } = useSWR(
+    key && isBackendAvailable() ? key : null,
+    safeFetcher(() => monthAccessRequestsService.getByExpertAndMonth(expertId!, month, year))
+  );
+
+  return {
+    request: data ?? null,
+    isLoading,
+    error,
+  };
+}
+
+function refreshMonthAccessRequestCaches(request: Pick<MonthAccessRequest, 'expertId' | 'month' | 'year'>) {
+  mutate(`month-access-requests-${request.year}-${request.month}`);
+  mutate(`month-access-request-${request.expertId}-${request.year}-${request.month}`);
+}
+
+export function useMonthAccessRequestMutations() {
+  const requestAccess = async (input: {
+    expertId: string;
+    expertName?: string;
+    month: number;
+    year: number;
+    requestedBy?: string;
+    notes?: string;
+  }) => {
+    const request = await monthAccessRequestsService.request(input);
+    refreshMonthAccessRequestCaches(request);
+    return request;
+  };
+
+  const updateRequest = async (
+    request: MonthAccessRequest,
+    updates: Partial<Omit<MonthAccessRequest, 'id' | 'createdAt' | 'updatedAt'>>,
+  ) => {
+    const updated = await monthAccessRequestsService.update(request.id, updates);
+    refreshMonthAccessRequestCaches(updated);
+    return updated;
+  };
+
+  return { requestAccess, updateRequest };
 }
 
 // ============================================
