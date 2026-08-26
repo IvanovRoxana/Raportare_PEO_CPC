@@ -267,6 +267,35 @@ test('centralizatorul prefera functiile corectate in aplicatie fata de Excelul d
   assert.equal(summary.rows[0].goodworksFunction, 'Functie aplicatie GOODWORKS4ALL');
 });
 
+test('centralizatorul nu afiseaza pozitiile si functiile Excel ca date din aplicatie', () => {
+  const summary = buildFinancialReportingSummary({
+    experts: [{ ...expert, basePositionConcordia: undefined, positionInProject: undefined, goodworksPosition: undefined }],
+    activities: [],
+    concurrentProjects: [],
+    concurrentEntries: [],
+    month: 5,
+    year: 2026,
+    referencePeople: [{
+      name: 'Roxana Ivanov',
+      basePosition: 'Pozitie doar in Excel',
+      peoPosition: 'Functie PEO doar in Excel',
+      peoNorm: '8 h/zi',
+      cimNorm: '8 h/zi',
+      concordiaWorked: 0,
+      concordiaLeave: 0,
+      peoWorked: 0,
+      peoLeave: 0,
+      goodworksPosition: 'Goodworks doar in Excel',
+      goodworksWorked: 0,
+    }],
+  });
+
+  assert.equal(summary.rows[0].basePosition, '-');
+  assert.equal(summary.rows[0].peoFunction, expert.role);
+  assert.equal(summary.rows[0].goodworksFunction, '-');
+  assert.ok(summary.rows[0].conflicts.some((conflict) => conflict.code === 'role_mismatch'));
+});
+
 test('pozitia de baza Concordia nu se completeaza din campurile administrative', () => {
   const summary = buildFinancialReportingSummary({
     experts: [{ ...expert, basePositionConcordia: undefined, jobDescriptionText: 'Pozitie din Admin' }],

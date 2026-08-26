@@ -289,7 +289,7 @@ export default function FinancialDashboardPage() {
           </CardHeader>
           <CardContent className="flex flex-wrap items-center justify-between gap-4">
             <p className="max-w-xl text-sm text-muted-foreground">
-              CO automat, CO manual cu justificare, validare/respingere si norme PEO/CIM versionate.
+              CO automat, CO manual cu justificare si validare/respingere, separat de gestiunea HR.
             </p>
             <Button asChild>
               <Link href="/financiar/concedii">
@@ -304,16 +304,16 @@ export default function FinancialDashboardPage() {
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-lg">
               <Users className="h-5 w-5 text-primary" />
-              Experti si norme
+              Salariati si validare HR
             </CardTitle>
           </CardHeader>
           <CardContent className="flex flex-wrap items-center justify-between gap-4">
             <p className="max-w-xl text-sm text-muted-foreground">
-              Panou cu normele PEO/CIM pe expert, proiecte active si formula CPC calculata.
+              Verifica profilurile reale din aplicatie fata de tabelul Excel HR: pozitii, functii si norme.
             </p>
             <Button asChild>
-              <Link href="/financiar/concedii#experti-norme">
-                Deschide panoul
+              <Link href="/financiar/salariati">
+                Deschide Salariati
                 <ArrowRight className="h-4 w-4" />
               </Link>
             </Button>
