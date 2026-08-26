@@ -252,6 +252,29 @@ test('muta diferenta pe CPC cand soldul PEO este partial', () => {
   assert.equal(leave.cpcHours, 5);
 });
 
+test('CO automat foloseste norma PEO zilnica pentru split, nu totalul CIM', () => {
+  const [leave] = allocateLeaveEntries({
+    expert,
+    contracts: [contract({
+      peoNormUnit: 'HOURS_PER_DAY',
+      peoNormValue: 6,
+      peoDailyCap: 6,
+      cimNormUnit: 'HOURS_PER_DAY',
+      cimNormValue: 8,
+      cimDailyCap: 8,
+      leaveHoursPerDay: 8,
+    })],
+    month: 5,
+    year: 2026,
+    dates: ['2026-06-02'],
+    source: 'EXPERT',
+  });
+
+  assert.equal(leave.totalHours, 8);
+  assert.equal(leave.peoHours, 6);
+  assert.equal(leave.cpcHours, 2);
+});
+
 test('blocheaza CO daca ziua contine deja ore lucrate', () => {
   assert.throws(() => allocateLeaveEntries({
     expert,

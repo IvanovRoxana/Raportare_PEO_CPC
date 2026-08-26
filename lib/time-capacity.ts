@@ -184,7 +184,13 @@ export function allocateLeaveEntries(args: CapacityInput & {
     if ((before.dailyTotals[date] ?? 0) + totalHours > cimLimit) {
       throw new Error(`${date}: CO de ${totalHours} h ar dep??i norma CIM de ${cimLimit} h/zi.`);
     }
-    const peoHours = Math.min(totalHours, before.peoRemaining);
+    const peoDailyLimit = Math.min(
+      ABSOLUTE_DAILY_HOURS_LIMIT,
+      contract.peoNormUnit === 'HOURS_PER_DAY'
+        ? contract.peoNormValue
+        : contract.peoDailyCap || totalHours,
+    );
+    const peoHours = Math.min(totalHours, peoDailyLimit, before.peoRemaining);
     const leave: LeaveEntry = {
       id: `leave:${args.expert.id}:${date}:CO`,
       expertId: args.expert.id ?? '',
