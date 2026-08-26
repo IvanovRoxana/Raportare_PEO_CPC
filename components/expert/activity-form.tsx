@@ -1266,6 +1266,12 @@ export function ActivityForm({
 
   // Check if leave day
   const isLeave = dayType === 'CO' || dayType === 'CM';
+
+  useEffect(() => {
+    if (isLeave && currentWizardStep !== 'time') {
+      setCurrentWizardStep('time');
+    }
+  }, [currentWizardStep, isLeave]);
   
   // Check if common description is needed
   const needsCommonDesc = activityCommon && (description || '').trim().length < 30;
@@ -2219,7 +2225,7 @@ export function ActivityForm({
       setSkipMainDeliverableForNow(false);
     }
   }, [mainDeliverables.length, skipMainDeliverableForNow]);
-  const canOpenDeliverablesStep = isLeave || Boolean(effectiveActivityTitle.trim());
+  const canOpenDeliverablesStep = !isLeave && Boolean(effectiveActivityTitle.trim());
   const wizardSteps = useMemo<ActivityWizardStep[]>(() => [
     {
       id: 'time',
@@ -2232,6 +2238,7 @@ export function ActivityForm({
       label: 'Tip activitate',
       description: isBusinessHubExpert ? 'Business Hub, standard sau eveniment' : 'Standard sau eveniment',
       blocked: !effectiveActivityTitle.trim() && !isLeave,
+      disabled: isLeave,
     },
     {
       id: 'deliverables',
@@ -2251,18 +2258,21 @@ export function ActivityForm({
       label: 'Descriere',
       description: isGdprExpert ? 'Asistent GDPR si text' : 'Text si asistare AI',
       blocked: (isException && (description || '').length < 15) || needsCommonDesc || needsExtendedDesc,
+      disabled: isLeave,
     },
     {
       id: 'collaboration',
       label: 'Colaborare',
       description: activityCommon ? `${collaborators.length} colaboratori` : 'Comun si GT',
       blocked: false,
+      disabled: isLeave,
     },
     {
       id: 'review',
       label: 'Verificare',
       description: isSaveDisabled ? 'Blocaje active' : 'Gata de salvare',
       blocked: isSaveDisabled,
+      disabled: isLeave,
     },
   ], [
     activityCommon,
@@ -2290,6 +2300,7 @@ export function ActivityForm({
   ]);
   const currentWizardStepIndex = Math.max(0, wizardSteps.findIndex((step) => step.id === currentWizardStep));
   const isLastWizardStep = currentWizardStepIndex === wizardSteps.length - 1;
+  const canSubmitFromCurrentStep = isLastWizardStep || (isLeave && currentWizardStep === 'time');
   const isSupportingDeliverableStep = (
     currentWizardStep === 'deliverables'
     || currentWizardStep === 'collaboration'
@@ -4504,7 +4515,7 @@ export function ActivityForm({
             >
               Inapoi
             </Button>
-            {!isLastWizardStep && (
+            {!canSubmitFromCurrentStep && (
               <Button
                 type="button"
                 onClick={goToNextWizardStep}
@@ -4516,7 +4527,7 @@ export function ActivityForm({
             <Button
               type="button"
               onClick={() => handleSave()}
-              disabled={!isLastWizardStep || isSaveDisabled || isSaving || isSubmittingActivity}
+              disabled={!canSubmitFromCurrentStep || isSaveDisabled || isSaving || isSubmittingActivity}
               className={isWorkspaceLayout ? 'w-full sm:w-auto' : undefined}
               aria-busy={isSaving || isSubmittingActivity}
             >

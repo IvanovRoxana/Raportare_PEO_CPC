@@ -103,7 +103,21 @@ function isActivityPeriodGroupId(value?: string | null) {
   return Boolean(value && ACTIVITY_PERIOD_GROUP_PREFIXES.some((prefix) => value.startsWith(prefix)));
 }
 
+function isLeaveEntryActivity(activity: Activity) {
+  return activity.id.startsWith('leave-entry:');
+}
+
 function getActivityGroupKey(activity: Activity, inferredLegacyGroups: Map<string, string>) {
+  if (isLeaveEntryActivity(activity)) {
+    return [
+      'leave',
+      activity.expertId,
+      activity.dayType || activity.activityType,
+      normalizeText(activity.description),
+      activity.status,
+    ].join(':');
+  }
+
   if (activity.workingGroupId && !isActivityPeriodGroupId(activity.workingGroupId)) {
     return `working:${activity.workingGroupId}`;
   }
@@ -118,6 +132,9 @@ function getActivityGroupKey(activity: Activity, inferredLegacyGroups: Map<strin
 
 function getActivityGroupTitle(activities: Activity[]) {
   const first = activities[0];
+  if (first && isLeaveEntryActivity(first)) {
+    return first.activityType || first.title || 'Concediu';
+  }
   return first?.title || first?.activityType || 'Activitate fara titlu';
 }
 
