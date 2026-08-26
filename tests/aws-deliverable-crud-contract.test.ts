@@ -99,6 +99,27 @@ test('scrierile activitatilor verifica autorizarea Expert/PM inainte de sincroni
   );
 });
 
+test('verificarea accesului accepta acelasi expert identificat prin email', () => {
+  const startMarker = 'async function assertCanAccessExpert(client: any, expertId?: string | null)';
+  const endMarker = 'async function getGTRegistryAccess(client: any)';
+  const start = awsStoreSource.indexOf(startMarker);
+  const end = awsStoreSource.indexOf(endMarker, start);
+
+  assert.notEqual(start, -1, 'Nu a fost gasit helper-ul assertCanAccessExpert');
+  assert.notEqual(end, -1, 'Nu a fost gasita limita helper-ului assertCanAccessExpert');
+  const accessSource = awsStoreSource.slice(start, end);
+
+  assert.match(accessSource, /client\.models\.Expert\.get\(\{ id: expertId \}\)/);
+  assert.match(accessSource, /const targetExpert = mapExpert\(result\.data\)/);
+  assert.match(accessSource, /currentEmail && currentEmail === targetEmail/);
+  assert.doesNotMatch(accessSource, /currentName && currentName === targetName/);
+  assert.ok(
+    accessSource.indexOf('if (currentEmail && currentEmail === targetEmail)')
+      < accessSource.indexOf('throw new Error(ACCESS_DENIED_MESSAGE)'),
+    'identitatea echivalenta prin email trebuie acceptata inainte de refuzul accesului',
+  );
+});
+
 test('createBatch trateaza throttling-ul inainte si dupa prima scriere fara retry automat pe batch partial', () => {
   const createBatchSource = getActivityMethodSource(
     "async createBatch(activities: Omit<Activity, 'id' | 'createdAt' | 'updatedAt'>[]): Promise<Activity[]>",

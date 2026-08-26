@@ -282,6 +282,18 @@ async function getCurrentDataAccessScope(
 async function assertCanAccessExpert(client: any, expertId?: string | null) {
   const scope = await getCurrentDataAccessScope(client);
   if (!canAccessExpertId(scope, expertId)) {
+    if (scope.currentExpert && expertId) {
+      const result = await client.models.Expert.get({ id: expertId });
+      assertNoErrors(result, 'AWS get expert for access check');
+      if (result.data) {
+        const targetExpert = mapExpert(result.data);
+        const currentEmail = normalizeIdentity(scope.currentExpert.email);
+        const targetEmail = normalizeIdentity(targetExpert.email);
+        if (currentEmail && currentEmail === targetEmail) {
+          return scope;
+        }
+      }
+    }
     throw new Error(ACCESS_DENIED_MESSAGE);
   }
   return scope;
