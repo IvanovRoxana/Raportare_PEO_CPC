@@ -1,4 +1,4 @@
-import type { Activity, ConcurrentProject, ConcurrentProjectTimesheetEntry } from './types.ts';
+import type { Activity, ConcurrentProject, ConcurrentProjectTimesheetEntry, LeaveEntry } from './types.ts';
 import { getWorkingDaysListInMonth } from './working-hours.ts';
 
 export type ConsolidatedDayStatus = 'OK' | 'depășire' | 'conflict CO-CM' | 'necesită verificare';
@@ -6,6 +6,7 @@ export type ConsolidatedDayStatus = 'OK' | 'depășire' | 'conflict CO-CM' | 'ne
 export interface ConsolidatedDayRow {
   date: string;
   peoHours: number;
+  cpcLeaveHours: number;
   concurrentHoursByProject: Record<string, number>;
   totalHours: number;
   dayTypes: string[];
@@ -68,6 +69,7 @@ export function buildConsolidatedTimesheet(args: {
   activities: Activity[];
   concurrentProjects: ConcurrentProject[];
   entries: ConcurrentProjectTimesheetEntry[];
+  leaveEntries?: LeaveEntry[];
   month: number;
   year: number;
 }): ConsolidatedDayRow[] {
@@ -77,20 +79,23 @@ export function buildConsolidatedTimesheet(args: {
     const date = `${args.year}-${String(args.month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     const dayActivities = args.activities.filter((activity) => activity.date === date);
     const dayEntries = args.entries.filter((entry) => entry.date === date);
+    const dayLeaves = (args.leaveEntries ?? []).filter((leave) => leave.date === date && leave.status !== 'REJECTED');
     const peoHours = dayActivities.reduce((sum, activity) => sum + (Number(activity.hours) || 0), 0);
+    const cpcLeaveHours = dayLeaves.reduce((sum, leave) => sum + (Number(leave.cpcHours) || 0), 0);
     const concurrentHoursByProject: Record<string, number> = {};
     dayEntries.forEach((entry) => {
       concurrentHoursByProject[entry.concurrentProjectId] =
         (concurrentHoursByProject[entry.concurrentProjectId] || 0) + (Number(entry.hours) || 0);
     });
     const concurrentHours = Object.values(concurrentHoursByProject).reduce((sum, hours) => sum + hours, 0);
-    const totalHours = peoHours + concurrentHours;
+    const totalHours = peoHours + concurrentHours + cpcLeaveHours;
     const dayTypes = Array.from(new Set([
       ...dayActivities.map((activity) => activity.dayType).filter(Boolean),
       ...dayEntries.map((entry) => entry.dayType).filter(Boolean),
     ] as string[]));
     const hasAbsence = dayTypes.some(isAbsenceDayType);
-    const hasWorkedHours = totalHours > 0;
+    const hasWorkedHours = dayActivities.some((activity) => !isAbsenceDayType(activity.dayType) && (Number(activity.hours) || 0) > 0)
+      || dayEntries.some((entry) => !isAbsenceDayType(entry.dayType) && (Number(entry.hours) || 0) > 0);
     const observations: string[] = [];
     dayEntries.forEach((entry) => {
       if ((Number(entry.hours) || 0) > 0 && !entry.wp?.trim()) observations.push('WP lipsă pentru zi cu ore');
@@ -102,6 +107,7 @@ export function buildConsolidatedTimesheet(args: {
     return {
       date,
       peoHours,
+      cpcLeaveHours,
       concurrentHoursByProject,
       totalHours,
       dayTypes,

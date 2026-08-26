@@ -781,15 +781,17 @@ function ExpertDashboardContent() {
   // Filter activities by expert
   const activities = useMemo(() => {
     if (!selectedExpertId) return [];
-    const reportedActivities = allMonthActivities.filter((activity) => activity.expertId === selectedExpertId);
-    const leaveActivities: Activity[] = leaveEntries
-      .filter((leave) => leave.expertId === selectedExpertId && leave.status !== 'REJECTED')
+    const expertLeaves = leaveEntries.filter((leave) => leave.expertId === selectedExpertId && leave.status !== 'REJECTED');
+    const financialLeaveDates = new Set(expertLeaves.map((leave) => leave.date));
+    const reportedActivities = allMonthActivities.filter((activity) => activity.expertId === selectedExpertId
+      && (!financialLeaveDates.has(activity.date) || (activity.dayType !== 'CO' && activity.dayType !== 'CM')));
+    const leaveActivities: Activity[] = expertLeaves
       .map((leave) => ({
         id: 'leave-entry:' + leave.id,
         date: leave.date,
         expertId: leave.expertId,
         expertName: experts.find((expert) => expert.id === leave.expertId)?.name,
-        hours: Number(leave.totalHours) || (Number(leave.peoHours) || 0) + (Number(leave.cpcHours) || 0),
+        hours: Number(leave.peoHours) || 0,
         activityType: leave.type === 'CM' ? 'CM - Concediu medical' : 'CO - Concediu de odihna',
         title: leave.type + ' (' + leave.peoHours + ' h PEO + ' + leave.cpcHours + ' h CPC)',
         description: leave.source === 'FINANCIAL' ? 'Concediu introdus de Financiar.' : 'Concediu repartizat automat.',
