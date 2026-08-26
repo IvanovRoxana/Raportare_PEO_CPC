@@ -553,7 +553,7 @@ export default function PMDashboard() {
     await Promise.all(
       activities.map((activity) => updateActivity(activity.id, {
         status: 'approved',
-        pmNotes: activity.pmNotes,
+        pmNotes: '',
       }))
     );
     await refreshMonthActivities();

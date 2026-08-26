@@ -201,6 +201,7 @@ export function DosarExpertModal({
   const [documentError, setDocumentError] = useState<string | null>(null);
   const [inlinePreview, setInlinePreview] = useState<{ url: string; fileName: string; objectUrl?: string } | null>(null);
   const [inlinePreviewLoading, setInlinePreviewLoading] = useState(false);
+  const [locallyApprovedActivityIds, setLocallyApprovedActivityIds] = useState<Set<string>>(new Set());
   const {
     bundles: persistedRaWorkBlockBundles,
     isLoading: isLoadingRaWorkBlockBundles,
@@ -237,6 +238,10 @@ export function DosarExpertModal({
       if (targetId) document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }, 150);
   }, [initialFocus, open]);
+
+  useEffect(() => {
+    if (!open) setLocallyApprovedActivityIds(new Set());
+  }, [open]);
 
   // Calculate stats
   const stats = useMemo(() => {
@@ -643,6 +648,13 @@ export function DosarExpertModal({
     setActivityActionId(`${action}-${group.key}`);
     try {
       await handler(group.activities);
+      if (action === 'approve') {
+        setLocallyApprovedActivityIds((current) => {
+          const next = new Set(current);
+          group.activities.forEach((activity) => next.add(activity.id));
+          return next;
+        });
+      }
     } finally {
       setActivityActionId(null);
     }
@@ -973,8 +985,8 @@ export function DosarExpertModal({
                             {groups.map(group => {
                               const datesLabel = group.dates.map(formatActivityDay).join(', ');
                               const fullDatesLabel = group.dates.map(formatActivityDate).join(', ');
-                              const isApproved = group.activities.every((activity) => activity.status === 'approved');
-                              const hasClarification = group.activities.some((activity) => Boolean(activity.pmNotes));
+                              const isApproved = group.activities.every((activity) => activity.status === 'approved' || locallyApprovedActivityIds.has(activity.id));
+                              const hasClarification = !isApproved && group.activities.some((activity) => Boolean(activity.pmNotes));
                               const approveActionId = `approve-${group.key}`;
                               const clarificationActionId = `clarification-${group.key}`;
 
