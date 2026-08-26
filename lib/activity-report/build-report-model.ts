@@ -42,6 +42,11 @@ export type ProjectReportingSettings = {
   requireDeliverableForMaterialWork?: boolean;
 };
 
+export const ANEXA10_EXPORT_SETTINGS: ProjectReportingSettings = {
+  includeLeaveInTable: true,
+  includeLeaveInTotal: true,
+};
+
 export type Anexa10TableRow = {
   workBlockId: string;
   officialActivityTitle: string;
@@ -107,12 +112,13 @@ export function buildAnexa10ReportModel({
   const bundles = workBlockBundles ?? buildWorkBlocks(activities);
   const activityById = new Map(activities.map((activity) => [activity.id, activity]));
   const filteredBundles = bundles.filter((bundle) => shouldIncludeBundle(bundle, settings));
-  const orderedBundles = moveReportPreparationBundlesLast(filteredBundles);
-  const problems = validateWorkBlockAllocation(activities, filteredBundles);
+  const orderedBundles = orderTableBundles(filteredBundles);
+  const validationBundles = filteredBundles.filter((bundle) => !isLeaveBundle(bundle));
+  const problems = validateWorkBlockAllocation(activities, validationBundles);
   const warnings = buildReportWarnings(filteredBundles, activityById, settings);
   const tableRows = orderedBundles.map((bundle) => buildTableRow(bundle, activityById, expert));
   const saSections = buildSaSections(
-    orderedBundles.filter((bundle) => !isReportPreparationBundle(bundle)),
+    orderedBundles.filter((bundle) => !isReportPreparationBundle(bundle) && !isLeaveBundle(bundle)),
     activityById,
     sentenceMonthName,
     year,
@@ -154,16 +160,17 @@ function buildTableRow(
   const deliverables = getBundleDeliverableTitles(activities);
   const hours = calculateWorkBlockHours(bundle.activityLinks);
   const isReportPreparation = isReportPreparationBundle(bundle);
+  const isLeave = isLeaveBundle(bundle);
 
   return {
     workBlockId: bundle.workBlock.id,
     officialActivityTitle: getOfficialActivityTitle(bundle, activities),
     responsibilities: expert.jobDescriptionText || bundle.workBlock.expertContribution || '-',
-    performedActivity: getPerformedActivity(bundle, activities),
-    resultsAndDeliverables: isReportPreparation
+    performedActivity: isLeave ? getLeavePerformedActivity(activities) : getPerformedActivity(bundle, activities),
+    resultsAndDeliverables: isReportPreparation || isLeave
       ? ['N/A']
       : deliverables.length > 0 ? deliverables : [getResultWithoutDeliverable(bundle)],
-    commonDeliverable: isReportPreparation ? 'Nu' : getCommonDeliverableLabel(activities),
+    commonDeliverable: isReportPreparation || isLeave ? 'Nu' : getCommonDeliverableLabel(activities),
     hours,
   };
 }
@@ -266,13 +273,16 @@ function formatNarrativeTiming(days: string, hours: number) {
   return days;
 }
 
-function moveReportPreparationBundlesLast(bundles: ReportingWorkBlockBundle[]) {
+function orderTableBundles(bundles: ReportingWorkBlockBundle[]) {
   return [...bundles].sort((first, second) => {
-    const firstIsReportPreparation = isReportPreparationBundle(first);
-    const secondIsReportPreparation = isReportPreparationBundle(second);
-    if (firstIsReportPreparation === secondIsReportPreparation) return 0;
-    return firstIsReportPreparation ? 1 : -1;
+    return getTableBundlePriority(first) - getTableBundlePriority(second);
   });
+}
+
+function getTableBundlePriority(bundle: ReportingWorkBlockBundle) {
+  if (isReportPreparationBundle(bundle)) return 2;
+  if (isLeaveBundle(bundle)) return 1;
+  return 0;
 }
 
 function shouldIncludeBundle(bundle: ReportingWorkBlockBundle, settings: ProjectReportingSettings) {
@@ -302,6 +312,10 @@ function calculateReportPreparationHours(bundles: ReportingWorkBlockBundle[]) {
 
 function isReportPreparationBundle(bundle: ReportingWorkBlockBundle) {
   return bundle.workBlock.reportingFlowType === 'report_preparation';
+}
+
+function isLeaveBundle(bundle: ReportingWorkBlockBundle) {
+  return bundle.workBlock.reportingFlowType === 'leave';
 }
 
 function buildReportWarnings(
@@ -383,6 +397,12 @@ function getPerformedActivity(bundle: ReportingWorkBlockBundle, activities: Acti
     normalizeAnexa10ReportText(selectPerformedActivityText(bundle, activities)),
     MAX_TABLE_PERFORMED_ACTIVITY_WORDS,
   );
+}
+
+function getLeavePerformedActivity(activities: Activity[]) {
+  return activities.some((activity) => activity.dayType === 'CM')
+    ? 'Concediu medical'
+    : 'Concediu de odihna';
 }
 
 function selectPerformedActivityText(bundle: ReportingWorkBlockBundle, activities: Activity[]) {

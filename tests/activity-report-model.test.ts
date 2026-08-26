@@ -549,6 +549,54 @@ test('concediul este exclus implicit din total si poate fi inclus configurabil',
   assert.equal(includeLeaveModel.totalHours, 8);
 });
 
+test('concediul inclus in Anexa 10 apare doar in tabel, inainte de elaborarea RA, cu orele PEO', () => {
+  const activities = [
+    activity({
+      id: 'work',
+      date: '2026-06-02',
+      hours: 6,
+      periodGroupId: 'work',
+      title: 'Analiza legislativa',
+      description: 'Am analizat modificarile legislative si am sintetizat impactul pentru membrii CPC.',
+    }),
+    activity({
+      id: 'report',
+      date: '2026-06-30',
+      hours: 2,
+      periodGroupId: 'report',
+      title: 'Elaborare RA / OPIS',
+      activityType: 'Elaborare RA / OPIS',
+      description: 'Elaborarea Raportului de Activitate lunar si a OPIS-ului livrabilelor.',
+    }),
+    activity({
+      id: 'leave',
+      date: '2026-06-14',
+      hours: 4,
+      dayType: 'CO',
+      periodGroupId: 'leave',
+      saCode: undefined,
+      title: 'CO (4 h PEO + 4 h CPC)',
+      description: 'Concediu de odihna',
+    }),
+  ];
+
+  const model = buildAnexa10ReportModel({
+    expert,
+    activities,
+    month: 5,
+    year: 2026,
+    settings: { includeLeaveInTable: true, includeLeaveInTotal: true },
+  });
+
+  assert.equal(model.tableRows.at(-2)?.performedActivity, 'Concediu de odihna');
+  assert.doesNotMatch(model.tableRows.at(-2)?.performedActivity || '', /CPC|PEO/);
+  assert.equal(model.tableRows.at(-2)?.hours, 4);
+  assert.match(model.tableRows.at(-1)?.performedActivity || '', /Raportului de Activitate lunar/);
+  assert.equal(model.totalHours, 12);
+  assert.equal(model.problems.some((problem) => /Concediu|SA/.test(problem.message)), false);
+  assert.equal(model.saSections.flatMap((section) => section.items).some((item) => /Concediu/i.test(item.body)), false);
+});
+
 test('signature date foloseste ultima zi lucrata si ignora concediul implicit', () => {
   const activities = [
     activity({ id: 'work', date: '2026-06-20', hours: 4 }),

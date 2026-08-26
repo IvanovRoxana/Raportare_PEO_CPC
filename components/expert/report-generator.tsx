@@ -12,7 +12,7 @@ import {
   MAX_DELIVERABLE_TITLES,
   truncateActivityReportText,
 } from '@/lib/activity-report/local-fallback';
-import { buildAnexa10ReportModel } from '@/lib/activity-report/build-report-model';
+import { ANEXA10_EXPORT_SETTINGS, buildAnexa10ReportModel } from '@/lib/activity-report/build-report-model';
 import { buildAnexa10DocxBlob, buildAnexa10DocxFilename } from '@/lib/activity-report/docx-export';
 import { assertCanExportAnexa10Docx, getAnexa10ExportGate } from '@/lib/activity-report/export-readiness';
 import type { Anexa10PreflightReport } from '@/lib/activity-report/preflight';
@@ -133,6 +133,7 @@ export function ReportGenerator({
       month,
       year,
       workBlockBundles: workBlockBundles && workBlockBundles.length > 0 ? workBlockBundles : undefined,
+      settings: ANEXA10_EXPORT_SETTINGS,
     });
   }, [activities, enableDeterministicAnexa10Docx, expert, expertName, isLoadingDeterministicWorkBlocks, month, workBlockBundles, year]);
   const persistedWorkBlockCount = workBlockBundles?.length ?? 0;

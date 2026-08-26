@@ -39,7 +39,7 @@ import { getSecureDocumentUrl } from '@/lib/document-retrieval';
 import { getDocumentAuditTitle } from '@/lib/document-sharing';
 import { dedupeDeliverablesBySignature } from '@/lib/deliverable-deduplication';
 import { GDPR_CONCLUSION_OPTIONS, getGdprDeliverableRequirementLabel, getGdprMinimumEvidenceLabels, getGdprTemplate, parseGdprMetaJson, validateGdprActivityDraft } from '@/lib/gdpr-reporting';
-import { buildAnexa10ReportModel } from '@/lib/activity-report/build-report-model';
+import { ANEXA10_EXPORT_SETTINGS, buildAnexa10ReportModel } from '@/lib/activity-report/build-report-model';
 import { buildAnexa10DocxBlob, buildAnexa10DocxFilename } from '@/lib/activity-report/docx-export';
 import { assertCanExportAnexa10Docx } from '@/lib/activity-report/export-readiness';
 import { buildPontajExportPayload } from '@/lib/pontaj-export-payload';
@@ -577,6 +577,7 @@ export function DosarExpertModal({
         month,
         year,
         workBlockBundles: persistedRaWorkBlockBundles.length > 0 ? persistedRaWorkBlockBundles : undefined,
+        settings: ANEXA10_EXPORT_SETTINGS,
       });
       assertCanExportAnexa10Docx(model, {
         usesPersistedWorkBlocks: persistedRaWorkBlockBundles.length > 0,
