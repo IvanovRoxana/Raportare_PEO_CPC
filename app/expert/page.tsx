@@ -36,7 +36,7 @@ import { getActivitiesWithPmClarifications } from '@/lib/pm-clarifications';
 import { canAccessPmDashboard } from '@/lib/pm-dashboard';
 import { buildPontajExportPayload } from '@/lib/pontaj-export-payload';
 import { calculateMonthlyNormInfo } from '@/lib/pontaj-rules';
-import type { Activity, ConcurrentProject, ConcurrentProjectTimesheetEntry, Expert } from '@/lib/types';
+import type { Activity, ConcurrentProject, ConcurrentProjectTimesheetEntry, Expert, LeaveEntry } from '@/lib/types';
 import { getNonWorkingDayInfo } from '@/lib/non-working-days';
 import { cn } from '@/lib/utils';
 
@@ -163,6 +163,26 @@ function getProjectTotal(project: ProjectItem) {
   const peoHours = project.activities.reduce((sum, activity) => sum + (Number(activity.hours) || 0), 0);
   const concurrentHours = project.timesheetEntries?.reduce((sum, entry) => sum + (Number(entry.hours) || 0), 0) ?? 0;
   return peoHours + concurrentHours;
+}
+
+function isLeaveActivity(activity: Pick<Activity, 'dayType'>) {
+  const dayType = String(activity.dayType || '').trim().toUpperCase();
+  return dayType === 'CO' || dayType === 'CM';
+}
+
+function getPeoCoveredHours(activities: Activity[], leaveEntries: LeaveEntry[]) {
+  const leaveDates = new Set(leaveEntries.filter((leave) => leave.status !== 'REJECTED').map((leave) => leave.date));
+  const workedHours = activities
+    .filter((activity) => !isLeaveActivity(activity))
+    .reduce((sum, activity) => sum + (Number(activity.hours) || 0), 0);
+  const leaveHours = leaveEntries
+    .filter((leave) => leave.status !== 'REJECTED')
+    .reduce((sum, leave) => sum + (Number(leave.peoHours) || 0), 0);
+  const manualLeaveHours = activities
+    .filter((activity) => isLeaveActivity(activity) && !activity.id.startsWith('leave-entry:') && !leaveDates.has(activity.date))
+    .reduce((sum, activity) => sum + (Number(activity.hours) || 0), 0);
+
+  return workedHours + leaveHours + manualLeaveHours;
 }
 
 function percent(part: number, total: number) {
@@ -616,15 +636,24 @@ export default function ExpertHomeDashboard() {
     [activeConcurrentProjects, expertConcurrentEntries, peoActivities, peoHref]
   );
 
+  const currentExpertLeaveEntries = useMemo(
+    () => leaveEntries.filter((leave) => leave.expertId === currentExpert?.id),
+    [currentExpert, leaveEntries],
+  );
   const consolidatedRows = useMemo(
-    () => buildConsolidatedTimesheet({ activities: peoActivities, concurrentProjects: activeConcurrentProjects, entries: expertConcurrentEntries, leaveEntries: leaveEntries.filter((leave) => leave.expertId === currentExpert?.id), month: currentMonth, year: currentYear }),
-    [activeConcurrentProjects, currentExpert, currentMonth, currentYear, expertConcurrentEntries, leaveEntries, peoActivities]
+    () => buildConsolidatedTimesheet({ activities: peoActivities, concurrentProjects: activeConcurrentProjects, entries: expertConcurrentEntries, leaveEntries: currentExpertLeaveEntries, month: currentMonth, year: currentYear }),
+    [activeConcurrentProjects, currentExpertLeaveEntries, currentMonth, currentYear, expertConcurrentEntries, peoActivities]
   );
   const consolidatedWarnings = useMemo(() => getConsolidatedWarnings(consolidatedRows), [consolidatedRows]);
   const dayTotals = useMemo(() => getDayTotals(projects), [projects]);
   const exceededDays = consolidatedWarnings.exceededDays;
-  const totalMonthHours = projects.reduce((sum, project) => sum + getProjectTotal(project), 0);
-  const peoMonthHours = getProjectTotal(projects[0]);
+  const peoCoveredMonthHours = getPeoCoveredHours(peoActivities, currentExpertLeaveEntries);
+  const peoMonthHours = peoCoveredMonthHours;
+  const totalMonthHours = peoCoveredMonthHours
+    + activeConcurrentProjects.reduce(
+      (sum, project) => sum + getConcurrentProjectMonthlyTotal({ project, entries: expertConcurrentEntries, month: currentMonth, year: currentYear }).totalHours,
+      0,
+    );
   const monthlyNormInfo = useMemo(
     () => calculateMonthlyNormInfo(currentExpert ?? { norma: 8 }, currentMonth, currentYear),
     [currentExpert, currentMonth, currentYear],
@@ -1249,7 +1278,7 @@ export default function ExpertHomeDashboard() {
                     {projects.map((project) => (
                       <div key={project.id} className="flex items-center justify-between rounded-md border p-3">
                         <span className="font-medium">{project.name}</span>
-                        <Badge variant="secondary">{getProjectTotal(project)}h</Badge>
+                        <Badge variant="secondary">{project.id === 'peo' ? peoMonthHours : getProjectTotal(project)}h</Badge>
                       </div>
                     ))}
                   </div>

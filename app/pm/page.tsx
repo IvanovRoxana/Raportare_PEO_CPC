@@ -450,20 +450,31 @@ export default function PMDashboard() {
   const approvePmUnlockRequest = async (document: DocumentMetadata) => {
     if (!canManagePmReview || !document.eligibilityCheck) return;
 
+    const reviewerName = currentUser?.displayName || currentUser?.email || 'PM';
     const approvedCheck = {
       ...document.eligibilityCheck,
+      status: 'eligibil',
+      score: Math.max(Number(document.eligibilityCheck.score) || 0, 100),
+      summary: document.eligibilityCheck.summary || 'Livrabil aprobat manual de PM.',
       pmUnlockRequested: true,
       pmUnlockApproved: true,
       pmUnlockApprovedAt: new Date().toISOString(),
-      pmUnlockApprovedBy: currentUser?.displayName || currentUser?.email || 'PM',
+      pmUnlockApprovedBy: reviewerName,
     };
 
-    const sourceActivity = document.sourceActivityId
-      ? monthActivities.find((activity) => activity.id === document.sourceActivityId)
-      : undefined;
-    const sourceDeliverable = sourceActivity?.deliverables?.find((deliverable) => (
-      deliverable.documentId === document.id || deliverable.id === document.id
+    const matchesDocument = (deliverable: NonNullable<Activity['deliverables']>[number]) => (
+      deliverable.documentId === document.id
+      || deliverable.id === document.id
+      || Boolean(document.s3Key && deliverable.s3Key === document.s3Key)
+      || Boolean(document.fileHash && deliverable.fileHash === document.fileHash)
+      || Boolean(document.firstPageTextHash && deliverable.firstPageTextHash === document.firstPageTextHash)
+      || Boolean(document.contentFingerprint && deliverable.contentFingerprint === document.contentFingerprint)
+    );
+    const sourceActivity = monthActivities.find((activity) => (
+      activity.id === document.sourceActivityId
+      || (activity.deliverables ?? []).some(matchesDocument)
     ));
+    const sourceDeliverable = sourceActivity?.deliverables?.find(matchesDocument);
 
     if (sourceActivity && sourceDeliverable) {
       await updateActivity(sourceActivity.id, {
@@ -471,6 +482,8 @@ export default function PMDashboard() {
           deliverable.id === sourceDeliverable.id
             ? {
                 ...deliverable,
+                aiStatus: 'eligible',
+                aiReason: 'Livrabil aprobat manual de PM.',
                 eligibilityCheck: {
                   ...(deliverable.eligibilityCheck || document.eligibilityCheck),
                   ...approvedCheck,

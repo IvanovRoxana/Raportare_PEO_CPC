@@ -24,6 +24,7 @@ import {
 import type { Activity, AuditLog, DocumentMetadata, Expert, ReportStatus } from '../lib/types.ts';
 
 const experts = JSON.parse(readFileSync(new URL('../data/import/experts.json', import.meta.url), 'utf8')) as Expert[];
+const pmDashboardSource = readFileSync(new URL('../app/pm/page.tsx', import.meta.url), 'utf8');
 
 test('lista de colaborare include toti expertii activi, nu doar expertul curent', () => {
   const current = { id: 'e1', name: 'Expert Curent', role: 'Expert', isActive: true } as Expert;
@@ -232,6 +233,13 @@ test('summary PM calculeaza statusuri, alerte titlu, livrabile comune si cross a
   assert.equal(summary.documentAlertsCount, 3);
   assert.equal(summary.openClarificationsCount, 2);
   assert.equal(summary.problemCount, 6);
+});
+
+test('aprobarea manuala PM marcheaza livrabilul eligibil si sincronizeaza copia din activitate', () => {
+  assert.match(pmDashboardSource, /status:\s*'eligibil'/);
+  assert.match(pmDashboardSource, /aiStatus:\s*'eligible'/);
+  assert.match(pmDashboardSource, /activity\.id === document\.sourceActivityId\s*\|\|\s*\(activity\.deliverables \?\? \[\]\)\.some\(matchesDocument\)/);
+  assert.match(pmDashboardSource, /updateDocumentEligibilityCheck\(document\.id, approvedCheck\)/);
 });
 
 test('clarificarile PM pentru documente title_mismatch apar ca fire document', () => {
