@@ -199,6 +199,8 @@ export function DosarExpertModal({
   const [activityActionId, setActivityActionId] = useState<string | null>(null);
   const [documentActionId, setDocumentActionId] = useState<string | null>(null);
   const [documentError, setDocumentError] = useState<string | null>(null);
+  const [inlinePreview, setInlinePreview] = useState<{ url: string; fileName: string; objectUrl?: string } | null>(null);
+  const [inlinePreviewLoading, setInlinePreviewLoading] = useState(false);
   const {
     bundles: persistedRaWorkBlockBundles,
     isLoading: isLoadingRaWorkBlockBundles,
@@ -351,6 +353,21 @@ export function DosarExpertModal({
     )).sort((a, b) => (a.activityDate || '').localeCompare(b.activityDate || ''));
   }, [activities]);
 
+  const focusedDocument = initialFocus?.documentId ? documentsById.get(initialFocus.documentId) : undefined;
+  const focusedDeliverableIndex = initialFocus?.documentId
+    ? allDeliverables.findIndex((deliverable) => deliverable.documentId === initialFocus.documentId || deliverable.id === initialFocus.documentId)
+    : -1;
+  const focusedDeliverable = focusedDeliverableIndex >= 0 ? allDeliverables[focusedDeliverableIndex] : null;
+  const isFocusedEligibilityDossier = Boolean(
+    initialFocus?.documentId
+    && (
+      initialFocus.issueType === 'pm_unlock_requests'
+      || initialFocus.issueType === 'eligibility_manual_review'
+      || initialFocus.issueType === 'eligibility_ai_review'
+      || initialFocus.issueType === 'eligibility_rules'
+    )
+  );
+
   const handleDownloadOpis = async () => {
     if (!expert) return;
     setIsGeneratingOpis(true);
@@ -405,6 +422,51 @@ export function DosarExpertModal({
 
     throw new Error('Fisier indisponibil.');
   };
+
+  const resolveFocusedDocumentUrl = async () => {
+    if (focusedDeliverable) return resolveDeliverableUrl(focusedDeliverable);
+    if (focusedDocument?.s3Key) {
+      const result = await getSecureDocumentUrl(focusedDocument);
+      return { url: result.url, fileName: result.fileName, shouldRevoke: false };
+    }
+    throw new Error('Fisier indisponibil.');
+  };
+
+  useEffect(() => {
+    if (!open || !isFocusedEligibilityDossier) return;
+    let cancelled = false;
+    let objectUrl: string | undefined;
+
+    setInlinePreviewLoading(true);
+    setDocumentError(null);
+    setInlinePreview(null);
+
+    resolveFocusedDocumentUrl()
+      .then(async (result) => {
+        if (cancelled) return;
+        if (result.shouldRevoke) {
+          objectUrl = result.url;
+          setInlinePreview({ url: result.url, fileName: result.fileName, objectUrl: result.url });
+          return;
+        }
+        const response = await fetch(result.url);
+        if (!response.ok) throw new Error('Fisierul nu a putut fi preluat pentru previzualizare.');
+        const blob = await response.blob();
+        objectUrl = URL.createObjectURL(blob);
+        if (!cancelled) setInlinePreview({ url: objectUrl, fileName: result.fileName, objectUrl });
+      })
+      .catch((error) => {
+        if (!cancelled) setDocumentError(error instanceof Error ? error.message : 'Fisierul nu a putut fi previzualizat.');
+      })
+      .finally(() => {
+        if (!cancelled) setInlinePreviewLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [focusedDeliverable, focusedDocument, isFocusedEligibilityDossier, open]);
 
   const openDeliverable = async (deliverable: DossierDeliverable, index: number) => {
     const key = getDeliverableKey(deliverable, index);
@@ -606,6 +668,7 @@ export function DosarExpertModal({
           </DialogDescription>
         </DialogHeader>
 
+        {!isFocusedEligibilityDossier && (
         <div className="flex flex-wrap gap-2 rounded-lg border bg-slate-50 p-3">
           <Button variant="outline" size="sm" onClick={handleDownloadRa} disabled={isGeneratingRa}>
             {isGeneratingRa ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
@@ -624,6 +687,7 @@ export function DosarExpertModal({
             OPIS XLS
           </Button>
         </div>
+        )}
 
         {reportStatus && (
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
@@ -690,6 +754,8 @@ export function DosarExpertModal({
           </div>
         )}
 
+        {!isFocusedEligibilityDossier && (
+        <>
         {/* Quick Stats */}
         <div className="grid grid-cols-5 gap-2 py-3 border-y border-slate-200">
           <div className="text-center">
@@ -715,6 +781,119 @@ export function DosarExpertModal({
             <div className="text-[10px] text-slate-500">Neconformitati</div>
           </div>
         </div>
+        </>
+        )}
+
+        {isFocusedEligibilityDossier ? (
+          <div className="grid min-h-0 flex-1 gap-4 overflow-hidden lg:grid-cols-[minmax(20rem,0.8fr)_minmax(0,1.2fr)]">
+            <ScrollArea className="min-h-0 rounded-lg border bg-white">
+              <div className="space-y-4 p-4">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-700">
+                      Livrabil neeligibil
+                    </Badge>
+                    {focusedDocument?.eligibilityCheck?.pmUnlockRequested ? (
+                      <Badge variant="outline" className="border-blue-200 bg-blue-50 text-blue-700">Deblocare PM solicitată</Badge>
+                    ) : null}
+                  </div>
+                  <h2 className="mt-3 text-lg font-semibold text-slate-950">
+                    {focusedDocument?.declaredTitle
+                      || focusedDocument?.extractedTitle
+                      || (focusedDeliverable ? getDeliverableTitle(focusedDeliverable) : null)
+                      || focusedDocument?.originalFileName
+                      || 'Livrabil'}
+                  </h2>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {focusedDocument?.originalFileName || (focusedDeliverable ? getDeliverableFileName(focusedDeliverable) : '')}
+                  </p>
+                </div>
+
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm">Context activitate</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2 text-xs text-slate-600">
+                    <div><span className="font-semibold text-slate-800">SA:</span> {focusedDocument?.eligibilityCheck?.checkedSaCode || focusedDeliverable?.saCode || 'neprecizată'}</div>
+                    <div><span className="font-semibold text-slate-800">Activitate:</span> {focusedDocument?.eligibilityCheck?.checkedActivityName || focusedDeliverable?.activityTitle || focusedDeliverable?.activityType || 'neidentificată'}</div>
+                    <div><span className="font-semibold text-slate-800">Data:</span> {focusedDeliverable?.activityDate || focusedDocument?.uploadDate?.slice(0, 10) || '-'}</div>
+                    <div><span className="font-semibold text-slate-800">Tip livrabil:</span> {focusedDocument?.eligibilityCheck?.checkedDeliverableType || focusedDocument?.deliverableType || focusedDeliverable?.deliverableType || '-'}</div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm">Verificare AI</CardTitle>
+                    <CardDescription className="text-xs">
+                      Scor {focusedDocument?.eligibilityCheck?.score ?? focusedDeliverable?.eligibilityCheck?.score ?? 0}/100
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3 text-xs">
+                    <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-amber-900">
+                      {focusedDocument?.eligibilityCheck?.summary || focusedDeliverable?.eligibilityCheck?.summary || 'Nu există sumar AI pentru acest livrabil.'}
+                    </div>
+                    {(focusedDocument?.eligibilityCheck?.missingElements || focusedDeliverable?.eligibilityCheck?.missingElements || []).length > 0 ? (
+                      <div>
+                        <div className="mb-1 font-semibold text-slate-800">Elemente lipsă</div>
+                        <ul className="list-disc space-y-1 pl-4 text-slate-600">
+                          {(focusedDocument?.eligibilityCheck?.missingElements || focusedDeliverable?.eligibilityCheck?.missingElements || []).map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}
+                        </ul>
+                      </div>
+                    ) : null}
+                    {(focusedDocument?.eligibilityCheck?.riskFlags || focusedDeliverable?.eligibilityCheck?.riskFlags || []).length > 0 ? (
+                      <div>
+                        <div className="mb-1 font-semibold text-slate-800">Riscuri</div>
+                        <ul className="list-disc space-y-1 pl-4 text-slate-600">
+                          {(focusedDocument?.eligibilityCheck?.riskFlags || focusedDeliverable?.eligibilityCheck?.riskFlags || []).map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}
+                        </ul>
+                      </div>
+                    ) : null}
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm">Tracking PM</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2 text-xs text-slate-600">
+                    <div><span className="font-semibold text-slate-800">Solicitat:</span> {focusedDocument?.eligibilityCheck?.pmUnlockRequestedAt || focusedDeliverable?.eligibilityCheck?.pmUnlockRequestedAt || '-'}</div>
+                    <div><span className="font-semibold text-slate-800">Solicitant:</span> {focusedDocument?.eligibilityCheck?.pmUnlockRequestedBy || focusedDeliverable?.eligibilityCheck?.pmUnlockRequestedBy || '-'}</div>
+                    <div><span className="font-semibold text-slate-800">Motiv:</span> {focusedDocument?.eligibilityCheck?.pmUnlockReason || focusedDeliverable?.eligibilityCheck?.pmUnlockReason || '-'}</div>
+                  </CardContent>
+                </Card>
+              </div>
+            </ScrollArea>
+
+            <section className="flex min-h-0 flex-col overflow-hidden rounded-lg border bg-white">
+              <div className="flex items-center justify-between border-b px-4 py-3">
+                <div>
+                  <h3 className="text-sm font-semibold">Preview livrabil</h3>
+                  <p className="text-xs text-slate-500">{inlinePreview?.fileName || focusedDocument?.originalFileName || 'Fișier'}</p>
+                </div>
+                {inlinePreview ? (
+                  <Button size="sm" variant="outline" onClick={() => window.open(inlinePreview.url, '_blank')}>
+                    <Eye className="h-4 w-4" />
+                    Tab nou
+                  </Button>
+                ) : null}
+              </div>
+              <div className="min-h-0 flex-1 bg-slate-100">
+                {inlinePreviewLoading ? (
+                  <div className="flex h-full items-center justify-center text-sm text-slate-500">
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Se încarcă preview...
+                  </div>
+                ) : inlinePreview ? (
+                  <iframe title="Preview livrabil" src={inlinePreview.url} className="h-full w-full border-0 bg-white" />
+                ) : (
+                  <div className="flex h-full items-center justify-center p-6 text-center text-sm text-slate-500">
+                    {documentError || 'Preview indisponibil pentru acest fișier.'}
+                  </div>
+                )}
+              </div>
+            </section>
+          </div>
+        ) : (
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <TabsList className="grid w-full grid-cols-2">
@@ -1125,6 +1304,7 @@ export function DosarExpertModal({
             </TabsContent>
           </ScrollArea>
         </Tabs>
+        )}
       </DialogContent>
     </Dialog>
   );
