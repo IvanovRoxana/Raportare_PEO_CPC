@@ -19,6 +19,7 @@ import {
   Users,
 } from 'lucide-react';
 import { AdminViewAsBanner } from '@/components/admin/admin-view-as-banner';
+import { ExpertAvatar } from '@/components/expert/expert-avatar';
 import { DashboardShell, expertNavItems } from '@/components/layout/dashboard-shell';
 import { ProgressBar, RightInfoCard, StatCard } from '@/components/layout/dashboard-primitives';
 import { Badge } from '@/components/ui/badge';
@@ -516,6 +517,7 @@ export default function ExpertHomeDashboard() {
   );
 
   const expertName = currentExpert?.name ?? signedInName;
+  const expertFirstName = expertName.split(/\s+/).filter(Boolean)[0] || 'Expert';
   const isBaseMonth = currentMonth === baseMonth && currentYear === baseYear;
   const selectedMonthHasAccess = isBaseMonth || currentMonthStatus?.expertAccessApproved === true;
   const selectedMonthRequestPending = currentMonthAccessRequest?.status === 'pending';
@@ -868,6 +870,16 @@ export default function ExpertHomeDashboard() {
 
   const calendarToolbar = (
     <>
+      <div className="flex min-w-[250px] items-center justify-end gap-4 rounded-2xl border border-[#dce5ef] bg-white px-4 py-3 shadow-sm">
+        <div className="min-w-0 text-right">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Bine ai venit,</p>
+          <p className="truncate text-2xl font-bold text-slate-950">{expertFirstName}</p>
+        </div>
+        <ExpertAvatar
+          expert={currentExpert ?? { id: signedInUserId || 'expert', name: expertName }}
+          className="h-20 w-20 border-4 border-[#eaf3fb] text-2xl shadow-sm sm:h-24 sm:w-24"
+        />
+      </div>
       {hasActiveConcurrentProjects && (
         <div className="min-w-[240px] rounded-xl border border-[#dce5ef] bg-slate-50/80 p-2 shadow-sm">
           <p className="mb-1 px-1 text-xs font-semibold text-slate-600">Panou proiecte</p>
