@@ -14,6 +14,7 @@ import {
   Globe2,
   Loader2,
   Save,
+  SearchIcon,
   Users,
 } from 'lucide-react';
 import { AdminViewAsBanner } from '@/components/admin/admin-view-as-banner';
@@ -50,6 +51,7 @@ type ProjectItem = {
 };
 
 const WORK_TABS = [
+  { label: 'Indexare livrabile', href: '/expert/livrabile-indexare', icon: SearchIcon, active: false },
   { label: 'Grupuri de lucru', href: '#', icon: Users, active: false },
   { label: 'Activități Colegi', href: '/expert/peo?tab=colegi', icon: BriefcaseBusiness, active: false },
   { label: 'EU Affairs', href: '#', icon: Globe2, active: false },
@@ -921,6 +923,7 @@ export default function ExpertHomeDashboard() {
         title="Pontaj lunar"
         reportingMonth={`${getMonthName(currentMonth)} ${currentYear}`}
         description={`Centralizeaza activitatile si orele raportate pentru ${getMonthName(currentMonth)} ${currentYear}.`}
+        contentClassName="max-w-none"
         quickTabs={[
           { label: 'Activitățile mele', href: peoHref, icon: ClipboardList },
           { label: 'Livrabile', href: `${peoHref}#livrabile`, icon: CheckCircle2 },
@@ -1207,7 +1210,7 @@ export default function ExpertHomeDashboard() {
           />
         </section>
 
-        <section className="grid gap-3 rounded-[1.5rem] border bg-card p-3 md:grid-cols-3">
+        <section className="grid gap-3 rounded-[1.5rem] border bg-card p-3 md:grid-cols-4">
           {WORK_TABS.map((tab) => {
             const Icon = tab.icon;
             const content = (
