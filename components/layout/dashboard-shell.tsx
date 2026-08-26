@@ -155,18 +155,18 @@ export function DashboardShell({
     <div className={cn('min-h-screen bg-background text-foreground', className)}>
       <main className={cn('mx-auto w-full max-w-screen-2xl px-4 py-5 sm:px-6 lg:px-8 lg:py-7', contentClassName)}>
         {!hideHeader ? (
-        <header className="rounded-[2rem] border border-[#dce5ef] bg-white p-6 shadow-sm">
+        <header className="rounded-2xl border border-[#dce5ef] bg-white p-4 shadow-sm sm:p-5">
           <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div className="min-w-0">
-              <div className="mb-3 flex w-fit items-center gap-2 rounded-full bg-[#eaf3fb] px-3 py-1 text-xs font-semibold text-primary">
+              <div className="mb-2 flex w-fit items-center gap-2 rounded-full bg-[#eaf3fb] px-3 py-1 text-xs font-semibold text-primary">
                 <ShieldCheck className="h-3.5 w-3.5" />
                 {eyebrow}
               </div>
-              <h1 className="max-w-4xl text-3xl font-bold tracking-tight text-slate-950 md:text-[2rem]">
+              <h1 className="max-w-4xl text-2xl font-bold tracking-tight text-slate-950 md:text-[1.75rem]">
                 {title}
               </h1>
               {reportingMonth ? (
-                <div className="mt-3 inline-flex items-center gap-2 rounded-md border border-[#dce5ef] bg-slate-50 px-3 py-1.5 text-sm font-semibold text-slate-800">
+                <div className="mt-2 inline-flex items-center gap-2 rounded-md border border-[#dce5ef] bg-slate-50 px-3 py-1.5 text-sm font-semibold text-slate-800">
                   <CalendarDays className="h-4 w-4 text-primary" />
                   {reportingMonth}
                 </div>
@@ -225,12 +225,12 @@ export function DashboardShell({
         ) : null}
 
         {aside ? (
-          <div className={cn(!hideHeader && 'mt-6', 'grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(20rem,1fr)]')}>
+          <div className={cn(!hideHeader && 'mt-5', 'grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,22rem)] lg:items-start')}>
             <div className="min-w-0 space-y-6">{children}</div>
             <aside className="hidden space-y-6 lg:block">{aside}</aside>
           </div>
         ) : (
-          <div className={cn(!hideHeader && 'mt-6', 'space-y-6')}>{children}</div>
+          <div className={cn(!hideHeader && 'mt-5', 'space-y-6')}>{children}</div>
         )}
       </main>
     </div>
