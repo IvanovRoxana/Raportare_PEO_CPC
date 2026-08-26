@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, Download, FileText, Loader2, Plus, RotateCcw, Save, SearchIcon, Trash2, Upload } from 'lucide-react';
+import { CheckCircle2, Download, FileText, Loader2, Plus, RotateCcw, Save, SearchIcon, Trash2, Upload, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -27,6 +27,7 @@ const INACTIVE = 'inactive';
 const FALLBACK_CATEGORIES = ['ap', 'com', 'gdpr', 'gt', 'pm'];
 
 type ActivityCatalogDraft = Omit<ActivityCatalog, 'id' | 'createdAt'>;
+type CatalogEditorView = 'catalog' | 'deliverables';
 
 interface ActivityCatalogGovernancePanelProps {
   fallbackCatalog?: ActivityCatalog[];
@@ -66,6 +67,17 @@ function matchesCatalogSearch(item: ActivityCatalog, query: string) {
   ]
     .filter(Boolean)
     .some((value) => String(value).toLowerCase().includes(normalizedQuery));
+}
+
+function splitCatalogDeliverables(value?: string | null) {
+  return (value || '')
+    .split('|')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function joinCatalogDeliverables(items: string[]) {
+  return items.map((item) => item.trim()).filter(Boolean).join(' | ');
 }
 
 function draftFromActivity(activity?: ActivityCatalog | null): ActivityCatalogDraft {
@@ -136,6 +148,8 @@ export function ActivityCatalogGovernancePanel({
   const [importPlan, setImportPlan] = useState<ActivityCatalogImportPlan | null>(null);
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
+  const [editorView, setEditorView] = useState<CatalogEditorView>('catalog');
+  const [deliverableDrafts, setDeliverableDrafts] = useState<Record<string, string>>({});
 
   const persistedCatalogKeys = useMemo(() => {
     return new Set([...backendCatalog, ...localCatalog].map(activityCatalogMergeKey));
@@ -386,6 +400,102 @@ export function ActivityCatalogGovernancePanel({
     }
   };
 
+  const saveCatalogItem = async (
+    activity: ActivityCatalog,
+    updates: Partial<ActivityCatalogDraft>,
+    justification: string,
+  ) => {
+    const nextDraft = normalizeDraft({
+      ...draftFromActivity(activity),
+      ...updates,
+    });
+    const shouldCreate = !persistedCatalogKeys.has(activityCatalogMergeKey(activity));
+    const saved = shouldCreate
+      ? await create(nextDraft)
+      : await update(activity.id, nextDraft, activity.saCode);
+
+    setLocalCatalog((current) => {
+      const savedKey = activityCatalogMergeKey(saved);
+      const withoutSaved = current.filter((item) => item.id !== saved.id && activityCatalogMergeKey(item) !== savedKey);
+      return [...withoutSaved, saved];
+    });
+    setSelectedId(saved.id);
+    setIsCreating(false);
+    setDraft(draftFromActivity(saved));
+    await onAudit?.({
+      actionType: shouldCreate ? 'activity_catalog_created' : 'activity_catalog_updated',
+      oldValue: JSON.stringify(activity),
+      newValue: JSON.stringify(saved),
+      justification,
+      source: 'manual',
+    });
+    return saved;
+  };
+
+  const saveNormalizedDeliverable = async (activity: ActivityCatalog, deliverableIndex: number, value: string) => {
+    setIsSaving(true);
+    setSaveMessage(null);
+    try {
+      const deliverables = splitCatalogDeliverables(activity.deliverables);
+      deliverables[deliverableIndex] = value;
+      const saved = await saveCatalogItem(
+        activity,
+        { deliverables: joinCatalogDeliverables(deliverables) },
+        'Livrabil normalizat actualizat in catalogul de eligibilitate.',
+      );
+      setDeliverableDrafts((current) => {
+        const next = { ...current };
+        delete next[`${activity.id}:${deliverableIndex}`];
+        return next;
+      });
+      setSaveMessage(`Livrabil salvat pentru ${saved.saCode}.`);
+    } catch (saveError) {
+      setSaveMessage(saveError instanceof Error ? saveError.message : 'Livrabilul nu a putut fi salvat.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const addNormalizedDeliverable = async (activity: ActivityCatalog) => {
+    setIsSaving(true);
+    setSaveMessage(null);
+    try {
+      const deliverables = [...splitCatalogDeliverables(activity.deliverables), 'Livrabil nou'];
+      const saved = await saveCatalogItem(
+        activity,
+        { deliverables: joinCatalogDeliverables(deliverables) },
+        'Livrabil normalizat adaugat in catalogul de eligibilitate.',
+      );
+      setSaveMessage(`Livrabil adaugat pentru ${saved.saCode}.`);
+    } catch (saveError) {
+      setSaveMessage(saveError instanceof Error ? saveError.message : 'Livrabilul nu a putut fi adaugat.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const removeNormalizedDeliverable = async (activity: ActivityCatalog, deliverableIndex: number) => {
+    const deliverable = splitCatalogDeliverables(activity.deliverables)[deliverableIndex] || 'acest livrabil';
+    const confirmed = window.confirm(`Stergi "${deliverable}" din livrabilele normalizate?`);
+    if (!confirmed) return;
+
+    setIsSaving(true);
+    setSaveMessage(null);
+    try {
+      const deliverables = splitCatalogDeliverables(activity.deliverables).filter((_, index) => index !== deliverableIndex);
+      const saved = await saveCatalogItem(
+        activity,
+        { deliverables: joinCatalogDeliverables(deliverables) },
+        'Livrabil normalizat eliminat din catalogul de eligibilitate.',
+      );
+      setSaveMessage(`Livrabil eliminat pentru ${saved.saCode}.`);
+    } catch (saveError) {
+      setSaveMessage(saveError instanceof Error ? saveError.message : 'Livrabilul nu a putut fi eliminat.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const baselineDraft = selectedActivity ? draftFromActivity(selectedActivity) : draftFromActivity(null);
   const selectedActivityIsPersisted = selectedActivity ? persistedCatalogKeys.has(activityCatalogMergeKey(selectedActivity)) : false;
   const hasChanges = isCreating || !areDraftsEqual(draft, baselineDraft);
@@ -533,6 +643,163 @@ export function ActivityCatalogGovernancePanel({
         <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-700">
           Catalogul backend nu a putut fi incarcat. Afisez catalogul local; salvarea necesita autentificare si backend activ.
         </p>
+      )}
+
+      {mode === 'pm' && (
+        <div className="space-y-4 rounded-md border bg-white p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-base font-bold text-slate-950">Editor catalog livrabile</h3>
+              <p className="text-sm text-muted-foreground">
+                Lucreaza pe structura din 01_Catalog_Activitati si 02_Livrabile_Normalizate.
+              </p>
+            </div>
+            <div className="flex rounded-md border bg-slate-50 p-1">
+              <Button
+                type="button"
+                size="sm"
+                variant={editorView === 'catalog' ? 'default' : 'ghost'}
+                onClick={() => setEditorView('catalog')}
+                className={editorView === 'catalog' ? 'bg-[#1f3f75]' : undefined}
+              >
+                01 Catalog activitati
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={editorView === 'deliverables' ? 'default' : 'ghost'}
+                onClick={() => setEditorView('deliverables')}
+                className={editorView === 'deliverables' ? 'bg-[#1f3f75]' : undefined}
+              >
+                02 Livrabile normalizate
+              </Button>
+            </div>
+          </div>
+
+          {editorView === 'catalog' ? (
+            <div className="overflow-x-auto rounded-md border">
+              <table className="w-full min-w-[980px] text-left text-sm">
+                <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+                  <tr>
+                    <th className="px-3 py-2">ID catalog</th>
+                    <th className="px-3 py-2">Categorie</th>
+                    <th className="px-3 py-2">SA</th>
+                    <th className="px-3 py-2">Nr.</th>
+                    <th className="px-3 py-2">Nume activitate</th>
+                    <th className="px-3 py-2">Activ</th>
+                    <th className="px-3 py-2">Livrabile</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredCatalog.slice(0, 80).map((item) => (
+                    <tr
+                      key={item.id}
+                      className={`cursor-pointer border-t align-top hover:bg-slate-50 ${selectedId === item.id ? 'bg-blue-50/60' : ''}`}
+                      onClick={() => {
+                        setIsCreating(false);
+                        setSelectedId(item.id);
+                      }}
+                    >
+                      <td className="max-w-[13rem] truncate px-3 py-2 font-mono text-xs text-slate-500">{item.id}</td>
+                      <td className="px-3 py-2">{item.category?.toUpperCase() || '-'}</td>
+                      <td className="px-3 py-2">{item.saCode || '-'}</td>
+                      <td className="px-3 py-2">{item.activityNumber || '-'}</td>
+                      <td className="min-w-[18rem] px-3 py-2 font-medium text-slate-950">{item.activityName}</td>
+                      <td className="px-3 py-2">{item.isActive === false ? 'Nu' : 'Da'}</td>
+                      <td className="max-w-[24rem] px-3 py-2 text-xs text-slate-600">{item.deliverables || '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {filteredCatalog.length > 80 && (
+                <p className="border-t px-3 py-2 text-xs text-muted-foreground">
+                  Sunt afisate primele 80 randuri filtrate. Rafineaza cautarea pentru restul.
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-md border">
+              <table className="w-full min-w-[1040px] text-left text-sm">
+                <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+                  <tr>
+                    <th className="px-3 py-2">ID catalog</th>
+                    <th className="px-3 py-2">Categorie</th>
+                    <th className="px-3 py-2">SA</th>
+                    <th className="px-3 py-2">Nr.</th>
+                    <th className="px-3 py-2">Nume activitate</th>
+                    <th className="px-3 py-2">Livrabil asteptat</th>
+                    <th className="px-3 py-2">Actiuni</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredCatalog.flatMap((item) => {
+                    const deliverables = splitCatalogDeliverables(item.deliverables);
+                    const rows = deliverables.length > 0 ? deliverables : [''];
+                    return rows.map((deliverable, index) => {
+                      const draftKey = `${item.id}:${index}`;
+                      const value = deliverableDrafts[draftKey] ?? deliverable;
+                      const isChanged = value.trim() !== deliverable.trim();
+                      return (
+                        <tr key={draftKey} className="border-t align-top">
+                          <td className="max-w-[12rem] truncate px-3 py-2 font-mono text-xs text-slate-500">{item.id}</td>
+                          <td className="px-3 py-2">{item.category?.toUpperCase() || '-'}</td>
+                          <td className="px-3 py-2">{item.saCode || '-'}</td>
+                          <td className="px-3 py-2">{item.activityNumber || '-'}</td>
+                          <td className="min-w-[18rem] px-3 py-2 text-slate-700">{item.activityName}</td>
+                          <td className="min-w-[20rem] px-3 py-2">
+                            <Input
+                              value={value}
+                              onChange={(event) => setDeliverableDrafts((current) => ({
+                                ...current,
+                                [draftKey]: event.target.value,
+                              }))}
+                              placeholder="Livrabil asteptat"
+                            />
+                          </td>
+                          <td className="px-3 py-2">
+                            <div className="flex items-center gap-2">
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={() => void saveNormalizedDeliverable(item, index, value)}
+                                disabled={isSaving || !isChanged || !value.trim()}
+                              >
+                                <Save className="h-4 w-4" />
+                              </Button>
+                              {deliverable && (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => void removeNormalizedDeliverable(item, index)}
+                                  disabled={isSaving}
+                                  className="text-red-700"
+                                >
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              )}
+                              {index === rows.length - 1 && (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => void addNormalizedDeliverable(item)}
+                                  disabled={isSaving}
+                                >
+                                  <Plus className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    });
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       )}
 
       <div className="grid gap-5 lg:grid-cols-[minmax(260px,0.9fr)_minmax(0,1.35fr)]">

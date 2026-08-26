@@ -156,6 +156,14 @@ export function EligibilityGovernancePanel({
 
   return (
     <div className="space-y-6">
+      <ActivityCatalogGovernancePanel
+        fallbackCatalog={fallbackCatalog}
+        mode="pm"
+        activities={activities}
+        documents={documents}
+        onAudit={onAudit}
+      />
+
       <section className="rounded-md border bg-white p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -179,16 +187,6 @@ export function EligibilityGovernancePanel({
             </div>
           ))}
         </div>
-      </section>
-
-      <section className="rounded-md border bg-white p-5">
-        <ActivityCatalogGovernancePanel
-          fallbackCatalog={fallbackCatalog}
-          mode="pm"
-          activities={activities}
-          documents={documents}
-          onAudit={onAudit}
-        />
       </section>
 
       <section className="rounded-md border bg-white p-5">
