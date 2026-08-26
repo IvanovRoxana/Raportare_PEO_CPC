@@ -28,6 +28,34 @@ export interface DeliverableDuplicateInfo {
 
 type EligibilitySuggestedSettings = NonNullable<NonNullable<DeliverableSlot['eligibilityCheck']>['suggestedSettings']>;
 type EligibilitySuggestedSettingsChange = 'activity' | 'deliverableType';
+
+const ELIGIBILITY_CHECK_WAITING_MESSAGE = 'Verificarea eligibilitatii dureaza putin, te rugam sa astepti.';
+
+function HourglassIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>
+      <path d="M6 2h12" />
+      <path d="M6 22h12" />
+      <path d="M17 2v4.2a5 5 0 0 1-1.46 3.54L13.28 12l2.26 2.26A5 5 0 0 1 17 17.8V22" />
+      <path d="M7 2v4.2a5 5 0 0 0 1.46 3.54L10.72 12l-2.26 2.26A5 5 0 0 0 7 17.8V22" />
+      <path d="M9 5h6" />
+      <path d="M9 19h6" />
+    </svg>
+  );
+}
+
+function EligibilityCheckingIndicator({ compact = false }: { compact?: boolean }) {
+  return (
+    <span className={`inline-flex max-w-full items-center gap-2 ${compact ? 'text-xs' : 'rounded-md border border-indigo-200 bg-indigo-50 px-3 py-2 text-[11px] text-indigo-900 shadow-sm'}`}>
+      <span className="relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-indigo-700 shadow-sm ring-1 ring-indigo-200">
+        <span className="absolute inset-1 rounded-full bg-indigo-100/70" />
+        <HourglassIcon className="relative h-4 w-4 animate-spin" />
+      </span>
+      <span className="font-medium leading-snug">{ELIGIBILITY_CHECK_WAITING_MESSAGE}</span>
+    </span>
+  );
+}
+
 function hasEnoughExtractedTextForEligibility(deliverable: DeliverableSlot, expertCategory?: string) {
   return hasSufficientDeliverableEvidenceForEligibility({
     extractedText: deliverable.docText,
@@ -1137,14 +1165,16 @@ export function DeliverableItem({
               size="sm"
               onClick={handleAiCheck}
               disabled={aiLoading}
-              className="text-xs border-indigo-300 text-indigo-700 hover:bg-indigo-50"
+              className="h-auto max-w-full whitespace-normal border-indigo-300 py-2 text-xs text-indigo-700 hover:bg-indigo-50"
             >
               {aiLoading ? (
-                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                <EligibilityCheckingIndicator compact />
               ) : (
-                <Sparkles className="h-3 w-3 mr-1" />
+                <>
+                  <Sparkles className="h-3 w-3 mr-1" />
+                  Verifică eligibilitatea livrabilului
+                </>
               )}
-              {aiLoading ? 'Se verifică...' : 'Verifică eligibilitatea livrabilului'}
             </Button>
           ) : eligibilityCheckEnabled ? (
             <div className="rounded border border-amber-200 bg-amber-50 p-2 text-[10px] text-amber-800">
@@ -1187,14 +1217,16 @@ export function DeliverableItem({
           size="sm"
           onClick={handleAiCheck}
           disabled={aiLoading}
-          className="w-fit border-indigo-300 text-xs text-indigo-700 hover:bg-indigo-50"
+          className="h-auto w-fit max-w-full whitespace-normal border-indigo-300 py-2 text-xs text-indigo-700 hover:bg-indigo-50"
         >
           {aiLoading ? (
-            <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+            <EligibilityCheckingIndicator compact />
           ) : (
-            <Sparkles className="h-3 w-3 mr-1" />
+            <>
+              <Sparkles className="h-3 w-3 mr-1" />
+              Verifică eligibilitatea livrabilului
+            </>
           )}
-          {aiLoading ? 'Se verifică...' : 'Verifică eligibilitatea livrabilului'}
         </Button>
       )}
       {showEligibilityControl && !renderInlineNotes && deliverable.uploaded && !deliverable.isPhoto && eligibilityCheckEnabled && !hasReusableEligibilityCheck && !canRunEligibilityCheck && (
@@ -1515,14 +1547,16 @@ export function DeliverableEligibilityControl({
             size="sm"
             onClick={handleAiCheck}
             disabled={aiLoading}
-            className="w-fit border-indigo-300 text-xs text-indigo-700 hover:bg-indigo-50"
+            className="h-auto w-fit max-w-full whitespace-normal border-indigo-300 py-2 text-xs text-indigo-700 hover:bg-indigo-50"
           >
             {aiLoading ? (
-              <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+              <EligibilityCheckingIndicator compact />
             ) : (
-              <Sparkles className="h-3 w-3 mr-1" />
+              <>
+                <Sparkles className="h-3 w-3 mr-1" />
+                Verifica eligibilitatea livrabilelor
+              </>
             )}
-            {aiLoading ? 'Se verifica...' : 'Verifica eligibilitatea livrabilelor'}
           </Button>
           {relatedDeliverables && relatedDeliverables.length > 1 && (
             <p className="text-xs text-muted-foreground">
@@ -1629,6 +1663,10 @@ function EligibilityResultCard({
   const warning = check.status === 'neeligibil' || check.status === 'neconcludent';
   const isNeeligibil = check.status === 'neeligibil';
   const isNeconcludent = check.status === 'neconcludent';
+  const isCheckingInProgress = isNeconcludent && (
+    check.summary.toLowerCase().includes('a fost pornita')
+    || check.riskFlags.some((flag) => flag.toLowerCase().includes('in curs'))
+  );
   const pmUnlockRequested = Boolean(check.pmUnlockRequested);
   const suggestedSettings = check.suggestedSettings;
   const canApplyActivity = Boolean(
@@ -1658,12 +1696,16 @@ function EligibilityResultCard({
           )).join('; ')}
         </div>
       )}
-      {warning && (
+      {warning && !isCheckingInProgress && (
         <div className="mt-1 font-medium">
           Verifică manual livrabilul înainte de validare.
         </div>
       )}
-      {isNeconcludent && (
+      {isCheckingInProgress ? (
+        <div className="mt-2">
+          <EligibilityCheckingIndicator />
+        </div>
+      ) : isNeconcludent && (
         <div className="mt-1 rounded border border-amber-200 bg-white/80 p-2 text-slate-800">
           Verificarea automata nu a putut citi/analiza livrabilul. Continua cu introducere manuala si verificare PM.
         </div>
