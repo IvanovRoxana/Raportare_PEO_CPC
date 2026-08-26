@@ -45,7 +45,7 @@ const headerNavItems: HeaderNavItem[] = [
     active: (pathname) => pathname === '/' || pathname === '/auth/select-dashboard',
   },
   {
-    label: 'Pontaj',
+    label: 'Home',
     href: '/expert',
     icon: CalendarDays,
     roles: ['expert', 'admin'],
