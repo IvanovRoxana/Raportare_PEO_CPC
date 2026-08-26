@@ -15,6 +15,7 @@ import {
   normalizeDeliverableEligibilityDocuments,
   normalizeDeliverableEligibilityStringList,
   protectConcordiaPublicationEligibility,
+  protectVerifiedDocumentTitleEligibility,
   validateEligibilitySuggestedSettings,
 } from '@/lib/deliverable-eligibility';
 import {
@@ -324,7 +325,8 @@ Reguli:
 - „neconcludent” dacă textul extras este insuficient sau documentul nu poate fi analizat.
 - Nu inventa conținut care nu apare în document.
 - Nu valida automat un document doar pentru că titlul pare potrivit.
-- Verifica separat titlul documentului. Daca titlul declarat lipseste, este doar numele fisierului, are incredere low/medium, nu este sustinut de text sau pare o linie administrativa (data, locatie, participanti, semnaturi, screenshot, Teams/Zoom, tabel), marcheaza explicit problema in checks si riskFlags.
+- Verifica separat titlul documentului. Daca Status verificare titlu este "matched" sau "admin_overridden", considera titlul confirmat si nu marca probleme de titlu doar pentru ca Incredere sugestie titlu este low/medium.
+- Daca titlul declarat lipseste, este doar numele fisierului, nu este sustinut de text sau pare o linie administrativa (data, locatie, participanti, semnaturi, screenshot, Teams/Zoom, tabel), marcheaza explicit problema in checks si riskFlags.
 - Daca documentul nu contine un titlu clar, mentioneaza explicit in summary sau recommendations: "Nu a fost identificat un titlu clar in document." Nu inventa un titlu ca sa compensezi lipsa lui.
 - Daca documentul pare eligibil ca livrabil, dar titlul este suspect sau lipseste, foloseste cel mult eligibil_cu_observatii si explica problema de titlu separat de potrivirea continutului.
 ${concordiaPublicationPromptRules}
@@ -356,8 +358,12 @@ suggestedSettings trebuie sa fie mereu obiect cu: hasSuggestion, saCode, activit
       });
     }
 
-    const protectedData = protectConcordiaPublicationEligibility({
+    const titleProtectedData = protectVerifiedDocumentTitleEligibility({
       result: parsed.data,
+      documents: eligibilityDocuments,
+    });
+    const protectedData = protectConcordiaPublicationEligibility({
+      result: titleProtectedData,
       deliverableType: currentDeliverableType,
       documentTitle: currentDocumentTitle,
       fileName: currentFileName,

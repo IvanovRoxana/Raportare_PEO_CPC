@@ -14,6 +14,7 @@ import {
   normalizeDeliverableEligibilityCheck,
   normalizeDeliverableEligibilityDocuments,
   protectConcordiaPublicationEligibility,
+  protectVerifiedDocumentTitleEligibility,
   validateEligibilitySuggestedSettings,
 } from '../lib/deliverable-eligibility.ts';
 
@@ -447,6 +448,40 @@ test('pastreaza compatibilitatea cu payloadul vechi cu un singur livrabil', () =
   assert.equal(documents.length, 1);
   assert.equal(documents[0].documentTitle, 'Material suport');
   assert.equal(documents[0].isPrimary, true);
+});
+
+test('nu pastreaza riscul de titlu cand titlul documentului este confirmat', () => {
+  const result = protectVerifiedDocumentTitleEligibility({
+    documents: [
+      {
+        documentTitle: 'Pregatire participare dezbatere pe marginea taxarii transportului rutier greu in Bucuresti',
+        declaredTitle: 'Pregatire participare dezbatere pe marginea taxarii transportului rutier greu in Bucuresti',
+        suggestedTitle: 'Pregatire participare dezbatere pe marginea taxarii transportului rutier greu in Bucuresti',
+        titleCheckStatus: 'matched',
+        fileName: 'pregatire-dezbatere.pdf',
+        extractedText: 'Pregatire participare dezbatere pe marginea taxarii transportului rutier greu in Bucuresti. Context si obiective.',
+      },
+    ],
+    result: {
+      status: 'eligibil_cu_observatii',
+      score: 84,
+      summary: 'Documentul este corelat cu activitatea.',
+      checks: [
+        { criterion: 'Elemente lipsa', status: 'warning', explanation: 'Titlu clar identificat in document.' },
+        { criterion: 'Tip livrabil', status: 'pass', explanation: 'Tipul este adecvat.' },
+      ],
+      missingElements: ['Titlu clar identificat in document.'],
+      recommendations: ['Clarificarea titlului documentului.'],
+      riskFlags: ['Titlu suspect sau lipsa'],
+      suggestedSettings: null,
+    },
+  });
+
+  assert.deepEqual(result.riskFlags, []);
+  assert.deepEqual(result.missingElements, []);
+  assert.deepEqual(result.recommendations, []);
+  assert.equal(result.checks[0].status, 'pass');
+  assert.match(result.checks[0].explanation, /Titlul documentului este confirmat/);
 });
 
 test('formularul trimite toate livrabilele incarcate din grupul activitatii la eligibilitate', () => {

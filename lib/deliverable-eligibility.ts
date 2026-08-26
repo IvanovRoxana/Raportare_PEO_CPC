@@ -388,6 +388,66 @@ function textMentionsActivityMismatch(value: unknown) {
   );
 }
 
+function isVerifiedDocumentTitle(document: Pick<EligibilityDocument, 'declaredTitle' | 'suggestedTitle' | 'documentTitle' | 'titleCheckStatus'>) {
+  const titleStatus = normalizeEligibilityText(document.titleCheckStatus);
+  const hasTitle = Boolean(
+    String(document.declaredTitle || document.suggestedTitle || document.documentTitle || '').trim(),
+  );
+  return hasTitle && (titleStatus === 'matched' || titleStatus === 'admin_overridden');
+}
+
+function textMentionsTitleGap(value: unknown) {
+  const normalized = normalizeEligibilityText(value);
+  if (!normalized.includes('titlu')) return false;
+  return (
+    normalized.includes('suspect')
+    || normalized.includes('clar identificat')
+    || normalized.includes('clarific')
+    || normalized.includes('lips')
+    || normalized.includes('neclar')
+    || normalized.includes('nu a fost identificat')
+    || normalized.includes('nu este sustinut')
+    || normalized.includes('doar numele fisierului')
+    || normalized.includes('linie administrativa')
+  );
+}
+
+export function protectVerifiedDocumentTitleEligibility(input: {
+  result: z.infer<typeof deliverableEligibilitySchema>;
+  documents: EligibilityDocument[];
+}) {
+  if (!input.documents.some(isVerifiedDocumentTitle)) return input.result;
+
+  const riskFlags = input.result.riskFlags.filter((item) => !textMentionsTitleGap(item));
+  const missingElements = input.result.missingElements.filter((item) => !textMentionsTitleGap(item));
+  const recommendations = input.result.recommendations.filter((item) => !textMentionsTitleGap(item));
+  const checks = input.result.checks.map((check) => {
+    if (!textMentionsTitleGap([check.criterion, check.explanation].join(' '))) return check;
+    return {
+      ...check,
+      status: 'pass' as const,
+      explanation: 'Titlul documentului este confirmat de verificarea automata sau de validarea PM.',
+    };
+  });
+
+  if (
+    riskFlags.length === input.result.riskFlags.length
+    && missingElements.length === input.result.missingElements.length
+    && recommendations.length === input.result.recommendations.length
+    && checks.every((check, index) => check === input.result.checks[index])
+  ) {
+    return input.result;
+  }
+
+  return {
+    ...input.result,
+    checks,
+    missingElements,
+    recommendations,
+    riskFlags,
+  };
+}
+
 export function protectConcordiaPublicationEligibility(input: {
   result: z.infer<typeof deliverableEligibilitySchema>;
   deliverableType?: unknown;
