@@ -209,6 +209,8 @@ export interface DeliverableSlot {
     reason: string;
     issues: string[];
   } | null;
+  aiStatus?: string;
+  aiReason?: string;
   eligibilityCheck?: DeliverableEligibilityCheck | null;
   common?: boolean; // If this is a shared deliverable across experts
   attachedFromExisting?: boolean;
