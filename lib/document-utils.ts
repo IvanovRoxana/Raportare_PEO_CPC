@@ -33,6 +33,14 @@ const MAX_DOCX_OCR_IMAGES = 60;
 const MAX_EMBEDDED_OCR_TEXT_CHARS = 20000;
 const PDF_OCR_SCALE = 2;
 const EMPTY_IMAGE_DATA_URL = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
+const DOCX_XML_TEXT_FILE_PATTERNS = [
+  /^word\/document\.xml$/,
+  /^word\/header\d*\.xml$/,
+  /^word\/footer\d*\.xml$/,
+  /^word\/footnotes\.xml$/,
+  /^word\/endnotes\.xml$/,
+  /^docProps\/core\.xml$/,
+];
 
 let pdfJsModulePromise: Promise<PdfJsModule> | null = null;
 
@@ -97,6 +105,125 @@ function htmlToText(html: string | null | undefined) {
   }
 
   return normalizeExtractedText(html.replace(/<[^>]+>/g, ' ')) || null;
+}
+
+async function inflateRawZipEntry(data: Uint8Array) {
+  if (typeof DecompressionStream === 'undefined') return null;
+
+  const stream = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+function decodeZipText(data: Uint8Array) {
+  return new TextDecoder('utf-8').decode(data);
+}
+
+function readUint16(data: Uint8Array, offset: number) {
+  return data[offset] | (data[offset + 1] << 8);
+}
+
+function readUint32(data: Uint8Array, offset: number) {
+  return (
+    data[offset]
+    | (data[offset + 1] << 8)
+    | (data[offset + 2] << 16)
+    | (data[offset + 3] << 24)
+  ) >>> 0;
+}
+
+function findZipEndOfCentralDirectory(data: Uint8Array) {
+  const minOffset = Math.max(0, data.length - 65557);
+  for (let offset = data.length - 22; offset >= minOffset; offset -= 1) {
+    if (readUint32(data, offset) === 0x06054b50) return offset;
+  }
+  return -1;
+}
+
+async function readDocxZipXmlEntries(file: File) {
+  const data = new Uint8Array(await file.arrayBuffer());
+  const entries: Array<{ path: string; xml: string }> = [];
+
+  const eocdOffset = findZipEndOfCentralDirectory(data);
+  if (eocdOffset < 0) return entries;
+
+  const entryCount = readUint16(data, eocdOffset + 10);
+  let centralOffset = readUint32(data, eocdOffset + 16);
+
+  for (let entryIndex = 0; entryIndex < entryCount && centralOffset + 46 <= data.length; entryIndex += 1) {
+    if (readUint32(data, centralOffset) !== 0x02014b50) break;
+
+    const compressionMethod = readUint16(data, centralOffset + 10);
+    const compressedSize = readUint32(data, centralOffset + 20);
+    const fileNameLength = readUint16(data, centralOffset + 28);
+    const extraLength = readUint16(data, centralOffset + 30);
+    const commentLength = readUint16(data, centralOffset + 32);
+    const localHeaderOffset = readUint32(data, centralOffset + 42);
+    const nameStart = centralOffset + 46;
+    const path = decodeZipText(data.slice(nameStart, nameStart + fileNameLength));
+
+    centralOffset = nameStart + fileNameLength + extraLength + commentLength;
+
+    if (!DOCX_XML_TEXT_FILE_PATTERNS.some((pattern) => pattern.test(path))) continue;
+    if (localHeaderOffset + 30 > data.length || readUint32(data, localHeaderOffset) !== 0x04034b50) continue;
+
+    const localFileNameLength = readUint16(data, localHeaderOffset + 26);
+    const localExtraLength = readUint16(data, localHeaderOffset + 28);
+    const dataStart = localHeaderOffset + 30 + localFileNameLength + localExtraLength;
+    const dataEnd = dataStart + compressedSize;
+    if (dataEnd > data.length || compressedSize < 0) break;
+
+    const compressed = data.slice(dataStart, dataEnd);
+    let xmlData: Uint8Array | null = null;
+    if (compressionMethod === 0) {
+      xmlData = compressed;
+    } else if (compressionMethod === 8) {
+      xmlData = await inflateRawZipEntry(compressed);
+    }
+    if (xmlData) entries.push({ path, xml: decodeZipText(xmlData) });
+  }
+
+  return entries;
+}
+
+function xmlToDocxText(xml: string) {
+  if (typeof DOMParser !== 'undefined') {
+    const parsed = new DOMParser().parseFromString(xml, 'application/xml');
+    const textNodes = [
+      ...Array.from(parsed.getElementsByTagName('w:t')),
+      ...Array.from(parsed.getElementsByTagName('a:t')),
+      ...Array.from(parsed.getElementsByTagName('dc:title')),
+      ...Array.from(parsed.getElementsByTagName('dc:subject')),
+      ...Array.from(parsed.getElementsByTagName('cp:keywords')),
+    ];
+    const text = textNodes
+      .map((node) => node.textContent || '')
+      .join(' ');
+    return normalizeExtractedText(text) || null;
+  }
+
+  const text = xml
+    .replace(/<w:tab\s*\/>/g, ' ')
+    .replace(/<w:br\s*\/>|<\/w:p>/g, '\n')
+    .replace(/<(?:w:t|a:t|dc:title|dc:subject|cp:keywords)[^>]*>([\s\S]*?)<\/(?:w:t|a:t|dc:title|dc:subject|cp:keywords)>/g, ' $1 ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'");
+
+  return normalizeExtractedText(text) || null;
+}
+
+async function extractDocxXmlText(file: File): Promise<DocumentTextExtractionResult> {
+  try {
+    const entries = await readDocxZipXmlEntries(file);
+    const text = joinDistinctTextSegments(entries.map((entry) => xmlToDocxText(entry.xml)));
+    return { text: text || null, source: text ? 'native' : undefined };
+  } catch (error) {
+    console.error('Error extracting DOCX XML text:', error);
+    return { text: null };
+  }
 }
 
 async function createOcrWorker() {
@@ -209,15 +336,20 @@ export async function extractDocxTitle(file: File): Promise<string | null> {
 
 // Extract the technical first page / beginning from DOCX.
 export async function extractDocxFirstPageText(file: File): Promise<string | null> {
+  let rawText: string | null = null;
   try {
     const mammoth = await import('mammoth');
     const arrayBuffer = await file.arrayBuffer();
     const result = await mammoth.extractRawText({ arrayBuffer });
-    return result.value.slice(0, 5000);
+    rawText = result.value || null;
   } catch (error) {
     console.error('Error extracting DOCX first page text:', error);
-    return null;
   }
+
+  if (hasUsefulText(rawText)) return rawText?.slice(0, 5000) || null;
+
+  const xmlResult = await extractDocxXmlText(file);
+  return (xmlResult.text || rawText || null)?.slice(0, 5000) || null;
 }
 
 // Extract full text from DOCX file
@@ -313,6 +445,8 @@ async function extractDocxEmbeddedImageText(file: File): Promise<DocumentTextExt
 }
 
 export async function extractDocxTextWithSource(file: File): Promise<DocumentTextExtractionResult> {
+  let rawText: string | null = null;
+  let htmlText: string | null = null;
   try {
     const mammoth = await import('mammoth');
     const arrayBuffer = await file.arrayBuffer();
@@ -320,20 +454,24 @@ export async function extractDocxTextWithSource(file: File): Promise<DocumentTex
       mammoth.extractRawText({ arrayBuffer }),
       mammoth.convertToHtml({ arrayBuffer }).catch(() => ({ value: '' })),
     ]);
-    const embeddedImageText = await extractDocxEmbeddedImageText(file);
-    const text = joinDistinctTextSegments([
-      rawResult.value,
-      htmlToText(htmlResult.value),
-      embeddedImageText.text ? `Text OCR din screenshot-uri/imagini incorporate:\n${embeddedImageText.text}` : null,
-    ]);
-    return {
-      text: text || null,
-      source: embeddedImageText.text ? 'ocr' : text ? 'native' : undefined,
-    };
+    rawText = rawResult.value || null;
+    htmlText = htmlToText(htmlResult.value);
   } catch (error) {
     console.error('Error extracting DOCX text:', error);
-    return { text: null };
   }
+
+  const xmlResult = await extractDocxXmlText(file);
+  const embeddedImageText = await extractDocxEmbeddedImageText(file);
+  const text = joinDistinctTextSegments([
+    rawText,
+    htmlText,
+    xmlResult.text,
+    embeddedImageText.text ? `Text OCR din screenshot-uri/imagini incorporate:\n${embeddedImageText.text}` : null,
+  ]);
+  return {
+    text: text || null,
+    source: embeddedImageText.text ? 'ocr' : text ? 'native' : undefined,
+  };
 }
 
 // Extract title from PDF file
