@@ -564,6 +564,7 @@ function ExpertDashboardContent() {
   const baseYear = today.getFullYear();
   const queryMonthParam = searchParams.get('month');
   const queryYearParam = searchParams.get('year');
+  const agentDraftId = searchParams.get('agentDraftId');
   const hasExplicitMonthContext = queryMonthParam !== null || queryYearParam !== null;
   const queryMonth = readMonthParam(queryMonthParam, baseMonth);
   const queryYear = readYearParam(queryYearParam, baseYear);
@@ -1452,6 +1453,38 @@ function ExpertDashboardContent() {
     setActivityResolutionHint(null);
     setSaveError(null);
   }, [clarificationMode, currentMonth, currentYear, hasExplicitMonthContext, queryMonth, queryYear]);
+
+  useEffect(() => {
+    if (!agentDraftId || isAuthLoading || !selectedExpertId) return;
+    const storageKey = `peo-agent-draft-${agentDraftId}`;
+
+    try {
+      const rawDraft = window.sessionStorage.getItem(storageKey);
+      if (!rawDraft) return;
+      const draft = JSON.parse(rawDraft) as {
+        expertId?: string;
+        month?: number;
+        year?: number;
+        selectedDates?: string[];
+        selectedHours?: Record<string, string>;
+        activity?: Partial<Activity>;
+      };
+      if (draft.expertId && draft.expertId !== selectedExpertId) return;
+      if (typeof draft.month === 'number' && draft.month !== currentMonth) setCurrentMonth(draft.month);
+      if (typeof draft.year === 'number' && draft.year !== currentYear) setCurrentYear(draft.year);
+
+      setEditingActivity(null);
+      setSharedActivityPrefill(draft.activity ?? null);
+      setActivityResolutionHint(null);
+      setSelectedDates(Array.isArray(draft.selectedDates) ? draft.selectedDates : []);
+      setSelectedHours(draft.selectedHours ?? {});
+      setShowForm(true);
+      setActiveTab('activitati');
+      window.sessionStorage.removeItem(storageKey);
+    } catch (error) {
+      console.warn('Agent deliverable draft could not be restored:', error);
+    }
+  }, [agentDraftId, currentMonth, currentYear, isAuthLoading, selectedExpertId]);
 
   useEffect(() => {
     if (!clarificationMode || !clarificationActivityId || activitiesLoading || reportStatusLoading) return;

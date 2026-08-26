@@ -30,6 +30,7 @@ import {
   businessHubEntityDirectoryService,
   auditLogsService,
   documentsService,
+  indexedDeliverableCandidatesService,
   historicalImportService,
   activityAutofillAuditsService,
   procurementChecklistsService,
@@ -47,7 +48,7 @@ import {
   sharedDeliverablesService,
   reportingWorkBlocksService,
 } from '@/lib/backend-store';
-import type { Activity, Expert, ExpertNormContract, FinancialPersonLink, LeaveEntry, VerificationData, Neconformitate, VerificationNote, AppSettings, ActivityCatalog, AiEligibilityRuleset, AiEligibilityRuleVersion, WorkingGroup, ConcurrentProject, ConcurrentProjectTimesheetEntry, ReportStatus, MonthAccessRequest, GrupTintaEntry, BusinessHubEntityDirectoryEntry, AuditLog, ActivityAutofillAudit, AdminInterventionRequest, HistoricalImportBatch, HistoricalTimesheetDayEntry, MonthlyActivityItem, MonthlyExpertReport, UploadedReportingFile, DocumentMetadata } from '@/lib/types';
+import type { Activity, Expert, ExpertNormContract, FinancialPersonLink, LeaveEntry, VerificationData, Neconformitate, VerificationNote, AppSettings, ActivityCatalog, AiEligibilityRuleset, AiEligibilityRuleVersion, WorkingGroup, ConcurrentProject, ConcurrentProjectTimesheetEntry, ReportStatus, MonthAccessRequest, GrupTintaEntry, BusinessHubEntityDirectoryEntry, AuditLog, ActivityAutofillAudit, AdminInterventionRequest, HistoricalImportBatch, HistoricalTimesheetDayEntry, IndexedDeliverableCandidate, MonthlyActivityItem, MonthlyExpertReport, UploadedReportingFile, DocumentMetadata, SharedDeliverable } from '@/lib/types';
 import { getContractedProcurementProjects, type ProcurementChecklist, type ProcurementContract, type ProcurementDeliverable, type ProcurementDocument, type ProcurementEvaluation, type ProcurementInvoice, type ProcurementLaunch, type ProcurementOffer, type ProcurementProject, type ProcurementReception, type ProcurementStatusHistory, type ProcurementSupplier } from '@/lib/procurement';
 import {
   buildDeterministicWorkBlockConsolidation,
@@ -185,6 +186,27 @@ export function useActivitiesByMonth(month: number, year: number) {
   const { data, error, isLoading } = useSWR(
     enabled ? key : null,
     safeFetcher(() => activitiesService.getByMonth(month, year))
+  );
+  const status = resolveDataStatus({ data, error, isLoading, enabled });
+
+  return {
+    activities: stableList(data),
+    status,
+    isReady: status === 'success' || status === 'empty',
+    isEmpty: status === 'empty',
+    isUnavailable: status === 'disabled' || status === 'error',
+    isLoading,
+    error,
+    mutate: () => mutate(key),
+  };
+}
+
+export function useColleagueActivitiesByMonth(month: number, year: number) {
+  const key = `colleague-activities-month-${month}-${year}`;
+  const enabled = isBackendAvailable();
+  const { data, error, isLoading } = useSWR(
+    enabled ? key : null,
+    safeFetcher(() => activitiesService.getColleagueOverviewByMonth(month, year))
   );
   const status = resolveDataStatus({ data, error, isLoading, enabled });
 
@@ -420,6 +442,56 @@ export function useDocumentMutations() {
   return { updateEligibilityCheck };
 }
 
+export function useIndexedDeliverableCandidates(expertId: string | null, reportingMonth: number, reportingYear: number) {
+  const key = expertId ? `indexed-deliverable-candidates-${expertId}-${reportingYear}-${reportingMonth}` : null;
+  const enabled = Boolean(expertId) && isBackendAvailable();
+  const { data, error, isLoading } = useSWR(
+    enabled && key ? key : null,
+    safeFetcher(() => indexedDeliverableCandidatesService.getByMonth(expertId!, reportingMonth, reportingYear)),
+  );
+  const status = resolveDataStatus({ data, error, isLoading, enabled });
+
+  return {
+    candidates: stableList(data),
+    status,
+    isReady: status === 'success' || status === 'empty',
+    isEmpty: status === 'empty',
+    isUnavailable: status === 'disabled' || status === 'error',
+    isLoading,
+    error,
+    mutate: () => (key ? mutate(key) : undefined),
+  };
+}
+
+export function useIndexedDeliverableCandidateMutations() {
+  const refresh = (candidate?: Pick<IndexedDeliverableCandidate, 'expertId' | 'reportingMonth' | 'reportingYear'>) => {
+    if (!candidate) {
+      mutate((key: string) => typeof key === 'string' && key.startsWith('indexed-deliverable-candidates'), undefined, { revalidate: true });
+      return;
+    }
+    mutate(`indexed-deliverable-candidates-${candidate.expertId}-${candidate.reportingYear}-${candidate.reportingMonth}`);
+  };
+
+  const create = async (candidate: Omit<IndexedDeliverableCandidate, 'id' | 'createdAt' | 'updatedAt'>) => {
+    const created = await indexedDeliverableCandidatesService.create(candidate);
+    refresh(created);
+    return created;
+  };
+
+  const update = async (id: string, updates: Partial<IndexedDeliverableCandidate>) => {
+    const updated = await indexedDeliverableCandidatesService.update(id, updates);
+    refresh(updated);
+    return updated;
+  };
+
+  const remove = async (candidate: IndexedDeliverableCandidate) => {
+    await indexedDeliverableCandidatesService.delete(candidate.id);
+    refresh(candidate);
+  };
+
+  return { create, update, remove };
+}
+
 export function useColleagueDocumentsByMonth(month: number, year: number) {
   const key = `colleague-documents-month-${month}-${year}`;
   const enabled = isBackendAvailable();
@@ -475,6 +547,12 @@ export function useSharedActivityRegistrationContext(relationId?: string | null)
 }
 
 export function useSharedDeliverableMutations() {
+  const ensureActivitySuggestion = async (sourceActivityId: string, targetExpertId: string): Promise<SharedDeliverable | null> => {
+    const relation = await sharedDeliverablesService.ensureActivitySuggestionForTarget(sourceActivityId, targetExpertId);
+    mutate((key: string) => typeof key === 'string' && key.startsWith('shared-deliverables'), undefined, { revalidate: true });
+    return relation;
+  };
+
   const registerForActivity = async (relationId: string, targetActivityId: string) => {
     const updated = await sharedDeliverablesService.registerForActivity(relationId, targetActivityId);
     mutate((key: string) => typeof key === 'string' && key.startsWith('shared-deliverables'), undefined, { revalidate: true });
@@ -487,7 +565,7 @@ export function useSharedDeliverableMutations() {
     return updated;
   };
 
-  return { registerForActivity, ignore };
+  return { ensureActivitySuggestion, registerForActivity, ignore };
 }
 
 export function useProcurementProjects() {

@@ -54,6 +54,7 @@ import type {
   BusinessHubEntityDirectoryEntry,
   GrupTintaEntry,
   HistoricalImportBatch,
+  IndexedDeliverableCandidate,
   HistoricalTimesheetDayEntry,
   MonthlyActivityItem,
   MonthlyExpertReport,
@@ -815,6 +816,56 @@ function mapDocument(item: any): DocumentMetadata {
     isCommonDeliverable: item.isCommonDeliverable ?? false,
     possibleDuplicateOfDocumentId: item.possibleDuplicateOfDocumentId ?? undefined,
     duplicateStatus: item.duplicateStatus ?? undefined,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+  };
+}
+
+function mapIndexedDeliverableCandidate(item: any): IndexedDeliverableCandidate {
+  return {
+    id: item.id,
+    owner: item.owner ?? undefined,
+    expertId: item.expertId,
+    uploadedBy: item.uploadedBy ?? undefined,
+    uploadedByName: item.uploadedByName ?? undefined,
+    reportingMonth: item.reportingMonth,
+    reportingYear: item.reportingYear,
+    projectCode: item.projectCode ?? undefined,
+    fileName: item.fileName,
+    originalFileName: item.originalFileName ?? undefined,
+    storagePath: item.storagePath,
+    s3Key: item.s3Key ?? undefined,
+    mimeType: item.mimeType,
+    fileType: item.fileType ?? undefined,
+    fileSize: item.fileSize,
+    fileHash: item.fileHash ?? undefined,
+    firstPageTextHash: item.firstPageTextHash ?? undefined,
+    contentFingerprint: item.contentFingerprint ?? undefined,
+    extractedText: item.extractedText ?? undefined,
+    extractedTextPreview: item.extractedTextPreview ?? undefined,
+    detectedDate: item.detectedDate ?? undefined,
+    suggestedTitle: item.suggestedTitle ?? undefined,
+    suggestedType: item.suggestedType ?? undefined,
+    suggestedSaCode: item.suggestedSaCode ?? undefined,
+    suggestedActivityCatalogId: item.suggestedActivityCatalogId ?? undefined,
+    suggestedActivityName: item.suggestedActivityName ?? undefined,
+    suggestedDescription: item.suggestedDescription ?? undefined,
+    suggestedResult: item.suggestedResult ?? undefined,
+    eligibilityStatus: item.eligibilityStatus,
+    eligibilityReason: item.eligibilityReason ?? undefined,
+    eligibilityScore: item.eligibilityScore ?? undefined,
+    confidence: item.confidence ?? undefined,
+    alternativeMatches: parseAwsJsonField<IndexedDeliverableCandidate['alternativeMatches']>(item.alternativeMatches) ?? [],
+    keywords: item.keywords ?? [],
+    warnings: item.warnings ?? [],
+    notes: item.notes ?? undefined,
+    ragUsed: item.ragUsed ?? false,
+    ragSummary: item.ragSummary ?? undefined,
+    modelAuditId: item.modelAuditId ?? undefined,
+    status: item.status,
+    approvedAt: item.approvedAt ?? undefined,
+    approvedBy: item.approvedBy ?? undefined,
+    createdActivityId: item.createdActivityId ?? undefined,
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
   };
@@ -2257,6 +2308,76 @@ export const documentsService = {
   },
 };
 
+export const indexedDeliverableCandidatesService = {
+  async getByMonth(expertId: string, reportingMonth: number, reportingYear: number): Promise<IndexedDeliverableCandidate[]> {
+    const client = getAwsDataClient() as any;
+    if (!client.models.IndexedDeliverableCandidate) return [];
+    await assertCanAccessExpert(client, expertId);
+    const data = await listModel<any>(client.models.IndexedDeliverableCandidate, {
+      expertId: { eq: expertId },
+      reportingMonth: { eq: reportingMonth },
+      reportingYear: { eq: reportingYear },
+    });
+    return data.map(mapIndexedDeliverableCandidate).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+  },
+
+  async getById(id: string): Promise<IndexedDeliverableCandidate | null> {
+    const client = getAwsDataClient() as any;
+    if (!client.models.IndexedDeliverableCandidate) return null;
+    const result = await client.models.IndexedDeliverableCandidate.get({ id });
+    assertNoErrors(result, 'AWS get indexed deliverable candidate');
+    if (!result.data) return null;
+    const candidate = mapIndexedDeliverableCandidate(result.data);
+    await assertCanAccessExpert(client, candidate.expertId);
+    return candidate;
+  },
+
+  async create(input: Omit<IndexedDeliverableCandidate, 'id' | 'createdAt' | 'updatedAt'>): Promise<IndexedDeliverableCandidate> {
+    const client = getAwsDataClient() as any;
+    if (!client.models.IndexedDeliverableCandidate) {
+      throw new Error('Modelul IndexedDeliverableCandidate nu este disponibil in backend. Ruleaza deploy-ul Amplify pentru schema noua.');
+    }
+    const user = await getSignedInUser();
+    await assertCanAccessExpert(client, input.expertId);
+    const result = await client.models.IndexedDeliverableCandidate.create({
+      ...input,
+      owner: input.owner ?? user?.id ?? input.uploadedBy ?? input.expertId,
+      alternativeMatches: serializeAwsJsonField(input.alternativeMatches ?? []),
+    });
+    assertNoErrors(result, 'AWS create indexed deliverable candidate');
+    if (!result.data) throw new Error('AWS create indexed deliverable candidate returned no data');
+    return mapIndexedDeliverableCandidate(result.data);
+  },
+
+  async update(id: string, updates: Partial<IndexedDeliverableCandidate>): Promise<IndexedDeliverableCandidate> {
+    const client = getAwsDataClient() as any;
+    if (!client.models.IndexedDeliverableCandidate) {
+      throw new Error('Modelul IndexedDeliverableCandidate nu este disponibil in backend. Ruleaza deploy-ul Amplify pentru schema noua.');
+    }
+    const existing = await this.getById(id);
+    if (!existing) throw new Error('Candidatul de livrabil nu a fost gasit.');
+    const result = await client.models.IndexedDeliverableCandidate.update({
+      id,
+      ...updates,
+      alternativeMatches: updates.alternativeMatches === undefined
+        ? undefined
+        : serializeAwsJsonField(updates.alternativeMatches),
+    });
+    assertNoErrors(result, 'AWS update indexed deliverable candidate');
+    if (!result.data) throw new Error('AWS update indexed deliverable candidate returned no data');
+    return mapIndexedDeliverableCandidate(result.data);
+  },
+
+  async delete(id: string): Promise<void> {
+    const client = getAwsDataClient() as any;
+    if (!client.models.IndexedDeliverableCandidate) return;
+    const existing = await this.getById(id);
+    if (!existing) return;
+    const result = await client.models.IndexedDeliverableCandidate.delete({ id });
+    assertNoErrors(result, 'AWS delete indexed deliverable candidate');
+  },
+};
+
 export const sharedDeliverablesService = {
   async getAll(): Promise<SharedDeliverable[]> {
     const client = getAwsDataClient() as any;
@@ -2329,6 +2450,116 @@ export const sharedDeliverablesService = {
       relatedDeliverableRelations,
       relatedDocuments,
     };
+  },
+
+  async ensureActivitySuggestionForTarget(sourceActivityId: string, targetExpertId: string): Promise<SharedDeliverable | null> {
+    const client = getAwsDataClient() as any;
+    if (!client.models.SharedDeliverable || !client.models.Activity) return null;
+    await assertCanAccessExpert(client, targetExpertId);
+
+    const sourceActivity = await tryGetSharedSourceActivity(client, sourceActivityId);
+    if (!sourceActivity) {
+      throw new Error('Activitatea colegului nu a fost gasita.');
+    }
+    if (sourceActivity.expertId === targetExpertId) {
+      throw new Error('Nu poti adauga in pontajul tau propria activitate din modulul colegilor.');
+    }
+
+    const existingRelations = await listModel<any>(client.models.SharedDeliverable, {
+      targetExpertId: { eq: targetExpertId },
+    });
+    const existingActivityRelation = existingRelations
+      .map(mapSharedDeliverable)
+      .find((relation) => (
+        isActivitySuggestionRelation(relation)
+        && relation.sourceActivityId === sourceActivityId
+      ));
+
+    let activityRelation = existingActivityRelation;
+    const sourceSnapshot = buildSharedActivitySnapshot(sourceActivity);
+
+    if (activityRelation) {
+      if (activityRelation.status === 'removed' || activityRelation.status === 'ignored_by_target' || activityRelation.status === 'confirmed_not_relevant') {
+        const result = await client.models.SharedDeliverable.update(withSupportedSharedDeliverableFields({
+          id: activityRelation.id,
+          status: 'pending_registration',
+          notifiedAt: new Date().toISOString(),
+          removedAt: null,
+          ignoredAt: null,
+        }, sourceSnapshot));
+        assertNoErrors(result, 'AWS reactivate shared activity suggestion');
+        activityRelation = result.data ? mapSharedDeliverable(result.data) : activityRelation;
+      }
+    } else {
+      const [suggestion] = buildSharedActivitySuggestions({
+        sourceActivityId,
+        sourceExpertId: sourceActivity.expertId,
+        targetExpertIds: [targetExpertId],
+        projectId: sourceActivity.projectCode,
+        sourceActivity,
+      });
+      if (!suggestion) return null;
+      const result = await client.models.SharedDeliverable.create(withSupportedSharedDeliverableFields({
+        id: suggestion.id,
+        documentId: suggestion.documentId,
+        sourceExpertId: suggestion.sourceExpertId,
+        targetExpertId: suggestion.targetExpertId,
+        projectId: suggestion.projectId,
+        sourceActivityId: suggestion.sourceActivityId,
+        status: suggestion.status,
+        notifiedAt: suggestion.notifiedAt,
+      }, suggestion));
+      assertNoErrors(result, 'AWS create shared activity suggestion from colleague overview');
+      activityRelation = result.data ? mapSharedDeliverable(result.data) : suggestion;
+    }
+
+    const deliverablesWithDocuments = (sourceActivity.deliverables ?? [])
+      .filter((deliverable) => Boolean(deliverable.documentId));
+    await Promise.all(deliverablesWithDocuments.map(async (deliverable) => {
+      if (!deliverable.documentId) return;
+      const existingDocumentRelation = existingRelations
+        .map(mapSharedDeliverable)
+        .find((relation) => (
+          !isActivitySuggestionRelation(relation)
+          && relation.documentId === deliverable.documentId
+          && relation.sourceActivityId === sourceActivityId
+        ));
+
+      if (existingDocumentRelation) {
+        if (existingDocumentRelation.status === 'removed' || existingDocumentRelation.status === 'ignored_by_target' || existingDocumentRelation.status === 'confirmed_not_relevant') {
+          const result = await client.models.SharedDeliverable.update(withSupportedSharedDeliverableFields({
+            id: existingDocumentRelation.id,
+            status: 'pending_registration',
+            removedAt: null,
+            ignoredAt: null,
+          }, sourceSnapshot));
+          assertNoErrors(result, 'AWS reactivate shared deliverable relation from colleague overview');
+        }
+        return;
+      }
+
+      const [relation] = buildSharedDeliverables({
+        documentId: deliverable.documentId,
+        sourceExpertId: sourceActivity.expertId,
+        targetExpertIds: [targetExpertId],
+        projectId: deliverable.projectId || sourceActivity.projectCode,
+        sourceActivityId,
+        sourceActivity,
+      });
+      if (!relation) return;
+      const result = await client.models.SharedDeliverable.create(withSupportedSharedDeliverableFields({
+        id: relation.id,
+        documentId: relation.documentId,
+        sourceExpertId: relation.sourceExpertId,
+        targetExpertId: relation.targetExpertId,
+        projectId: relation.projectId,
+        sourceActivityId: relation.sourceActivityId,
+        status: relation.status,
+      }, relation));
+      assertNoErrors(result, 'AWS create shared deliverable relation from colleague overview');
+    }));
+
+    return activityRelation ?? null;
   },
 
   async registerForActivity(relationId: string, targetActivityId: string): Promise<SharedDeliverable | null> {
@@ -2417,6 +2648,26 @@ export const activitiesService = {
     });
     const mapped = await Promise.all(data.map(attachActivityChildren));
     return filterActivitiesForScope(mapped, scope).sort((a, b) => a.date.localeCompare(b.date));
+  },
+
+  async getColleagueOverviewByMonth(month: number, year: number): Promise<Activity[]> {
+    const client = getAwsDataClient() as any;
+    const scope = await getCurrentDataAccessScope(client);
+    if (scope.accessLevel === 'none' || !scope.currentExpertId) return [];
+    const data = await listModel<any>(client.models.Activity, {
+      month: { eq: month },
+      year: { eq: year },
+    });
+    const mapped = await Promise.all(data.map(attachActivityChildren));
+    const currentProjectCode = scope.currentExpert?.projectCode;
+    return mapped
+      .filter((activity) => activity.expertId !== scope.currentExpertId)
+      .filter((activity) => scope.canAccessAllExperts || !currentProjectCode || !activity.projectCode || activity.projectCode === currentProjectCode)
+      .sort((a, b) => {
+        const expertCompare = (a.expertName || '').localeCompare(b.expertName || '');
+        if (expertCompare !== 0) return expertCompare;
+        return a.date.localeCompare(b.date);
+      });
   },
 
   async getByDateRange(startDate: string, endDate: string): Promise<Activity[]> {

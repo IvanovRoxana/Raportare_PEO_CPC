@@ -36,6 +36,7 @@ export const historicalImportService = awsStore.historicalImportService;
 export const auditLogsService = awsStore.auditLogsService;
 export const activityAutofillAuditsService = awsStore.activityAutofillAuditsService;
 export const documentsService = awsStore.documentsService;
+export const indexedDeliverableCandidatesService = awsStore.indexedDeliverableCandidatesService;
 export const sharedDeliverablesService = awsStore.sharedDeliverablesService;
 export const procurementProjectsService = awsStore.procurementProjectsService;
 export const procurementDocumentsService = awsStore.procurementDocumentsService;

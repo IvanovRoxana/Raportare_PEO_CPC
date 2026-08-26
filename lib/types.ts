@@ -592,6 +592,74 @@ export interface DocumentMetadata {
   updatedAt?: string;
 }
 
+export type IndexedDeliverableEligibilityStatus =
+  | 'eligibil'
+  | 'necesita_revizie'
+  | 'neeligibil'
+  | string;
+
+export type IndexedDeliverableCandidateStatus =
+  | 'uploaded'
+  | 'indexed'
+  | 'needs_review'
+  | 'rejected'
+  | 'approved_for_use'
+  | string;
+
+export interface IndexedDeliverableCandidate {
+  id: string;
+  owner?: string;
+  expertId: string;
+  uploadedBy?: string;
+  uploadedByName?: string;
+  reportingMonth: number;
+  reportingYear: number;
+  projectCode?: string;
+  fileName: string;
+  originalFileName?: string;
+  storagePath: string;
+  s3Key?: string;
+  mimeType: string;
+  fileType?: string;
+  fileSize: number;
+  fileHash?: string;
+  firstPageTextHash?: string;
+  contentFingerprint?: string;
+  extractedText?: string;
+  extractedTextPreview?: string;
+  detectedDate?: string;
+  suggestedTitle?: string;
+  suggestedType?: string;
+  suggestedSaCode?: string;
+  suggestedActivityCatalogId?: string;
+  suggestedActivityName?: string;
+  suggestedDescription?: string;
+  suggestedResult?: string;
+  eligibilityStatus: IndexedDeliverableEligibilityStatus;
+  eligibilityReason?: string;
+  eligibilityScore?: number;
+  confidence?: 'high' | 'medium' | 'low' | string;
+  alternativeMatches?: Array<{
+    saCode?: string;
+    activityCatalogId?: string;
+    activityName?: string;
+    reason?: string;
+    confidence?: string;
+  }>;
+  keywords?: string[];
+  warnings?: string[];
+  notes?: string;
+  ragUsed?: boolean;
+  ragSummary?: string;
+  modelAuditId?: string;
+  status: IndexedDeliverableCandidateStatus;
+  approvedAt?: string;
+  approvedBy?: string;
+  createdActivityId?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface SharedDeliverable {
   id: string;
   documentId: string;
