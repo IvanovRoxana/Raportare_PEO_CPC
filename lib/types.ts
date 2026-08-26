@@ -7,6 +7,7 @@ export interface Expert {
   role: string;
   email?: string;
   phone?: string;
+  avatarUrl?: string;
   category?: 'ap' | 'bh' | 'com' | 'cr' | 'cercetare' | 'gt' | 'gdpr' | string;
   norma: number; // 2, 4, 6, or 8 hours/day
   normType?: 'calculated' | 'manual_adjusted' | 'project' | string;

@@ -27,6 +27,7 @@ export function mergeExpertWithFallback(primary: Expert, fallback?: Expert): Exp
     name: nonEmptyString(primary.name, fallback.name) || primary.name || fallback.name,
     email: nonEmptyString(primary.email, fallback.email),
     phone: primary.phone ?? fallback.phone,
+    avatarUrl: nonEmptyString(primary.avatarUrl, fallback.avatarUrl),
     role: nonEmptyString(primary.role, fallback.role) || primary.role || fallback.role,
     category: nonEmptyString(primary.category, fallback.category),
     norma: nonZeroNumber(primary.norma, fallback.norma) ?? 8,

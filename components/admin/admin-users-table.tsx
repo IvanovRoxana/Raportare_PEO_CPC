@@ -16,6 +16,7 @@ import {
 import { auditLogsService, expertsService } from '@/lib/backend-store';
 import { getSignedInUser, requestPasswordReset } from '@/lib/aws/auth';
 import type { Expert } from '@/lib/types';
+import { ExpertAvatar } from '@/components/expert/expert-avatar';
 import { DataTable } from '@/components/layout/dashboard-primitives';
 import { Button } from '@/components/ui/button';
 import {
@@ -47,6 +48,7 @@ type EditFormState = {
   name: string;
   email: string;
   phone: string;
+  avatarUrl: string;
   role: RoleOption;
   category: string;
   contract: string;
@@ -118,6 +120,7 @@ function buildEditForm(expert: Expert): EditFormState {
     name: expert.name || '',
     email: expert.email || '',
     phone: expert.phone || '',
+    avatarUrl: expert.avatarUrl || '',
     role,
     category: expert.category || '',
     contract: formatContractDisplay(expert),
@@ -160,6 +163,7 @@ function buildExpertCreateInput(expert: Expert, updates: Partial<Expert>): Omit<
     role: updates.role || expert.role || 'Expert',
     email: updates.email ?? expert.email,
     phone: updates.phone ?? expert.phone,
+    avatarUrl: updates.avatarUrl ?? expert.avatarUrl,
     category: updates.category ?? expert.category,
     norma: expert.norma ?? 8,
     normType: expert.normType,
@@ -187,6 +191,7 @@ function auditProfileValue(expert: Expert | (Partial<Expert> & { name?: string; 
     name: expert.name || '',
     email: expert.email || '',
     phone: expert.phone || '',
+    avatarUrl: expert.avatarUrl || '',
     role: expert.role || '',
     category: expert.category || '',
     contractNumber: expert.contractNumber || '',
@@ -400,6 +405,7 @@ export function AdminUsersTable() {
       name: form.name.trim(),
       email: form.email.trim(),
       phone: form.phone.trim(),
+      avatarUrl: form.avatarUrl.trim(),
       category: form.category.trim(),
       contractNumber: contractFields.contractNumber,
       contractType: contractFields.contractType,
@@ -568,9 +574,7 @@ export function AdminUsersTable() {
 
   const rows = filteredUsers.map((user) => [
     <div key={`${user.name}-name`} className="flex items-center gap-3 font-semibold text-primary">
-      <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#eaf3fb] text-xs">
-        {user.initials}
-      </span>
+      <ExpertAvatar expert={user.expert} className="h-9 w-9 text-xs" />
       <span className="max-w-[220px] leading-5">{user.name}</span>
     </div>,
     user.email,
@@ -762,6 +766,15 @@ export function AdminUsersTable() {
                   id="admin-user-phone"
                   value={form.phone}
                   onChange={(event) => setForm({ ...form, phone: event.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="admin-user-avatar">URL poza profil</Label>
+                <Input
+                  id="admin-user-avatar"
+                  value={form.avatarUrl}
+                  placeholder="/team-avatars/nume-prenume.jpg"
+                  onChange={(event) => setForm({ ...form, avatarUrl: event.target.value })}
                 />
               </div>
               <div className="space-y-2">

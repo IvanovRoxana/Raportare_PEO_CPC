@@ -7,6 +7,7 @@ const schema = a.schema({
       role: a.string().required(),
       email: a.email(),
       phone: a.string(),
+      avatarUrl: a.string(),
       category: a.string(),
       norma: a.integer().default(8),
       normType: a.string(),

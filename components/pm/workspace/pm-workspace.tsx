@@ -18,6 +18,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ActivityCatalogGovernancePanel } from '@/components/admin/activity-description-editor';
+import { ExpertAvatar } from '@/components/expert/expert-avatar';
 import {
   Dialog,
   DialogContent,
@@ -128,16 +129,6 @@ const views: Array<{ id: WorkspaceView; label: string; badge?: (props: PmWorkspa
   { id: 'actions', label: 'Acțiuni PM' },
 ];
 
-function initials(name: string) {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((part) => part[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
-}
-
 function pct(value: number) {
   return Math.max(0, Math.min(100, Math.round(value || 0)));
 }
@@ -155,11 +146,7 @@ function statusClass(status: ReportStatus['status']) {
 }
 
 function MiniAvatar({ expert }: { expert: Expert }) {
-  return (
-    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#1f73d8] text-[10px] font-bold text-white">
-      {initials(expert.name)}
-    </span>
-  );
+  return <ExpertAvatar expert={expert} className="h-7 w-7 bg-[#1f73d8] text-[10px] text-white" />;
 }
 
 function PmTopBar({

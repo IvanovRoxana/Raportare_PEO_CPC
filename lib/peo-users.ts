@@ -1,3 +1,4 @@
+import { getDefaultExpertAvatarUrl } from './expert-avatar-utils';
 import type { Expert } from './types';
 
 export type PeoUserRole = 'expert' | 'pm' | 'admin';
@@ -157,6 +158,7 @@ export function peoUsersAsExperts(): Expert[] {
     name: user.name,
     role: user.roles.includes('expert') && user.roles.includes('pm') ? 'Expert/PM' : user.roles.includes('pm') ? 'PM' : 'Expert',
     email: user.email,
+    avatarUrl: getDefaultExpertAvatarUrl(user.id),
     category: user.category,
     norma: user.norma,
     normType: user.normType ?? 'normă calculată din zile lucrătoare × ore/zi',

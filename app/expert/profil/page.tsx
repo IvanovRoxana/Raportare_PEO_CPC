@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { fetchAuthSession } from 'aws-amplify/auth';
 import {
   ArrowRight,
   CheckCircle2,
@@ -12,9 +13,12 @@ import {
   Mail,
   Save,
   Settings,
+  Trash2,
+  Upload,
   User,
 } from 'lucide-react';
 import { AdminViewAsBanner } from '@/components/admin/admin-view-as-banner';
+import { ExpertAvatar } from '@/components/expert/expert-avatar';
 import { DashboardShell, expertNavItems } from '@/components/layout/dashboard-shell';
 import { RightInfoCard } from '@/components/layout/dashboard-primitives';
 import { Button } from '@/components/ui/button';
@@ -25,7 +29,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { StatusBadge } from '@/components/ui/status-badge';
 import { Switch } from '@/components/ui/switch';
 import { UserMenu } from '@/components/user-menu';
-import { useExpertMutations, useExperts } from '@/hooks/use-backend-data';
+import { useExperts } from '@/hooks/use-backend-data';
+import { uploadAuthenticatedData } from '@/lib/authenticated-storage';
 import { getSignedInUser } from '@/lib/aws/auth';
 import type { AppRole } from '@/lib/aws/auth';
 import type { Expert } from '@/lib/types';
@@ -36,6 +41,7 @@ type ProfileForm = {
   positionInProject: string;
   email: string;
   phone: string;
+  avatarUrl: string;
 };
 
 type NotificationPreferences = {
@@ -60,26 +66,26 @@ function getProfileForm(expert: Expert | null, fallbackName: string, fallbackEma
     positionInProject: expert?.positionInProject ?? expert?.role ?? 'Expert PEO',
     email: expert?.email ?? fallbackEmail ?? '',
     phone: expert?.phone ?? '',
+    avatarUrl: expert?.avatarUrl ?? '',
   };
-}
-
-function getInitials(name: string) {
-  return name
-    .split(' ')
-    .map((part) => part[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2) || 'EX';
 }
 
 function getPreferencesKey(expertId?: string | null) {
   return expertId ? `peo_profile_preferences_${expertId}` : null;
 }
 
+function safeFileName(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase() || 'avatar.jpg';
+}
+
 export default function ExpertProfilePage() {
   const router = useRouter();
   const { experts, isLoading: expertsLoading, mutate: refreshExperts } = useExperts();
-  const { update: updateExpert } = useExpertMutations();
   const [signedInUserId, setSignedInUserId] = useState<string | null>(null);
   const [signedInEmail, setSignedInEmail] = useState<string | null>(null);
   const [signedInName, setSignedInName] = useState('Expert');
@@ -90,6 +96,9 @@ export default function ExpertProfilePage() {
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [pendingAvatarFile, setPendingAvatarFile] = useState<File | null>(null);
+  const [avatarPreviewUrl, setAvatarPreviewUrl] = useState<string | null>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -135,6 +144,8 @@ export default function ExpertProfilePage() {
 
   useEffect(() => {
     setForm(getProfileForm(currentExpert, signedInName, signedInEmail));
+    setPendingAvatarFile(null);
+    setAvatarPreviewUrl(null);
     setSaveMessage(null);
     setSaveError(null);
   }, [currentExpert, signedInEmail, signedInName]);
@@ -168,6 +179,33 @@ export default function ExpertProfilePage() {
     setSaveError(null);
   };
 
+  const handleAvatarFileChange = (file?: File | null) => {
+    setSaveMessage(null);
+    setSaveError(null);
+
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setSaveError('Alege un fisier imagine pentru poza de profil.');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setSaveError('Poza de profil trebuie sa aiba maximum 5 MB.');
+      return;
+    }
+
+    setPendingAvatarFile(file);
+    const reader = new FileReader();
+    reader.onload = () => setAvatarPreviewUrl(String(reader.result || ''));
+    reader.readAsDataURL(file);
+  };
+
+  const clearAvatar = () => {
+    setPendingAvatarFile(null);
+    setAvatarPreviewUrl(null);
+    updateForm('avatarUrl', '');
+    if (avatarInputRef.current) avatarInputRef.current.value = '';
+  };
+
   const updatePreference = (field: keyof NotificationPreferences, value: boolean | string) => {
     const next = { ...preferences, [field]: value };
     setPreferences(next);
@@ -188,13 +226,49 @@ export default function ExpertProfilePage() {
     setSaveError(null);
 
     try {
-      await updateExpert(currentExpert.id, {
-        name: form.name.trim(),
-        email: form.email.trim(),
-        phone: form.phone.trim(),
-        beneficiary: form.beneficiary.trim(),
-        positionInProject: form.positionInProject.trim(),
+      let avatarUrl = form.avatarUrl.trim();
+      if (pendingAvatarFile) {
+        const extension = pendingAvatarFile.name.split('.').pop()?.toLowerCase() || 'jpg';
+        const avatarPath = `profile-photos/${currentExpert.id}/${Date.now()}-${safeFileName(form.name || currentExpert.name)}.${extension}`;
+        const uploaded = await uploadAuthenticatedData({
+          path: avatarPath,
+          data: pendingAvatarFile,
+          options: { contentType: pendingAvatarFile.type || 'image/jpeg' },
+        }).result;
+        avatarUrl = uploaded.path;
+      }
+
+      const token = (await fetchAuthSession({ forceRefresh: true })).tokens?.accessToken?.toString();
+      if (!token) {
+        throw new Error('Sesiunea de autentificare a expirat. Autentifica-te din nou inainte de salvare.');
+      }
+
+      const response = await fetch('/api/expert/profile', {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${token}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          id: currentExpert.id,
+          input: {
+            name: form.name.trim(),
+            email: form.email.trim(),
+            phone: form.phone.trim(),
+            beneficiary: form.beneficiary.trim(),
+            positionInProject: form.positionInProject.trim(),
+            avatarUrl,
+          },
+        }),
       });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(body?.error || 'Profilul nu a putut fi salvat.');
+      }
+      setForm((current) => ({ ...current, avatarUrl }));
+      setPendingAvatarFile(null);
+      setAvatarPreviewUrl(null);
+      if (avatarInputRef.current) avatarInputRef.current.value = '';
       await refreshExperts();
       setSaveMessage('Profilul a fost actualizat.');
     } catch (error) {
@@ -292,16 +366,42 @@ export default function ExpertProfilePage() {
             <Card className="rounded-[1.5rem] py-0">
               <CardContent className="grid gap-6 p-7 lg:grid-cols-[1fr_320px] lg:items-center">
                 <div className="flex flex-col gap-6 md:flex-row md:items-center">
-                  <div className="relative flex h-32 w-32 shrink-0 items-center justify-center rounded-full bg-[#eaf3fb] text-primary">
-                    <span className="text-3xl font-bold">{getInitials(form.name)}</span>
+                  <div className="relative">
+                    <ExpertAvatar
+                      expert={{
+                        id: currentExpert?.id || signedInUserId || 'expert',
+                        name: form.name || signedInName,
+                        avatarUrl: avatarPreviewUrl || form.avatarUrl,
+                      }}
+                      className="h-32 w-32 text-3xl"
+                    />
                     <span className="absolute bottom-2 right-2 flex h-10 w-10 items-center justify-center rounded-full bg-primary text-white shadow-sm">
-                      <Settings className="h-5 w-5" />
+                      <Upload className="h-5 w-5" />
                     </span>
                   </div>
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Poza profil</p>
                     <h2 className="mt-2 text-2xl font-bold text-slate-950">{form.name || 'Expert'}</h2>
                     <p className="mt-1 text-sm text-muted-foreground">{form.positionInProject || roleLabel}</p>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <input
+                        ref={avatarInputRef}
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        className="hidden"
+                        onChange={(event) => handleAvatarFileChange(event.target.files?.[0])}
+                      />
+                      <Button type="button" variant="outline" size="sm" onClick={() => avatarInputRef.current?.click()}>
+                        <Upload className="h-4 w-4" />
+                        Incarca poza
+                      </Button>
+                      {(form.avatarUrl || avatarPreviewUrl) && (
+                        <Button type="button" variant="ghost" size="sm" onClick={clearAvatar}>
+                          <Trash2 className="h-4 w-4" />
+                          Elimina
+                        </Button>
+                      )}
+                    </div>
                     <div className="mt-4 flex flex-wrap gap-2">
                       <StatusBadge status="verificat">Expert</StatusBadge>
                       <StatusBadge status="conform">{organizationLabel}</StatusBadge>

@@ -30,5 +30,9 @@ export const storage = defineStorage({
       allow.authenticated.to(["read"]),
       allow.groups(["pm", "admin"]).to(["read", "write", "delete"]),
     ],
+    "profile-photos/*": [
+      allow.authenticated.to(["read", "write"]),
+      allow.groups(["pm", "admin"]).to(["read", "write", "delete"]),
+    ],
   }),
 });

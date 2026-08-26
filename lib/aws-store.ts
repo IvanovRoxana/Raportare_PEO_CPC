@@ -386,6 +386,7 @@ function withSupportedExpertFields(payload: Record<string, unknown>, expert: Par
     jobDescriptionText: expert.jobDescriptionText,
     aiReportingInstructions: expert.aiReportingInstructions,
     beneficiary: expert.beneficiary,
+    avatarUrl: expert.avatarUrl,
   };
 
   Object.entries(extendedFields).forEach(([field, value]) => {
@@ -529,6 +530,7 @@ function mapExpert(item: any): Expert {
     role: item.role,
     email: item.email ?? undefined,
     phone: item.phone ?? undefined,
+    avatarUrl: item.avatarUrl ?? undefined,
     category: item.category ?? undefined,
     norma: item.norma ?? 8,
     normType: item.normType ?? undefined,

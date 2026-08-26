@@ -19,6 +19,7 @@ const EXPERT_FIELDS = [
   'role',
   'email',
   'phone',
+  'avatarUrl',
   'category',
   'norma',
   'normType',
@@ -279,6 +280,7 @@ const EXPERT_SELECTION = `
   role
   email
   phone
+  avatarUrl
   category
   norma
   normType
