@@ -108,8 +108,12 @@ function getSignatureKey(secretAccessKey: string, dateStamp: string) {
 }
 
 function getCredentials() {
-  const accessKeyId = process.env.NOTIFICATION_AWS_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID;
-  const secretAccessKey = process.env.NOTIFICATION_AWS_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY;
+  const accessKeyId = process.env.NOTIFICATION_AWS_ACCESS_KEY_ID
+    || process.env.AWS_ACCESS_KEY_ID
+    || process.env.COGNITO_SYNC_AWS_ACCESS_KEY_ID;
+  const secretAccessKey = process.env.NOTIFICATION_AWS_SECRET_ACCESS_KEY
+    || process.env.AWS_SECRET_ACCESS_KEY
+    || process.env.COGNITO_SYNC_AWS_SECRET_ACCESS_KEY;
 
   if (!accessKeyId || !secretAccessKey) {
     return null;
@@ -118,7 +122,9 @@ function getCredentials() {
   return {
     accessKeyId,
     secretAccessKey,
-    sessionToken: process.env.NOTIFICATION_AWS_SESSION_TOKEN || process.env.AWS_SESSION_TOKEN,
+    sessionToken: process.env.NOTIFICATION_AWS_SESSION_TOKEN
+      || process.env.AWS_SESSION_TOKEN
+      || process.env.COGNITO_SYNC_AWS_SESSION_TOKEN,
   };
 }
 
