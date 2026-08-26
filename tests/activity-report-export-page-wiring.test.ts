@@ -14,7 +14,9 @@ test('pagina export RA conecteaza exportul Anexa 10 determinist doar prin flag e
 });
 
 test('pagina export RA paseaza expertul complet catre generatorul Anexa 10', () => {
-  assert.match(exportPageSource, /expert=\{selectedExpert as Expert\}/);
+  assert.match(exportPageSource, /const selectedExpertFinancialNorm = useMemo<Expert>\(\(\) => \(\{/);
+  assert.match(exportPageSource, /\.\.\.\(selectedExpert as Expert\)/);
+  assert.match(exportPageSource, /expert=\{selectedExpertFinancialNorm\}/);
   assert.match(reportGeneratorSource, /expert\?: Pick<Expert,/);
   assert.match(reportGeneratorSource, /enableDeterministicAnexa10Docx = false/);
 });
