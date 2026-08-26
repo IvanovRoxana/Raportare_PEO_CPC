@@ -3,14 +3,17 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import {
+  ArrowRight,
   CalendarDays,
   Download,
   FileSpreadsheet,
   FileText,
   Plus,
+  Users,
 } from 'lucide-react';
 import { DashboardShell, financialNavItems } from '@/components/layout/dashboard-shell';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   useActivitiesByMonth,
@@ -256,7 +259,67 @@ export default function FinancialDashboardPage() {
         </>
       }
     >
-      <></>
+      <section className="grid gap-4 lg:grid-cols-3">
+        <Card className="rounded-[1.5rem]">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <CalendarDays className="h-5 w-5 text-primary" />
+              Pontaje
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-wrap items-center justify-between gap-4">
+            <p className="max-w-xl text-sm text-muted-foreground">
+              Centralizatorul cu cele 12 coloane din Excel, buline de conflict la hover si export TEST.
+            </p>
+            <Button asChild>
+              <Link href="/financiar/pontaje">
+                Deschide Pontaje
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-[1.5rem]">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <FileText className="h-5 w-5 text-primary" />
+              Concedii
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-wrap items-center justify-between gap-4">
+            <p className="max-w-xl text-sm text-muted-foreground">
+              CO automat, CO manual cu justificare, validare/respingere si norme PEO/CIM versionate.
+            </p>
+            <Button asChild>
+              <Link href="/financiar/concedii">
+                Deschide Concedii
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-[1.5rem]">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Users className="h-5 w-5 text-primary" />
+              Experti si norme
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-wrap items-center justify-between gap-4">
+            <p className="max-w-xl text-sm text-muted-foreground">
+              Panou cu normele PEO/CIM pe expert, proiecte active si formula CPC calculata.
+            </p>
+            <Button asChild>
+              <Link href="/financiar/concedii#experti-norme">
+                Deschide panoul
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </section>
     </DashboardShell>
   );
 }
