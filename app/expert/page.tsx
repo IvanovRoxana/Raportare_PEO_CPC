@@ -1220,9 +1220,17 @@ export default function ExpertHomeDashboard() {
               </>
             );
 
-            if (tab.active) {
+            if (tab.active || tab.href !== '#') {
               return (
-                <Button key={tab.label} asChild className="h-12 justify-between rounded-md">
+                <Button
+                  key={tab.label}
+                  asChild
+                  variant={tab.active ? 'default' : 'outline'}
+                  className={cn(
+                    'h-12 rounded-md',
+                    tab.active ? 'justify-between' : 'justify-start',
+                  )}
+                >
                   <Link href={tab.href}>{content}</Link>
                 </Button>
               );
