@@ -25,6 +25,7 @@ import type { Activity, AuditLog, DocumentMetadata, Expert, ReportStatus } from 
 
 const experts = JSON.parse(readFileSync(new URL('../data/import/experts.json', import.meta.url), 'utf8')) as Expert[];
 const pmDashboardSource = readFileSync(new URL('../app/pm/page.tsx', import.meta.url), 'utf8');
+const pmDossierModalSource = readFileSync(new URL('../components/pm/dosar-expert-modal.tsx', import.meta.url), 'utf8');
 
 test('lista de colaborare include toti expertii activi, nu doar expertul curent', () => {
   const current = { id: 'e1', name: 'Expert Curent', role: 'Expert', isActive: true } as Expert;
@@ -238,8 +239,14 @@ test('summary PM calculeaza statusuri, alerte titlu, livrabile comune si cross a
 test('aprobarea manuala PM marcheaza livrabilul eligibil si sincronizeaza copia din activitate', () => {
   assert.match(pmDashboardSource, /status:\s*'eligibil'/);
   assert.match(pmDashboardSource, /aiStatus:\s*'eligible'/);
-  assert.match(pmDashboardSource, /activity\.id === document\.sourceActivityId\s*\|\|\s*\(activity\.deliverables \?\? \[\]\)\.some\(matchesDocument\)/);
+  assert.match(pmDashboardSource, /const activityWithMatchingDeliverable = monthActivities\.find/);
+  assert.match(pmDashboardSource, /const sourceActivity = activityWithMatchingDeliverable/);
   assert.match(pmDashboardSource, /updateDocumentEligibilityCheck\(document\.id, approvedCheck\)/);
+  assert.match(pmDashboardSource, /actionType:\s*'pm_deliverable_unlock_approved'/);
+  assert.match(pmDashboardSource, /fieldName:\s*`document:\$\{document\.id\}:eligibilityCheck`/);
+  assert.match(pmDossierModalSource, /resolveFocusedEligibilityCheck/);
+  assert.match(pmDossierModalSource, /Deblocare PM aprobata/);
+  assert.doesNotMatch(pmDossierModalSource, /<Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-700">\s*Livrabil neeligibil\s*<\/Badge>/);
 });
 
 test('clarificarile PM pentru documente title_mismatch apar ca fire document', () => {

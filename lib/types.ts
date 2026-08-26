@@ -204,6 +204,7 @@ export type AuditActionType =
   | 'document_uploaded'
   | 'document_metadata_saved'
   | 'document_duplicate_detected'
+  | 'pm_deliverable_unlock_approved'
   | 'shared_deliverable_created'
   | 'shared_deliverable_registered'
   | 'shared_deliverable_status_changed'

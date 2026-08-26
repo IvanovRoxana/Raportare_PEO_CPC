@@ -119,6 +119,36 @@ const REPORT_STATUS_LABELS: Record<ReportStatus['status'], { label: string; vari
   clarifications: { label: 'Clarificari', variant: 'destructive' },
 };
 
+type FocusedEligibilityCheck = NonNullable<DocumentMetadata['eligibilityCheck']>;
+
+function isApprovedOrEligibleEligibilityCheck(check?: DocumentMetadata['eligibilityCheck'] | Deliverable['eligibilityCheck']) {
+  return Boolean(check?.pmUnlockApproved || check?.status === 'eligibil' || check?.status === 'eligibil_cu_observatii');
+}
+
+function resolveFocusedEligibilityCheck(
+  documentCheck?: DocumentMetadata['eligibilityCheck'],
+  deliverableCheck?: Deliverable['eligibilityCheck'],
+): FocusedEligibilityCheck | null {
+  if (isApprovedOrEligibleEligibilityCheck(documentCheck)) return documentCheck as FocusedEligibilityCheck;
+  if (isApprovedOrEligibleEligibilityCheck(deliverableCheck)) return deliverableCheck as FocusedEligibilityCheck;
+  return (documentCheck || deliverableCheck || null) as FocusedEligibilityCheck | null;
+}
+
+function getEligibilityLabel(status?: string) {
+  if (status === 'eligibil') return 'Livrabil eligibil';
+  if (status === 'eligibil_cu_observatii') return 'Livrabil eligibil cu observatii';
+  if (status === 'neeligibil') return 'Livrabil neeligibil';
+  if (status === 'neconcludent') return 'Livrabil neconcludent';
+  return 'Eligibilitate neprecizata';
+}
+
+function getEligibilityBadgeClass(status?: string) {
+  if (status === 'eligibil') return 'border-emerald-300 bg-emerald-50 text-emerald-700';
+  if (status === 'eligibil_cu_observatii') return 'border-amber-300 bg-amber-50 text-amber-700';
+  if (status === 'neeligibil') return 'border-red-300 bg-red-50 text-red-700';
+  return 'border-slate-300 bg-slate-50 text-slate-700';
+}
+
 function GdprPmSummary({ activity }: { activity: Activity }) {
   const template = getGdprTemplate(activity.gdprTemplateCode);
   const meta = parseGdprMetaJson(activity.gdprMetaJson);
@@ -363,6 +393,10 @@ export function DosarExpertModal({
     ? allDeliverables.findIndex((deliverable) => deliverable.documentId === initialFocus.documentId || deliverable.id === initialFocus.documentId)
     : -1;
   const focusedDeliverable = focusedDeliverableIndex >= 0 ? allDeliverables[focusedDeliverableIndex] : null;
+  const focusedEligibilityCheck = resolveFocusedEligibilityCheck(
+    focusedDocument?.eligibilityCheck,
+    focusedDeliverable?.eligibilityCheck,
+  );
   const isFocusedEligibilityDossier = Boolean(
     initialFocus?.documentId
     && (
@@ -803,10 +837,14 @@ export function DosarExpertModal({
               <div className="space-y-4 p-4">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-700">
-                      Livrabil neeligibil
+                    <Badge variant="outline" className={getEligibilityBadgeClass(focusedEligibilityCheck?.status)}>
+                      {getEligibilityLabel(focusedEligibilityCheck?.status)}
                     </Badge>
-                    {focusedDocument?.eligibilityCheck?.pmUnlockRequested ? (
+                    {focusedEligibilityCheck?.pmUnlockApproved ? (
+                      <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">
+                        Deblocare PM aprobata
+                      </Badge>
+                    ) : focusedEligibilityCheck?.pmUnlockRequested ? (
                       <Badge variant="outline" className="border-blue-200 bg-blue-50 text-blue-700">Deblocare PM solicitată</Badge>
                     ) : null}
                   </div>
@@ -827,10 +865,10 @@ export function DosarExpertModal({
                     <CardTitle className="text-sm">Context activitate</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-2 text-xs text-slate-600">
-                    <div><span className="font-semibold text-slate-800">SA:</span> {focusedDocument?.eligibilityCheck?.checkedSaCode || focusedDeliverable?.saCode || 'neprecizată'}</div>
-                    <div><span className="font-semibold text-slate-800">Activitate:</span> {focusedDocument?.eligibilityCheck?.checkedActivityName || focusedDeliverable?.activityTitle || focusedDeliverable?.activityType || 'neidentificată'}</div>
+                    <div><span className="font-semibold text-slate-800">SA:</span> {focusedEligibilityCheck?.checkedSaCode || focusedDeliverable?.saCode || 'neprecizată'}</div>
+                    <div><span className="font-semibold text-slate-800">Activitate:</span> {focusedEligibilityCheck?.checkedActivityName || focusedDeliverable?.activityTitle || focusedDeliverable?.activityType || 'neidentificată'}</div>
                     <div><span className="font-semibold text-slate-800">Data:</span> {focusedDeliverable?.activityDate || focusedDocument?.uploadDate?.slice(0, 10) || '-'}</div>
-                    <div><span className="font-semibold text-slate-800">Tip livrabil:</span> {focusedDocument?.eligibilityCheck?.checkedDeliverableType || focusedDocument?.deliverableType || focusedDeliverable?.deliverableType || '-'}</div>
+                    <div><span className="font-semibold text-slate-800">Tip livrabil:</span> {focusedEligibilityCheck?.checkedDeliverableType || focusedDocument?.deliverableType || focusedDeliverable?.deliverableType || '-'}</div>
                   </CardContent>
                 </Card>
 
@@ -838,26 +876,26 @@ export function DosarExpertModal({
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm">Verificare AI</CardTitle>
                     <CardDescription className="text-xs">
-                      Scor {focusedDocument?.eligibilityCheck?.score ?? focusedDeliverable?.eligibilityCheck?.score ?? 0}/100
+                      Scor {focusedEligibilityCheck?.score ?? 0}/100
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-3 text-xs">
                     <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-amber-900">
-                      {focusedDocument?.eligibilityCheck?.summary || focusedDeliverable?.eligibilityCheck?.summary || 'Nu există sumar AI pentru acest livrabil.'}
+                      {focusedEligibilityCheck?.summary || 'Nu există sumar AI pentru acest livrabil.'}
                     </div>
-                    {(focusedDocument?.eligibilityCheck?.missingElements || focusedDeliverable?.eligibilityCheck?.missingElements || []).length > 0 ? (
+                    {(focusedEligibilityCheck?.missingElements || []).length > 0 ? (
                       <div>
                         <div className="mb-1 font-semibold text-slate-800">Elemente lipsă</div>
                         <ul className="list-disc space-y-1 pl-4 text-slate-600">
-                          {(focusedDocument?.eligibilityCheck?.missingElements || focusedDeliverable?.eligibilityCheck?.missingElements || []).map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}
+                          {(focusedEligibilityCheck?.missingElements || []).map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}
                         </ul>
                       </div>
                     ) : null}
-                    {(focusedDocument?.eligibilityCheck?.riskFlags || focusedDeliverable?.eligibilityCheck?.riskFlags || []).length > 0 ? (
+                    {(focusedEligibilityCheck?.riskFlags || []).length > 0 ? (
                       <div>
                         <div className="mb-1 font-semibold text-slate-800">Riscuri</div>
                         <ul className="list-disc space-y-1 pl-4 text-slate-600">
-                          {(focusedDocument?.eligibilityCheck?.riskFlags || focusedDeliverable?.eligibilityCheck?.riskFlags || []).map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}
+                          {(focusedEligibilityCheck?.riskFlags || []).map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}
                         </ul>
                       </div>
                     ) : null}
@@ -869,9 +907,15 @@ export function DosarExpertModal({
                     <CardTitle className="text-sm">Tracking PM</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-2 text-xs text-slate-600">
-                    <div><span className="font-semibold text-slate-800">Solicitat:</span> {focusedDocument?.eligibilityCheck?.pmUnlockRequestedAt || focusedDeliverable?.eligibilityCheck?.pmUnlockRequestedAt || '-'}</div>
-                    <div><span className="font-semibold text-slate-800">Solicitant:</span> {focusedDocument?.eligibilityCheck?.pmUnlockRequestedBy || focusedDeliverable?.eligibilityCheck?.pmUnlockRequestedBy || '-'}</div>
-                    <div><span className="font-semibold text-slate-800">Motiv:</span> {focusedDocument?.eligibilityCheck?.pmUnlockReason || focusedDeliverable?.eligibilityCheck?.pmUnlockReason || '-'}</div>
+                    <div><span className="font-semibold text-slate-800">Solicitat:</span> {focusedEligibilityCheck?.pmUnlockRequestedAt || '-'}</div>
+                    <div><span className="font-semibold text-slate-800">Solicitant:</span> {focusedEligibilityCheck?.pmUnlockRequestedBy || '-'}</div>
+                    <div><span className="font-semibold text-slate-800">Motiv:</span> {focusedEligibilityCheck?.pmUnlockReason || '-'}</div>
+                    {focusedEligibilityCheck?.pmUnlockApproved ? (
+                      <>
+                        <div><span className="font-semibold text-slate-800">Aprobat:</span> {focusedEligibilityCheck.pmUnlockApprovedAt || '-'}</div>
+                        <div><span className="font-semibold text-slate-800">Aprobat de:</span> {focusedEligibilityCheck.pmUnlockApprovedBy || '-'}</div>
+                      </>
+                    ) : null}
                   </CardContent>
                 </Card>
               </div>

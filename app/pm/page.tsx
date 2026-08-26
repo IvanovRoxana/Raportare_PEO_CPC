@@ -495,11 +495,12 @@ export default function PMDashboard() {
     if (!canManagePmReview || !document.eligibilityCheck) return;
 
     const reviewerName = currentUser?.displayName || currentUser?.email || 'PM';
+    const previousCheck = document.eligibilityCheck;
     const approvedCheck = {
-      ...document.eligibilityCheck,
+      ...previousCheck,
       status: 'eligibil',
-      score: Math.max(Number(document.eligibilityCheck.score) || 0, 100),
-      summary: document.eligibilityCheck.summary || 'Livrabil aprobat manual de PM.',
+      score: Math.max(Number(previousCheck.score) || 0, 100),
+      summary: previousCheck.summary || 'Livrabil aprobat manual de PM.',
       pmUnlockRequested: true,
       pmUnlockApproved: true,
       pmUnlockApprovedAt: new Date().toISOString(),
@@ -514,10 +515,13 @@ export default function PMDashboard() {
       || Boolean(document.firstPageTextHash && deliverable.firstPageTextHash === document.firstPageTextHash)
       || Boolean(document.contentFingerprint && deliverable.contentFingerprint === document.contentFingerprint)
     );
-    const sourceActivity = monthActivities.find((activity) => (
-      activity.id === document.sourceActivityId
-      || (activity.deliverables ?? []).some(matchesDocument)
+    const activityWithMatchingDeliverable = monthActivities.find((activity) => (
+      (activity.deliverables ?? []).some(matchesDocument)
     ));
+    const sourceActivity = activityWithMatchingDeliverable
+      || (document.sourceActivityId
+        ? monthActivities.find((activity) => activity.id === document.sourceActivityId)
+        : undefined);
     const sourceDeliverable = sourceActivity?.deliverables?.find(matchesDocument);
 
     if (sourceActivity && sourceDeliverable) {
@@ -541,6 +545,42 @@ export default function PMDashboard() {
     await updateDocumentEligibilityCheck(document.id, approvedCheck);
 
     const expert = visibleExperts.find((item) => item.id === document.uploadedByExpertId);
+    try {
+      await createAuditLog({
+        actionType: 'pm_deliverable_unlock_approved',
+        actorId: currentUser?.id || currentUser?.email || 'pm',
+        actorName: reviewerName,
+        actorRole: currentUser?.roles?.join(',') || 'pm',
+        affectedExpertId: document.uploadedByExpertId,
+        affectedExpertName: document.uploadedByExpertName || expert?.name,
+        projectCode: sourceActivity?.projectCode || sourceDeliverable?.projectCode,
+        month: selectedMonth,
+        year: selectedYear,
+        fieldName: `document:${document.id}:eligibilityCheck`,
+        oldValue: {
+          status: previousCheck.status,
+          score: previousCheck.score,
+          pmUnlockRequested: previousCheck.pmUnlockRequested,
+          pmUnlockRequestedAt: previousCheck.pmUnlockRequestedAt,
+          pmUnlockRequestedBy: previousCheck.pmUnlockRequestedBy,
+          pmUnlockReason: previousCheck.pmUnlockReason,
+        },
+        newValue: {
+          status: approvedCheck.status,
+          score: approvedCheck.score,
+          pmUnlockApproved: approvedCheck.pmUnlockApproved,
+          pmUnlockApprovedAt: approvedCheck.pmUnlockApprovedAt,
+          pmUnlockApprovedBy: approvedCheck.pmUnlockApprovedBy,
+          sourceActivityId: sourceActivity?.id || document.sourceActivityId,
+          deliverableId: sourceDeliverable?.id,
+        },
+        justification: `PM a aprobat manual deblocarea livrabilului ${document.originalFileName}.`,
+        source: 'manual',
+      });
+    } catch (error) {
+      console.warn('PM unlock approval audit log was not persisted:', error);
+    }
+
     if (expert) {
       await notifyByEmail(buildPmApprovedDeliverableNotification({
         expert,
