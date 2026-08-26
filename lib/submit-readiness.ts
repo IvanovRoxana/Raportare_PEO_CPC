@@ -3,6 +3,7 @@ import { isEventActivity, isExceptionActivity } from './peo-constants.ts';
 import { getBusinessHubMetaMissingFields, parseBusinessHubMetaJson } from './business-hub-reporting.ts';
 import { getEventDocumentationStatus } from './event-documentation.ts';
 import { normalizePeoCategory } from './peo-category.ts';
+import { getComCommunicationMultiGroupKey } from './activity-multigroup-rules.ts';
 
 export const ACTIVITY_PERIOD_GROUP_PREFIX = 'activity-period:';
 export const NO_DELIVERABLE_CATALOG_MARKER = 'N/A';
@@ -86,6 +87,18 @@ function getMonthlySocialMediaDeliverableSignature(activity: Activity) {
     normalizeSignatureValue(activity.catalogActivityId),
     normalizeSignatureValue(activity.activityType),
     normalizeSignatureValue(activity.title),
+  ].join('|');
+}
+
+function getMonthlyComDeliverableSignature(activity: Activity) {
+  const communicationGroupKey = getComCommunicationMultiGroupKey(activity);
+  if (!communicationGroupKey) return null;
+
+  return [
+    normalizeSignatureValue(activity.expertId),
+    activity.date.slice(0, 7),
+    normalizeSignatureValue(activity.projectCode),
+    communicationGroupKey,
   ].join('|');
 }
 
@@ -247,11 +260,13 @@ function needsDeliverableValidation(
 export function createActivityDeliverableAvailabilityResolver(activities: Activity[]) {
   const periodDeliverableAvailability = new Map<string, boolean>();
   const monthlySocialMediaDeliverableAvailability = new Map<string, boolean>();
+  const monthlyComDeliverableAvailability = new Map<string, boolean>();
   const inferredLegacyGroups = inferLegacyActivityPeriodGroups(activities);
 
   activities.forEach((activity) => {
     const groupId = getActivityPeriodGroupKey(activity, inferredLegacyGroups);
     const monthlySocialMediaSignature = getMonthlySocialMediaDeliverableSignature(activity);
+    const monthlyComSignature = getMonthlyComDeliverableSignature(activity);
 
     if (groupId) {
       periodDeliverableAvailability.set(
@@ -267,15 +282,27 @@ export function createActivityDeliverableAvailabilityResolver(activities: Activi
           || hasUsableDeliverableForActivity(activity),
       );
     }
+
+    if (monthlyComSignature) {
+      monthlyComDeliverableAvailability.set(
+        monthlyComSignature,
+        (monthlyComDeliverableAvailability.get(monthlyComSignature) ?? false)
+          || hasUsableDeliverableForActivity(activity),
+      );
+    }
   });
 
   return (activity: Activity) => {
     const groupId = getActivityPeriodGroupKey(activity, inferredLegacyGroups);
     const monthlySocialMediaSignature = getMonthlySocialMediaDeliverableSignature(activity);
+    const monthlyComSignature = getMonthlyComDeliverableSignature(activity);
 
     return (groupId ? periodDeliverableAvailability.get(groupId) === true : false)
       || (monthlySocialMediaSignature
         ? monthlySocialMediaDeliverableAvailability.get(monthlySocialMediaSignature) === true
+        : false)
+      || (monthlyComSignature
+        ? monthlyComDeliverableAvailability.get(monthlyComSignature) === true
         : false)
       || hasUsableDeliverableForActivity(activity);
   };

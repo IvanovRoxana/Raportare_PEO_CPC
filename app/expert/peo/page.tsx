@@ -578,6 +578,7 @@ function ExpertDashboardContent() {
   const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
   const [selectedExpertId, setSelectedExpertId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const activitySaveInFlightRef = useRef(false);
   const [signedInUserId, setSignedInUserId] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
@@ -1078,6 +1079,7 @@ function ExpertDashboardContent() {
 
   const handleSaveActivities = async (newActivities: Activity[], editScope?: ActivityEditScope) => {
     if (reportStatus?.status === 'approved') return;
+    if (activitySaveInFlightRef.current || isSaving) return;
 
     if (editingActivity && !editScope && !isClarificationScopedAccess) {
       const groupMembers = getActivityGroupMembers(editingActivity, activities);
@@ -1091,6 +1093,7 @@ function ExpertDashboardContent() {
     setActivitySaveError(null);
     setActivitySaveNotice(null);
     setWorkBlockSaveNotice(null);
+    activitySaveInFlightRef.current = true;
     setIsSaving(true);
     const hasDeliverablesToSave = newActivities.some((activity) => (activity.deliverables ?? []).length > 0);
     const formatActivitySaveError = (error: unknown) => {
@@ -1373,10 +1376,16 @@ function ExpertDashboardContent() {
       });
     } catch (error) {
       console.error('Error saving activities:', error);
+      try {
+        await refreshActivities();
+      } catch (refreshError) {
+        console.error('Error refreshing activities after failed save:', refreshError);
+      }
       const message = formatActivitySaveError(error);
       setActivitySaveError(message);
       setSaveError(message);
     } finally {
+      activitySaveInFlightRef.current = false;
       setIsSaving(false);
     }
   };

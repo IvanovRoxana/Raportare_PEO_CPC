@@ -393,3 +393,36 @@ test('activitatile SoMe lunare sunt acoperite de un singur livrabil chiar daca l
 
   assert.deepEqual(missingDeliverables.map((activity) => activity.id), []);
 });
+
+test('activitatea de aliniere cu responsabil comunicare foloseste livrabil lunar COM fara grupare tehnica', () => {
+  const activities: Activity[] = [
+    baseActivity({
+      id: 'aliniere-day-1',
+      date: '2026-06-02',
+      saCode: 'SA3.4',
+      catalogActivityId: 'aliniere-comunicare',
+      activityType: 'Aliniere experti in comunicare',
+      title: 'Aliniere experti in comunicare',
+      deliverables: [],
+    }),
+    baseActivity({
+      id: 'aliniere-day-2',
+      date: '2026-06-29',
+      saCode: 'SA3.4',
+      catalogActivityId: 'aliniere-comunicare',
+      activityType: 'Aliniere experti in comunicare',
+      title: 'Aliniere experti in comunicare',
+      deliverables: [{
+        id: 'raport-preliminar',
+        fileName: 'RAPORT PRELIMINAR Aliniere experti in comunicare Iunie 2026.docx',
+        fileType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        fileSize: 1234,
+        deliverableType: 'raport_preliminar',
+      }],
+    }),
+  ];
+
+  const missingDeliverables = getActivitiesMissingDeliverables(activities, { expertCategory: 'com' });
+
+  assert.deepEqual(missingDeliverables.map((activity) => activity.id), []);
+});
