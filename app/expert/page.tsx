@@ -26,13 +26,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { UserMenu } from '@/components/user-menu';
-import { useActivitiesByMonth, useConcurrentProjects, useConcurrentProjectTimesheetByMonth, useConcurrentProjectTimesheetMutations, useDocuments, useExperts, useLeaveEntries, useReportStatus, useSharedDeliverableMutations, useSharedDeliverables } from '@/hooks/use-backend-data';
+import { useActivitiesByMonth, useConcurrentProjects, useConcurrentProjectTimesheetByMonth, useConcurrentProjectTimesheetMutations, useDocuments, useExperts, useLeaveEntries, useMonthAccessRequest, useMonthAccessRequestMutations, useReportStatus, useSharedDeliverableMutations, useSharedDeliverables } from '@/hooks/use-backend-data';
 import type { AppRole } from '@/lib/aws/auth';
 import { getSignedInUser } from '@/lib/aws/auth';
 import { getMonthName } from '@/lib/backend-store';
 import { buildConsolidatedTimesheet, filterActiveConcurrentProjectsForMonth, getConcurrentProjectMonthlyTotal, getConsolidatedWarnings } from '@/lib/concurrent-projects';
 import { buildIgnoredSharedActivityAlerts, buildPendingSharedActivityAlerts, buildPendingSharedDeliverableAlerts, buildReturnedSharedActivityAlerts, filterSharedRelationsForMonths } from '@/lib/document-sharing';
-import { addMonthAccessRequestNote, hasMonthAccessRequest } from '@/lib/month-access-requests';
 import { getActivitiesWithPmClarifications } from '@/lib/pm-clarifications';
 import { canAccessPmDashboard } from '@/lib/pm-dashboard';
 import { buildPontajExportPayload } from '@/lib/pontaj-export-payload';
@@ -478,6 +477,12 @@ export default function ExpertHomeDashboard() {
     currentMonth,
     currentYear,
   );
+  const { request: currentMonthAccessRequest } = useMonthAccessRequest(
+    currentExpert?.id ?? null,
+    currentMonth,
+    currentYear,
+  );
+  const { requestAccess: requestMonthAccess } = useMonthAccessRequestMutations();
   const previousMonthDate = useMemo(() => new Date(currentYear, currentMonth - 1, 1), [currentMonth, currentYear]);
   const { status: previousMonthStatus } = useReportStatus(
     currentExpert?.id ?? null,
@@ -488,7 +493,7 @@ export default function ExpertHomeDashboard() {
   const expertName = currentExpert?.name ?? signedInName;
   const isBaseMonth = currentMonth === baseMonth && currentYear === baseYear;
   const selectedMonthHasAccess = isBaseMonth || currentMonthStatus?.expertAccessApproved === true;
-  const selectedMonthRequestPending = hasMonthAccessRequest(currentMonthStatus);
+  const selectedMonthRequestPending = currentMonthAccessRequest?.status === 'pending';
   const selectableYears = useMemo(
     () => Array.from(new Set([baseYear - 1, baseYear, baseYear + 1, currentYear])).sort((a, b) => b - a),
     [baseYear, currentYear],
@@ -766,21 +771,12 @@ export default function ExpertHomeDashboard() {
   const handleMonthAccessRequest = async () => {
     if (!currentExpert || isBaseMonth || currentMonthStatus?.expertAccessApproved === true) return;
 
-    await updateCurrentMonthStatus({
+    await requestMonthAccess({
       expertId: currentExpert.id,
       year: currentYear,
       month: currentMonth,
-      status: currentMonthStatus?.status ?? 'draft',
-      sentDate: currentMonthStatus?.sentDate,
-      approvalDate: currentMonthStatus?.approvalDate,
-      expertAccessApproved: currentMonthStatus?.expertAccessApproved ?? false,
-      expertAccessApprovedAt: currentMonthStatus?.expertAccessApprovedAt,
-      pmNotes: addMonthAccessRequestNote(currentMonthStatus?.pmNotes, {
-        month: currentMonth,
-        year: currentYear,
-        expertName,
-        requestedAt: new Date().toISOString(),
-      }),
+      expertName,
+      requestedBy: signedInName || currentExpert.email || currentExpert.id,
     });
   };
 

@@ -3903,7 +3903,24 @@ export const monthAccessRequestsService = {
     const client = getAwsDataClient() as any;
     const result = await client.models.MonthAccessRequest.update({ id, ...updates });
     assertNoErrors(result, 'AWS update month access request');
-    return mapMonthAccessRequest(result.data);
+    const updated = mapMonthAccessRequest(result.data);
+
+    if (updates.status === 'approved' || updates.status === 'rejected' || updates.status === 'closed') {
+      const existingStatus = await reportStatusService.getByExpertAndMonth(updated.expertId, updated.month, updated.year);
+      await reportStatusService.upsert({
+        expertId: updated.expertId,
+        year: updated.year,
+        month: updated.month,
+        status: existingStatus?.status ?? 'draft',
+        sentDate: existingStatus?.sentDate,
+        approvalDate: existingStatus?.approvalDate,
+        expertAccessApproved: updates.status === 'approved',
+        expertAccessApprovedAt: updates.status === 'approved' ? (updates.resolvedAt || new Date().toISOString()) : undefined,
+        pmNotes: existingStatus?.pmNotes,
+      });
+    }
+
+    return updated;
   },
 };
 

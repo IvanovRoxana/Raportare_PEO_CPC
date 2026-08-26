@@ -38,6 +38,7 @@ import type {
   DashboardComplianceRow,
   DocumentMetadata,
   Expert,
+  MonthAccessRequest,
   Neconformitate,
   PmClarificationThread,
   ReportStatus,
@@ -65,6 +66,8 @@ type PmWorkspaceProps = {
   selectedYear: number;
   months: Array<{ value: number; label: string }>;
   onMonthChange: (month: number) => void;
+  yearOptions: number[];
+  onYearChange: (year: number) => void;
   pmSummary: {
     totalExperts: number;
     statusCounts: Record<ReportStatus['status'], number>;
@@ -83,8 +86,9 @@ type PmWorkspaceProps = {
   submittedReportRows: PmSubmittedReportRow[];
   clarificationThreads: PmClarificationThread[];
   neconformitati: Neconformitate[];
-  monthAccessRequests: Array<{ status: ReportStatus; expert: Expert }>;
-  activeMonthAccesses: Array<{ status: ReportStatus; expert: Expert }>;
+  monthAccessRequests: Array<{ request: MonthAccessRequest; expert: Expert }>;
+  activeMonthAccesses: Array<{ request: MonthAccessRequest; expert: Expert }>;
+  staleMonthAccesses: Array<{ request: MonthAccessRequest; expert: Expert }>;
   pendingSharedDeliverables: PendingSharedDeliverable[];
   titleIssues: DocumentMetadata[];
   pmUnlockRequests: DocumentMetadata[];
@@ -92,9 +96,9 @@ type PmWorkspaceProps = {
   isExportingOpisTotal: boolean;
   onOpenDossier: (expert: Expert, options?: { activityId?: string; documentId?: string; issueType?: string }) => void;
   onOpenDossierById: (expertId: string, options?: { activityId?: string; documentId?: string; issueType?: string }) => void;
-  onApproveMonthAccessRequest: (status: ReportStatus) => void | Promise<void>;
-  onRejectMonthAccessRequest: (status: ReportStatus) => void | Promise<void>;
-  onCloseMonthAccess: (status: ReportStatus) => void | Promise<void>;
+  onApproveMonthAccessRequest: (request: MonthAccessRequest) => void | Promise<void>;
+  onRejectMonthAccessRequest: (request: MonthAccessRequest) => void | Promise<void>;
+  onCloseMonthAccess: (request: MonthAccessRequest) => void | Promise<void>;
   onRequestDocumentClarification: (document: DocumentMetadata) => void;
   onApprovePmUnlock: (document: DocumentMetadata) => void | Promise<void>;
   onDownloadTotalOpisXls: () => void;
@@ -400,14 +404,10 @@ function ReportDialogTable({ title, rows, tone, props }: { title: string; rows: 
 }
 
 function MonthAccessView(props: PmWorkspaceProps) {
-  const activeIds = new Set(props.activeMonthAccesses.map((item) => item.expert.id));
-  const requestIds = new Set(props.monthAccessRequests.map((item) => item.expert.id));
-  const noAccessExperts = props.experts.filter((expert) => !activeIds.has(expert.id) && !requestIds.has(expert.id));
-
   return (
     <div className="space-y-4">
       <div className="rounded-lg border bg-white p-4 shadow-sm">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-3">
             <span className="rounded-lg border bg-blue-50 p-3 text-blue-700"><Lock className="h-5 w-5" /></span>
             <div>
@@ -415,30 +415,75 @@ function MonthAccessView(props: PmWorkspaceProps) {
               <p className="text-xs text-slate-500">Gestionează accesul experților pentru luna selectată și luna precedentă.</p>
             </div>
           </div>
-          <Badge className="bg-emerald-100 text-emerald-700">{props.activeMonthAccesses.length} accese active</Badge>
+          <div className="flex flex-wrap items-center gap-2">
+            <Select value={String(props.selectedMonth)} onValueChange={(value) => props.onMonthChange(Number(value))}>
+              <SelectTrigger className="h-9 w-36 bg-white">
+                <SelectValue placeholder="Luna" />
+              </SelectTrigger>
+              <SelectContent>
+                {props.months.map((month) => (
+                  <SelectItem key={month.value} value={String(month.value)}>
+                    {month.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={String(props.selectedYear)} onValueChange={(value) => props.onYearChange(Number(value))}>
+              <SelectTrigger className="h-9 w-28 bg-white">
+                <SelectValue placeholder="An" />
+              </SelectTrigger>
+              <SelectContent>
+                {props.yearOptions.map((year) => (
+                  <SelectItem key={year} value={String(year)}>
+                    {year}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Badge className="bg-emerald-100 text-emerald-700">{props.activeMonthAccesses.length} accese active</Badge>
+          </div>
         </div>
       </div>
-      <AccessGroup title="Fără acces activ - cereri" tone="amber" count={noAccessExperts.length}>
-        {noAccessExperts.map((expert) => (
-          <AccessExpertRow key={expert.id} expert={expert} action={<Button size="sm" variant="outline" disabled><Lock className="h-4 w-4" />Permite acces</Button>} />
-        ))}
-      </AccessGroup>
+      {props.staleMonthAccesses.length > 0 ? (
+        <section className="overflow-hidden rounded-lg border border-amber-300 bg-amber-50 shadow-sm">
+          <div className="flex items-center justify-between gap-3 border-b border-amber-200 px-4 py-3 text-amber-800">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4" />
+              <h3 className="text-sm font-semibold">Acces rămas deschis mai vechi decât luna precedentă</h3>
+            </div>
+            <Badge variant="outline" className="border-amber-300 bg-amber-100 text-amber-800">
+              {props.staleMonthAccesses.length} accese
+            </Badge>
+          </div>
+          <div className="divide-y divide-amber-100 bg-white">
+            {props.staleMonthAccesses.map(({ expert, request }) => (
+              <AccessExpertRow
+                key={`stale-${request.id || `${expert.id}-${request.year}-${request.month}`}`}
+                expert={expert}
+                helper={`Deschis pentru ${getMonthName(request.month)} ${request.year}`}
+                action={<Button size="sm" variant="outline" onClick={() => props.onCloseMonthAccess(request)}>Închide acces</Button>}
+              />
+            ))}
+          </div>
+        </section>
+      ) : null}
       <AccessGroup title="Cereri în așteptare" tone="amber" count={props.monthAccessRequests.length}>
-        {props.monthAccessRequests.map(({ expert, status }) => (
+        {props.monthAccessRequests.map(({ expert, request }) => (
           <AccessExpertRow
-            key={status.id || expert.id}
+            key={request.id || expert.id}
             expert={expert}
-            action={<div className="flex gap-2"><Button size="sm" onClick={() => props.onApproveMonthAccessRequest(status)}>Aprobă</Button><Button size="sm" variant="outline" onClick={() => props.onRejectMonthAccessRequest(status)}>Respinge</Button></div>}
+            helper={`Solicitat pentru ${getMonthName(request.month)} ${request.year}`}
+            action={<div className="flex gap-2"><Button size="sm" onClick={() => props.onApproveMonthAccessRequest(request)}>Aprobă</Button><Button size="sm" variant="outline" onClick={() => props.onRejectMonthAccessRequest(request)}>Respinge</Button></div>}
           />
         ))}
       </AccessGroup>
       <AccessGroup title="Acces deschis - experți" tone="emerald" count={props.activeMonthAccesses.length}>
-        {props.activeMonthAccesses.map(({ expert, status }) => (
+        {props.activeMonthAccesses.map(({ expert, request }) => (
           <AccessExpertRow
-            key={status.id || expert.id}
+            key={request.id || expert.id}
             expert={expert}
-            helper={`Poate edita ${getMonthName(status.month)} ${status.year}`}
-            action={<div className="flex gap-2"><Badge className="bg-emerald-100 text-emerald-700">aprobat</Badge><Button size="sm" variant="outline" onClick={() => props.onCloseMonthAccess(status)}>Închide acces</Button></div>}
+            helper={`Poate edita ${getMonthName(request.month)} ${request.year}`}
+            action={<div className="flex gap-2"><Badge className="bg-emerald-100 text-emerald-700">aprobat</Badge><Button size="sm" variant="outline" onClick={() => props.onCloseMonthAccess(request)}>Închide acces</Button></div>}
           />
         ))}
       </AccessGroup>

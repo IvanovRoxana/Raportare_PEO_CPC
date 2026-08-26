@@ -1251,6 +1251,8 @@ export function useMonthAccessRequest(expertId: string | null, month: number, ye
 function refreshMonthAccessRequestCaches(request: Pick<MonthAccessRequest, 'expertId' | 'month' | 'year'>) {
   mutate(`month-access-requests-${request.year}-${request.month}`);
   mutate(`month-access-request-${request.expertId}-${request.year}-${request.month}`);
+  mutate(`report-status-${request.expertId}-${request.month}-${request.year}`);
+  mutate(`report-status-month-${request.month}-${request.year}`);
 }
 
 export function useMonthAccessRequestMutations() {

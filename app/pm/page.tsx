@@ -54,7 +54,9 @@ import {
   useActivityMutations,
   useReportStatus,
   useReportStatusByMonth,
-  useReportStatusesForMonths,
+  useMonthAccessRequestsByMonth,
+  useMonthAccessRequestsForMonths,
+  useMonthAccessRequestMutations,
   useActivitiesByMonth,
   useActivityCatalog,
   useAuditLogs,
@@ -70,7 +72,6 @@ import {
   useConcurrentProjectTimesheetByMonth,
 } from '@/hooks/use-backend-data';
 import { buildDashboardComplianceRows } from '@/lib/reporting-dashboard';
-import { clearMonthAccessRequestNote, hasMonthAccessRequest } from '@/lib/month-access-requests';
 import { getSignedInUser, type AppUser } from '@/lib/aws/auth';
 import { buildPmDashboardSummary } from '@/lib/pm-dashboard';
 import {
@@ -104,6 +105,7 @@ import type {
   Expert,
   Activity,
   DocumentMetadata,
+  MonthAccessRequest,
   PmClarificationThread,
   ActivityCatalog,
 } from '@/lib/types';
@@ -220,6 +222,11 @@ export default function PMDashboard() {
     previousSelectedMonthDate.getMonth(),
     previousSelectedMonthDate.getFullYear()
   );
+  const { requests: allMonthAccessRequests } = useMonthAccessRequestsByMonth(selectedMonth, selectedYear);
+  const { requests: allPreviousMonthAccessRequests } = useMonthAccessRequestsByMonth(
+    previousSelectedMonthDate.getMonth(),
+    previousSelectedMonthDate.getFullYear()
+  );
   const olderMonthAccessMonthRefs = useMemo(
     () => Array.from({ length: 12 }, (_, index) => {
       const date = new Date(selectedYear, selectedMonth - (index + 2), 1);
@@ -227,7 +234,8 @@ export default function PMDashboard() {
     }),
     [selectedMonth, selectedYear]
   );
-  const { statuses: allOlderMonthAccessStatuses } = useReportStatusesForMonths(olderMonthAccessMonthRefs);
+  const { requests: allOlderMonthAccessRequests } = useMonthAccessRequestsForMonths(olderMonthAccessMonthRefs);
+  const { updateRequest: updateMonthAccessRequest } = useMonthAccessRequestMutations();
   const { activities: allMonthActivities, mutate: refreshMonthActivities } = useActivitiesByMonth(selectedMonth, selectedYear);
   const { catalog: activityCatalog } = useActivityCatalog();
   const scopedAuditExpertId = hasExtendedExpertAccess ? null : dataAccessScope.currentExpertId ?? selectedExpertId;
@@ -252,10 +260,6 @@ export default function PMDashboard() {
   const previousMonthlyReportStatuses = useMemo(
     () => filterReportStatusesForScope(allPreviousMonthlyReportStatuses, dataAccessScope),
     [allPreviousMonthlyReportStatuses, dataAccessScope]
-  );
-  const olderMonthAccessStatuses = useMemo(
-    () => filterReportStatusesForScope(allOlderMonthAccessStatuses, dataAccessScope),
-    [allOlderMonthAccessStatuses, dataAccessScope]
   );
   const monthActivities = useMemo(
     () => filterActivitiesForScope(allMonthActivities, dataAccessScope),
@@ -430,19 +434,15 @@ export default function PMDashboard() {
     });
   };
 
-  const approveMonthAccessRequest = async (status: ReportStatus) => {
+  const approveMonthAccessRequest = async (request: MonthAccessRequest) => {
     if (!canManagePmReview) return;
 
-    await updateReportStatus({
-      expertId: status.expertId,
-      year: status.year,
-      month: status.month,
-      status: status.status,
-      sentDate: status.sentDate,
-      approvalDate: status.approvalDate,
-      expertAccessApproved: true,
-      expertAccessApprovedAt: new Date().toISOString(),
-      pmNotes: clearMonthAccessRequestNote(status.pmNotes, { month: status.month, year: status.year }),
+    await updateMonthAccessRequest(request, {
+      status: 'approved',
+      resolvedAt: new Date().toISOString(),
+      resolvedBy: currentUser?.displayName || currentUser?.email || 'PM',
+      closedAt: undefined,
+      closedBy: undefined,
     });
   };
 
@@ -483,35 +483,25 @@ export default function PMDashboard() {
     await updateDocumentEligibilityCheck(document.id, approvedCheck);
   };
 
-  const rejectMonthAccessRequest = async (status: ReportStatus) => {
+  const rejectMonthAccessRequest = async (request: MonthAccessRequest) => {
     if (!canManagePmReview) return;
 
-    await updateReportStatus({
-      expertId: status.expertId,
-      year: status.year,
-      month: status.month,
-      status: status.status,
-      sentDate: status.sentDate,
-      approvalDate: status.approvalDate,
-      expertAccessApproved: false,
-      expertAccessApprovedAt: undefined,
-      pmNotes: clearMonthAccessRequestNote(status.pmNotes, { month: status.month, year: status.year }),
+    await updateMonthAccessRequest(request, {
+      status: 'rejected',
+      resolvedAt: new Date().toISOString(),
+      resolvedBy: currentUser?.displayName || currentUser?.email || 'PM',
+      closedAt: undefined,
+      closedBy: undefined,
     });
   };
 
-  const closeMonthAccess = async (status: ReportStatus) => {
+  const closeMonthAccess = async (request: MonthAccessRequest) => {
     if (!canManagePmReview) return;
 
-    await updateReportStatus({
-      expertId: status.expertId,
-      year: status.year,
-      month: status.month,
-      status: status.status,
-      sentDate: status.sentDate,
-      approvalDate: status.approvalDate,
-      expertAccessApproved: false,
-      expertAccessApprovedAt: undefined,
-      pmNotes: status.pmNotes,
+    await updateMonthAccessRequest(request, {
+      status: 'closed',
+      closedAt: new Date().toISOString(),
+      closedBy: currentUser?.displayName || currentUser?.email || 'PM',
     });
   };
 
@@ -804,47 +794,46 @@ export default function PMDashboard() {
     () => new Map(monthlyReportStatuses.map((status) => [status.expertId, status])),
     [monthlyReportStatuses]
   );
-  const monthAccessStatuses = useMemo(() => {
+  const monthAccessRequestRecords = useMemo(() => {
     const seen = new Set<string>();
-    return [...monthlyReportStatuses, ...previousMonthlyReportStatuses].filter((status) => {
-      const key = status.id || `${status.expertId}-${status.year}-${status.month}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
+    return [...allMonthAccessRequests, ...allPreviousMonthAccessRequests].filter((request) => {
+      if (seen.has(request.id)) return false;
+      seen.add(request.id);
       return true;
     });
-  }, [monthlyReportStatuses, previousMonthlyReportStatuses]);
+  }, [allMonthAccessRequests, allPreviousMonthAccessRequests]);
   const monthAccessRequests = useMemo(
     () =>
-      monthAccessStatuses
-        .filter(hasMonthAccessRequest)
-        .map((status) => ({
-          status,
-          expert: visibleExperts.find((expert) => expert.id === status.expertId),
+      monthAccessRequestRecords
+        .filter((request) => request.status === 'pending')
+        .map((request) => ({
+          request,
+          expert: visibleExperts.find((expert) => expert.id === request.expertId),
         }))
-        .filter((item): item is { status: ReportStatus; expert: Expert } => Boolean(item.expert)),
-    [monthAccessStatuses, visibleExperts]
+        .filter((item): item is { request: MonthAccessRequest; expert: Expert } => Boolean(item.expert)),
+    [monthAccessRequestRecords, visibleExperts]
   );
   const activeMonthAccesses = useMemo(
     () =>
-      monthAccessStatuses
-        .filter((status) => status.expertAccessApproved === true)
-        .map((status) => ({
-          status,
-          expert: visibleExperts.find((expert) => expert.id === status.expertId),
+      monthAccessRequestRecords
+        .filter((request) => request.status === 'approved')
+        .map((request) => ({
+          request,
+          expert: visibleExperts.find((expert) => expert.id === request.expertId),
         }))
-        .filter((item): item is { status: ReportStatus; expert: Expert } => Boolean(item.expert)),
-    [monthAccessStatuses, visibleExperts]
+        .filter((item): item is { request: MonthAccessRequest; expert: Expert } => Boolean(item.expert)),
+    [monthAccessRequestRecords, visibleExperts]
   );
   const staleMonthAccesses = useMemo(
     () =>
-      olderMonthAccessStatuses
-        .filter((status) => status.expertAccessApproved === true)
-        .map((status) => ({
-          status,
-          expert: visibleExperts.find((expert) => expert.id === status.expertId),
+      allOlderMonthAccessRequests
+        .filter((request) => request.status === 'approved')
+        .map((request) => ({
+          request,
+          expert: visibleExperts.find((expert) => expert.id === request.expertId),
         }))
-        .filter((item): item is { status: ReportStatus; expert: Expert } => Boolean(item.expert)),
-    [olderMonthAccessStatuses, visibleExperts]
+        .filter((item): item is { request: MonthAccessRequest; expert: Expert } => Boolean(item.expert)),
+    [allOlderMonthAccessRequests, visibleExperts]
   );
   const dashboardRowByExpertId = useMemo(
     () => new Map(dashboardRows.map((row) => [row.expertId, row])),
@@ -1030,6 +1019,8 @@ export default function PMDashboard() {
     value: i,
     label: getMonthName(i),
   }));
+  const yearOptions = Array.from(new Set([selectedYear - 1, selectedYear, selectedYear + 1, new Date().getFullYear()]))
+    .sort((a, b) => b - a);
 
   const isAccessDenied = !isAuthLoading && !expertsLoading && !dataAccessScope.canUsePmDashboard;
   const isLoading = isAuthLoading || expertsLoading;
@@ -1100,6 +1091,8 @@ export default function PMDashboard() {
         selectedYear={selectedYear}
         months={months}
         onMonthChange={setSelectedMonth}
+        yearOptions={yearOptions}
+        onYearChange={setSelectedYear}
         pmSummary={pmSummary}
         dashboardTotals={dashboardTotals}
         activities={monthActivities}
@@ -1184,23 +1177,23 @@ export default function PMDashboard() {
               {monthAccessRequests.length > 0 && (
                 <div className="space-y-2">
                   <div className="text-xs font-semibold uppercase text-muted-foreground">Cereri in asteptare</div>
-                  {monthAccessRequests.map(({ status, expert }) => (
-                    <div key={status.id} className="rounded-md border border-amber-200 bg-amber-50/80 p-3 text-sm">
+                  {monthAccessRequests.map(({ request, expert }) => (
+                    <div key={request.id} className="rounded-md border border-amber-200 bg-amber-50/80 p-3 text-sm">
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div>
                           <div className="font-semibold text-slate-950">{expert.name}</div>
                           <div className="text-xs text-amber-800">
-                            Solicita acces pentru {getMonthName(status.month)} {status.year}
+                            Solicita acces pentru {getMonthName(request.month)} {request.year}
                           </div>
                         </div>
                         <Badge variant="outline">{expert.category || expert.role || 'expert'}</Badge>
                       </div>
                       {canManagePmReview && (
                         <div className="mt-3 flex flex-wrap gap-2">
-                          <Button size="sm" onClick={() => approveMonthAccessRequest(status)}>
+                          <Button size="sm" onClick={() => approveMonthAccessRequest(request)}>
                             Aproba acces
                           </Button>
-                          <Button size="sm" variant="outline" onClick={() => rejectMonthAccessRequest(status)}>
+                          <Button size="sm" variant="outline" onClick={() => rejectMonthAccessRequest(request)}>
                             Respinge
                           </Button>
                         </div>
@@ -1213,23 +1206,23 @@ export default function PMDashboard() {
               {activeMonthAccesses.length > 0 && (
                 <div className="space-y-2">
                   <div className="text-xs font-semibold uppercase text-muted-foreground">Acces deschis</div>
-                  {activeMonthAccesses.map(({ status, expert }) => (
+                  {activeMonthAccesses.map(({ request, expert }) => (
                     <div
-                      key={`active-${status.id || `${status.expertId}-${status.year}-${status.month}`}`}
+                      key={`active-${request.id || `${request.expertId}-${request.year}-${request.month}`}`}
                       className="rounded-md border border-emerald-200 bg-emerald-50/80 p-3 text-sm"
                     >
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div>
                           <div className="font-semibold text-slate-950">{expert.name}</div>
                           <div className="text-xs text-emerald-800">
-                            Poate edita {getMonthName(status.month)} {status.year}
+                            Poate edita {getMonthName(request.month)} {request.year}
                           </div>
                         </div>
-                        <Badge variant="outline">{status.expertAccessApprovedAt ? 'aprobat' : 'deschis'}</Badge>
+                        <Badge variant="outline">aprobat</Badge>
                       </div>
                       {canManagePmReview && (
                         <div className="mt-3 flex flex-wrap gap-2">
-                          <Button size="sm" variant="outline" onClick={() => closeMonthAccess(status)}>
+                          <Button size="sm" variant="outline" onClick={() => closeMonthAccess(request)}>
                             Inchide acces
                           </Button>
                         </div>

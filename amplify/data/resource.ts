@@ -859,6 +859,30 @@ const schema = a.schema({
       allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
     ]),
 
+  MonthAccessRequest: a
+    .model({
+      expertId: a.id().required(),
+      expertName: a.string(),
+      year: a.integer().required(),
+      month: a.integer().required(),
+      status: a.string().default("pending"),
+      requestedAt: a.datetime(),
+      requestedBy: a.string(),
+      resolvedAt: a.datetime(),
+      resolvedBy: a.string(),
+      closedAt: a.datetime(),
+      closedBy: a.string(),
+      notes: a.string(),
+    })
+    .secondaryIndexes((index) => [
+      index("expertId").sortKeys(["year", "month"]),
+      index("status").sortKeys(["year", "month"]),
+    ])
+    .authorization((allow) => [
+      allow.groups(["expert"]).to(["create", "read"]),
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
   Verification: a
     .model({
       expertId: a.id().required(),
