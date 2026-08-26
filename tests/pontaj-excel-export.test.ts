@@ -230,6 +230,78 @@ describe('export pontaj Excel', () => {
     assert.match(cellXml(sheet, 'H45'), /<v>8<\/v>/);
   });
 
+  it('foloseste split-ul CO validat financiar in Pontaj_PEO simplu', async () => {
+    const workbook = await generatePontajExcel({
+      kind: 'peo',
+      month: 4,
+      year: 2026,
+      expert: { id: 'expert-co-financial', name: 'Expert CO Financiar', role: 'Expert GT', category: 'Expert', oreZi: 6, norma: 8, saCodes: ['SA1.1'] },
+      activities: [
+        { id: 'leave-entry:leave-fin-1', date: '2026-05-22', hours: 6, activityType: 'CO - Concediu odihna', title: 'CO (6 h PEO + 2 h CPC)', dayType: 'CO', saCode: 'SA1.1', status: 'draft' },
+      ],
+      leaveEntries: [
+        {
+          id: 'leave-fin-1',
+          expertId: 'expert-co-financial',
+          date: '2026-05-22',
+          month: 4,
+          year: 2026,
+          type: 'CO',
+          totalHours: 8,
+          peoHours: 4,
+          cpcHours: 4,
+          source: 'FINANCIAL',
+          status: 'DRAFT',
+          lockedForExpert: true,
+        },
+      ],
+      concurrentProjects: [],
+      concurrentTimesheetEntries: [],
+    });
+
+    const files = readXlsx(workbook.buffer);
+    const sheet = files.get('xl/worksheets/sheet1.xml')!.toString('utf8');
+
+    assert.match(cellXml(sheet, 'H35'), /CO/);
+    assert.match(cellXml(sheet, 'I35'), /CO/);
+    assert.match(cellXml(sheet, 'H45'), /<v>4<\/v>/);
+    assert.match(cellXml(sheet, 'I45'), /<v>156<\/v>/);
+  });
+
+  it('blocheaza exportul cand CO introdus de expert nu este validat financiar', async () => {
+    await assert.rejects(
+      () =>
+        generatePontajExcel({
+          kind: 'peo',
+          month: 4,
+          year: 2026,
+          expert: { id: 'expert-co-draft', name: 'Expert CO Draft', role: 'Expert GT', category: 'Expert', oreZi: 6, norma: 8, saCodes: ['SA1.1'] },
+          activities: [
+            { id: 'leave-entry:leave-draft-1', date: '2026-05-22', hours: 6, activityType: 'CO - Concediu odihna', title: 'CO draft', dayType: 'CO', saCode: 'SA1.1', status: 'draft' },
+          ],
+          leaveEntries: [
+            {
+              id: 'leave-draft-1',
+              expertId: 'expert-co-draft',
+              date: '2026-05-22',
+              month: 4,
+              year: 2026,
+              type: 'CO',
+              totalHours: 8,
+              peoHours: 6,
+              cpcHours: 2,
+              source: 'EXPERT',
+              status: 'DRAFT',
+              lockedForExpert: false,
+            },
+          ],
+          concurrentProjects: [],
+          concurrentTimesheetEntries: [],
+        }),
+      /CO introdus de expert, dar nevalidat de Financiar/,
+    );
+  });
+
   it('scrie CO in alte activitati in Pontaj_PEO simplu cand exista CO CPC financiar', async () => {
     const workbook = await generatePontajExcel({
       kind: 'peo',

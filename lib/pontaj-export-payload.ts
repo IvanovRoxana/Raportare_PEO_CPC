@@ -1,4 +1,4 @@
-import type { Activity, ConcurrentProject, ConcurrentProjectTimesheetEntry, Expert } from './types';
+import type { Activity, ConcurrentProject, ConcurrentProjectTimesheetEntry, Expert, LeaveEntry } from './types';
 
 type PontajExportKind = 'peo' | 'consolidated';
 type ExportPayload = {
@@ -7,6 +7,7 @@ type ExportPayload = {
   activities: Partial<Activity>[];
   concurrentProjects?: Partial<ConcurrentProject>[];
   concurrentTimesheetEntries?: Partial<ConcurrentProjectTimesheetEntry>[];
+  leaveEntries?: Partial<LeaveEntry>[];
   month: number;
   year: number;
 };
@@ -17,6 +18,7 @@ type BuildPontajExportPayloadInput = {
   activities: Activity[];
   concurrentProjects?: ConcurrentProject[];
   concurrentTimesheetEntries?: ConcurrentProjectTimesheetEntry[];
+  leaveEntries?: LeaveEntry[];
   month: number;
   year: number;
 };
@@ -27,6 +29,7 @@ export function buildPontajExportPayload({
   activities,
   concurrentProjects = [],
   concurrentTimesheetEntries = [],
+  leaveEntries = [],
   month,
   year,
 }: BuildPontajExportPayloadInput): ExportPayload {
@@ -91,6 +94,22 @@ export function buildPontajExportPayload({
       dayType: entry.dayType,
       status: entry.status,
       source: entry.source,
+    })),
+    leaveEntries: leaveEntries.map((leave) => ({
+      id: leave.id,
+      expertId: leave.expertId,
+      date: leave.date,
+      month: leave.month,
+      year: leave.year,
+      type: leave.type,
+      totalHours: leave.totalHours,
+      peoHours: leave.peoHours,
+      cpcHours: leave.cpcHours,
+      source: leave.source,
+      status: leave.status,
+      automaticSplit: leave.automaticSplit,
+      lockedForExpert: leave.lockedForExpert,
+      justification: limitText(leave.justification, 500),
     })),
     month,
     year,

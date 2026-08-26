@@ -850,6 +850,7 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
           activities: activities.filter((activity) => activity.expertId === expert.id),
           concurrentProjects: expertProjects,
           concurrentTimesheetEntries: entries.filter((entry) => projectIds.has(entry.concurrentProjectId)),
+          leaveEntries: row.leaveEntries,
           month,
           year,
         })),

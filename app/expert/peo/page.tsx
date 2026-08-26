@@ -2624,6 +2624,7 @@ function ExpertDashboardContent() {
                 activities={activities}
                 concurrentProjects={concurrentProjects}
                 concurrentTimesheetEntries={concurrentTimesheetEntries.filter((entry) => entry.expertId === selectedExpertId)}
+                leaveEntries={leaveEntries.filter((leave) => leave.expertId === selectedExpertId)}
                 month={currentMonth}
                 year={currentYear}
               />

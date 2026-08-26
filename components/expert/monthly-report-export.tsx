@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import type { Activity, ConcurrentProject, ConcurrentProjectTimesheetEntry, Expert } from '@/lib/types';
+import type { Activity, ConcurrentProject, ConcurrentProjectTimesheetEntry, Expert, LeaveEntry } from '@/lib/types';
 import type { Deliverable } from '@/lib/types';
 import { activitiesService, businessHubEntityDirectoryService } from '@/lib/backend-store';
 import { getMonthName } from '@/lib/app-utils';
@@ -41,6 +41,7 @@ interface MonthlyReportExportProps {
   activities: Activity[];
   concurrentProjects?: ConcurrentProject[];
   concurrentTimesheetEntries?: ConcurrentProjectTimesheetEntry[];
+  leaveEntries?: LeaveEntry[];
   workBlockBundles?: ReportingWorkBlockBundle[];
   workBlockBundlesLoading?: boolean;
   month: number;
@@ -52,6 +53,7 @@ export function MonthlyReportExport({
   activities,
   concurrentProjects = [],
   concurrentTimesheetEntries = [],
+  leaveEntries = [],
   workBlockBundles = [],
   workBlockBundlesLoading = false,
   month,
@@ -264,6 +266,7 @@ export function MonthlyReportExport({
         activities,
         concurrentProjects,
         concurrentTimesheetEntries,
+        leaveEntries,
         month,
         year,
       })),

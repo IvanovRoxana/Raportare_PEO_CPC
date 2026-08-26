@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { deflateRawSync, inflateRawSync } from 'node:zlib';
-import type { Activity, ConcurrentProject, ConcurrentProjectTimesheetEntry, Expert } from './types';
+import type { Activity, ConcurrentProject, ConcurrentProjectTimesheetEntry, Expert, LeaveEntry } from './types';
 import {
   calculateMonthlyNormHours,
   getNonWorkingDayInfo,
@@ -16,6 +16,7 @@ export interface ExportPayload {
   activities: Partial<Activity>[];
   concurrentProjects?: Partial<ConcurrentProject>[];
   concurrentTimesheetEntries?: Partial<ConcurrentProjectTimesheetEntry>[];
+  leaveEntries?: Partial<LeaveEntry>[];
   month: number;
   year: number;
 }
@@ -151,6 +152,13 @@ interface PeoTimesheetRow {
   activities: Partial<Activity>[];
 }
 
+interface LeaveAllocation {
+  type: 'CO' | 'CM';
+  peoHours: number;
+  cpcHours: number;
+  totalHours: number;
+}
+
 export async function generatePontajExcel(payload: ExportPayload): Promise<GeneratedWorkbook> {
   validateExportPayload(payload);
   return payload.kind === 'peo' ? generatePeoWorkbook(payload) : generateConsolidatedWorkbook(payload);
@@ -164,7 +172,8 @@ async function generatePeoWorkbook(payload: ExportPayload): Promise<GeneratedWor
   const daysInMonth = getDaysInMonth(payload.year, payload.month);
   let totalRow = daysInMonth === 31 ? 45 : 44;
   const monthEndSerial = excelSerial(payload.year, payload.month, daysInMonth);
-  const grouped = groupActivitiesByDate(payload.activities);
+  const leaveAllocations = buildLeaveAllocationsByDate(payload.leaveEntries, payload.month, payload.year);
+  const grouped = groupActivitiesByDate(getActivitiesForPontajExport(payload.activities, payload.leaveEntries));
   const timesheetRows = buildPeoTimesheetRows(payload.year, payload.month, grouped);
   const concurrentLeaveByDate = getConcurrentLeaveCodeByDate(
     payload.concurrentProjects ?? [],
@@ -194,21 +203,26 @@ async function generatePeoWorkbook(payload: ExportPayload): Promise<GeneratedWor
     const detail = timesheetRows[index];
     const row = 14 + index;
     const activities = detail?.activities ?? [];
-    const leaveCode = getLeaveCode(activities);
+    const leaveAllocation = detail ? leaveAllocations.get(detail.dateKey) : undefined;
+    const leaveCode = leaveAllocation?.type ?? getLeaveCode(activities);
     const hours = detail?.isWorking ? sumHours(activities) : 0;
     const concurrentLeaveCode = detail ? concurrentLeaveByDate.get(detail.dateKey) ?? null : null;
-    const peoHours = leaveCode ? dailyHours : hours;
-    const otherActivities = concurrentLeaveCode ?? Math.max(0, cimDailyHours - peoHours);
+    const peoHours = leaveAllocation ? leaveAllocation.peoHours : leaveCode ? dailyHours : hours;
+    const otherActivities = leaveAllocation
+      ? leaveAllocation.cpcHours > 0 ? leaveAllocation.type : 0
+      : concurrentLeaveCode ?? Math.max(0, cimDailyHours - peoHours);
     peoTotalHours += peoHours;
     if (detail?.isWorking) {
-      otherTotalHours += concurrentLeaveCode ? Math.max(0, cimDailyHours - dailyHours) : Number(otherActivities) || 0;
+      otherTotalHours += leaveAllocation
+        ? leaveAllocation.cpcHours
+        : concurrentLeaveCode ? Math.max(0, cimDailyHours - dailyHours) : Number(otherActivities) || 0;
     }
 
     sheetXml = setCell(sheetXml, `A${row}`, detail ? detail.dateSerial : null);
-    sheetXml = setCell(sheetXml, `B${row}`, hours > 0 || leaveCode ? joinUnique(activities.map((activity) => activityCode(activity, payload.expert))) : null);
-    sheetXml = setCell(sheetXml, `D${row}`, hours > 0 || leaveCode ? joinUnique(activities.map(activitySubactivity)) : null);
-    sheetXml = setCell(sheetXml, `G${row}`, hourlyRate && (hours > 0 || leaveCode) ? hourlyRate : null);
-    sheetXml = setCell(sheetXml, `H${row}`, leaveCode ?? (hours > 0 ? hours : null));
+    sheetXml = setCell(sheetXml, `B${row}`, hours > 0 || peoHours > 0 ? joinUnique(activities.map((activity) => activityCode(activity, payload.expert))) : null);
+    sheetXml = setCell(sheetXml, `D${row}`, hours > 0 || peoHours > 0 ? joinUnique(activities.map(activitySubactivity)) : null);
+    sheetXml = setCell(sheetXml, `G${row}`, hourlyRate && (hours > 0 || peoHours > 0) ? hourlyRate : null);
+    sheetXml = setCell(sheetXml, `H${row}`, leaveAllocation && peoHours > 0 ? leaveAllocation.type : leaveCode ?? (hours > 0 ? hours : null));
     sheetXml = setCell(sheetXml, `I${row}`, detail?.isWorking ? otherActivities : null);
   }
 
@@ -237,7 +251,8 @@ async function generateConsolidatedWorkbook(payload: ExportPayload): Promise<Gen
   const sharedStrings = readSharedStrings(files);
   const daysInMonth = getDaysInMonth(payload.year, payload.month);
   const norm = calculateMonthlyNormHours({ month: payload.month, year: payload.year, dailyHours: 8 });
-  const grouped = groupActivitiesByDate(payload.activities);
+  const leaveAllocations = buildLeaveAllocationsByDate(payload.leaveEntries, payload.month, payload.year);
+  const grouped = groupActivitiesByDate(getActivitiesForPontajExport(payload.activities, payload.leaveEntries));
   const goodworksEntries = getGoodworksEntries(payload.concurrentProjects ?? [], payload.concurrentTimesheetEntries ?? [], payload.month, payload.year);
   const goodworksByDate = getGoodworksHours(payload.concurrentProjects ?? [], goodworksEntries, payload.month, payload.year);
   const concurrentLeaveByDate = getConcurrentLeaveCodeByDate(
@@ -260,6 +275,9 @@ async function generateConsolidatedWorkbook(payload: ExportPayload): Promise<Gen
   const hourlyRate = getExpertHourlyRate(payload.expert);
   const monthEndSerial = excelSerial(payload.year, payload.month, daysInMonth);
   const lastPeoWorkedDateSerial = getLastPeoWorkedDateSerial(payload.activities, payload.year, payload.month) ?? monthEndSerial;
+  const financialPeoLeaveTotal = sumLeaveAllocationHours(leaveAllocations, 'peoHours');
+  const financialCpcLeaveTotal = sumLeaveAllocationHours(leaveAllocations, 'cpcHours');
+  const hasFinancialLeaveAllocations = leaveAllocations.size > 0;
   const summaryRows = hasGoodworks
     ? { concordia: 15, goodworks: 16, peo: 17, total: 18 }
     : { concordia: 15, peo: 16, total: 17 };
@@ -280,9 +298,10 @@ async function generateConsolidatedWorkbook(payload: ExportPayload): Promise<Gen
     const dateKey = inMonth ? isoDate(payload.year, payload.month, day) : '';
     const info = inMonth ? getNonWorkingDayInfo(dateKey) : null;
     const isWorking = !!info && !info.isNonWorkingDay;
-    const peoLeaveCode = inMonth ? getLeaveCode(grouped.get(dateKey) ?? []) : null;
+    const leaveAllocation = inMonth ? leaveAllocations.get(dateKey) : undefined;
+    const peoLeaveCode = leaveAllocation && leaveAllocation.peoHours > 0 ? leaveAllocation.type : inMonth ? getLeaveCode(grouped.get(dateKey) ?? []) : null;
     const goodworksLeaveCode = inMonth ? getLeaveCode(goodworksByDate.get(dateKey) ?? []) : null;
-    const concurrentLeaveCode = inMonth ? concurrentLeaveByDate.get(dateKey) ?? null : null;
+    const concurrentLeaveCode = leaveAllocation && leaveAllocation.cpcHours > 0 ? leaveAllocation.type : inMonth ? concurrentLeaveByDate.get(dateKey) ?? null : null;
     const hasLeave = !!peoLeaveCode || !!goodworksLeaveCode || !!concurrentLeaveCode;
 
     sheetXml = setCell(sheetXml, `${col}13`, inMonth ? day : null);
@@ -303,7 +322,10 @@ async function generateConsolidatedWorkbook(payload: ExportPayload): Promise<Gen
     );
     sheetXml = setCell(sheetXml, `${col}${summaryRows.total}`, isWorking ? { formula: `SUM(${col}${summaryRows.concordia}:${col}${summaryRows.peo})` } : null);
   }
-  sheetXml = setTimesheetSummaryTotals(sheetXml, summaryRows, dailyHours, getGoodworksDailyHours(payload.concurrentProjects ?? []), cimDailyHours);
+  sheetXml = setTimesheetSummaryTotals(sheetXml, summaryRows, dailyHours, getGoodworksDailyHours(payload.concurrentProjects ?? []), cimDailyHours, hasFinancialLeaveAllocations ? {
+    peo: financialPeoLeaveTotal,
+    concordia: financialCpcLeaveTotal,
+  } : undefined);
 
   if (goodworksSection) {
     for (let index = 0; index < goodworksSection.dayRows; index += 1) {
@@ -337,10 +359,13 @@ async function generateConsolidatedWorkbook(payload: ExportPayload): Promise<Gen
     const detail = detailRows[index];
     const row = peoSection.startRow + index;
     const activity = detail?.activity;
-    const leaveCode = activity ? getLeaveCode([activity]) : null;
+    const leaveAllocation = detail ? leaveAllocations.get(detail.dateKey) : undefined;
+    const leaveCode = leaveAllocation?.type ?? (activity ? getLeaveCode([activity]) : null);
     const hours = detail?.isWorking && activity ? Number(activity.hours) || 0 : 0;
     const concurrentLeaveCode = detail ? concurrentLeaveByDate.get(detail.dateKey) ?? null : null;
-    const otherActivitiesCell = leaveCode
+    const otherActivitiesCell = leaveAllocation
+      ? leaveAllocation.cpcHours > 0 ? leaveAllocation.type : 0
+      : leaveCode
       ? concurrentLeaveCode ?? Math.max(0, cimDailyHours - dailyHours)
       : {
           formula: `IF(COUNTIF(AO:AO,A${row})=0,0,(${cimDailyHours}-SUMIF(AO:AO,A${row},AL:AL))/COUNTIF(AO:AO,A${row}))`,
@@ -350,13 +375,13 @@ async function generateConsolidatedWorkbook(payload: ExportPayload): Promise<Gen
     sheetXml = setCell(sheetXml, `B${row}`, (hours > 0 || leaveCode) && activity ? activityCode(activity, payload.expert) : null);
     sheetXml = setCell(sheetXml, `D${row}`, (hours > 0 || leaveCode) && activity ? activitySubactivity(activity) : null);
     sheetXml = setCell(sheetXml, `AK${row}`, hourlyRate && (hours > 0 || leaveCode) ? hourlyRate : null);
-    sheetXml = setCell(sheetXml, `AL${row}`, leaveCode ?? (hours > 0 ? hours : null));
+    sheetXml = setCell(sheetXml, `AL${row}`, leaveAllocation && leaveAllocation.peoHours > 0 ? leaveAllocation.type : leaveCode ?? (hours > 0 ? hours : null));
     sheetXml = setCell(
       sheetXml,
       `AM${row}`,
       detail?.isWorking ? otherActivitiesCell : null,
     );
-    sheetXml = setCell(sheetXml, `AN${row}`, (hours > 0 || leaveCode) && activity ? activityDescription(activity) : null);
+    sheetXml = setCell(sheetXml, `AN${row}`, (hours > 0 || leaveCode) && activity ? activityDescription(activity) : leaveAllocation ? 'Concediu introdus si validat in Financiar.' : null);
     sheetXml = setCell(sheetXml, `AO${row}`, detail?.isWorking ? detail.dateSerial : null);
     sheetXml = setCell(sheetXml, `AP${row}`, detail?.isWorking ? { formula: `LEFT(D${row},6)` } : null);
     sheetXml = setCell(sheetXml, `AQ${row}`, null);
@@ -373,12 +398,12 @@ async function generateConsolidatedWorkbook(payload: ExportPayload): Promise<Gen
     sheetXml = setCell(sheetXml, `BB${row}`, hours > 0 && activity ? joinUnique(activityDeliverables(activity)) : null);
   }
 
-  sheetXml = setCell(sheetXml, `AL${peoSection.totalRow}`, {
-    formula: `SUM(AL${peoSection.startRow}:AL${detailEnd})+COUNTIF(AL${peoSection.startRow}:AL${detailEnd},"CO")*${dailyHours}`,
-  });
-  sheetXml = setCell(sheetXml, `AM${peoSection.totalRow}`, {
-    formula: `SUM(AM${peoSection.startRow}:AM${detailEnd})+COUNTIF(AM${peoSection.startRow}:AM${detailEnd},"CO")*${Math.max(0, cimDailyHours - dailyHours)}`,
-  });
+  sheetXml = setCell(sheetXml, `AL${peoSection.totalRow}`, hasFinancialLeaveAllocations
+    ? financialPeoLeaveTotal + sumNonLeaveHours(payload.activities, payload.month, payload.year)
+    : { formula: `SUM(AL${peoSection.startRow}:AL${detailEnd})+COUNTIF(AL${peoSection.startRow}:AL${detailEnd},"CO")*${dailyHours}` });
+  sheetXml = setCell(sheetXml, `AM${peoSection.totalRow}`, hasFinancialLeaveAllocations
+    ? financialCpcLeaveTotal
+    : { formula: `SUM(AM${peoSection.startRow}:AM${detailEnd})+COUNTIF(AM${peoSection.startRow}:AM${detailEnd},"CO")*${Math.max(0, cimDailyHours - dailyHours)}` });
   sheetXml = setCell(sheetXml, `D${peoSection.totalRow + 3}`, stringValue(payload.expert.name));
   sheetXml = setCell(sheetXml, `D${peoSection.totalRow + 5}`, lastPeoWorkedDateSerial);
   sheetXml = setCell(sheetXml, `D${peoSection.totalRow + 9}`, lastPeoWorkedDateSerial);
@@ -412,6 +437,15 @@ function validateExportPayload(payload: ExportPayload) {
     if (!entry.date || !entry.hours) return false;
     return getNonWorkingDayInfo(entry.date).isNonWorkingDay;
   });
+  const invalidLeaveEntries = (payload.leaveEntries ?? []).filter((leave) => {
+    if (!leave.date || !leave.totalHours) return false;
+    return getNonWorkingDayInfo(leave.date).isNonWorkingDay;
+  });
+  const unvalidatedExpertLeaves = (payload.leaveEntries ?? []).filter((leave) => {
+    const status = String(leave.status ?? '').toUpperCase();
+    const source = String(leave.source ?? '').toUpperCase();
+    return status !== 'REJECTED' && source !== 'FINANCIAL' && status !== 'VALIDATED';
+  });
 
   if (invalidActivities.length > 0) {
     const dates = [...new Set(invalidActivities.map((activity) => activity.date).filter(Boolean))].join(', ');
@@ -422,6 +456,16 @@ function validateExportPayload(payload: ExportPayload) {
     const dates = [...new Set(invalidConcurrentEntries.map((entry) => entry.date).filter(Boolean))].join(', ');
     throw new Error(`Exportul a fost oprit: exista ore pe proiecte paralele pontate in zile nelucratoare (${dates}). Corecteaza pontajele paralele inainte de export.`);
   }
+
+  if (invalidLeaveEntries.length > 0) {
+    const dates = [...new Set(invalidLeaveEntries.map((entry) => entry.date).filter(Boolean))].join(', ');
+    throw new Error(`Exportul a fost oprit: exista concedii pontate in zile nelucratoare (${dates}). Corecteaza concediile in modulul Financiar inainte de export.`);
+  }
+
+  if (unvalidatedExpertLeaves.length > 0) {
+    const dates = [...new Set(unvalidatedExpertLeaves.map((entry) => entry.date).filter(Boolean))].join(', ');
+    throw new Error(`Exportul a fost oprit: exista CO introdus de expert, dar nevalidat de Financiar (${dates}). Valideaza concediile in modulul CO inainte de export.`);
+  }
 }
 
 function setTimesheetSummaryTotals(
@@ -430,13 +474,14 @@ function setTimesheetSummaryTotals(
   peoDailyHours: number,
   goodworksDailyHours: number,
   cimDailyHours = 8,
+  leaveTotals?: Partial<Record<'concordia' | 'goodworks' | 'peo', number>>,
 ) {
   const concordiaDailyHours = Math.max(0, cimDailyHours - peoDailyHours - goodworksDailyHours);
-  sheetXml = setTimesheetRowTotals(sheetXml, rows.concordia, concordiaDailyHours);
+  sheetXml = setTimesheetRowTotals(sheetXml, rows.concordia, concordiaDailyHours, leaveTotals?.concordia);
   if (rows.goodworks) {
-    sheetXml = setTimesheetRowTotals(sheetXml, rows.goodworks, goodworksDailyHours);
+    sheetXml = setTimesheetRowTotals(sheetXml, rows.goodworks, goodworksDailyHours, leaveTotals?.goodworks);
   }
-  sheetXml = setTimesheetRowTotals(sheetXml, rows.peo, peoDailyHours);
+  sheetXml = setTimesheetRowTotals(sheetXml, rows.peo, peoDailyHours, leaveTotals?.peo);
 
   for (const col of ['AG', 'AH', 'AI', 'AJ', 'AK', 'AL']) {
     sheetXml = setCell(sheetXml, `${col}${rows.total}`, { formula: `SUM(${col}${rows.concordia}:${col}${rows.peo})` });
@@ -445,10 +490,10 @@ function setTimesheetSummaryTotals(
   return sheetXml;
 }
 
-function setTimesheetRowTotals(sheetXml: string, row: number, dailyHours: number) {
+function setTimesheetRowTotals(sheetXml: string, row: number, dailyHours: number, leaveHours?: number) {
   sheetXml = setCell(sheetXml, `AG${row}`, { formula: `SUM(B${row}:AF${row})+COUNTIF(B${row}:AF${row},"DE")*${dailyHours}` });
   sheetXml = setCell(sheetXml, `AH${row}`, { formula: `AG${row}/8` });
-  sheetXml = setCell(sheetXml, `AI${row}`, { formula: `COUNTIF(B${row}:AF${row},"CO")*${dailyHours}` });
+  sheetXml = setCell(sheetXml, `AI${row}`, typeof leaveHours === 'number' ? roundNumber(leaveHours) : { formula: `COUNTIF(B${row}:AF${row},"CO")*${dailyHours}` });
   sheetXml = setCell(sheetXml, `AJ${row}`, { formula: `AI${row}/8` });
   sheetXml = setCell(sheetXml, `AK${row}`, { formula: `COUNTIF(B${row}:AF${row},"CM")*8` });
   sheetXml = setCell(sheetXml, `AL${row}`, { formula: `AK${row}/8` });
@@ -1007,6 +1052,54 @@ function groupActivitiesByDate(activities: Partial<Activity>[]) {
       grouped.set(date, [...(grouped.get(date) ?? []), activity]);
     });
   return grouped;
+}
+
+function getActivitiesForPontajExport(activities: Partial<Activity>[], leaveEntries?: Partial<LeaveEntry>[]) {
+  if (!leaveEntries) return activities;
+  const leaveDates = new Set(leaveEntries.map((leave) => leave.date ? toDateKey(leave.date) : '').filter(Boolean));
+  return activities.filter((activity) => {
+    if (String(activity.id ?? '').startsWith('leave-entry:')) return false;
+    if (activity.date && leaveDates.has(toDateKey(activity.date)) && getLeaveCode([activity])) return false;
+    return true;
+  });
+}
+
+function buildLeaveAllocationsByDate(leaveEntries: Partial<LeaveEntry>[] | undefined, month: number, year: number) {
+  const allocations = new Map<string, LeaveAllocation>();
+  for (const leave of leaveEntries ?? []) {
+    if (!isExportableLeaveEntry(leave, month, year)) continue;
+    const dateKey = toDateKey(leave.date!);
+    const existing = allocations.get(dateKey);
+    const type = normalizeLeaveCode(leave.type) ?? 'CO';
+    allocations.set(dateKey, {
+      type: existing?.type === 'CO' || type === 'CO' ? 'CO' : 'CM',
+      peoHours: roundNumber((existing?.peoHours ?? 0) + (Number(leave.peoHours) || 0)),
+      cpcHours: roundNumber((existing?.cpcHours ?? 0) + (Number(leave.cpcHours) || 0)),
+      totalHours: roundNumber((existing?.totalHours ?? 0) + (Number(leave.totalHours) || 0)),
+    });
+  }
+  return allocations;
+}
+
+function isExportableLeaveEntry(leave: Partial<LeaveEntry>, month: number, year: number) {
+  if (!leave.date || leave.month !== month || leave.year !== year) return false;
+  const status = String(leave.status ?? '').toUpperCase();
+  if (status === 'REJECTED') return false;
+  const source = String(leave.source ?? '').toUpperCase();
+  return source === 'FINANCIAL' || status === 'VALIDATED';
+}
+
+function sumLeaveAllocationHours(allocations: Map<string, LeaveAllocation>, field: 'peoHours' | 'cpcHours') {
+  return roundNumber([...allocations.values()].reduce((sum, leave) => sum + leave[field], 0));
+}
+
+function sumNonLeaveHours(activities: Partial<Activity>[], month: number, year: number) {
+  return roundNumber(getActivitiesForPontajExport(activities, []).reduce((sum, activity) => {
+    if (!activity.date || getLeaveCode([activity])) return sum;
+    const date = new Date(`${toDateKey(activity.date)}T00:00:00.000Z`);
+    if (date.getUTCMonth() !== month || date.getUTCFullYear() !== year) return sum;
+    return sum + (Number(activity.hours) || 0);
+  }, 0));
 }
 
 function getLeaveCode(entries: Array<Partial<Activity> | Partial<ConcurrentProjectTimesheetEntry>>) {
