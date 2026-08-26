@@ -15,6 +15,7 @@ import {
   Loader2,
   Save,
   SearchIcon,
+  Send,
   Users,
 } from 'lucide-react';
 import { AdminViewAsBanner } from '@/components/admin/admin-view-as-banner';
@@ -37,7 +38,7 @@ import { getActivitiesWithPmClarifications } from '@/lib/pm-clarifications';
 import { canAccessPmDashboard } from '@/lib/pm-dashboard';
 import { buildPontajExportPayload } from '@/lib/pontaj-export-payload';
 import { calculateMonthlyNormInfo } from '@/lib/pontaj-rules';
-import type { Activity, ConcurrentProject, ConcurrentProjectTimesheetEntry, Expert, LeaveEntry } from '@/lib/types';
+import type { Activity, ConcurrentProject, ConcurrentProjectTimesheetEntry, Expert, LeaveEntry, ReportStatus } from '@/lib/types';
 import { getNonWorkingDayInfo } from '@/lib/non-working-days';
 import { cn } from '@/lib/utils';
 
@@ -439,6 +440,8 @@ export default function ExpertHomeDashboard() {
   const [signedInRoles, setSignedInRoles] = useState<AppRole[]>([]);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [submitNotice, setSubmitNotice] = useState<string | null>(null);
+  const [isSubmittingMonth, setIsSubmittingMonth] = useState(false);
 
   const { experts } = useExperts();
   const { activities: monthActivities } = useActivitiesByMonth(currentMonth, currentYear);
@@ -694,6 +697,58 @@ export default function ExpertHomeDashboard() {
       ? { label: 'Clarificari PM', detail: `${clarificationActivities.length} activitati necesita clarificare.`, severity: 'warning' }
       : null,
   ].filter((item): item is { label: string; detail: string; severity: 'blocking' | 'warning' } => Boolean(item));
+  const dashboardHasBlockingItems = dashboardReadinessItems.some((item) => item.severity === 'blocking');
+  const currentReportStatus = currentMonthStatus?.status || 'draft';
+  const isCurrentMonthApproved = currentReportStatus === 'approved';
+  const isCurrentMonthSent = currentReportStatus === 'sent';
+  const isCurrentMonthInReview = currentReportStatus === 'in_review';
+  const canSubmitCurrentMonth =
+    Boolean(currentExpert)
+    && selectedMonthHasAccess
+    && peoActivities.length > 0
+    && !dashboardHasBlockingItems
+    && !isCurrentMonthApproved
+    && !isCurrentMonthSent
+    && !isCurrentMonthInReview;
+  const submitCurrentMonthTitle = !selectedMonthHasAccess
+    ? 'Luna selectata nu este deblocata pentru editare.'
+    : peoActivities.length === 0
+      ? 'Adauga cel putin o activitate inainte de trimitere.'
+      : dashboardHasBlockingItems
+        ? dashboardReadinessItems.find((item) => item.severity === 'blocking')?.detail
+        : isCurrentMonthApproved
+          ? 'Luna este aprobata.'
+          : isCurrentMonthInReview
+            ? 'Raportarea este deja in verificare la PM.'
+            : isCurrentMonthSent
+              ? 'Luna a fost deja trimisa catre PM.'
+              : 'Trimite luna catre PM.';
+  const handleSubmitCurrentMonth = async () => {
+    if (!currentExpert || !canSubmitCurrentMonth) {
+      if (!canSubmitCurrentMonth) setSubmitNotice(submitCurrentMonthTitle || 'Luna nu poate fi trimisa in acest moment.');
+      return;
+    }
+
+    setIsSubmittingMonth(true);
+    setSubmitNotice(null);
+    try {
+      await updateCurrentMonthStatus({
+        expertId: currentExpert.id,
+        year: currentYear,
+        month: currentMonth,
+        status: 'sent',
+        sentDate: new Date().toISOString(),
+        expertAccessApproved: currentMonthStatus?.expertAccessApproved ?? false,
+        expertAccessApprovedAt: currentMonthStatus?.expertAccessApprovedAt,
+        pmNotes: currentMonthStatus?.pmNotes,
+      } satisfies Omit<ReportStatus, 'id'>);
+      setSubmitNotice('Luna a fost trimisa catre PM.');
+    } catch (error) {
+      setSubmitNotice(error instanceof Error ? error.message : 'Trimiterea lunii catre PM a esuat.');
+    } finally {
+      setIsSubmittingMonth(false);
+    }
+  };
   const selectedConcurrentProject = activeConcurrentProjects.find((project) => project.id === selectedConcurrentProjectId) ?? activeConcurrentProjects[0];
   const selectedProjectShortcutValue =
     selectedConcurrentProjectId && activeConcurrentProjects.some((project) => project.id === selectedConcurrentProjectId)
@@ -979,6 +1034,30 @@ export default function ExpertHomeDashboard() {
                   ))
                 )}
               </div>
+              {dashboardReadinessItems.length === 0 && (
+                <span className="mt-4 block" title={submitCurrentMonthTitle}>
+                  <Button
+                    type="button"
+                    className="w-full"
+                    onClick={handleSubmitCurrentMonth}
+                    disabled={!canSubmitCurrentMonth || isSubmittingMonth}
+                  >
+                    {isSubmittingMonth ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                    {isCurrentMonthApproved
+                      ? 'Luna aprobata'
+                      : isCurrentMonthInReview
+                        ? 'In verificare PM'
+                        : isCurrentMonthSent
+                          ? 'Luna trimisa catre PM'
+                          : 'Trimite luna la PM'}
+                  </Button>
+                </span>
+              )}
+              {submitNotice && (
+                <p className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs leading-5 text-slate-700">
+                  {submitNotice}
+                </p>
+              )}
               <Link href={`${peoHref}#calendar`} className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-primary">
                 Deschide calendarul PEO
                 <ArrowRight className="h-4 w-4" />

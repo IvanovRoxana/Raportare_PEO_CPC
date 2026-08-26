@@ -1,7 +1,7 @@
 'use client';
 
 import { Suspense, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, CheckCircle, Download, Loader2, Lock, Send } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, CheckCircle, Download, Loader2, Lock, Send } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { AdminViewAsBanner } from '@/components/admin/admin-view-as-banner';
@@ -59,6 +59,24 @@ function parseFinancialNormLabel(value?: string) {
     value: numeric,
     unit: /h\s*\/\s*luna/i.test(value) ? 'HOURS_PER_MONTH' as const : 'HOURS_PER_DAY' as const,
   };
+}
+
+function formatDisplayDate(date?: string) {
+  if (!date) return 'Neprecizata';
+  const [year, month, day] = date.split('-');
+  if (!year || !month || !day) return date;
+  return `${day}.${month}.${year}`;
+}
+
+function getActivityDisplayTitle(activity: Activity) {
+  return activity.title || activity.activityType || 'Activitate fara titlu';
+}
+
+function getBlockedDeliverables(activity: Activity) {
+  return (activity.deliverables ?? []).filter((deliverable) => {
+    const check = deliverable.eligibilityCheck;
+    return check?.status === 'neeligibil' && check.pmUnlockApproved !== true;
+  });
 }
 
 function ExportRaContent() {
@@ -242,6 +260,16 @@ function ExportRaContent() {
     () => activities.filter((activity) => activity.pmNotes?.trim()).length,
     [activities],
   );
+  const blockedActivities = useMemo(
+    () => activities
+      .map((activity) => ({
+        activity,
+        blockedDeliverables: getBlockedDeliverables(activity),
+      }))
+      .filter((item) => item.blockedDeliverables.length > 0),
+    [activities],
+  );
+  const blockedDeliverablesCount = blockedActivities.reduce((sum, item) => sum + item.blockedDeliverables.length, 0);
 
   const isLoading = isAuthLoading || expertsLoading || activitiesLoading || selectedExpertNormContractsLoading;
   const backHref = buildPeoHref(selectedExpertId, currentMonth, currentYear);
@@ -263,6 +291,10 @@ function ExportRaContent() {
   const approvedExportBlockedReason = isSent || isInReview
     ? 'Exportul RA si Pontaj PEO este disponibil dupa aprobarea lunii de catre PM.'
     : 'Trimite luna catre PM si asteapta aprobarea pentru a exporta RA si Pontaj PEO.';
+  const blockedActivitiesReason = blockedActivities.length > 0
+    ? `${blockedActivities.length} activitati sunt blocate de livrabile neeligibile. Corecteaza livrabilele sau asteapta deblocarea PM inainte de trimitere/export.`
+    : '';
+  const peoExportBlockedReason = blockedActivitiesReason || approvedExportBlockedReason;
   const submitButtonIcon = isApproved
     ? <Lock className="h-4 w-4" />
     : isSent || isInReview
@@ -277,6 +309,8 @@ function ExportRaContent() {
         : 'Trimite luna catre PM';
   const submitButtonTitle = activities.length === 0
     ? 'Adauga cel putin o activitate inainte de trimitere.'
+    : blockedActivities.length > 0
+      ? blockedActivitiesReason
     : isApproved
       ? 'Luna este aprobata.'
       : isInReview
@@ -285,7 +319,7 @@ function ExportRaContent() {
           ? 'Luna a fost deja trimisa catre PM.'
           : undefined;
   const handleSubmitMonth = async () => {
-    if (!selectedExpertId || isApproved || isSent || isInReview || activities.length === 0) return;
+    if (!selectedExpertId || isApproved || isSent || isInReview || activities.length === 0 || blockedActivities.length > 0) return;
 
     await updateReportStatus({
       expertId: selectedExpertId,
@@ -357,8 +391,8 @@ function ExportRaContent() {
               leaveEntries={leaveEntries.filter((leave) => leave.expertId === selectedExpertId)}
               workBlockBundles={deterministicWorkBlockBundles}
               workBlockBundlesLoading={isLoadingDeterministicWorkBlocks}
-              canExportPeoDocuments={isApproved}
-              peoExportBlockedReason={approvedExportBlockedReason}
+              canExportPeoDocuments={isApproved && blockedActivities.length === 0}
+              peoExportBlockedReason={peoExportBlockedReason}
               month={currentMonth}
               year={currentYear}
             />
@@ -379,7 +413,7 @@ function ExportRaContent() {
                   type="button"
                   variant="outline"
                   onClick={handleSubmitMonth}
-                  disabled={isApproved || isSent || isInReview || reportStatusLoading || activities.length === 0}
+                  disabled={isApproved || isSent || isInReview || reportStatusLoading || activities.length === 0 || blockedActivities.length > 0}
                   title={submitButtonTitle}
                 >
                   {reportStatusLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : submitButtonIcon}
@@ -392,6 +426,42 @@ function ExportRaContent() {
               </div>
             </div>
           </div>
+          {blockedActivities.length > 0 && (
+            <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="flex items-center gap-2 font-semibold">
+                    <AlertTriangle className="h-4 w-4" />
+                    {blockedActivities.length} activitati blocate
+                  </p>
+                  <p className="mt-2 leading-6">
+                    Exportul si trimiterea catre PM sunt blocate de {blockedDeliverablesCount} livrabile neeligibile fara deblocare PM.
+                  </p>
+                  <ul className="mt-2 list-disc space-y-1 pl-5">
+                    {blockedActivities.slice(0, 4).map(({ activity, blockedDeliverables }) => (
+                      <li key={activity.id}>
+                        {formatDisplayDate(activity.date)} - {getActivityDisplayTitle(activity)}
+                        <span className="text-destructive/80">
+                          {' '}({blockedDeliverables.length} livrabile blocate)
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  {blockedActivities.length > 4 ? (
+                    <p className="mt-2 text-xs font-medium text-destructive/80">
+                      Inca {blockedActivities.length - 4} activitati blocate nu sunt afisate aici.
+                    </p>
+                  ) : null}
+                </div>
+                <Button asChild variant="outline" size="sm" className="shrink-0 border-destructive/30 bg-background text-destructive hover:bg-destructive/10">
+                  <Link href={backHref}>
+                    <ArrowLeft className="h-4 w-4" />
+                    Corecteaza activitatile
+                  </Link>
+                </Button>
+              </div>
+            </div>
+          )}
           {reportingWorkBlocksEnabled && (
             <>
               <ReportingWorkBlocksPanel
@@ -423,12 +493,12 @@ function ExportRaContent() {
             clarificationNotes={reportStatus?.pmNotes}
             clarificationCount={activitiesWithPmClarificationsCount}
             onSubmitMonth={handleSubmitMonth}
-            submitMonthDisabled={isApproved || isSent || isInReview || reportStatusLoading || activities.length === 0}
+            submitMonthDisabled={isApproved || isSent || isInReview || reportStatusLoading || activities.length === 0 || blockedActivities.length > 0}
             submitMonthLabel={submitButtonLabel}
             submitMonthTitle={submitButtonTitle}
             isSubmittingMonth={reportStatusLoading}
-            canExportApprovedDocuments={isApproved}
-            approvedDocumentsBlockedReason={approvedExportBlockedReason}
+            canExportApprovedDocuments={isApproved && blockedActivities.length === 0}
+            approvedDocumentsBlockedReason={peoExportBlockedReason}
           />
         </div>
       </DashboardShell>
