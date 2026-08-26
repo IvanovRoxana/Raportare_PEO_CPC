@@ -94,6 +94,7 @@ import {
 import { findLatestClarificationAudit, PM_CLARIFICATION_AUDIT_ACTION } from '@/lib/pm-clarifications';
 import { buildPmClarificationThreads } from '@/lib/pm-clarification-flow';
 import { buildOpisXlsxBlob, buildOpisXlsxFilename } from '@/lib/opis-xls-export';
+import { isActivePmUnlockRequest, isAutoResolvedPmUnlockRequest } from '@/lib/pm-unlock-status';
 import type {
   PontajRow,
   RaportRow,
@@ -908,9 +909,11 @@ export default function PMDashboard() {
     [documents]
   );
   const pmUnlockRequests = useMemo(
-    () => documents.filter((document) => Boolean(
-      document.eligibilityCheck?.pmUnlockRequested && !document.eligibilityCheck?.pmUnlockApproved,
-    )),
+    () => documents.filter((document) => isActivePmUnlockRequest(document.eligibilityCheck)),
+    [documents]
+  );
+  const resolvedPmUnlockRequests = useMemo(
+    () => documents.filter((document) => isAutoResolvedPmUnlockRequest(document.eligibilityCheck)),
     [documents]
   );
   const problemCountByExpertId = useMemo(() => {
@@ -1106,6 +1109,7 @@ export default function PMDashboard() {
         pendingSharedDeliverables={pendingSharedDeliverables}
         titleIssues={titleIssues}
         pmUnlockRequests={pmUnlockRequests}
+        resolvedPmUnlockRequests={resolvedPmUnlockRequests}
         eventDocumentIssues={eventDocumentIssues}
         isExportingOpisTotal={isExportingOpisTotal}
         onOpenDossier={openReviewReport}

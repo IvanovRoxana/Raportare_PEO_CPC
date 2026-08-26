@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
 import { AlertTriangle, CalendarDays, CheckCircle2, Download, FileText, Loader2, Plus, Save, SearchIcon, ShieldCheck, Users } from 'lucide-react';
 import { DashboardShell, financialNavItems } from '@/components/layout/dashboard-shell';
@@ -92,11 +93,6 @@ function previousDay(date: string) {
   const parsed = new Date(`${date}T00:00:00.000Z`);
   parsed.setUTCDate(parsed.getUTCDate() - 1);
   return parsed.toISOString().slice(0, 10);
-}
-
-function normLabel(unit?: NormUnit, value?: number) {
-  if (!unit || value == null) return '-';
-  return `${new Intl.NumberFormat('ro-RO', { maximumFractionDigits: 2 }).format(value)} ${unit === 'HOURS_PER_MONTH' ? 'h/luna' : 'h/zi'}`;
 }
 
 function parseDailyHoursLabel(value: string | undefined) {
@@ -326,9 +322,7 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
   const [exporting, setExporting] = useState<string | null>(null);
   const [validating, setValidating] = useState<string | null>(null);
   const [savingLeave, setSavingLeave] = useState(false);
-  const [savingContract, setSavingContract] = useState(false);
   const [verificationMessage, setVerificationMessage] = useState('');
-  const [selectedNormExpertName, setSelectedNormExpertName] = useState('');
   const [selectedFinancialPersonKey, setSelectedFinancialPersonKey] = useState('');
   const [selectedLinkExpertId, setSelectedLinkExpertId] = useState('');
   const [savingLink, setSavingLink] = useState(false);
@@ -342,18 +336,6 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
     totalHours: '8',
     peoHours: '6',
     cpcHours: '2',
-    justification: '',
-  });
-  const [contractForm, setContractForm] = useState({
-    expertId: '',
-    validFrom: isoDate(2026, 5),
-    peoNormUnit: 'HOURS_PER_DAY' as NormUnit,
-    peoNormValue: '8',
-    peoDailyCap: '8',
-    cimNormUnit: 'HOURS_PER_DAY' as NormUnit,
-    cimNormValue: '8',
-    cimDailyCap: '8',
-    leaveHoursPerDay: '8',
     justification: '',
   });
   const { experts, isLoading: loadingExperts } = useExperts();
@@ -390,6 +372,7 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
     month,
     year,
   }), [experts, activities, projects, entries, contracts, leaveEntries, financialPersonLinks, month, year]);
+  const referenceMonthLabel = MONTHS[summary.referenceMonth - 1] ?? MONTHS[month];
 
   const selectedFinancialRow = useMemo(
     () => summary.rows.find((row) => row.financialPersonKey === selectedFinancialPersonKey && !row.expertId) ?? null,
@@ -835,64 +818,6 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
     }
   };
 
-  const saveNormContract = async () => {
-    if (!contractForm.expertId || !contractForm.validFrom) {
-      setVerificationMessage('Alege expertul si data de inceput pentru versiunea de norma.');
-      return;
-    }
-    if (!contractForm.justification.trim()) {
-      setVerificationMessage('Justificarea este obligatorie ca sa putem pastra istoricul modificarilor de norma.');
-      document.getElementById('norma-editor-justification')?.focus();
-      return;
-    }
-    setSavingContract(true);
-    try {
-      const payload: Omit<ExpertNormContract, 'id'> = {
-        expertId: contractForm.expertId,
-        validFrom: contractForm.validFrom,
-        peoNormUnit: contractForm.peoNormUnit,
-        peoNormValue: Number(contractForm.peoNormValue),
-        peoDailyCap: Number(contractForm.peoDailyCap),
-        cimNormUnit: contractForm.cimNormUnit,
-        cimNormValue: Number(contractForm.cimNormValue),
-        cimDailyCap: Number(contractForm.cimDailyCap),
-        leaveHoursPerDay: Number(contractForm.leaveHoursPerDay),
-        status: 'ACTIVE',
-        justification: contractForm.justification,
-        createdBy: 'financial-session',
-        updatedBy: 'financial-session',
-      };
-      const sameDateContract = contracts.find((contract) => contract.expertId === contractForm.expertId && contract.validFrom === contractForm.validFrom);
-      if (sameDateContract) {
-        await updateNormContract(sameDateContract.id, {
-          peoNormUnit: payload.peoNormUnit,
-          peoNormValue: payload.peoNormValue,
-          peoDailyCap: payload.peoDailyCap,
-          cimNormUnit: payload.cimNormUnit,
-          cimNormValue: payload.cimNormValue,
-          cimDailyCap: payload.cimDailyCap,
-          leaveHoursPerDay: payload.leaveHoursPerDay,
-          status: 'ACTIVE',
-          justification: payload.justification,
-          updatedBy: 'financial-session',
-        });
-        setVerificationMessage(`Norma pentru ${selectedNormExpertName || 'expert'} a fost actualizata pentru ${contractForm.validFrom}.`);
-      } else {
-        const openContract = contracts
-          .filter((contract) => contract.expertId === contractForm.expertId && !contract.validTo && contract.validFrom < contractForm.validFrom)
-          .sort((left, right) => right.validFrom.localeCompare(left.validFrom))[0];
-        if (openContract) {
-          await updateNormContract(openContract.id, { validTo: previousDay(contractForm.validFrom), updatedBy: 'financial-session' });
-        }
-        await createNormContract(payload);
-        setVerificationMessage(`Norma pentru ${selectedNormExpertName || 'expert'} a fost salvata ca versiune noua din ${contractForm.validFrom}.`);
-      }
-      setContractForm((current) => ({ ...current, justification: '' }));
-    } finally {
-      setSavingContract(false);
-    }
-  };
-
   const exportCentralizer = async () => {
     setExporting('centralizer');
     try {
@@ -968,63 +893,6 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
     setVerificationMessage(`Concedii: CO manual pregatit pentru ${target.name}, cu justificare si split 6 PEO + 2 CPC.`);
   };
 
-  const prepareNormVersionCheck = () => {
-    const target = monthlyExpert ?? firstExpert;
-    if (!target) return;
-    setContractForm({
-      expertId: target.id,
-      validFrom: isoDate(year, month, 1),
-      peoNormUnit: 'HOURS_PER_MONTH',
-      peoNormValue: target.projectMonthlyNorm ? String(target.projectMonthlyNorm) : '130',
-      peoDailyCap: '6',
-      cimNormUnit: 'HOURS_PER_DAY',
-      cimNormValue: '8',
-      cimDailyCap: '8',
-      leaveHoursPerDay: '8',
-      justification: 'Verificare norma versionata staging',
-    });
-    setVerificationMessage(`Concedii: norma versionata pregatita pentru ${target.name}. Apasa Salveaza norma pentru istoric nou.`);
-  };
-
-  const editNormFromPanel = (row: NormPanelRow) => {
-    if (!row.expert) {
-      setVerificationMessage(`${row.name} este angajat CPC preluat din Excel, fara cont utilizator si fara inregistrare Expert in aplicatie. Il afisam in Financiar pentru salarizare si cross-check; norma PEO este neaplicabila pana cand Financiar decide sa il inregistreze ca persoana financiara.`);
-      return;
-    }
-    const contract = row.contract;
-    setSelectedNormExpertName(row.expert.name);
-    setContractForm({
-      expertId: row.expert.id,
-      validFrom: isoDate(year, month, 1),
-      peoNormUnit: contract?.peoNormUnit ?? 'HOURS_PER_DAY',
-      peoNormValue: String(contract?.peoNormValue ?? row.peoDailyCap ?? 8),
-      peoDailyCap: String(contract?.peoDailyCap ?? row.peoDailyCap ?? 8),
-      cimNormUnit: contract?.cimNormUnit ?? 'HOURS_PER_DAY',
-      cimNormValue: String(contract?.cimNormValue ?? row.cimDailyCap ?? 8),
-      cimDailyCap: String(contract?.cimDailyCap ?? row.cimDailyCap ?? 8),
-      leaveHoursPerDay: String(contract?.leaveHoursPerDay ?? row.cimDailyCap ?? 8),
-      justification: '',
-    });
-    setVerificationMessage(`Experti si norme: ${row.expert.name} a fost incarcat in formular. CPC se calculeaza ca CIM - PEO - alte proiecte.`);
-    window.setTimeout(() => {
-      document.getElementById('norma-editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      document.getElementById('norma-editor-justification')?.focus();
-    }, 50);
-  };
-
-  const editNormFromTimesheet = (row: FinancialTimesheetRow) => {
-    if (!row.expertId) {
-      setVerificationMessage(`${row.name} exista in Excel ca angajat CPC, dar nu este utilizator/expert PEO in aplicatie. Il afisam in Financiar pentru salarizare CPC/proiecte concurente; norma PEO este neaplicabila.`);
-      return;
-    }
-    const panelRow = normPanelRows.find((item) => item.expert?.id === row.expertId);
-    if (!panelRow) {
-      setVerificationMessage(`Nu am gasit configuratia de norme pentru ${row.name}. Verifica daca expertul este activ in baza de date.`);
-      return;
-    }
-    editNormFromPanel(panelRow);
-  };
-
   const validateFirstDraftLeave = async () => {
     if (!firstDraftLeave) {
       setVerificationMessage('Concedii: nu exista CO draft vizibil pentru validare. Creeaza sau afiseaza un CO draft.');
@@ -1056,7 +924,7 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
       description={description}
       reportingMonth={`${MONTHS[month]} ${year}`}
       actions={(
-        <Button onClick={exportCentralizer} disabled={isLoading || exporting !== null}>
+        <Button className="w-full sm:w-auto" onClick={exportCentralizer} disabled={isLoading || exporting !== null}>
           {exporting === 'centralizer' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
           Export Excel centralizat
         </Button>
@@ -1076,42 +944,44 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
             Verificare {mode === 'timesheets' ? 'Pontaje' : 'Concedii'}
           </CardTitle>
         </CardHeader>
-        <CardContent className="flex flex-wrap items-center gap-2">
+        <CardContent className="grid gap-2 sm:flex sm:flex-wrap sm:items-center">
           {mode === 'timesheets' ? (
             <>
-              <Button variant="outline" onClick={verifyTimesheetDashboard}>
+              <Button className="justify-start sm:justify-center" variant="outline" onClick={verifyTimesheetDashboard}>
                 <CheckCircle2 className="mr-2 h-4 w-4" />
                 Verifica 12 coloane
               </Button>
-              <Button variant={onlyConflicts ? 'default' : 'outline'} onClick={() => {
+              <Button className="justify-start sm:justify-center" variant={onlyConflicts ? 'default' : 'outline'} onClick={() => {
                 setOnlyConflicts((value) => !value);
                 setVerificationMessage('Pontaje: filtrul Doar diferente a fost comutat; problemele raman in bulina cu hover.');
               }}>
                 <AlertTriangle className="mr-2 h-4 w-4" />
                 Verifica buline conflicte
               </Button>
-              <Button onClick={exportCentralizer} disabled={isLoading || exporting !== null}>
+              <Button className="justify-start sm:justify-center" onClick={exportCentralizer} disabled={isLoading || exporting !== null}>
                 {exporting === 'centralizer' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
                 Verifica export TEST
               </Button>
             </>
           ) : (
             <>
-              <Button variant="outline" onClick={prepareAutomaticLeaveCheck}>
+              <Button className="justify-start sm:justify-center" variant="outline" onClick={prepareAutomaticLeaveCheck}>
                 <Plus className="mr-2 h-4 w-4" />
                 Pregateste CO automat
               </Button>
-              <Button variant="outline" onClick={prepareManualLeaveCheck}>
+              <Button className="justify-start sm:justify-center" variant="outline" onClick={prepareManualLeaveCheck}>
                 <Plus className="mr-2 h-4 w-4" />
                 Pregateste CO manual
               </Button>
-              <Button variant="outline" onClick={validateFirstDraftLeave} disabled={validating !== null}>
+              <Button className="justify-start sm:justify-center" variant="outline" onClick={validateFirstDraftLeave} disabled={validating !== null}>
                 {validating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
                 Valideaza primul draft
               </Button>
-              <Button variant="outline" onClick={prepareNormVersionCheck}>
+              <Button asChild className="justify-start sm:justify-center" variant="outline">
+                <Link href="/financiar/salariati">
                 <ShieldCheck className="mr-2 h-4 w-4" />
-                Pregateste norma versionata
+                Gestioneaza norme
+                </Link>
               </Button>
             </>
           )}
@@ -1122,9 +992,9 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
       {selectedFinancialRow && (
         <Card className="border-amber-300 bg-amber-50/50">
           <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-sm">
-              <Users className="h-4 w-4" />
-              Asociere utilizator financiar: {selectedFinancialRow.name}
+            <CardTitle className="flex min-w-0 items-center gap-2 text-sm">
+              <Users className="h-4 w-4 shrink-0" />
+              <span className="min-w-0 break-words">Asociere utilizator financiar: {selectedFinancialRow.name}</span>
             </CardTitle>
           </CardHeader>
           <CardContent className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-end">
@@ -1159,87 +1029,7 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
       )}
 
       {mode === 'leave' && (
-        <Card id="experti-norme">
-          <CardHeader className="gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <Users className="h-5 w-5" />
-                Experti si norme pe proiecte
-              </CardTitle>
-              <p className="mt-1 text-sm text-muted-foreground">
-                PEO si CIM sunt editabile prin versiuni de contract. CPC este calculat: CIM zilnic - PEO zilnic - alte proiecte active.
-              </p>
-            </div>
-            <Badge variant="secondary">{normPanelRows.length} persoane financiare</Badge>
-          </CardHeader>
-          <CardContent className="overflow-x-auto px-2 pb-3 sm:px-3">
-            <table className="w-full min-w-[1280px] border-collapse text-xs">
-              <thead>
-                <tr className="border-b bg-slate-50 text-left">
-                  <th className="p-2">Expert</th>
-                  <th className="p-2">Functie PEO</th>
-                  <th className="p-2">Norma PEO</th>
-                  <th className="p-2 text-right">Plafon PEO/zi</th>
-                  <th className="p-2">Norma CIM/CPC</th>
-                  <th className="p-2 text-right">Plafon CIM/zi</th>
-                  <th className="p-2">GOODWORKS4ALL</th>
-                  <th className="p-2">Alte proiecte</th>
-                  <th className="p-2">Formula CPC</th>
-                  <th className="p-2">Valabilitate</th>
-                  <th className="p-2 text-right">Actiuni</th>
-                </tr>
-              </thead>
-              <tbody>
-                {normPanelRows.map((row) => (
-                  <tr key={row.id} className="border-b align-top hover:bg-slate-50/60">
-                    <td className="p-2">
-                      <div className="flex items-center gap-2 font-medium">
-                        {row.name}
-                        {row.financialOnly ? <Badge variant="secondary" className="text-[10px]">CPC Excel</Badge> : null}
-                      </div>
-                      <div className="text-[11px] text-muted-foreground">{row.detail}</div>
-                    </td>
-                    <td className="p-2">{row.peoFunction || '-'}</td>
-                    <td className="p-2">{row.peoNormLabel ?? normLabel(row.contract?.peoNormUnit, row.contract?.peoNormValue)}</td>
-                    <td className="p-2 text-right tabular-nums">{compactHours(row.peoDailyCap)}</td>
-                    <td className="p-2">{row.cimNormLabel ?? normLabel(row.contract?.cimNormUnit, row.contract?.cimNormValue)}</td>
-                    <td className="p-2 text-right tabular-nums">{compactHours(row.cimDailyCap)}</td>
-                    <td className="p-2">
-                      {row.goodworksProjects.length
-                        ? row.goodworksProjects.map((project) => project.expertProjectRole || project.projectName).join(', ')
-                        : '-'}
-                    </td>
-                    <td className="p-2">
-                      {row.otherProjects.length
-                        ? row.otherProjects.map((project) => `${project.projectName}${project.dailyHours ? ` (${compactHours(project.dailyHours)}/zi)` : ''}`).join(', ')
-                        : '-'}
-                    </td>
-                    <td className="p-2">
-                      <code className="rounded bg-slate-100 px-1.5 py-1 text-[11px]">
-                        CPC = {compactHours(row.cimDailyCap)} - {compactHours(row.peoDailyCap)} - {compactHours(row.otherDailyHours)} = {compactHours(row.cpcFormulaHours)} h/zi
-                      </code>
-                    </td>
-                    <td className="p-2">
-                      {row.contract
-                        ? `${row.contract.validFrom}${row.contract.validTo ? ` - ${row.contract.validTo}` : ' - prezent'}`
-                        : row.financialOnly ? 'Excel financiar' : 'compatibilitate veche'}
-                    </td>
-                    <td className="p-2 text-right">
-                      <Button size="sm" variant="outline" onClick={() => editNormFromPanel(row)}>
-                        {row.financialOnly ? 'Detalii financiar' : 'Editeaza norma'}
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </CardContent>
-        </Card>
-      )}
-
-      {(mode === 'leave' || selectedNormExpertName) && (
-        <div className="grid gap-4 xl:grid-cols-2">
-          {mode === 'leave' && (
+        <div className="grid gap-4">
           <Card>
             <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-sm"><Plus className="h-4 w-4" />Adauga CO Financiar</CardTitle></CardHeader>
             <CardContent className="grid gap-3 md:grid-cols-6">
@@ -1266,65 +1056,6 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
               </Button>
             </CardContent>
           </Card>
-          )}
-
-          <Card id="norma-editor" className={selectedNormExpertName ? 'border-primary/60 shadow-sm ring-2 ring-primary/15' : undefined}>
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-sm">
-                <ShieldCheck className="h-4 w-4" />
-                Versiune norma PEO/CIM{selectedNormExpertName ? ` - ${selectedNormExpertName}` : ''}
-              </CardTitle>
-              {selectedNormExpertName && <p className="text-xs text-muted-foreground">Modificarea se salveaza ca versiune noua; istoricul existent nu se suprascrie.</p>}
-            </CardHeader>
-            <CardContent className="grid gap-3 md:grid-cols-6">
-              <select className="h-10 rounded-md border bg-background px-3 text-sm md:col-span-2" value={contractForm.expertId} onChange={(event) => setContractForm((current) => ({ ...current, expertId: event.target.value }))} aria-label="Expert norma">
-                <option value="">Alege expert</option>
-                {experts.map((expert) => <option key={expert.id} value={expert.id}>{expert.name}</option>)}
-              </select>
-              <Input type="date" value={contractForm.validFrom} onChange={(event) => setContractForm((current) => ({ ...current, validFrom: event.target.value }))} aria-label="Valabil de la" />
-              <label className="grid gap-1 text-xs font-medium text-muted-foreground">
-                Unitate PEO
-                <select className="h-10 rounded-md border bg-background px-3 text-sm text-foreground" value={contractForm.peoNormUnit} onChange={(event) => setContractForm((current) => ({ ...current, peoNormUnit: event.target.value as NormUnit }))} aria-label="Unitate PEO">
-                  <option value="HOURS_PER_DAY">PEO h/zi</option>
-                  <option value="HOURS_PER_MONTH">PEO h/luna</option>
-                </select>
-              </label>
-              <label className="grid gap-1 text-xs font-medium text-muted-foreground">
-                {contractForm.peoNormUnit === 'HOURS_PER_DAY' ? 'Bază calcul plafon lunar PEO (h/zi)' : 'Plafon lunar PEO (ore)'}
-                <Input type="number" min="0" step="0.5" value={contractForm.peoNormValue} onChange={(event) => setContractForm((current) => ({ ...current, peoNormValue: event.target.value }))} aria-label={contractForm.peoNormUnit === 'HOURS_PER_DAY' ? 'Bază calcul plafon lunar PEO (h/zi)' : 'Plafon lunar PEO (ore)'} />
-              </label>
-              <label className="grid gap-1 text-xs font-medium text-muted-foreground">
-                Referință zilnică PEO
-                <Input type="number" min="0" step="0.5" value={contractForm.peoDailyCap} onChange={(event) => setContractForm((current) => ({ ...current, peoDailyCap: event.target.value }))} aria-label="Referință zilnică PEO" />
-              </label>
-              <label className="grid gap-1 text-xs font-medium text-muted-foreground">
-                Unitate CIM
-                <select className="h-10 rounded-md border bg-background px-3 text-sm text-foreground" value={contractForm.cimNormUnit} onChange={(event) => setContractForm((current) => ({ ...current, cimNormUnit: event.target.value as NormUnit }))} aria-label="Unitate CIM">
-                  <option value="HOURS_PER_DAY">CIM h/zi</option>
-                  <option value="HOURS_PER_MONTH">CIM h/luna</option>
-                </select>
-              </label>
-              <label className="grid gap-1 text-xs font-medium text-muted-foreground">
-                Norma lunara CIM
-                <Input type="number" min="0" step="0.5" value={contractForm.cimNormValue} onChange={(event) => setContractForm((current) => ({ ...current, cimNormValue: event.target.value }))} aria-label="Norma lunara CIM" />
-              </label>
-              <label className="grid gap-1 text-xs font-medium text-muted-foreground">
-                Maximum total CIM într-o zi
-                <Input type="number" min="0" max="8" step="0.5" value={contractForm.cimDailyCap} onChange={(event) => setContractForm((current) => ({ ...current, cimDailyCap: event.target.value, leaveHoursPerDay: event.target.value }))} aria-label="Maximum total CIM într-o zi" />
-              </label>
-              <label className="grid gap-1 text-xs font-medium text-muted-foreground">
-                Ore CO pe zi
-                <Input type="number" min="0" max="8" step="0.5" value={contractForm.leaveHoursPerDay} onChange={(event) => setContractForm((current) => ({ ...current, leaveHoursPerDay: event.target.value }))} aria-label="Ore CO pe zi" />
-              </label>
-              <p className="md:col-span-6 text-xs text-muted-foreground">Valoarea PEO folosită pentru calculul lunar nu limitează orele PEO dintr-o zi. Pontajul zilnic este limitat de CIM, iar PEO este limitat lunar.</p>
-              <Input id="norma-editor-justification" className="md:col-span-3" value={contractForm.justification} onChange={(event) => setContractForm((current) => ({ ...current, justification: event.target.value }))} placeholder="Justificare modificare norma" />
-              {contractForm.expertId && !contractForm.justification.trim() ? <p className="md:col-span-3 text-xs text-amber-700">Justificarea este obligatorie pentru audit. Scrie motivul modificarii, apoi salveaza.</p> : null}
-              <Button className="md:col-span-2" onClick={saveNormContract} disabled={savingContract || !contractForm.expertId || !contractForm.validFrom}>
-                {savingContract ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                Salveaza norma
-              </Button>
-            </CardContent>
-          </Card>
         </div>
       )}
 
@@ -1332,22 +1063,25 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
         <CardHeader className="gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <CardTitle className="text-lg">Sursa: modulul Raportare</CardTitle>
-            <p className="mt-1 text-sm text-muted-foreground">Referința Excel pentru ore este activă numai pentru {MONTHS[summary.referenceMonth - 1]} {summary.referenceYear}. Funcțiile și normele aplicației rămân autoritare.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Referința Excel pentru ore este activă numai pentru {referenceMonthLabel} {summary.referenceYear}. Funcțiile și normele aplicației rămân autoritare.</p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <select className="h-10 rounded-md border bg-background px-3 text-sm" value={month} onChange={(event) => setMonth(Number(event.target.value))} aria-label="Luna">
+          <div className="grid w-full gap-2 sm:flex sm:flex-wrap sm:items-center lg:w-auto">
+            <select className="h-10 rounded-md border bg-background px-3 text-sm sm:w-auto" value={month} onChange={(event) => setMonth(Number(event.target.value))} aria-label="Luna">
               {MONTHS.map((label, index) => <option key={label} value={index}>{label}</option>)}
             </select>
-            <Input className="w-24" type="number" min={2020} max={2100} value={year} onChange={(event) => setYear(Number(event.target.value))} aria-label="Anul" />
-            <div className="relative"><SearchIcon className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" /><Input className="w-64 pl-9" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Caută expert sau funcție" /></div>
-            <Button variant={onlyConflicts ? 'default' : 'outline'} onClick={() => setOnlyConflicts((value) => !value)}>Doar diferențe</Button>
+            <Input className="sm:w-24" type="number" min={2020} max={2100} value={year} onChange={(event) => setYear(Number(event.target.value))} aria-label="Anul" />
+            <div className="relative sm:w-64"><SearchIcon className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" /><Input className="w-full pl-9" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Caută expert sau funcție" /></div>
+            <Button className="justify-start sm:justify-center" variant={onlyConflicts ? 'default' : 'outline'} onClick={() => setOnlyConflicts((value) => !value)}>Doar diferențe</Button>
           </div>
         </CardHeader>
-        <CardContent className="overflow-x-auto px-2 pb-3 sm:px-3">
+        <CardContent className="overflow-x-auto overscroll-x-contain px-2 pb-3 sm:px-3">
           {isLoading ? (
             <div className="flex items-center justify-center py-16 text-muted-foreground"><Loader2 className="mr-2 h-5 w-5 animate-spin" />Se încarcă raportarea...</div>
           ) : (
             mode === 'timesheets' ? (
+              visibleRows.length === 0 ? (
+                <div className="py-12 text-center text-muted-foreground">Nu există înregistrări pentru filtrul selectat.</div>
+              ) : (
               <TooltipProvider delayDuration={150}>
                 <table className="w-full min-w-[1500px] table-fixed border-collapse border border-slate-300 text-[10px] leading-tight">
                   <colgroup>
@@ -1381,17 +1115,21 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
                               Asociaza
                             </Button>
                           ) : null}
-                          <Button size="icon" variant="ghost" className="h-5 w-5 shrink-0" title={`Editeaza norma pentru ${row.name}`} aria-label={`Editeaza norma pentru ${row.name}`} onClick={() => editNormFromTimesheet(row)}><ShieldCheck className="h-3 w-3" /></Button>
+                          <Button asChild size="icon" variant="ghost" className="h-5 w-5 shrink-0" title={`Editeaza salariatul ${row.name}`} aria-label={`Editeaza salariatul ${row.name}`}>
+                            <Link href={row.expertId ? `/financiar/salariati?expertId=${encodeURIComponent(row.expertId)}` : `/financiar/salariati?financialPersonKey=${encodeURIComponent(row.financialPersonKey)}`}>
+                              <ShieldCheck className="h-3 w-3" />
+                            </Link>
+                          </Button>
                           <Button size="icon" variant="ghost" className="h-5 w-5 shrink-0" title={`Exportă template pentru ${row.name}`} aria-label={`Exportă template pentru ${row.name}`} disabled={!row.expertId || exporting !== null} onClick={() => exportExpertTemplate(row)}>{exporting === row.expertId ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileText className="h-3 w-3" />}</Button>
                         </div>
                       </td>
-                      <td className="border-r border-slate-300 px-1 py-1"><div className="max-h-[2.2em] overflow-hidden" title={row.basePosition}>{row.basePosition}</div></td>
+                      <td className="border-r border-slate-300 px-1 py-1"><div className="max-h-[2.6em] overflow-hidden whitespace-normal break-words" title={row.basePosition}>{row.basePosition}</div></td>
                       <td className="border-r border-slate-300 px-1 py-1 text-center tabular-nums">{compactHours(row.concordiaWorked)}</td>
                       <td className="border-r border-slate-300 px-1 py-1 text-center tabular-nums">{compactHours(row.concordiaLeave)}</td>
-                      <td className="border-r border-slate-300 px-1 py-1"><div className="max-h-[2.2em] overflow-hidden" title={row.peoFunction}>{row.peoFunction}</div></td>
+                      <td className="border-r border-slate-300 px-1 py-1"><div className="max-h-[2.6em] overflow-hidden whitespace-normal break-words" title={row.peoFunction}>{row.peoFunction}</div></td>
                       <td className="border-r border-slate-300 px-1 py-1 text-center tabular-nums">{compactHours(row.peoWorked)}</td>
                       <td className="border-r border-slate-300 px-1 py-1 text-center tabular-nums">{compactHours(row.peoLeave)}</td>
-                      <td className="border-r border-slate-300 px-1 py-1"><div className="max-h-[2.2em] overflow-hidden" title={row.goodworksFunction}>{row.goodworksFunction}</div></td>
+                      <td className="border-r border-slate-300 px-1 py-1"><div className="max-h-[2.6em] overflow-hidden whitespace-normal break-words" title={row.goodworksFunction}>{row.goodworksFunction}</div></td>
                       <td className="border-r border-slate-300 px-1 py-1 text-center tabular-nums">{compactHours(row.goodworksWorked)}</td>
                       <td className="border-r border-slate-400 bg-slate-100/80 px-1 py-1 text-center font-semibold tabular-nums">{compactHours(row.totalWorked)}</td>
                       <td className="border-r border-slate-400 bg-slate-100/80 px-1 py-1 text-center font-semibold tabular-nums">{compactHours(row.totalLeave)}</td>
@@ -1411,6 +1149,7 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
                   ))}</tbody>
                 </table>
               </TooltipProvider>
+              )
             ) : (
               <TooltipProvider delayDuration={150}>
                 {verificationMessage ? (
@@ -1454,7 +1193,7 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
                         period: '',
                       };
                       const hasDraftLeave = row.leaveEntries.some((leave) => leave.status !== 'VALIDATED' && leave.status !== 'REJECTED');
-                      const inputBaseClass = 'h-7 rounded-sm border border-transparent bg-white/70 px-1 text-center text-[11px] tabular-nums shadow-none hover:border-slate-300 hover:bg-white focus-visible:border-primary focus-visible:bg-white focus-visible:ring-1 focus-visible:ring-primary disabled:bg-transparent';
+                      const inputBaseClass = 'h-7 w-full min-w-0 rounded-sm border border-transparent bg-white/70 px-1 text-center text-[11px] tabular-nums shadow-none hover:border-slate-300 hover:bg-white focus-visible:border-primary focus-visible:bg-white focus-visible:ring-1 focus-visible:ring-primary disabled:bg-transparent';
                       return (
                         <tr key={key} className="border-b border-dashed border-black align-middle hover:bg-slate-50/70">
                           <td className="border-r border-black px-2 py-1">

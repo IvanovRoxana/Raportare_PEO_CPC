@@ -251,17 +251,19 @@ export function buildFinancialReportingSummary(input: {
     const expertProjects = expert ? projects.filter((project) => project.expertId === expert.id) : [];
     const concordiaProject = expertProjects.find((project) => projectBucket(project) === 'concordia');
     const goodworksProject = expertProjects.find((project) => projectBucket(project) === 'goodworks');
-    const basePosition = referencePosition(reference?.basePosition)
+    const basePosition = referencePosition(expert?.basePositionConcordia)
+      ?? referencePosition(reference?.basePosition)
       ?? concordiaProject?.expertProjectRole
       ?? concordiaProject?.expertFunction
       ?? expert?.jobDescriptionText
       ?? '-';
     const leaves = expert ? leaveByExpert.get(expert.id) ?? [] : [];
-    const peoFunction = referencePosition(reference?.peoPosition)
-      ?? expert?.positionInProject
+    const peoFunction = referencePosition(expert?.positionInProject)
+      ?? referencePosition(reference?.peoPosition)
       ?? expert?.role
       ?? '-';
-    const goodworksFunction = referencePosition(reference?.goodworksPosition)
+    const goodworksFunction = referencePosition(expert?.goodworksPosition)
+      ?? referencePosition(reference?.goodworksPosition)
       ?? goodworksProject?.expertProjectRole
       ?? goodworksProject?.expertFunction
       ?? '-';

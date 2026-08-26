@@ -220,6 +220,10 @@ function ExportRaContent() {
     if (!selectedExpertId) return [];
     return allMonthActivities.filter((activity) => activity.expertId === selectedExpertId);
   }, [allMonthActivities, selectedExpertId]);
+  const activitiesWithPmClarificationsCount = useMemo(
+    () => activities.filter((activity) => activity.pmNotes?.trim()).length,
+    [activities],
+  );
 
   const isLoading = isAuthLoading || expertsLoading || activitiesLoading || selectedExpertNormContractsLoading;
   const backHref = buildPeoHref(selectedExpertId, currentMonth, currentYear);
@@ -392,6 +396,13 @@ function ExportRaContent() {
             enableDeterministicAnexa10Docx={deterministicAnexa10DocxEnabled}
             isLoadingDeterministicWorkBlocks={isLoadingDeterministicWorkBlocks}
             workBlockBundles={deterministicWorkBlockBundles}
+            clarificationNotes={reportStatus?.pmNotes}
+            clarificationCount={activitiesWithPmClarificationsCount}
+            onSubmitMonth={handleSubmitMonth}
+            submitMonthDisabled={isApproved || isSent || isInReview || reportStatusLoading || activities.length === 0}
+            submitMonthLabel={submitButtonLabel}
+            submitMonthTitle={submitButtonTitle}
+            isSubmittingMonth={reportStatusLoading}
           />
         </div>
       </DashboardShell>

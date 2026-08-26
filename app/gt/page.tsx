@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type React from 'react';
-import { uploadData } from 'aws-amplify/storage';
 import {
   BarChart3,
   Building2,
@@ -45,6 +44,7 @@ import {
   getGTEntityForOrganization,
 } from '@/lib/grup-tinta/directory';
 import { buildGTIndicatorSummary } from '@/lib/grup-tinta/indicators';
+import { uploadAuthenticatedData } from '@/lib/authenticated-storage';
 import type { GTDocument, GTEntity, GTMonitoringRecord, GTPerson, GTStatus, Organization } from '@/lib/grup-tinta/types';
 
 const GT_STATUS_LABELS: Record<GTStatus, string> = {
@@ -298,7 +298,7 @@ export default function GrupTintaPage() {
     const documentId = `gt_doc_${args.entity.id}_${Date.now()}`;
     const fileName = args.file.name;
     const s3Key = `projects/gt/${args.entity.id}/${documentId}_${safeStorageName(fileName)}`;
-    const uploaded = await uploadData({
+    const uploaded = await uploadAuthenticatedData({
       path: s3Key,
       data: args.file,
       options: { contentType: args.file.type || 'application/octet-stream' },

@@ -1,7 +1,6 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { uploadData } from 'aws-amplify/storage';
 import { AlertTriangle, CheckCircle2, FileSpreadsheet, FileText, Loader2, Upload } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -13,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { configureAmplify } from '@/lib/aws/client';
 import { useExperts, useHistoricalImportMutations, useHistoricalReports } from '@/hooks/use-backend-data';
+import { uploadAuthenticatedData } from '@/lib/authenticated-storage';
 
 const months = [
   { value: 1, label: 'Ianuarie' },
@@ -73,7 +73,7 @@ export function HistoricalImportPanel() {
   const uploadHistoricalFile = async (file: File, batchId: string, type: 'monthly_activity_report_pdf' | 'timesheet_excel') => {
     configureAmplify();
     const path = `historical-import/${year}/${String(month).padStart(2, '0')}/${selectedExpert?.id}/${Date.now()}-${safeFileName(file.name)}`;
-    const uploaded = await uploadData({
+    const uploaded = await uploadAuthenticatedData({
       path,
       data: file,
       options: {

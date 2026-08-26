@@ -11,6 +11,7 @@ import {
   useAiEligibilityRulesetMutations,
   useAiEligibilityRulesets,
 } from '@/hooks/use-backend-data';
+import { isActivePmUnlockRequest } from '@/lib/pm-unlock-status';
 import type { Activity, ActivityCatalog, DocumentMetadata } from '@/lib/types';
 
 interface EligibilityGovernancePanelProps {
@@ -65,7 +66,7 @@ export function EligibilityGovernancePanel({
       const check = document.eligibilityCheck;
       return check?.status === 'neeligibil'
         || check?.status === 'neconcludent'
-        || Boolean(check?.pmUnlockRequested && !check?.pmUnlockApproved);
+        || isActivePmUnlockRequest(check);
     });
   }, [documents]);
 

@@ -1,7 +1,6 @@
 'use client';
 
 import { useMemo, useRef, useState } from 'react';
-import { uploadData } from 'aws-amplify/storage';
 import { AlertTriangle, CheckCircle2, FileText, Loader2, Upload, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -19,6 +18,7 @@ import { extractDocxText, extractImageText, extractPdfText, formatFileSize, isIm
 import { buildDocumentS3Key, hashFirstPageText, normalizeDocumentTextForFingerprint, sha256Hex } from '@/lib/document-sharing';
 import { buildMonthlyEvidenceCoverage, extractMonthlyEvidenceDates, getEvidenceDates, type MonthlyEvidenceInput } from '@/lib/monthly-evidence';
 import { formatDateRo, generateId, getMonthName } from '@/lib/app-utils';
+import { uploadAuthenticatedData } from '@/lib/authenticated-storage';
 import type { Activity, Deliverable, Expert } from '@/lib/types';
 
 interface MonthlyEvidencePanelProps {
@@ -220,7 +220,7 @@ export function MonthlyEvidencePanel({
       hashFirstPageText(draft.text),
     ]);
 
-    const result = await uploadData({
+    const result = await uploadAuthenticatedData({
       path: s3Key,
       data: draft.file,
       options: { contentType: draft.fileType || 'application/octet-stream' },

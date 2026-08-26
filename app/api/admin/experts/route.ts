@@ -25,7 +25,9 @@ const EXPERT_FIELDS = [
   'oreZi',
   'manualMonthlyNorm',
   'projectMonthlyNorm',
+  'basePositionConcordia',
   'positionInProject',
+  'goodworksPosition',
   'projectCode',
   'projectTitle',
   'contractNumber',
@@ -283,7 +285,9 @@ const EXPERT_SELECTION = `
   oreZi
   manualMonthlyNorm
   projectMonthlyNorm
+  basePositionConcordia
   positionInProject
+  goodworksPosition
   projectCode
   projectTitle
   contractNumber

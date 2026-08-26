@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { FileText, Download, Loader2, ShieldCheck } from 'lucide-react';
+import { FileText, Download, Loader2, MessageSquare, Send, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { getMonthName } from '@/lib/app-utils';
@@ -30,6 +30,13 @@ interface ReportGeneratorProps {
   enableDeterministicAnexa10Docx?: boolean;
   isLoadingDeterministicWorkBlocks?: boolean;
   workBlockBundles?: ReportingWorkBlockBundle[];
+  clarificationNotes?: string;
+  clarificationCount?: number;
+  onSubmitMonth?: () => void | Promise<void>;
+  submitMonthDisabled?: boolean;
+  submitMonthLabel?: string;
+  submitMonthTitle?: string;
+  isSubmittingMonth?: boolean;
 }
 
 type ReportSectionKind = 'table' | 'narrative';
@@ -83,6 +90,13 @@ export function ReportGenerator({
   enableDeterministicAnexa10Docx = false,
   isLoadingDeterministicWorkBlocks = false,
   workBlockBundles,
+  clarificationNotes,
+  clarificationCount = 0,
+  onSubmitMonth,
+  submitMonthDisabled = false,
+  submitMonthLabel = 'Trimite luna catre PM',
+  submitMonthTitle,
+  isSubmittingMonth = false,
 }: ReportGeneratorProps) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
@@ -399,6 +413,8 @@ export function ReportGenerator({
 
   const totalHours = activities.reduce((sum, a) => sum + a.hours, 0);
   const uniqueDates = new Set(activities.map((a) => a.date)).size;
+  const deliverablesCount = activities.reduce((sum, activity) => sum + (activity.deliverables?.length ?? 0), 0);
+  const trimmedClarificationNotes = clarificationNotes?.trim();
   const hasLocalFallbackReport = isLocalFallbackDraft || isLocalFallbackReport(generatedReport);
   const isExportBlocked = hasLocalFallbackReport || isBlockedActivityReportExport(generatedReport);
   const deterministicReadinessClassName = deterministicExportReadiness?.severity === 'blocked'
@@ -424,10 +440,14 @@ export function ReportGenerator({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid grid-cols-3 gap-4 p-4 bg-muted rounded-lg">
+        <div className="grid gap-4 rounded-lg bg-muted p-4 sm:grid-cols-2 lg:grid-cols-4">
           <div className="text-center">
             <p className="text-2xl font-bold text-primary">{activities.length}</p>
             <p className="text-sm text-muted-foreground">Activități</p>
+          </div>
+          <div className="text-center">
+            <p className="text-2xl font-bold text-primary">{deliverablesCount}</p>
+            <p className="text-sm text-muted-foreground">Livrabile</p>
           </div>
           <div className="text-center">
             <p className="text-2xl font-bold text-primary">{uniqueDates}</p>
@@ -436,6 +456,42 @@ export function ReportGenerator({
           <div className="text-center">
             <p className="text-2xl font-bold text-primary">{totalHours}</p>
             <p className="text-sm text-muted-foreground">Total ore</p>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="flex items-center gap-2 font-semibold">
+                <MessageSquare className="h-4 w-4" />
+                Clarificari PM
+              </p>
+              {trimmedClarificationNotes ? (
+                <p className="mt-2 leading-6">{trimmedClarificationNotes}</p>
+              ) : (
+                <p className="mt-2 leading-6 text-amber-800">
+                  Nu exista clarificari lunare active pentru aceasta raportare.
+                </p>
+              )}
+              {clarificationCount > 0 ? (
+                <p className="mt-2 text-xs font-medium text-amber-800">
+                  {clarificationCount} activitati au observatii punctuale de la PM.
+                </p>
+              ) : null}
+            </div>
+            {onSubmitMonth ? (
+              <Button
+                type="button"
+                size="sm"
+                onClick={onSubmitMonth}
+                disabled={submitMonthDisabled || isSubmittingMonth}
+                title={submitMonthTitle}
+                className="shrink-0"
+              >
+                {isSubmittingMonth ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                {submitMonthLabel}
+              </Button>
+            ) : null}
           </div>
         </div>
 

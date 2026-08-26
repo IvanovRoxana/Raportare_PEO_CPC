@@ -14,7 +14,9 @@ export interface Expert {
   dailyHours?: number;
   manualMonthlyNorm?: number;
   projectMonthlyNorm?: number;
+  basePositionConcordia?: string;
   positionInProject?: string;
+  goodworksPosition?: string;
   projectCode?: string;
   projectTitle?: string;
   contractNumber?: string;
@@ -331,6 +333,10 @@ export interface DeliverableEligibilityCheck {
   pmUnlockApproved?: boolean;
   pmUnlockApprovedAt?: string;
   pmUnlockApprovedBy?: string;
+  pmUnlockResolvedByCorrection?: boolean;
+  pmUnlockResolvedAt?: string;
+  pmUnlockOriginalStatus?: string;
+  pmUnlockOriginalSummary?: string;
   modelAuditId?: string;
   ruleVersionId?: string;
   aiScore?: number;

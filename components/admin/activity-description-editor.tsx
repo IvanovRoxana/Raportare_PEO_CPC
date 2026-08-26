@@ -19,6 +19,7 @@ import {
   isCatalogDeliverableNotApplicable,
   NO_DELIVERABLE_CATALOG_MARKER,
 } from '@/lib/submit-readiness';
+import { isActivePmUnlockRequest } from '@/lib/pm-unlock-status';
 
 const ALL = 'all';
 const ACTIVE = 'active';
@@ -200,7 +201,7 @@ export function ActivityCatalogGovernancePanel({
       const status = document.eligibilityCheck?.status;
       return status === 'neeligibil'
         || status === 'neconcludent'
-        || Boolean(document.eligibilityCheck?.pmUnlockRequested && !document.eligibilityCheck?.pmUnlockApproved);
+        || isActivePmUnlockRequest(document.eligibilityCheck);
     });
   }, [documents]);
 

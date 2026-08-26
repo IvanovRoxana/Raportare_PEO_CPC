@@ -231,9 +231,14 @@ test('orele CPC lucrate se calculeaza din norma CIM minus PEO, GOODWORKS si CO m
   assert.equal(summary.rows[0].totalMonth, 168);
 });
 
-test('centralizatorul preia functiile din Excelul de referinta cand exista', () => {
+test('centralizatorul prefera functiile corectate in aplicatie fata de Excelul de referinta', () => {
   const summary = buildFinancialReportingSummary({
-    experts: [expert],
+    experts: [{
+      ...expert,
+      basePositionConcordia: 'Pozitie aplicatie Concordia',
+      positionInProject: 'Functie aplicatie PEO',
+      goodworksPosition: 'Functie aplicatie GOODWORKS4ALL',
+    }],
     activities: [],
     concurrentProjects: [
       { id: 'c1', expertId: expert.id, projectName: 'Concordia', expertProjectRole: 'Rol vechi Concordia', dailyHours: 8, startDate: '2026-01-01', isActive: true },
@@ -257,9 +262,9 @@ test('centralizatorul preia functiile din Excelul de referinta cand exista', () 
     }],
   });
 
-  assert.equal(summary.rows[0].basePosition, 'Pozitie corecta Concordia');
-  assert.equal(summary.rows[0].peoFunction, 'Functie corecta PEO');
-  assert.equal(summary.rows[0].goodworksFunction, 'Functie corecta GOODWORKS4ALL');
+  assert.equal(summary.rows[0].basePosition, 'Pozitie aplicatie Concordia');
+  assert.equal(summary.rows[0].peoFunction, 'Functie aplicatie PEO');
+  assert.equal(summary.rows[0].goodworksFunction, 'Functie aplicatie GOODWORKS4ALL');
 });
 
 test('centralizeaza in dashboard financiar orele pontate de expert in raportare PEO', () => {

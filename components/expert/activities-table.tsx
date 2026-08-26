@@ -38,6 +38,7 @@ interface ActivitiesTableProps {
   activities: Activity[];
   onEdit: (activity: Activity) => void;
   onDelete: (activityId: string) => void;
+  onDeleteGroup: (activities: Activity[]) => void;
   activeActivityId?: string;
   compact?: boolean;
 }
@@ -181,6 +182,7 @@ export function ActivitiesTable({
   activities,
   onEdit,
   onDelete,
+  onDeleteGroup,
   activeActivityId,
   compact = false,
 }: ActivitiesTableProps) {
@@ -304,6 +306,38 @@ export function ActivitiesTable({
                       Editeaza
                     </Button>
                   )}
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className={cn('text-destructive hover:text-destructive', compact && 'flex-1 justify-center')}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Sterge grupul
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Sterge toate activitatile asociate acestui grup?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Aceasta actiune va sterge toate activitatile asociate grupului "{group.title}"
+                          ({group.dayCount} {group.dayCount === 1 ? 'zi' : 'zile'}, {group.totalHours} ore)
+                          fara sa mai intri in detalii. Actiunea nu poate fi anulata.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Anuleaza</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={() => onDeleteGroup(group.activities)}
+                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        >
+                          Sterge toate activitatile asociate acestui grup
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                   <Button
                     type="button"
                     variant="ghost"

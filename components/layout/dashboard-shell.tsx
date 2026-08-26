@@ -95,6 +95,7 @@ export const adminNavItems: DashboardNavItem[] = [
 
 export const financialNavItems: DashboardNavItem[] = [
   { label: 'Dashboard financiar', href: '/financiar', icon: BarChart3 },
+  { label: 'Salariati', href: '/financiar/salariati', icon: Users },
   { label: 'Pontaje', href: '/financiar/pontaje', icon: CalendarDays },
   { label: 'Concedii', href: '/financiar/concedii', icon: ShieldCheck },
   { label: 'Achizitii', href: '/achizitii', icon: ClipboardList },

@@ -13,6 +13,16 @@ function parseNormLabel(value?: string) {
   };
 }
 
+function sameFinancialPerson(left?: string, right?: string) {
+  const leftKey = normalizeFinancialPersonKey(left);
+  const rightKey = normalizeFinancialPersonKey(right);
+  if (!leftKey || !rightKey) return false;
+  if (leftKey === rightKey) return true;
+  const leftTokens = leftKey.split(' ').filter(Boolean).sort().join(' ');
+  const rightTokens = rightKey.split(' ').filter(Boolean).sort().join(' ');
+  return leftTokens === rightTokens;
+}
+
 function monthStart(month: number, year: number) {
   return `${year}-${String(month + 1).padStart(2, '0')}-01`;
 }
@@ -29,9 +39,7 @@ export function applyFinancialReferenceNorms(
   year: number,
   referencePeople: Array<{ name: string; peoNorm?: string; cimNorm?: string }> = referenceSeed.people,
 ) {
-  const reference = referencePeople.find(
-    (person) => normalizeFinancialPersonKey(person.name) === normalizeFinancialPersonKey(expert.name),
-  );
+  const reference = referencePeople.find((person) => sameFinancialPerson(person.name, expert.name));
   const peoNorm = parseNormLabel(reference?.peoNorm);
   const cimNorm = parseNormLabel(reference?.cimNorm);
   if (!reference || !peoNorm || !cimNorm || !expert.id) return contracts ?? [];

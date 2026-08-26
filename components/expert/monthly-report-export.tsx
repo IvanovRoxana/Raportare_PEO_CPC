@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { uploadData } from 'aws-amplify/storage';
 import { FileText, Download, Loader2, FileSpreadsheet, FileType } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -35,6 +34,7 @@ import {
   resolveBusinessHubEntitiesForRows,
 } from '@/lib/business-hub-reporting';
 import { buildDocumentS3Key, sha256Hex } from '@/lib/document-sharing';
+import { uploadAuthenticatedData } from '@/lib/authenticated-storage';
 
 interface MonthlyReportExportProps {
   expert: Expert;
@@ -211,7 +211,7 @@ export function MonthlyReportExport({
         originalFileName: file.name,
       });
       const arrayBuffer = await file.blob.arrayBuffer();
-      const uploaded = await uploadData({
+      const uploaded = await uploadAuthenticatedData({
         path: s3Key,
         data: file.blob,
         options: { contentType: file.blob.type || 'application/octet-stream' },

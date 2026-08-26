@@ -10,6 +10,7 @@ import { ALL_DELIVERABLE_TYPES, DOCUMENT_STADIU_OPTIONS, type DeliverableSlot } 
 import { extractDocxFirstPageText, extractDocxTextWithSource, extractHtmlTextWithSource, extractImageTextWithSource, extractPdfFirstPageTextWithSource, extractPdfTextWithSource, extractXlsxTextWithSource, isImageFile } from '@/lib/document-utils';
 import { DELIVERABLE_ELIGIBILITY_UI_MESSAGE, isDeliverableEligibilityCheckEnabledClient } from '@/lib/feature-flags';
 import { hasSufficientDeliverableEvidenceForEligibility } from '@/lib/deliverable-eligibility';
+import { mergeEligibilityCheckWithPmUnlockTracking } from '@/lib/pm-unlock-status';
 import { applyAutomaticTitleSuggestion, formatTitleFromFilename, shouldUseAiTitleSuggestion, suggestTitleFromFirstPage, validateDeclaredTitleOnFirstPage } from '@/lib/title-suggestion';
 import { getDocumentAuditTitle, hashFirstPageText, normalizeDocumentTextForFingerprint, sha256Hex, type DuplicateIssueType } from '@/lib/document-sharing';
 import type { ActivityCatalog } from '@/lib/types';
@@ -482,22 +483,23 @@ export function DeliverableItem({
     if (!eligibilityCheckEnabled) return;
 
     setAiLoading(true);
+    const pendingEligibilityCheck = mergeEligibilityCheckWithPmUnlockTracking(deliverable.eligibilityCheck, {
+      status: 'neconcludent',
+      score: 0,
+      summary: 'Verificarea eligibilitatii a fost pornita. Daca AI nu raspunde, continua cu introducere manuala si verificare PM.',
+      checks: [],
+      missingElements: [],
+      recommendations: ['Continua cu introducere manuala daca verificarea automata nu raspunde.'],
+      riskFlags: ['Verificare automata in curs sau indisponibila.'],
+      checkedAt: new Date().toISOString(),
+      checkedBy: expertName,
+      checkedActivityId: selectedActivityId || subActivity,
+      checkedSaCode: subActivity,
+      checkedActivityName: activityTitle,
+      checkedDeliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
+    });
     onUpdate({
-      eligibilityCheck: {
-        status: 'neconcludent',
-        score: 0,
-        summary: 'Verificarea eligibilitatii a fost pornita. Daca AI nu raspunde, continua cu introducere manuala si verificare PM.',
-        checks: [],
-        missingElements: [],
-        recommendations: ['Continua cu introducere manuala daca verificarea automata nu raspunde.'],
-        riskFlags: ['Verificare automata in curs sau indisponibila.'],
-        checkedAt: new Date().toISOString(),
-        checkedBy: expertName,
-        checkedActivityId: selectedActivityId || subActivity,
-        checkedSaCode: subActivity,
-        checkedActivityName: activityTitle,
-        checkedDeliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
-      },
+      eligibilityCheck: pendingEligibilityCheck,
       aiCheck: {
         eligible: null,
         reason: 'Verificarea eligibilitatii a fost pornita.',
@@ -560,7 +562,7 @@ export function DeliverableItem({
       if (!response.ok) throw new Error(result.error || 'Verificarea eligibilității a eșuat');
 
       onUpdate({
-        eligibilityCheck: {
+        eligibilityCheck: mergeEligibilityCheckWithPmUnlockTracking(deliverable.eligibilityCheck, {
           ...result,
           checkedAt: new Date().toISOString(),
           checkedBy: expertName,
@@ -570,7 +572,7 @@ export function DeliverableItem({
           checkedDeliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
           modelAuditId: result.modelAuditId,
           analyzedDeliverables: result.analyzedDeliverables,
-        },
+        }),
         aiCheck: {
           eligible: result.status === 'eligibil' || result.status === 'eligibil_cu_observatii'
             ? true
@@ -583,7 +585,7 @@ export function DeliverableItem({
       });
     } catch (error) {
       onUpdate({
-        eligibilityCheck: {
+        eligibilityCheck: mergeEligibilityCheckWithPmUnlockTracking(deliverable.eligibilityCheck, {
           status: 'neconcludent',
           score: 0,
           summary: 'Eroare: ' + (error instanceof Error ? error.message : 'Eroare necunoscută'),
@@ -597,7 +599,7 @@ export function DeliverableItem({
           checkedSaCode: subActivity,
           checkedActivityName: activityTitle,
           checkedDeliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
-        },
+        }),
       });
     } finally {
       setAiLoading(false);
@@ -1348,22 +1350,23 @@ export function DeliverableEligibilityControl({
     if (!eligibilityCheckEnabled) return;
 
     setAiLoading(true);
+    const pendingEligibilityCheck = mergeEligibilityCheckWithPmUnlockTracking(deliverable.eligibilityCheck, {
+      status: 'neconcludent',
+      score: 0,
+      summary: 'Verificarea eligibilitatii a fost pornita. Daca AI nu raspunde, continua cu introducere manuala si verificare PM.',
+      checks: [],
+      missingElements: [],
+      recommendations: ['Continua cu introducere manuala daca verificarea automata nu raspunde.'],
+      riskFlags: ['Verificare automata in curs sau indisponibila.'],
+      checkedAt: new Date().toISOString(),
+      checkedBy: expertName,
+      checkedActivityId: selectedActivityId || subActivity,
+      checkedSaCode: subActivity,
+      checkedActivityName: activityTitle,
+      checkedDeliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
+    });
     onUpdate({
-      eligibilityCheck: {
-        status: 'neconcludent',
-        score: 0,
-        summary: 'Verificarea eligibilitatii a fost pornita. Daca AI nu raspunde, continua cu introducere manuala si verificare PM.',
-        checks: [],
-        missingElements: [],
-        recommendations: ['Continua cu introducere manuala daca verificarea automata nu raspunde.'],
-        riskFlags: ['Verificare automata in curs sau indisponibila.'],
-        checkedAt: new Date().toISOString(),
-        checkedBy: expertName,
-        checkedActivityId: selectedActivityId || subActivity,
-        checkedSaCode: subActivity,
-        checkedActivityName: activityTitle,
-        checkedDeliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
-      },
+      eligibilityCheck: pendingEligibilityCheck,
       aiCheck: {
         eligible: null,
         reason: 'Verificarea eligibilitatii a fost pornita.',
@@ -1428,7 +1431,7 @@ export function DeliverableEligibilityControl({
       if (!response.ok) throw new Error(result.error || 'Verificarea eligibilitatii a esuat');
 
       onUpdate({
-        eligibilityCheck: {
+        eligibilityCheck: mergeEligibilityCheckWithPmUnlockTracking(deliverable.eligibilityCheck, {
           ...result,
           checkedAt: new Date().toISOString(),
           checkedBy: expertName,
@@ -1438,7 +1441,7 @@ export function DeliverableEligibilityControl({
           checkedDeliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
           modelAuditId: result.modelAuditId,
           analyzedDeliverables: result.analyzedDeliverables,
-        },
+        }),
         aiCheck: {
           eligible: result.status === 'eligibil' || result.status === 'eligibil_cu_observatii'
             ? true
@@ -1451,7 +1454,7 @@ export function DeliverableEligibilityControl({
       });
     } catch (error) {
       onUpdate({
-        eligibilityCheck: {
+        eligibilityCheck: mergeEligibilityCheckWithPmUnlockTracking(deliverable.eligibilityCheck, {
           status: 'neconcludent',
           score: 0,
           summary: 'Eroare: ' + (error instanceof Error ? error.message : 'Eroare necunoscuta'),
@@ -1465,7 +1468,7 @@ export function DeliverableEligibilityControl({
           checkedSaCode: subActivity,
           checkedActivityName: activityTitle,
           checkedDeliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
-        },
+        }),
       });
     } finally {
       setAiLoading(false);

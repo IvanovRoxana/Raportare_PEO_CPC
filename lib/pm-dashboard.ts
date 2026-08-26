@@ -1,4 +1,5 @@
 import type { Activity, DocumentMetadata, Expert, ReportStatus, SharedDeliverable } from './types.ts';
+import { isActivePmUnlockRequest } from './pm-unlock-status.ts';
 
 export type DashboardAccessInput = {
   roles?: string[];
@@ -127,7 +128,7 @@ export function buildPmDashboardSummary(args: {
   });
 
   const titleIssues = args.documents.filter((document) => document.titleMatch === false || document.titleCheckStatus === 'mismatch').length;
-  const pmUnlockRequests = args.documents.filter((document) => document.eligibilityCheck?.pmUnlockRequested).length;
+  const pmUnlockRequests = args.documents.filter((document) => isActivePmUnlockRequest(document.eligibilityCheck)).length;
   const pendingSharedDeliverables = args.sharedDeliverables.filter((relation) => relation.status === 'pending_registration').length;
   const crossAlignmentIssues = checkCrossAlignment(args.activities).length;
   const monthlyOpenClarificationsCount = args.reportStatuses.filter(

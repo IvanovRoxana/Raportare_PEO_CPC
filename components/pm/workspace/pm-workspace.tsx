@@ -33,6 +33,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { getMonthName } from '@/lib/app-utils';
+import { isActivePmUnlockRequest } from '@/lib/pm-unlock-status';
 import type {
   Activity,
   DashboardComplianceRow,
@@ -92,6 +93,7 @@ type PmWorkspaceProps = {
   pendingSharedDeliverables: PendingSharedDeliverable[];
   titleIssues: DocumentMetadata[];
   pmUnlockRequests: DocumentMetadata[];
+  resolvedPmUnlockRequests: DocumentMetadata[];
   eventDocumentIssues: Activity[];
   isExportingOpisTotal: boolean;
   onOpenDossier: (expert: Expert, options?: { activityId?: string; documentId?: string; issueType?: string }) => void;
@@ -513,11 +515,33 @@ function AccessExpertRow({ expert, action, helper }: { expert: Expert; action: R
   );
 }
 
-function TimesheetView(props: PmWorkspaceProps) {
+type TimesheetViewProps = PmWorkspaceProps & {
+  onOpenEligibilityRules: (document: DocumentMetadata) => void;
+};
+
+function TimesheetView(props: TimesheetViewProps) {
   const [selectedExpertId, setSelectedExpertId] = useState(props.experts[0]?.id || '');
   const selectedExpert = props.experts.find((expert) => expert.id === selectedExpertId) || props.experts[0];
   const selectedRow = props.dashboardRows.find((row) => row.expertId === selectedExpert?.id);
   const selectedActivities = props.activities.filter((activity) => activity.expertId === selectedExpert?.id);
+  const selectedActivityIds = new Set(selectedActivities.map((activity) => activity.id));
+  const isDocumentInSelectedMonth = (document: DocumentMetadata) => {
+    if (document.uploadedByExpertId !== selectedExpert?.id) return false;
+    if (document.sourceActivityId && selectedActivityIds.has(document.sourceActivityId)) return true;
+    const uploadedAt = document.uploadDate ? new Date(document.uploadDate) : null;
+    return Boolean(uploadedAt && uploadedAt.getMonth() === props.selectedMonth && uploadedAt.getFullYear() === props.selectedYear);
+  };
+  const selectedActiveBlockedDocuments = props.pmUnlockRequests.filter(isDocumentInSelectedMonth);
+  const selectedAutoResolvedDocuments = props.resolvedPmUnlockRequests.filter(isDocumentInSelectedMonth);
+  const activeBlockedByActivityId = new Map<string, DocumentMetadata[]>();
+  selectedActiveBlockedDocuments.forEach((document) => {
+    if (!document.sourceActivityId) return;
+    activeBlockedByActivityId.set(document.sourceActivityId, [...(activeBlockedByActivityId.get(document.sourceActivityId) || []), document]);
+  });
+  const isActivityBlockedByEligibility = (activity: Activity) => {
+    if (activeBlockedByActivityId.has(activity.id)) return true;
+    return (activity.deliverables || []).some((deliverable) => isActivePmUnlockRequest(deliverable.eligibilityCheck));
+  };
   const activitiesByDay = new Map<string, Activity[]>();
   selectedActivities.forEach((activity) => activitiesByDay.set(activity.date, [...(activitiesByDay.get(activity.date) || []), activity]));
   const days = new Date(props.selectedYear, props.selectedMonth + 1, 0).getDate();
@@ -540,34 +564,143 @@ function TimesheetView(props: PmWorkspaceProps) {
           })}
         </div>
       </section>
-      <section className="overflow-hidden rounded-lg border bg-white shadow-sm">
-        <div className="border-b p-4">
-          <div className="flex items-center gap-3">{selectedExpert ? <MiniAvatar expert={selectedExpert} /> : null}<h3 className="font-semibold">{selectedExpert?.name || 'Expert'}</h3><span className="text-xs text-slate-500">{selectedExpert?.role}</span></div>
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
+        <section className="overflow-hidden rounded-lg border bg-white shadow-sm">
+          <div className="border-b p-4">
+            <div className="flex items-center gap-3">{selectedExpert ? <MiniAvatar expert={selectedExpert} /> : null}<h3 className="font-semibold">{selectedExpert?.name || 'Expert'}</h3><span className="text-xs text-slate-500">{selectedExpert?.role}</span></div>
+          </div>
+          <div className="grid grid-cols-7 border-b bg-slate-50 text-xs font-semibold text-slate-500">
+            {['Luni', 'Marți', 'Miercuri', 'Joi', 'Vineri', 'Sâmbătă', 'Duminică'].map((day) => <div key={day} className="border-r p-2 last:border-r-0">{day}</div>)}
+          </div>
+          <div className="grid grid-cols-7">
+            {Array.from({ length: leading }).map((_, index) => <div key={`empty-${index}`} className="min-h-[5.5rem] border-b border-r bg-slate-50/50" />)}
+            {Array.from({ length: days }).map((_, index) => {
+              const day = index + 1;
+              const date = isoDate(props.selectedYear, props.selectedMonth, day);
+              const dayActivities = activitiesByDay.get(date) || [];
+              const hours = dayActivities.reduce((sum, activity) => sum + (activity.hours || 0), 0);
+              return (
+                <div key={date} className="min-h-[5.5rem] border-b border-r p-2 text-xs">
+                  <div className="flex justify-between"><span className="font-medium">{day}</span><span className={hours > 0 ? 'font-semibold text-blue-700' : 'text-slate-300'}>{hours || '-'}/{Math.round((selectedRow?.monthlyNorm || 0) / 23)}h</span></div>
+                  {dayActivities.slice(0, 2).map((activity) => {
+                    const blocked = isActivityBlockedByEligibility(activity);
+                    return (
+                      <div
+                        key={activity.id}
+                        className={`mt-1 truncate rounded px-1.5 py-1 text-[10px] ${
+                          blocked
+                            ? 'border border-amber-300 bg-amber-50 text-amber-900'
+                            : 'bg-blue-50 text-blue-800'
+                        }`}
+                        title={blocked ? 'Activitate afectată de livrabil neeligibil cu deblocare PM solicitată' : undefined}
+                      >
+                        {activity.title || activity.activityType}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+          <div className="flex items-center justify-between p-4">
+            <div><span className="text-2xl font-bold text-[#1f3f75]">{selectedRow?.totalHours || 0}h</span><span className="ml-2 text-sm text-slate-500">/ {selectedRow?.monthlyNorm || 0}h normă</span></div>
+            <Button className="bg-[#1f3f75]"><Download className="h-4 w-4" />Descarcă pontaj PEO</Button>
+          </div>
+        </section>
+        <PmUnlockTimesheetPanel
+          activeDocuments={selectedActiveBlockedDocuments}
+          resolvedDocuments={selectedAutoResolvedDocuments}
+          activities={selectedActivities}
+          props={props}
+        />
+      </div>
+    </div>
+  );
+}
+
+function PmUnlockTimesheetPanel({
+  activeDocuments,
+  resolvedDocuments,
+  activities,
+  props,
+}: {
+  activeDocuments: DocumentMetadata[];
+  resolvedDocuments: DocumentMetadata[];
+  activities: Activity[];
+  props: TimesheetViewProps;
+}) {
+  const activityById = new Map(activities.map((activity) => [activity.id, activity]));
+  const openDocument = (document: DocumentMetadata, issueType = 'pm_unlock_requests') => {
+    props.onOpenDossierById(document.uploadedByExpertId, {
+      activityId: document.sourceActivityId,
+      documentId: document.id,
+      issueType,
+    });
+  };
+
+  return (
+    <aside className="space-y-4">
+      <section className="rounded-lg border border-amber-200 bg-white shadow-sm">
+        <div className="flex items-center justify-between border-b border-amber-100 px-4 py-3">
+          <div>
+            <h3 className="text-sm font-semibold text-amber-900">Livrabile blocate</h3>
+            <p className="text-xs text-amber-700">Afectează pontajul până la decizia PM.</p>
+          </div>
+          <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-700">{activeDocuments.length}</Badge>
         </div>
-        <div className="grid grid-cols-7 border-b bg-slate-50 text-xs font-semibold text-slate-500">
-          {['Luni', 'Marți', 'Miercuri', 'Joi', 'Vineri', 'Sâmbătă', 'Duminică'].map((day) => <div key={day} className="border-r p-2 last:border-r-0">{day}</div>)}
-        </div>
-        <div className="grid grid-cols-7">
-          {Array.from({ length: leading }).map((_, index) => <div key={`empty-${index}`} className="min-h-[5.5rem] border-b border-r bg-slate-50/50" />)}
-          {Array.from({ length: days }).map((_, index) => {
-            const day = index + 1;
-            const date = isoDate(props.selectedYear, props.selectedMonth, day);
-            const dayActivities = activitiesByDay.get(date) || [];
-            const hours = dayActivities.reduce((sum, activity) => sum + (activity.hours || 0), 0);
+        <div className="divide-y">
+          {activeDocuments.length === 0 ? (
+            <div className="p-4 text-sm text-slate-500">Nu există blocaje active pentru expertul selectat.</div>
+          ) : activeDocuments.map((document) => {
+            const activity = document.sourceActivityId ? activityById.get(document.sourceActivityId) : undefined;
             return (
-              <div key={date} className="min-h-[5.5rem] border-b border-r p-2 text-xs">
-                <div className="flex justify-between"><span className="font-medium">{day}</span><span className={hours > 0 ? 'font-semibold text-blue-700' : 'text-slate-300'}>{hours || '-'}/{Math.round((selectedRow?.monthlyNorm || 0) / 23)}h</span></div>
-                {dayActivities.slice(0, 2).map((activity) => <div key={activity.id} className="mt-1 truncate rounded bg-blue-50 px-1.5 py-1 text-[10px] text-blue-800">{activity.title || activity.activityType}</div>)}
+              <div key={document.id} className="space-y-3 p-4">
+                <div>
+                  <div className="font-semibold text-[#1f3f75]">{document.declaredTitle || document.originalFileName}</div>
+                  <div className="mt-1 text-xs text-slate-500">{activity?.title || activity?.activityType || document.eligibilityCheck?.checkedActivityName || 'Activitate neidentificată'}</div>
+                  <div className="mt-2 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-800">{document.eligibilityCheck?.summary || 'Livrabil neeligibil cu deblocare PM solicitată.'}</div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" variant="outline" onClick={() => openDocument(document)}><FileText className="h-4 w-4" />Deschide livrabil</Button>
+                  <Button size="sm" variant="outline" onClick={() => openDocument(document, 'eligibility_manual_review')}>Verifică manual</Button>
+                  <Button size="sm" onClick={() => props.onApprovePmUnlock(document)}><Check className="h-4 w-4" />Deblochează PM</Button>
+                  <Button size="sm" variant="outline" onClick={() => props.onOpenEligibilityRules(document)}>Actualizează reguli</Button>
+                </div>
               </div>
             );
           })}
         </div>
-        <div className="flex items-center justify-between p-4">
-          <div><span className="text-2xl font-bold text-[#1f3f75]">{selectedRow?.totalHours || 0}h</span><span className="ml-2 text-sm text-slate-500">/ {selectedRow?.monthlyNorm || 0}h normă</span></div>
-          <Button className="bg-[#1f3f75]"><Download className="h-4 w-4" />Descarcă pontaj PEO</Button>
+      </section>
+      <section className="rounded-lg border bg-white shadow-sm">
+        <div className="flex items-center justify-between border-b px-4 py-3">
+          <div>
+            <h3 className="text-sm font-semibold text-emerald-800">Rezolvate prin corectare expert</h3>
+            <p className="text-xs text-slate-500">Tracking păstrat, fără impact de blocaj PM.</p>
+          </div>
+          <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">{resolvedDocuments.length}</Badge>
+        </div>
+        <div className="divide-y">
+          {resolvedDocuments.length === 0 ? (
+            <div className="p-4 text-sm text-slate-500">Nu există corectări auto-rezolvate pentru expertul selectat.</div>
+          ) : resolvedDocuments.map((document) => (
+            <div key={document.id} className="space-y-3 p-4">
+              <div>
+                <div className="font-semibold text-[#1f3f75]">{document.declaredTitle || document.originalFileName}</div>
+                <div className="mt-1 text-xs text-slate-500">
+                  Inițial: {document.eligibilityCheck?.pmUnlockOriginalStatus || 'neeligibil'} · Acum: {document.eligibilityCheck?.status || 'eligibil'}
+                </div>
+                <div className="mt-2 rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs text-emerald-800">{document.eligibilityCheck?.summary || 'Livrabilul a devenit eligibil după corectarea expertului.'}</div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant="outline" onClick={() => openDocument(document)}><FileText className="h-4 w-4" />Deschide livrabil</Button>
+                <Button size="sm" variant="outline" onClick={() => openDocument(document, 'eligibility_ai_review')}>Vezi verificarea AI</Button>
+                <Button size="sm" variant="outline" onClick={() => props.onOpenEligibilityRules(document)}>Actualizează reguli</Button>
+              </div>
+            </div>
+          ))}
         </div>
       </section>
-    </div>
+    </aside>
   );
 }
 
@@ -770,8 +903,14 @@ function AcceptedTitleDialog({
   );
 }
 
-function ActionsView(props: PmWorkspaceProps) {
-  const [activeAction, setActiveAction] = useState<'opis' | 'subactivities' | 'annex12'>('opis');
+type ActionsViewProps = PmWorkspaceProps & {
+  eligibilityRulesFocusDocument?: DocumentMetadata | null;
+};
+
+function ActionsView(props: ActionsViewProps) {
+  const [activeAction, setActiveAction] = useState<'opis' | 'subactivities' | 'annex12' | 'eligibility'>(
+    props.eligibilityRulesFocusDocument ? 'eligibility' : 'opis',
+  );
   const subactivityGroups = Array.from(
     props.activities.reduce((groups, activity) => {
       const key = activity.saCode || activity.activityType || 'Fără SA';
@@ -789,9 +928,18 @@ function ActionsView(props: PmWorkspaceProps) {
             <Button onClick={() => setActiveAction('opis')} variant={activeAction === 'opis' ? 'default' : 'outline'} className={activeAction === 'opis' ? 'bg-[#1f3f75]' : undefined}>OPIS</Button>
             <Button onClick={() => setActiveAction('subactivities')} variant={activeAction === 'subactivities' ? 'default' : 'outline'} className={activeAction === 'subactivities' ? 'bg-[#1f3f75]' : undefined}>Subactivități</Button>
             <Button onClick={() => setActiveAction('annex12')} variant={activeAction === 'annex12' ? 'default' : 'outline'} className={activeAction === 'annex12' ? 'bg-[#1f3f75]' : undefined}>Anexa 12</Button>
+            <Button onClick={() => setActiveAction('eligibility')} variant={activeAction === 'eligibility' ? 'default' : 'outline'} className={activeAction === 'eligibility' ? 'bg-[#1f3f75]' : undefined}>Catalog eligibilitate</Button>
           </div>
         </div>
       </section>
+      {activeAction === 'eligibility' ? (
+        <EligibilityRulesActionPanel
+          focusDocument={props.eligibilityRulesFocusDocument}
+          activeDocuments={props.pmUnlockRequests}
+          resolvedDocuments={props.resolvedPmUnlockRequests}
+          props={props}
+        />
+      ) : null}
       {activeAction === 'subactivities' ? (
         <section className="grid gap-4 md:grid-cols-[12rem_1fr]">
           <div className="space-y-2">
@@ -895,6 +1043,71 @@ function ActionsView(props: PmWorkspaceProps) {
   );
 }
 
+function EligibilityRulesActionPanel({
+  focusDocument,
+  activeDocuments,
+  resolvedDocuments,
+  props,
+}: {
+  focusDocument?: DocumentMetadata | null;
+  activeDocuments: DocumentMetadata[];
+  resolvedDocuments: DocumentMetadata[];
+  props: PmWorkspaceProps;
+}) {
+  const rows = [
+    ...activeDocuments.map((document) => ({ document, status: 'Blocaj activ' })),
+    ...resolvedDocuments.map((document) => ({ document, status: 'Auto-rezolvat' })),
+  ];
+
+  return (
+    <section className="overflow-hidden rounded-lg border bg-white shadow-sm">
+      <div className="border-b px-4 py-3">
+        <h3 className="font-semibold">Catalog eligibilitate - context Review</h3>
+        <p className="text-xs text-slate-500">Cazurile active pot actualiza regulile; cele auto-rezolvate rămân auditabile fără deblocare PM.</p>
+      </div>
+      {focusDocument ? (
+        <div className="border-b bg-blue-50 px-4 py-3 text-sm">
+          <span className="font-semibold text-[#1f3f75]">Focus:</span>{' '}
+          {focusDocument.declaredTitle || focusDocument.originalFileName}
+          <span className="ml-2 text-xs text-slate-500">{focusDocument.eligibilityCheck?.summary || focusDocument.eligibilityCheck?.status}</span>
+        </div>
+      ) : null}
+      <div className="divide-y">
+        {rows.length === 0 ? (
+          <div className="p-4 text-sm text-slate-500">Nu există cazuri cu cerere PM unlock pentru catalog.</div>
+        ) : rows.map(({ document, status }) => (
+          <div key={document.id} className="flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <div className="font-semibold text-[#1f3f75]">{document.declaredTitle || document.originalFileName}</div>
+              <div className="mt-1 text-xs text-slate-500">
+                {status} · {document.eligibilityCheck?.checkedSaCode || document.eligibilityCheck?.checkedActivityName || 'SA neidentificată'}
+              </div>
+              <div className="mt-2 text-xs text-slate-600">{document.eligibilityCheck?.summary || 'Fără sumar AI.'}</div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => props.onOpenDossierById(document.uploadedByExpertId, {
+                  activityId: document.sourceActivityId,
+                  documentId: document.id,
+                  issueType: 'eligibility_rules',
+                })}
+              >
+                <FileText className="h-4 w-4" />
+                Review
+              </Button>
+              <Badge variant="outline" className={status === 'Blocaj activ' ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}>
+                {status}
+              </Badge>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function SideCard({ title, items }: { title: string; items: string[] }) {
   return <section className="rounded-lg border bg-white p-4 shadow-sm"><h3 className="mb-3 text-sm font-semibold">{title}</h3><div className="space-y-3">{items.length === 0 ? <p className="text-xs text-slate-500">Nu există activitate.</p> : items.map((item, index) => <div key={`${item}-${index}`} className="rounded-md border p-3 text-xs text-slate-600">{item}</div>)}</div></section>;
 }
@@ -905,15 +1118,20 @@ function EmptyState({ text }: { text: string }) {
 
 export function PmWorkspace(props: PmWorkspaceProps) {
   const [activeView, setActiveView] = useState<WorkspaceView>('kpi');
+  const [eligibilityRulesFocusDocument, setEligibilityRulesFocusDocument] = useState<DocumentMetadata | null>(null);
+  const openEligibilityRules = (document: DocumentMetadata) => {
+    setEligibilityRulesFocusDocument(document);
+    setActiveView('actions');
+  };
   const content = useMemo(() => {
     if (activeView === 'access') return <MonthAccessView {...props} />;
-    if (activeView === 'timesheets') return <TimesheetView {...props} />;
+    if (activeView === 'timesheets') return <TimesheetView {...props} onOpenEligibilityRules={openEligibilityRules} />;
     if (activeView === 'reports') return <ReportsView {...props} />;
     if (activeView === 'deliverables') return <DeliverablesView {...props} />;
     if (activeView === 'nonconformities') return <NonconformitiesView {...props} />;
-    if (activeView === 'actions') return <ActionsView {...props} />;
+    if (activeView === 'actions') return <ActionsView {...props} eligibilityRulesFocusDocument={eligibilityRulesFocusDocument} />;
     return <KpiView {...props} />;
-  }, [activeView, props]);
+  }, [activeView, eligibilityRulesFocusDocument, props]);
 
   return (
     <div className="min-h-screen bg-[#eef3f8]">

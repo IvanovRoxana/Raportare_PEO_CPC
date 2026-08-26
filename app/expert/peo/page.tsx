@@ -891,6 +891,10 @@ function ExpertDashboardContent() {
         setActiveTab('calendar');
         return;
       }
+      if (window.location.hash === '#outlook') {
+        setActiveTab('outlook');
+        return;
+      }
       if (window.location.hash === '#activitati') {
         setActiveTab('activitati');
         return;
@@ -1537,6 +1541,45 @@ function ExpertDashboardContent() {
       await refreshActivities();
     } catch (error) {
       console.error('Error deleting activity:', error);
+    }
+  };
+
+  const handleDeleteActivityGroup = async (groupActivities: Activity[]) => {
+    if (reportStatus?.status === 'approved') return;
+    if (isClarificationScopedAccess) {
+      setSaveError('În modul clarificări nu poți șterge activități.');
+      return;
+    }
+
+    const uniqueActivities = [...new Map(groupActivities.map((activity) => [activity.id, activity])).values()];
+    const leaveIds = uniqueActivities
+      .filter((activity) => activity.id.startsWith('leave-entry:'))
+      .map((activity) => activity.id.slice('leave-entry:'.length));
+    const activityIds = uniqueActivities
+      .filter((activity) => !activity.id.startsWith('leave-entry:'))
+      .map((activity) => activity.id);
+
+    let shouldRefreshActivities = false;
+    let shouldRefreshLeaveEntries = false;
+    try {
+      for (const activityId of activityIds) {
+        await removeActivity(activityId);
+        shouldRefreshActivities = true;
+      }
+      for (const leaveId of leaveIds) {
+        await removeLeaveEntry(leaveId);
+        shouldRefreshLeaveEntries = true;
+      }
+      if (editingActivity && uniqueActivities.some((activity) => activity.id === editingActivity.id)) {
+        closeActivityForm();
+      }
+      setDeletedActivityUndo(null);
+    } catch (error) {
+      console.error('Error deleting activity group:', error);
+      setSaveError(error instanceof Error ? error.message : 'Grupul de activitati nu a putut fi sters.');
+    } finally {
+      if (shouldRefreshActivities) await refreshActivities();
+      if (shouldRefreshLeaveEntries) await refreshLeaveEntries();
     }
   };
 
@@ -2597,6 +2640,7 @@ function ExpertDashboardContent() {
         quickTabs={[
           { label: 'Activități', href: '#activitati', icon: ClipboardList, active: activeTab === 'activitati' },
           { label: 'Calendar', href: '#calendar', icon: CalendarDays, active: activeTab === 'calendar' },
+          { label: 'Outlook', href: '#outlook', icon: CalendarDays, active: activeTab === 'outlook' },
           { label: 'Livrabile', href: '#livrabile', icon: Upload },
           { label: 'Rapoarte', href: exportRaHref, icon: FileText },
         ]}
@@ -2604,9 +2648,10 @@ function ExpertDashboardContent() {
 
         <div id="livrabile" className="scroll-mt-24" />
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className={`grid w-full ${isGtExpert && isComExpert ? 'grid-cols-4' : isGtExpert || isComExpert ? 'grid-cols-3' : 'grid-cols-2'}`}>
+          <TabsList className={`grid w-full ${isGtExpert && isComExpert ? 'grid-cols-5' : isGtExpert || isComExpert ? 'grid-cols-4' : 'grid-cols-3'}`}>
             <TabsTrigger value="activitati">Activitati</TabsTrigger>
             <TabsTrigger value="calendar">Calendar</TabsTrigger>
+            <TabsTrigger value="outlook">Outlook</TabsTrigger>
             {isGtExpert && <TabsTrigger value="gt">Grup Tinta</TabsTrigger>}
             {isComExpert && <TabsTrigger value="dovezi-com">Dovezi COM</TabsTrigger>}
           </TabsList>
@@ -2911,6 +2956,7 @@ function ExpertDashboardContent() {
                         activities={activities}
                         onEdit={handleEditActivity}
                         onDelete={handleDeleteActivity}
+                        onDeleteGroup={handleDeleteActivityGroup}
                         activeActivityId={editingActivity?.id}
                         compact={false}
                       />
@@ -3018,6 +3064,49 @@ function ExpertDashboardContent() {
                 canGoToNextMonth={canOpenMonth(nextCalendarDate.getMonth(), nextCalendarDate.getFullYear())}
               />
             </div>
+          </TabsContent>
+
+          <TabsContent id="outlook" value="outlook" className="space-y-6 scroll-mt-24">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <CalendarDays className="h-5 w-5 text-primary" />
+                  Outlook
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="rounded-lg border bg-slate-50 p-4">
+                  <p className="text-sm font-semibold text-slate-900">Modul separat pentru calendarul personal</p>
+                  <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                    Deschide Outlook intr-o fila noua si foloseste calendarul personal ca reper. Cand vrei sa raportezi o intalnire,
+                    revino aici si adauga activitatea prin fluxul existent, cu aceleasi validari de pontaj si livrabile.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <Button asChild>
+                    <Link href="https://outlook.office.com/calendar/" target="_blank" rel="noreferrer">
+                      <ArrowRight className="h-4 w-4" />
+                      Deschide Outlook
+                    </Link>
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleAddActivity}
+                    disabled={!selectedExpert.id || isApproved || monthlyBlocking.isBlocked || isClarificationScopedAccess}
+                  >
+                    <Plus className="h-4 w-4" />
+                    Adauga activitate
+                  </Button>
+                </div>
+
+                <p className="text-xs leading-5 text-muted-foreground">
+                  Urmatorul pas poate fi conectarea prin Microsoft Graph, ca evenimentele Outlook sa apara aici si fiecare sa aiba
+                  buton propriu de Add activity cu precompletare.
+                </p>
+              </CardContent>
+            </Card>
           </TabsContent>
 
           {/* Tab: Grup Tinta - doar pentru Expert Recrutare si Selectie GT */}

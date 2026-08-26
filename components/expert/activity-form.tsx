@@ -2,7 +2,6 @@
 
 import { useState, useRef, useEffect, useMemo, useCallback, type SetStateAction } from 'react';
 import { Upload, X, FileText, Loader2, Users, Plus, AlertTriangle, CheckCircle, Sparkles, Check, Trash2 } from 'lucide-react';
-import { uploadData } from 'aws-amplify/storage';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -67,6 +66,7 @@ import { getActivityEditGroupId, isSameEditableActivity } from '@/lib/activity-e
 import { isComCommunicationMultiGroupActivity } from '@/lib/activity-multigroup-rules';
 import { hasSufficientDeliverableEvidenceForEligibility } from '@/lib/deliverable-eligibility';
 import { createActivityPeriodGroupId } from '@/lib/submit-readiness';
+import { uploadAuthenticatedData } from '@/lib/authenticated-storage';
 import {
   MAX_PONTAJ_HOURS,
   getAvailablePontajHourOptions,
@@ -1555,7 +1555,7 @@ export function ActivityForm({
       documentId,
       originalFileName: safeName,
     });
-    const uploadBlob = (path: string) => uploadData({
+    const uploadBlob = (path: string) => uploadAuthenticatedData({
       path,
       data: blob,
       options: {
@@ -2348,6 +2348,7 @@ export function ActivityForm({
   const currentWizardStepIndex = Math.max(0, wizardSteps.findIndex((step) => step.id === currentWizardStep));
   const isLastWizardStep = currentWizardStepIndex === wizardSteps.length - 1;
   const canSubmitFromCurrentStep = isLastWizardStep || (isLeave && currentWizardStep === 'time');
+  const canSaveFromCurrentStep = Boolean(initialActivity) || canSubmitFromCurrentStep;
   const isSupportingDeliverableStep = (
     currentWizardStep === 'deliverables'
     || currentWizardStep === 'collaboration'
@@ -4578,7 +4579,7 @@ export function ActivityForm({
             <Button
               type="button"
               onClick={() => handleSave()}
-              disabled={!canSubmitFromCurrentStep || isSaveDisabled || isSaving || isSubmittingActivity}
+              disabled={!canSaveFromCurrentStep || isSaveDisabled || isSaving || isSubmittingActivity}
               className={isWorkspaceLayout ? 'w-full sm:w-auto' : undefined}
               aria-busy={isSaving || isSubmittingActivity}
             >
