@@ -89,14 +89,30 @@ function normalizeForSearch(value: unknown) {
     .trim();
 }
 
+function normalizeCatalogCategory(value?: string | null) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function scopeCatalogByExpert(
+  candidates: z.infer<typeof catalogCandidateSchema>[],
+  expertCategory?: string,
+) {
+  const category = normalizeCatalogCategory(expertCategory);
+  if (!category) return candidates;
+  const scoped = candidates.filter((candidate) => normalizeCatalogCategory(candidate.category) === category);
+  return scoped.length > 0 ? scoped : candidates;
+}
+
 function shortlistCatalog(
   candidates: z.infer<typeof catalogCandidateSchema>[],
   context: string,
   expertSaCodes: string[] = [],
+  expertCategory?: string,
 ) {
   const query = normalizeForSearch(context);
   const allowedSaCodes = new Set(expertSaCodes.filter(Boolean));
-  return candidates
+  const scopedCandidates = scopeCatalogByExpert(candidates, expertCategory);
+  return scopedCandidates
     .map((candidate, index) => {
       const text = normalizeForSearch([
         candidate.category,
@@ -235,6 +251,46 @@ function buildDeterministicAnalysis(args: {
   };
 }
 
+function findCatalogMatch(analysis: IndexedDeliverableAnalysis, catalog: CatalogCandidate[]) {
+  const suggestedId = analysis.suggestedActivityCatalogId;
+  if (suggestedId) {
+    const byId = catalog.find((candidate) => candidate.id === suggestedId);
+    if (byId) return byId;
+  }
+
+  const suggestedName = normalizeForSearch(analysis.suggestedActivityName);
+  const suggestedSaCode = normalizeForSearch(analysis.suggestedSaCode);
+  return catalog.find((candidate) => {
+    const sameName = suggestedName && normalizeForSearch(candidate.activityName) === suggestedName;
+    const sameSaCode = suggestedSaCode && normalizeForSearch(candidate.saCode) === suggestedSaCode;
+    return sameName && sameSaCode;
+  });
+}
+
+function alignAnalysisToCatalog(
+  analysis: IndexedDeliverableAnalysis,
+  fallback: IndexedDeliverableAnalysis,
+  catalog: CatalogCandidate[],
+) {
+  const match = findCatalogMatch(analysis, catalog);
+  if (!match) {
+    return {
+      ...fallback,
+      warnings: uniqueMessages([
+        ...(fallback.warnings ?? []),
+        'Propunerea AI a fost ignorata deoarece nu apartine catalogului permis pentru expert.',
+      ]),
+    };
+  }
+
+  return {
+    ...analysis,
+    suggestedSaCode: match.saCode,
+    suggestedActivityCatalogId: match.id,
+    suggestedActivityName: match.activityName,
+  };
+}
+
 export async function POST(req: Request) {
   try {
     assertAllowedAiRequest(req);
@@ -260,6 +316,7 @@ export async function POST(req: Request) {
       request.catalogCandidates,
       candidateText,
       request.expert?.saCodes ?? [],
+      request.expert?.category,
     );
     const topCatalog = shortlistedCatalog[0] ?? request.catalogCandidates[0];
     const authToken = getCognitoAccessTokenFromRequest(req, { allowAuthorizationHeader: true });
@@ -346,6 +403,7 @@ Context RAG intern:
 ${ragContext?.promptContext || 'Fara context RAG disponibil.'}
 
 Reguli:
+- Categoria expertului este restrictiva: foloseste doar activitati din categoria "${request.expert?.category || 'nespecificata'}" daca exista in catalogul primit.
 - Alege cea mai buna subactivitate numai din catalogul primit.
 - Daca livrabilul pare din alta luna, marcheaza necesita_revizie sau neeligibil.
 - Daca nu exista text suficient dar numele/metadatele sunt promitatoare, marcheaza necesita_revizie.
@@ -373,7 +431,9 @@ Reguli:
     }
 
     const parsedOutput = indexedDeliverableAnalysisSchema.safeParse(result.output);
-    const output = parsedOutput.success ? parsedOutput.data : fallbackAnalysis;
+    const output = parsedOutput.success
+      ? alignAnalysisToCatalog(parsedOutput.data, fallbackAnalysis, shortlistedCatalog)
+      : fallbackAnalysis;
 
     return NextResponse.json({
       ...output,

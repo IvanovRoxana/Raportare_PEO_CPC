@@ -135,6 +135,10 @@ function buildCatalogPayload(catalog: ActivityCatalog[]) {
   }));
 }
 
+function normalizeCatalogCategory(value?: string | null) {
+  return String(value || '').trim().toLowerCase();
+}
+
 async function getJsonAuthHeaders() {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   try {
@@ -267,10 +271,16 @@ export function DeliverableIndexingLab() {
   const visibleActivities = useMemo(() => activities.filter((activity) => !currentExpert?.id || activity.expertId === currentExpert.id), [activities, currentExpert?.id]);
   const visibleCatalog = useMemo(() => {
     const sourceCatalog = catalog.length > 0 ? catalog : fallbackActivityCatalog as ActivityCatalog[];
+    const expertCategory = normalizeCatalogCategory(currentExpert?.category);
+    const categoryCatalog = expertCategory
+      ? sourceCatalog.filter((item) => normalizeCatalogCategory(item.category) === expertCategory)
+      : sourceCatalog;
+    const scopedCatalog = categoryCatalog.length > 0 ? categoryCatalog : sourceCatalog;
     const allowedSaCodes = new Set(currentExpert?.saCodes ?? []);
-    if (allowedSaCodes.size === 0) return sourceCatalog;
-    return sourceCatalog.filter((item) => allowedSaCodes.has(item.saCode));
-  }, [catalog, currentExpert?.saCodes]);
+    if (allowedSaCodes.size === 0) return scopedCatalog;
+    const saCatalog = scopedCatalog.filter((item) => allowedSaCodes.has(item.saCode));
+    return saCatalog.length > 0 ? saCatalog : scopedCatalog;
+  }, [catalog, currentExpert?.category, currentExpert?.saCodes]);
   const { candidates, isLoading: candidatesLoading, isUnavailable, mutate: refreshCandidates } = useIndexedDeliverableCandidates(currentExpert?.id ?? null, selectedMonth, selectedYear);
   const { create, update, remove } = useIndexedDeliverableCandidateMutations();
 
