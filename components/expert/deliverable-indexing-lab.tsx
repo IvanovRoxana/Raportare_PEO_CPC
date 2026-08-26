@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { fetchAuthSession } from 'aws-amplify/auth';
-import { AlertTriangle, CalendarDays, CheckCircle2, FileArchive, FileText, Loader2, SearchIcon, Trash2, Upload } from 'lucide-react';
+import { AlertTriangle, CalendarDays, CheckCircle2, FileArchive, FileText, Loader2, RefreshCw, SearchIcon, Trash2, Upload } from 'lucide-react';
 import { AdminViewAsBanner } from '@/components/admin/admin-view-as-banner';
 import { DashboardShell, expertNavItems } from '@/components/layout/dashboard-shell';
 import { Badge } from '@/components/ui/badge';
@@ -374,6 +374,37 @@ export function DeliverableIndexingLab() {
     }
   };
 
+  const reanalyzeCandidate = async (candidate: IndexedDeliverableCandidate) => {
+    if (!currentExpert) {
+      setError('Nu am gasit expertul curent pentru reanalizare.');
+      return;
+    }
+    setError(null);
+    setAnalyzingId(candidate.id);
+    try {
+      const analysis = await analyzeCandidate({
+        candidate,
+        expert: currentExpert,
+        catalog: visibleCatalog,
+        existingActivities: visibleActivities,
+      });
+      await update(candidate.id, {
+        ...analysis,
+        status: analysis.eligibilityStatus === 'eligibil' ? 'approved_for_use' : 'needs_review',
+      });
+      await refreshCandidates();
+    } catch (analysisError) {
+      await update(candidate.id, {
+        status: 'needs_review',
+        eligibilityStatus: 'necesita_revizie',
+        eligibilityReason: analysisError instanceof Error ? analysisError.message : 'Analiza AI nu a putut fi finalizata.',
+        warnings: ['Analiza AI nu a putut fi finalizata. Livrabilul ramane pentru revizie.'],
+      });
+    } finally {
+      setAnalyzingId(null);
+    }
+  };
+
   const handleFiles = async (files: FileList | File[]) => {
     const fileArray = Array.from(files);
     if (fileArray.length === 0) return;
@@ -519,6 +550,10 @@ export function DeliverableIndexingLab() {
                           <TableCell><div className="w-28 space-y-1"><div className="text-xs font-semibold">{item.eligibilityScore ?? 0}%</div><Progress value={item.eligibilityScore ?? 0} /></div></TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-2">
+                              <Button type="button" variant="ghost" size="sm" disabled={isIndexing || analyzingId === item.id} onClick={() => void reanalyzeCandidate(item)}>
+                                {analyzingId === item.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                                Reanalizeaza
+                              </Button>
                               <Button type="button" variant="outline" size="sm" disabled={isIndexing || item.eligibilityStatus === 'neeligibil'} onClick={() => void approveCandidate(item)}><CheckCircle2 className="h-4 w-4" />Foloseste draft</Button>
                               <Button type="button" variant="ghost" size="icon" onClick={() => void remove(item)}><Trash2 className="h-4 w-4" /><span className="sr-only">Sterge livrabil</span></Button>
                             </div>

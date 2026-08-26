@@ -124,6 +124,117 @@ function uniqueMessages(messages: string[]) {
   return Array.from(new Set(messages.map((message) => message.trim()).filter(Boolean)));
 }
 
+type CatalogCandidate = z.infer<typeof catalogCandidateSchema>;
+type IndexedDeliverableAnalysis = z.infer<typeof indexedDeliverableAnalysisSchema>;
+
+function tokenize(value: string) {
+  const stopWords = new Set([
+    'pentru', 'privind', 'referitor', 'referitoare', 'minuta', 'minuta', 'agenda', 'preliminara',
+    'semnatura', 'semnaturi', 'captura', 'electronic', 'electronica', 'document', 'livrabil',
+    'proiect', 'peo', 'cpc', 'concordia',
+  ]);
+  return normalizeForSearch(value)
+    .split(' ')
+    .filter((token) => token.length >= 4 && !stopWords.has(token));
+}
+
+function scoreCatalogCandidate(candidate: CatalogCandidate, context: string, expertSaCodes: string[] = []) {
+  const queryTokens = new Set(tokenize(context));
+  const catalogText = normalizeForSearch([
+    candidate.category,
+    candidate.saCode,
+    candidate.serviceCategory,
+    candidate.activityName,
+    candidate.description,
+    candidate.objectives,
+    candidate.deliverables,
+    candidate.indicators,
+  ].filter(Boolean).join(' '));
+  const candidateTokens = new Set(tokenize(catalogText));
+  let score = expertSaCodes.includes(candidate.saCode) ? 18 : 0;
+
+  queryTokens.forEach((token) => {
+    if (candidateTokens.has(token)) score += 8;
+    else if (catalogText.includes(token)) score += 3;
+  });
+
+  if (context.toLowerCase().includes(candidate.saCode.toLowerCase())) score += 16;
+  if (normalizeForSearch(candidate.activityName) && normalizeForSearch(context).includes(normalizeForSearch(candidate.activityName))) score += 22;
+  return score;
+}
+
+function buildDeterministicAnalysis(args: {
+  request: z.infer<typeof indexedDeliverableAnalysisRequestSchema>;
+  candidateText: string;
+  shortlistedCatalog: CatalogCandidate[];
+  retrievalWarnings?: string[];
+  source: 'fallback' | 'ai_unavailable';
+}): IndexedDeliverableAnalysis {
+  const { request, candidateText, shortlistedCatalog, retrievalWarnings = [], source } = args;
+  const expertSaCodes = request.expert?.saCodes ?? [];
+  const ranked = shortlistedCatalog
+    .map((candidate) => ({ candidate, score: scoreCatalogCandidate(candidate, candidateText, expertSaCodes) }))
+    .sort((first, second) => second.score - first.score);
+  const best = ranked[0]?.candidate ?? request.catalogCandidates[0];
+  const bestScore = ranked[0]?.score ?? 0;
+  const hasEnoughText = normalizeForSearch(candidateText).length >= 40;
+  const detectedDate = request.candidate.detectedDate ? new Date(`${request.candidate.detectedDate}T00:00:00`) : null;
+  const wrongMonth = Boolean(
+    detectedDate
+    && (detectedDate.getMonth() + 1 !== request.candidate.reportingMonth || detectedDate.getFullYear() !== request.candidate.reportingYear),
+  );
+  const hasUsefulMatch = bestScore >= 18 || expertSaCodes.includes(best.saCode);
+  const eligibilityStatus: IndexedDeliverableAnalysis['eligibilityStatus'] = wrongMonth || !hasEnoughText
+    ? 'necesita_revizie'
+    : hasUsefulMatch
+      ? 'eligibil'
+      : 'necesita_revizie';
+  const eligibilityScore = wrongMonth
+    ? 45
+    : hasUsefulMatch
+      ? Math.min(88, Math.max(62, 50 + bestScore))
+      : Math.max(35, Math.min(58, 35 + bestScore));
+  const reasonParts = [
+    wrongMonth
+      ? `Data detectata (${request.candidate.detectedDate}) nu este in luna selectata.`
+      : `Potrivire propusa din catalog pe baza textului extras si a metadatelor: ${best.saCode} - ${best.activityName}.`,
+    source === 'ai_unavailable'
+      ? 'Analiza AI nu a fost disponibila, asa ca am folosit potrivirea determinista catalog/RAG.'
+      : 'Propunerea este determinista si trebuie validata de expert.',
+  ];
+
+  return {
+    eligibilityStatus,
+    eligibilityReason: reasonParts.join(' '),
+    eligibilityScore,
+    confidence: hasUsefulMatch && !wrongMonth ? 'medium' : 'low',
+    suggestedSaCode: best.saCode,
+    suggestedActivityCatalogId: best.id,
+    suggestedActivityName: best.activityName,
+    suggestedTitle: request.candidate.suggestedTitle || request.candidate.fileName,
+    suggestedType: request.candidate.suggestedType || 'livrabil',
+    suggestedDescription: [
+      `Am realizat ${best.activityName.toLowerCase()} pe baza livrabilului "${request.candidate.suggestedTitle || request.candidate.fileName}".`,
+      request.candidate.detectedDate ? `Livrabilul indica data ${request.candidate.detectedDate}.` : '',
+    ].filter(Boolean).join(' '),
+    suggestedResult: `Livrabil analizat si incadrat preliminar la ${best.saCode}.`,
+    keywords: uniqueMessages([...(request.candidate.keywords ?? []), ...tokenize(candidateText).slice(0, 8)]),
+    warnings: uniqueMessages([
+      ...retrievalWarnings,
+      source === 'ai_unavailable' ? 'Analiza AI a esuat; propunerea a fost generata prin potrivire determinista.' : '',
+      wrongMonth ? 'Verifica luna/data inainte de pontare.' : '',
+      !hasEnoughText ? 'Text extras insuficient; verifica manual continutul livrabilului.' : '',
+    ]),
+    alternativeMatches: ranked.slice(1, 4).map(({ candidate, score }) => ({
+      saCode: candidate.saCode,
+      activityCatalogId: candidate.id,
+      activityName: candidate.activityName,
+      reason: `Potrivire alternativa in catalog, scor ${score}.`,
+      confidence: score >= 18 ? 'medium' : 'low',
+    })),
+  };
+}
+
 export async function POST(req: Request) {
   try {
     assertAllowedAiRequest(req);
@@ -172,10 +283,29 @@ export async function POST(req: Request) {
       year: request.candidate.reportingYear,
       currentDescription: '',
     };
-    const retrieval = await retrieveActivityAutofillContext(ragRequest, { authToken });
+    const fallbackAnalysis = buildDeterministicAnalysis({
+      request,
+      candidateText,
+      shortlistedCatalog,
+      source: 'fallback',
+    });
+    let retrieval;
+    try {
+      retrieval = await retrieveActivityAutofillContext(ragRequest, { authToken });
+    } catch (retrievalError) {
+      console.error('Recoverable indexed deliverable RAG failure:', retrievalError);
+      retrieval = {
+        enabled: false,
+        skippedReason: 'RAG indisponibil pentru analiza curenta',
+        chunks: [],
+        warnings: ['RAG indisponibil; am folosit catalogul si textul extras.'],
+      };
+    }
     const ragContext = buildCompactActivityAutofillRagContext(retrieval);
 
-    const result = await governedGenerateText({
+    let result;
+    try {
+      result = await governedGenerateText({
       endpoint: '/api/ai/analyze-indexed-deliverable',
       operation: 'analyze-indexed-deliverable',
       request: {
@@ -223,11 +353,31 @@ Reguli:
 - suggestedDescription trebuie sa fie o descriere de activitate gata de revizuit de expert.
 - Explica scurt motivul si listeaza alternative cand exista potriviri apropiate.`,
       output: Output.object({ schema: indexedDeliverableAnalysisSchema }),
-    });
+      });
+    } catch (generationError) {
+      console.error('Recoverable indexed deliverable AI failure:', generationError);
+      const deterministic = buildDeterministicAnalysis({
+        request,
+        candidateText,
+        shortlistedCatalog,
+        retrievalWarnings: retrieval.warnings,
+        source: 'ai_unavailable',
+      });
+      return NextResponse.json({
+        ...deterministic,
+        ragUsed: retrieval.enabled && retrieval.chunks.length > 0,
+        ragSummary: retrieval.enabled
+          ? `${retrieval.chunks.length} fragmente RAG analizate`
+          : retrieval.skippedReason || 'RAG inactiv',
+      });
+    }
+
+    const parsedOutput = indexedDeliverableAnalysisSchema.safeParse(result.output);
+    const output = parsedOutput.success ? parsedOutput.data : fallbackAnalysis;
 
     return NextResponse.json({
-      ...result.output,
-      warnings: uniqueMessages([...result.output.warnings, ...retrieval.warnings]),
+      ...output,
+      warnings: uniqueMessages([...output.warnings, ...retrieval.warnings]),
       ragUsed: retrieval.enabled && retrieval.chunks.length > 0,
       ragSummary: retrieval.enabled
         ? `${retrieval.chunks.length} fragmente RAG analizate`
