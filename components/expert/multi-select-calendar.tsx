@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Check, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -11,6 +11,7 @@ import {
   MAX_PONTAJ_HOURS,
   buildSelectedHoursForDates,
   isValidPontajHours,
+  normalizePontajHoursForAvailableCapacity,
   normalizePontajHoursValue,
 } from '@/lib/pontaj-rules';
 import type { Activity } from '@/lib/types';
@@ -62,6 +63,23 @@ export function MultiSelectCalendar({
     const normalized = Number(normalizePontajHoursValue(value, fallback || cimDailyHoursLimit));
     return Math.min(normalized, cimDailyHoursLimit);
   };
+  const getAvailableHoursForDate = useCallback(
+    (date: string) => {
+      const existingHours = activities
+        .filter((activity) => activity.date === date)
+        .reduce((sum, activity) => sum + (Number(activity.hours) || 0), 0);
+      return Math.max(0, cimDailyHoursLimit - existingHours);
+    },
+    [activities, cimDailyHoursLimit],
+  );
+  const normalizeHoursForDate = useCallback(
+    (date: string, value: unknown, fallback: number | string = defaultHours) => normalizePontajHoursForAvailableCapacity(
+      value,
+      getAvailableHoursForDate(date),
+      fallback,
+    ),
+    [defaultHours, getAvailableHoursForDate],
+  );
 
   useEffect(() => {
     if (displayMonth === undefined || displayYear === undefined) return;
@@ -81,8 +99,8 @@ export function MultiSelectCalendar({
     [month, year, expertNorma, activities],
   );
   const selectedTotalHours = useMemo(
-    () => sortedSelectedDates.reduce((sum, date) => sum + normalizeHoursWithinCim(selectedHours[date]), 0),
-    [sortedSelectedDates, selectedHours, defaultHours, cimDailyHoursLimit],
+    () => sortedSelectedDates.reduce((sum, date) => sum + (Number(normalizeHoursForDate(date, selectedHours[date])) || 0), 0),
+    [normalizeHoursForDate, selectedHours, sortedSelectedDates],
   );
 
   const daysInMonth = useMemo(() => {
@@ -124,7 +142,7 @@ export function MultiSelectCalendar({
     const nextHours = cimDailyHoursLimit > 0
       ? Object.fromEntries(
           Object.entries(buildSelectedHoursForDates(uniqueDates, baseHours, defaultHours))
-            .map(([date, hours]) => [date, String(normalizeHoursWithinCim(hours))]),
+            .map(([date, hours]) => [date, normalizeHoursForDate(date, hours)]),
         )
       : Object.fromEntries(uniqueDates.map((date) => [date, '']));
 
@@ -134,10 +152,10 @@ export function MultiSelectCalendar({
 
   const updateSelectedHour = (date: string, value: string | number) => {
     if (!isValidPontajHours(value)) return;
-    const numericValue = normalizeHoursWithinCim(value, selectedHours[date] || defaultHours);
+    const numericValue = normalizeHoursForDate(date, value, selectedHours[date] || defaultHours);
     onSelectedHoursChange?.({
       ...selectedHours,
-      [date]: numericValue.toString(),
+      [date]: numericValue,
     });
   };
 
@@ -146,7 +164,7 @@ export function MultiSelectCalendar({
     const numericValue = normalizeHoursWithinCim(value, defaultHours);
     setDefaultHours(numericValue);
     onSelectedHoursChange?.(
-      Object.fromEntries(sortedSelectedDates.map((date) => [date, numericValue.toString()])),
+      Object.fromEntries(sortedSelectedDates.map((date) => [date, normalizeHoursForDate(date, value, numericValue)])),
     );
   };
 
@@ -260,7 +278,7 @@ export function MultiSelectCalendar({
           const hasActivities = getDateActivities(date).length > 0;
           const totalHours = getTotalHours(date);
           const isToday = formatDate(new Date()) === dateStr;
-          const selectedHour = normalizeHoursWithinCim(selectedHours[dateStr]);
+          const selectedHour = normalizeHoursForDate(dateStr, selectedHours[dateStr]);
           const projectedDailyHours = totalHours + (isSelected ? Number(selectedHour) || 0 : 0);
           const exceedsDailyLimit = isCurrentMonth
             && !isNonWorkingDay
@@ -404,7 +422,7 @@ export function MultiSelectCalendar({
             <div className="max-h-44 space-y-1 overflow-y-auto pr-1">
               {sortedSelectedDates.map((date) => {
                 const existingHours = (activityMap[date] || []).reduce((sum, activity) => sum + activity.hours, 0);
-                const selectedValue = normalizeHoursWithinCim(selectedHours[date]);
+                const selectedValue = Number(normalizeHoursForDate(date, selectedHours[date])) || 0;
                 const projectedHours = existingHours + selectedValue;
                 const isOverDailyLimit = projectedHours > cimDailyHoursLimit;
 
@@ -433,7 +451,7 @@ export function MultiSelectCalendar({
                       min={1}
                       max={cimDailyHoursLimit}
                       step={1}
-                      value={normalizeHoursWithinCim(selectedHours[date])}
+                      value={normalizeHoursForDate(date, selectedHours[date])}
                       onChange={(event) => updateSelectedHour(date, event.target.value)}
                       disabled={cimDailyHoursLimit <= 0}
                       className="h-8 w-16 rounded-md border border-input bg-background px-2 text-center text-xs"

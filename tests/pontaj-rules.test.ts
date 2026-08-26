@@ -11,6 +11,7 @@ import {
   getAvailablePontajHourOptions,
   isValidPontajHours,
   normalizeNormType,
+  normalizePontajHoursForAvailableCapacity,
   validateActivitiesBeforeCreate,
 } from '../lib/pontaj-rules.ts';
 import type { Expert } from '../lib/types.ts';
@@ -239,6 +240,12 @@ test('accepta doar ore intregi intre 1 si 8 pentru pontaj nou', () => {
 test('optiunile zilnice de pontaj raman plafonate de CIM 8h, nu de norma PEO', () => {
   assert.deepEqual(getAvailablePontajHourOptions(8), [1, 2, 3, 4, 5, 6, 7, 8]);
   assert.deepEqual(getAvailablePontajHourOptions(6), [1, 2, 3, 4, 5, 6]);
+});
+
+test('normalizeaza orele selectate la capacitatea ramasa in ziua partial pontata', () => {
+  assert.equal(normalizePontajHoursForAvailableCapacity(8, 4, 8), '4');
+  assert.equal(normalizePontajHoursForAvailableCapacity(undefined, 3, 8), '3');
+  assert.equal(normalizePontajHoursForAvailableCapacity(2, 4, 8), '2');
 });
 
 test('pastreaza orele selectate cand lista de rubrici/date se resincronizeaza', () => {

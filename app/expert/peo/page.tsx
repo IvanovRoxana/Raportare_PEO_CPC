@@ -80,6 +80,7 @@ import {
 import { getWorkingDaysListInMonth } from '@/lib/working-hours';
 import {
   getMonthlyBlockingState,
+  normalizePontajHoursForAvailableCapacity,
   normalizePontajHoursValue,
   validateActivitiesBeforeCreate,
   type ActivityDraftForValidation,
@@ -1955,14 +1956,17 @@ function ExpertDashboardContent() {
   };
 
   const getDefaultHours = () => selectedExpertCimDailyLimit > 0 ? selectedExpertCimDailyLimit.toString() : '';
-  const getDefaultHoursForDate = (date: string) => {
+  const getAvailableHoursForDate = (date: string) => {
     const editingGroupMemberIds = editingActivity
       ? new Set(getActivityGroupMembers(editingActivity, activities).map((activity) => activity.id))
       : new Set<string>();
     const existingHours = activities
       .filter((activity) => activity.date === date && !editingGroupMemberIds.has(activity.id))
       .reduce((sum, activity) => sum + (Number(activity.hours) || 0), 0);
-    const remainingDailyHours = Math.max(0, selectedExpertCimDailyLimit - existingHours);
+    return Math.max(0, selectedExpertCimDailyLimit - existingHours);
+  };
+  const getDefaultHoursForDate = (date: string) => {
+    const remainingDailyHours = getAvailableHoursForDate(date);
     const preferredHours = Math.min(Number(getDefaultHours()) || 0, remainingDailyHours);
     return preferredHours > 0 ? preferredHours.toString() : '';
   };
@@ -1973,7 +1977,11 @@ function ExpertDashboardContent() {
       uniqueDates.map((date) => [
         date,
         selectedExpertCimDailyLimit > 0
-          ? normalizePontajHoursValue(baseHours[date], getDefaultHoursForDate(date))
+          ? normalizePontajHoursForAvailableCapacity(
+              baseHours[date],
+              getAvailableHoursForDate(date),
+              getDefaultHoursForDate(date),
+            )
           : '',
       ]),
     );
