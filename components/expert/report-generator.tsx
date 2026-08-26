@@ -37,6 +37,8 @@ interface ReportGeneratorProps {
   submitMonthLabel?: string;
   submitMonthTitle?: string;
   isSubmittingMonth?: boolean;
+  canExportApprovedDocuments?: boolean;
+  approvedDocumentsBlockedReason?: string;
 }
 
 type ReportSectionKind = 'table' | 'narrative';
@@ -97,6 +99,8 @@ export function ReportGenerator({
   submitMonthLabel = 'Trimite luna catre PM',
   submitMonthTitle,
   isSubmittingMonth = false,
+  canExportApprovedDocuments = true,
+  approvedDocumentsBlockedReason = 'Exportul RA este disponibil dupa aprobarea lunii de catre PM.',
 }: ReportGeneratorProps) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
@@ -147,7 +151,9 @@ export function ReportGenerator({
   const deterministicWorkBlockSourceLabel = persistedWorkBlockCount > 0
     ? `Work block-uri persistate: ${persistedWorkBlockCount}`
     : 'Work block-uri generate din activitati (fallback)';
-  const deterministicExportButtonTitle = activities.length === 0
+  const deterministicExportButtonTitle = !canExportApprovedDocuments
+    ? approvedDocumentsBlockedReason
+    : activities.length === 0
     ? 'Nu exista activitati pentru export Anexa 10.'
     : isLoadingDeterministicWorkBlocks
       ? 'Se incarca work block-urile persistate pentru Anexa 10.'
@@ -369,6 +375,11 @@ export function ReportGenerator({
   };
 
   const exportDeterministicAnexa10Docx = async () => {
+    if (!canExportApprovedDocuments) {
+      setError(approvedDocumentsBlockedReason);
+      return;
+    }
+
     if (!deterministicAnexa10Model || !deterministicExportReadiness?.canExport || anexa10PreflightReport?.canExport === false) return;
 
     setIsExportingDeterministicDocx(true);
@@ -614,6 +625,7 @@ export function ReportGenerator({
               aria-label={deterministicExportButtonTitle}
               disabled={
                 activities.length === 0
+                || !canExportApprovedDocuments
                 || isLoadingDeterministicWorkBlocks
                 || isExportingDeterministicDocx
                 || !deterministicExportReadiness?.canExport

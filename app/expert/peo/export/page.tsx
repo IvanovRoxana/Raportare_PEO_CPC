@@ -260,6 +260,9 @@ function ExportRaContent() {
   const isApproved = currentStatus === 'approved';
   const isSent = currentStatus === 'sent';
   const isInReview = currentStatus === 'in_review';
+  const approvedExportBlockedReason = isSent || isInReview
+    ? 'Exportul RA si Pontaj PEO este disponibil dupa aprobarea lunii de catre PM.'
+    : 'Trimite luna catre PM si asteapta aprobarea pentru a exporta RA si Pontaj PEO.';
   const submitButtonIcon = isApproved
     ? <Lock className="h-4 w-4" />
     : isSent || isInReview
@@ -354,6 +357,8 @@ function ExportRaContent() {
               leaveEntries={leaveEntries.filter((leave) => leave.expertId === selectedExpertId)}
               workBlockBundles={deterministicWorkBlockBundles}
               workBlockBundlesLoading={isLoadingDeterministicWorkBlocks}
+              canExportPeoDocuments={isApproved}
+              peoExportBlockedReason={approvedExportBlockedReason}
               month={currentMonth}
               year={currentYear}
             />
@@ -422,6 +427,8 @@ function ExportRaContent() {
             submitMonthLabel={submitButtonLabel}
             submitMonthTitle={submitButtonTitle}
             isSubmittingMonth={reportStatusLoading}
+            canExportApprovedDocuments={isApproved}
+            approvedDocumentsBlockedReason={approvedExportBlockedReason}
           />
         </div>
       </DashboardShell>

@@ -44,6 +44,8 @@ interface MonthlyReportExportProps {
   leaveEntries?: LeaveEntry[];
   workBlockBundles?: ReportingWorkBlockBundle[];
   workBlockBundlesLoading?: boolean;
+  canExportPeoDocuments?: boolean;
+  peoExportBlockedReason?: string;
   month: number;
   year: number;
 }
@@ -56,6 +58,8 @@ export function MonthlyReportExport({
   leaveEntries = [],
   workBlockBundles = [],
   workBlockBundlesLoading = false,
+  canExportPeoDocuments = true,
+  peoExportBlockedReason = 'Exportul RA si Pontaj PEO este disponibil dupa aprobarea lunii de catre PM.',
   month,
   year,
 }: MonthlyReportExportProps) {
@@ -81,6 +85,11 @@ export function MonthlyReportExport({
   const isBusinessHubExpert = normalizedExpertCategory === 'bh';
   const isBusinessHubExportAvailable = isBusinessHubExpert || hasBusinessHubActivities;
   const businessHubPvRows = isBusinessHubExportAvailable ? buildBusinessHubPvRows(activities, expert.category, month, year) : [];
+  const shouldExportTimesheet = canExportPeoDocuments && includeTimesheet;
+  const shouldExportRA = canExportPeoDocuments && includeRA;
+  const hasSelectedPeoDocuments = shouldExportTimesheet || shouldExportRA;
+  const hasSelectedBusinessHubDocuments = isBusinessHubExportAvailable && (includeBusinessHubPv || includeBusinessHubAddresses);
+  const isExportDisabled = isGenerating || (!hasSelectedBusinessHubDocuments && !hasSelectedPeoDocuments);
 
   const openBusinessHubExportDialog = (mode?: 'pv' | 'addresses') => {
     setIncludeTimesheet(false);
@@ -93,6 +102,11 @@ export function MonthlyReportExport({
   };
 
   const handleExport = async () => {
+    if (!canExportPeoDocuments && (includeTimesheet || includeRA) && !hasSelectedBusinessHubDocuments) {
+      setExportError(peoExportBlockedReason);
+      return;
+    }
+
     setIsGenerating(true);
     setExportError(null);
     try {
@@ -108,11 +122,11 @@ export function MonthlyReportExport({
         }
       };
       
-      if (includeTimesheet) {
+      if (shouldExportTimesheet) {
         await runExport('Pontaj PEO', () => downloadPontajExcel('peo'));
       }
       
-      if (includeRA) {
+      if (shouldExportRA) {
         await runExport('Raport de Activitate', async () => {
           if (workBlockBundlesLoading) {
             throw new Error('Se incarca work block-urile salvate. Asteapta finalizarea incarcarii si incearca din nou.');
@@ -324,7 +338,13 @@ export function MonthlyReportExport({
         </div>
       ) : (
         <DialogTrigger asChild>
-          <Button variant="outline" size="sm" className="gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2"
+            disabled={!canExportPeoDocuments}
+            title={!canExportPeoDocuments ? peoExportBlockedReason : undefined}
+          >
             <Download className="h-4 w-4" />
             Export Raport Lunar
           </Button>
@@ -346,6 +366,12 @@ export function MonthlyReportExport({
           {/* Document selection */}
           <div className="space-y-3">
             <Label className="text-sm font-medium">Documente de generat:</Label>
+
+            {!canExportPeoDocuments && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+                {peoExportBlockedReason}
+              </div>
+            )}
 
             {isBusinessHubExportAvailable && (
               <div className="space-y-3 rounded-md border border-sky-100 bg-sky-50/60 p-3">
@@ -395,9 +421,10 @@ export function MonthlyReportExport({
               <Checkbox
                 id="timesheet"
                 checked={includeTimesheet}
+                disabled={!canExportPeoDocuments}
                 onCheckedChange={(checked) => setIncludeTimesheet(checked as boolean)}
               />
-              <label htmlFor="timesheet" className="text-sm flex items-center gap-2">
+              <label htmlFor="timesheet" className={`text-sm flex items-center gap-2 ${!canExportPeoDocuments ? 'text-muted-foreground' : ''}`}>
                 <FileSpreadsheet className="h-4 w-4 text-green-600" />
                 Pontaj PEO
               </label>
@@ -407,9 +434,10 @@ export function MonthlyReportExport({
               <Checkbox
                 id="ra"
                 checked={includeRA}
+                disabled={!canExportPeoDocuments}
                 onCheckedChange={(checked) => setIncludeRA(checked as boolean)}
               />
-              <label htmlFor="ra" className="text-sm flex items-center gap-2">
+              <label htmlFor="ra" className={`text-sm flex items-center gap-2 ${!canExportPeoDocuments ? 'text-muted-foreground' : ''}`}>
                 <FileText className="h-4 w-4 text-purple-600" />
                 Raport de Activitate (Anexa 10 .docx)
               </label>
@@ -427,7 +455,7 @@ export function MonthlyReportExport({
             <Button variant="outline" onClick={() => setIsOpen(false)}>
               Anulează
             </Button>
-            <Button onClick={handleExport} disabled={isGenerating || (!includeTimesheet && !includeRA && !(isBusinessHubExportAvailable && (includeBusinessHubPv || includeBusinessHubAddresses)))}>
+            <Button onClick={handleExport} disabled={isExportDisabled}>
               {isGenerating ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
