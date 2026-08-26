@@ -3,23 +3,15 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import {
-  ArrowRight,
   CalendarDays,
-  CircleDollarSign,
   Download,
-  Eye,
   FileSpreadsheet,
   FileText,
   Plus,
-  Users,
-  WalletCards,
 } from 'lucide-react';
 import { DashboardShell, financialNavItems } from '@/components/layout/dashboard-shell';
-import { DataTable, StatCard } from '@/components/layout/dashboard-primitives';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { StatusBadge } from '@/components/ui/status-badge';
 import {
   useActivitiesByMonth,
   useAllConcurrentProjects,
@@ -50,14 +42,6 @@ function getStoredFinancialHourlyRate(expert: { id?: string; name?: string }, mo
     return undefined;
   }
 }
-
-const transactions = [
-  ['12 mai 2026', 'Plată factură 1245 – Furnizor A', 'Servicii externe', '24.800,00 lei', 'Plătit'],
-  ['09 mai 2026', 'Rambursare cheltuieli deplasare', 'Deplasări', '1.250,00 lei', 'În curs'],
-  ['06 mai 2026', 'Achiziție echipamente IT', 'Echipamente', '18.900,00 lei', 'Validat'],
-  ['02 mai 2026', 'Servicii consultanță - aprilie', 'Servicii externe', '12.000,00 lei', 'În așteptare'],
-  ['29 apr. 2026', 'Abonament software lunar', 'Alte cheltuieli', '350,00 lei', 'Plătit'],
-] as const;
 
 export default function FinancialDashboardPage() {
   const today = new Date();
@@ -272,106 +256,7 @@ export default function FinancialDashboardPage() {
         </>
       }
     >
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard icon={WalletCards} label="Buget total" value="1.250.000,00 lei" description="Valoare totală aprobată" progress={100} tone="blue" />
-        <StatCard icon={FileSpreadsheet} label="Cheltuieli eligibile" value="842.350,45 lei" description="67,39% din buget total" progress={67} tone="success" />
-        <StatCard icon={CircleDollarSign} label="Plăți efectuate" value="612.780,30 lei" description="48,99% din buget total" progress={49} tone="success" />
-        <StatCard icon={WalletCards} label="Sold disponibil" value="407.649,55 lei" description="32,61% din buget total" progress={33} tone="success" />
-      </section>
-
-      <section className="grid gap-4 lg:grid-cols-3">
-        <Card className="rounded-[1.5rem]">
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <CalendarDays className="h-5 w-5 text-primary" />
-              Pontaje
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-wrap items-center justify-between gap-4">
-            <p className="max-w-xl text-sm text-muted-foreground">
-              Centralizatorul cu cele 12 coloane din Excel, buline de conflict la hover si export TEST.
-            </p>
-            <Button asChild>
-              <Link href="/financiar/pontaje">
-                Deschide Pontaje
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-[1.5rem]">
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <FileText className="h-5 w-5 text-primary" />
-              Concedii
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-wrap items-center justify-between gap-4">
-            <p className="max-w-xl text-sm text-muted-foreground">
-              CO automat, CO manual cu justificare, validare/respingere si norme PEO/CIM versionate.
-            </p>
-            <Button asChild>
-              <Link href="/financiar/concedii">
-                Deschide Concedii
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-[1.5rem]">
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <Users className="h-5 w-5 text-primary" />
-              Experti si norme
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-wrap items-center justify-between gap-4">
-            <p className="max-w-xl text-sm text-muted-foreground">
-              Panou cu normele PEO/CIM pe expert, proiecte active si formula CPC calculata.
-            </p>
-            <Button asChild>
-              <Link href="/financiar/concedii#experti-norme">
-                Deschide panoul
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
-      </section>
-
-      <section id="tranzactii" className="scroll-mt-24">
-        <DataTable
-          columns={['Data', 'Descriere', 'Categorie', 'Valoare', 'Status', 'Acțiuni']}
-          rows={transactions.map(([date, description, category, value, status]) => [
-            date,
-            description,
-            category,
-            <span key={`${description}-value`} className="font-semibold text-slate-900">{value}</span>,
-            <StatusBadge
-              key={`${description}-status`}
-              status={status === 'În așteptare' ? 'cu_observatii' : status === 'În curs' ? 'in_lucru' : 'conform'}
-            >
-              {status}
-            </StatusBadge>,
-            <div key={`${description}-actions`} className="flex gap-2">
-              <Button variant="outline" size="icon-sm" aria-label={`Vezi ${description}`}>
-                <Eye className="h-4 w-4" />
-              </Button>
-              <Button variant="outline" size="icon-sm" aria-label={`Descarcă ${description}`}>
-                <Download className="h-4 w-4" />
-              </Button>
-            </div>,
-          ])}
-          footer={
-            <Link href="#tranzactii" className="inline-flex items-center gap-2 text-sm font-semibold text-primary">
-              Vezi toate tranzacțiile
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-          }
-        />
-      </section>
+      <></>
     </DashboardShell>
   );
 }
