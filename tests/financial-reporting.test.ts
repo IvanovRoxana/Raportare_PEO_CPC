@@ -224,7 +224,7 @@ test('orele CPC lucrate se calculeaza din norma CIM minus PEO, GOODWORKS si CO m
   assert.equal(summary.rows[0].concordiaWorked, 156);
   assert.equal(summary.rows[0].goodworksWorked, 4);
   assert.equal(summary.rows[0].totalWorked, 160);
-  assert.equal(summary.rows[0].basePosition, 'Expert resurse umane');
+  assert.equal(summary.rows[0].basePosition, '-');
   assert.equal(summary.rows[0].peoFunction, expert.positionInProject);
   assert.equal(summary.rows[0].goodworksFunction, 'Expert ocupare');
   assert.equal(summary.rows[0].totalLeave, 8);
@@ -265,6 +265,34 @@ test('centralizatorul prefera functiile corectate in aplicatie fata de Excelul d
   assert.equal(summary.rows[0].basePosition, 'Pozitie aplicatie Concordia');
   assert.equal(summary.rows[0].peoFunction, 'Functie aplicatie PEO');
   assert.equal(summary.rows[0].goodworksFunction, 'Functie aplicatie GOODWORKS4ALL');
+});
+
+test('pozitia de baza Concordia nu se completeaza din campurile administrative', () => {
+  const summary = buildFinancialReportingSummary({
+    experts: [{ ...expert, basePositionConcordia: undefined, jobDescriptionText: 'Pozitie din Admin' }],
+    activities: [],
+    concurrentProjects: [
+      { id: 'c1', expertId: expert.id, projectName: 'Concordia', expertProjectRole: 'Rol proiect Concordia', dailyHours: 8, startDate: '2026-01-01', isActive: true },
+    ],
+    concurrentEntries: [],
+    month: 5,
+    year: 2026,
+    referencePeople: [{
+      name: 'Roxana Ivanov',
+      basePosition: '-',
+      peoPosition: expert.role,
+      peoNorm: '8 h/zi',
+      cimNorm: '8 h/zi',
+      concordiaWorked: 0,
+      concordiaLeave: 0,
+      peoWorked: 0,
+      peoLeave: 0,
+      goodworksPosition: '-',
+      goodworksWorked: 0,
+    }],
+  });
+
+  assert.equal(summary.rows[0].basePosition, '-');
 });
 
 test('centralizeaza in dashboard financiar orele pontate de expert in raportare PEO', () => {

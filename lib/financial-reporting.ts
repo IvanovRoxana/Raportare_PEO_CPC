@@ -253,9 +253,6 @@ export function buildFinancialReportingSummary(input: {
     const goodworksProject = expertProjects.find((project) => projectBucket(project) === 'goodworks');
     const basePosition = referencePosition(expert?.basePositionConcordia)
       ?? referencePosition(reference?.basePosition)
-      ?? concordiaProject?.expertProjectRole
-      ?? concordiaProject?.expertFunction
-      ?? expert?.jobDescriptionText
       ?? '-';
     const leaves = expert ? leaveByExpert.get(expert.id) ?? [] : [];
     const peoFunction = referencePosition(expert?.positionInProject)
