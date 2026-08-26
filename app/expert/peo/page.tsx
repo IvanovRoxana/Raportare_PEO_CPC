@@ -204,6 +204,14 @@ function getActivityDisplayTitle(activity: Activity) {
   return activity.title || activity.activityType || 'Activitate fara titlu';
 }
 
+function needsAiReadinessReview(deliverable: Deliverable) {
+  const eligibilityStatus = deliverable.eligibilityCheck?.status;
+  if (eligibilityStatus === 'eligibil' || eligibilityStatus === 'eligibil_cu_observatii') return false;
+  if (eligibilityStatus === 'neeligibil' && !deliverable.eligibilityCheck?.pmUnlockApproved) return true;
+  if (eligibilityStatus === 'neconcludent') return true;
+  return deliverable.aiStatus === 'review' || deliverable.aiStatus === 'ineligible';
+}
+
 function getDeliverableDisplayName(deliverable: Deliverable) {
   return deliverable.declaredTitle
     || deliverable.fileName
@@ -1989,9 +1997,7 @@ function ExpertDashboardContent() {
     const unconfirmedTitles = deliverableRefs.filter(({ deliverable }) =>
       needsTitleConfirmation(deliverable) && deliverable.titleConfirmed !== true,
     );
-    const aiReviewDeliverables = deliverableRefs.filter(({ deliverable }) =>
-      deliverable.aiStatus === 'review' || deliverable.aiStatus === 'ineligible',
-    );
+    const aiReviewDeliverables = deliverableRefs.filter(({ deliverable }) => needsAiReadinessReview(deliverable));
     const gdprActivitiesWithIssues = selectedExpert.category === 'gdpr'
       ? activities.map((activity) => {
           if (isActivityException(activity)) return false;

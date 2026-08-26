@@ -31,6 +31,13 @@ type EligibilitySuggestedSettingsChange = 'activity' | 'deliverableType';
 
 const ELIGIBILITY_CHECK_WAITING_MESSAGE = 'Verificarea eligibilitatii dureaza putin, te rugam sa astepti.';
 
+function getAiStatusForEligibilityResult(status: string | undefined) {
+  if (status === 'eligibil' || status === 'eligibil_cu_observatii') return 'eligible';
+  if (status === 'neeligibil') return 'ineligible';
+  if (status === 'neconcludent') return 'review';
+  return undefined;
+}
+
 function HourglassIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>
@@ -528,6 +535,7 @@ export function DeliverableItem({
     });
     onUpdate({
       eligibilityCheck: pendingEligibilityCheck,
+      aiStatus: 'review',
       aiCheck: {
         eligible: null,
         reason: 'Verificarea eligibilitatii a fost pornita.',
@@ -601,6 +609,7 @@ export function DeliverableItem({
           modelAuditId: result.modelAuditId,
           analyzedDeliverables: result.analyzedDeliverables,
         }),
+        aiStatus: getAiStatusForEligibilityResult(result.status),
         aiCheck: {
           eligible: result.status === 'eligibil' || result.status === 'eligibil_cu_observatii'
             ? true
@@ -628,6 +637,7 @@ export function DeliverableItem({
           checkedActivityName: activityTitle,
           checkedDeliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
         }),
+        aiStatus: 'review',
       });
     } finally {
       setAiLoading(false);
@@ -1399,6 +1409,7 @@ export function DeliverableEligibilityControl({
     });
     onUpdate({
       eligibilityCheck: pendingEligibilityCheck,
+      aiStatus: 'review',
       aiCheck: {
         eligible: null,
         reason: 'Verificarea eligibilitatii a fost pornita.',
@@ -1474,6 +1485,7 @@ export function DeliverableEligibilityControl({
           modelAuditId: result.modelAuditId,
           analyzedDeliverables: result.analyzedDeliverables,
         }),
+        aiStatus: getAiStatusForEligibilityResult(result.status),
         aiCheck: {
           eligible: result.status === 'eligibil' || result.status === 'eligibil_cu_observatii'
             ? true
@@ -1501,6 +1513,7 @@ export function DeliverableEligibilityControl({
           checkedActivityName: activityTitle,
           checkedDeliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
         }),
+        aiStatus: 'review',
       });
     } finally {
       setAiLoading(false);

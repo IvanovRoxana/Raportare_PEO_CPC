@@ -38,6 +38,7 @@ const deliverableOptions = [
 ];
 const deliverableItemSource = readFileSync(new URL('../components/expert/deliverable-item.tsx', import.meta.url), 'utf8');
 const activityFormSource = readFileSync(new URL('../components/expert/activity-form.tsx', import.meta.url), 'utf8');
+const peoPageSource = readFileSync(new URL('../app/expert/peo/page.tsx', import.meta.url), 'utf8');
 const eligibilityRouteSource = readFileSync(new URL('../app/api/ai/check-deliverable-eligibility/route.ts', import.meta.url), 'utf8');
 const deliverableTypesSource = readFileSync(new URL('../lib/deliverable-types.ts', import.meta.url), 'utf8');
 const amplifyDataResourceSource = readFileSync(new URL('../amplify/data/resource.ts', import.meta.url), 'utf8');
@@ -474,6 +475,15 @@ test('rezultatul eligibilitatii pastreaza metadatele livrabilelor analizate', ()
   assert.match(eligibilityRouteSource, /isPrimary: deliverable\.isPrimary/);
   assert.match(deliverableItemSource, /analyzedDeliverables: result\.analyzedDeliverables/);
   assert.match(deliverableTypesSource, /analyzedDeliverables\?: Array<\{/);
+});
+
+test('rezultatul eligibilitatii sincronizeaza statusul AI folosit de preflight', () => {
+  assert.match(deliverableItemSource, /function getAiStatusForEligibilityResult/);
+  assert.match(deliverableItemSource, /aiStatus: getAiStatusForEligibilityResult\(result\.status\)/);
+  assert.match(deliverableItemSource, /aiStatus: 'review'/);
+  assert.match(peoPageSource, /function needsAiReadinessReview\(deliverable: Deliverable\)/);
+  assert.match(peoPageSource, /eligibilityStatus === 'eligibil' \|\| eligibilityStatus === 'eligibil_cu_observatii'/);
+  assert.match(peoPageSource, /deliverableRefs\.filter\(\(\{ deliverable \}\) => needsAiReadinessReview\(deliverable\)\)/);
 });
 
 test('cardul de eligibilitate afiseaza livrabilele analizate', () => {
