@@ -106,13 +106,13 @@ function FieldCompare({ label, check }: { label: string; check: FinancialHrField
   );
 }
 
-function contractDefaults(row?: FinancialHrValidationRow, expert?: Expert, contract?: ExpertNormContract): ContractForm {
+function contractDefaults(row?: FinancialHrValidationRow, expert?: Expert, contract?: ExpertNormContract, validFrom = '2026-06-01'): ContractForm {
   const peoReference = parseFinancialHrNorm(row?.peoNorm.excelValue) ?? null;
   const cimReference = parseFinancialHrNorm(row?.cimNorm.excelValue);
   const fallbackDaily = expert?.dailyHours ?? expert?.oreZi ?? expert?.norma ?? 8;
   return {
     expertId: expert?.id ?? '',
-    validFrom: '2026-06-01',
+    validFrom,
     peoNormUnit: contract?.peoNormUnit ?? peoReference?.unit ?? 'HOURS_PER_DAY',
     peoNormValue: String(contract?.peoNormValue ?? peoReference?.value ?? fallbackDaily),
     peoDailyCap: String(contract?.peoDailyCap ?? peoReference?.dailyCap ?? fallbackDaily),
@@ -190,8 +190,27 @@ export function FinancialEmployeesDashboard() {
       goodworksPosition: row.expert?.goodworksPosition ?? (row.goodworksFunction.excelValue === '-' ? '' : row.goodworksFunction.excelValue),
       isActive: row.expert?.isActive ?? true,
     });
-    setContractForm(contractDefaults(row, row.expert, activeContract));
+    setContractForm(contractDefaults(row, row.expert, activeContract, isoDate(year, month, 1)));
     setMessage('');
+  };
+
+  const addEmployee = () => {
+    setSelectedRowId('new');
+    setEmployeeForm({
+      expertId: '',
+      financialPersonKey: '',
+      financialPersonName: '',
+      name: '',
+      basePositionConcordia: '',
+      positionInProject: '',
+      goodworksPosition: '',
+      isActive: true,
+    });
+    setContractForm(contractDefaults(undefined, undefined, undefined, isoDate(year, month, 1)));
+    setMessage('');
+    window.setTimeout(() => {
+      document.getElementById('employee-editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 50);
   };
 
   useEffect(() => {
@@ -225,19 +244,21 @@ export function FinancialEmployeesDashboard() {
       } else {
         const created = await createExpert(fields);
         expertId = created.id;
-        const existingLink = links.find((link) => link.financialPersonKey === employeeForm.financialPersonKey);
-        const linkPayload = {
-          financialPersonName: employeeForm.financialPersonName,
-          financialPersonKey: employeeForm.financialPersonKey,
-          expertId,
-          status: 'confirmed' as const,
-          confidence: 1,
-          source: 'financial' as const,
-          createdBy: 'financial-session',
-          updatedBy: 'financial-session',
-        };
-        if (existingLink) await updateLink(existingLink.id, linkPayload);
-        else await createLink(linkPayload);
+        if (employeeForm.financialPersonKey) {
+          const existingLink = links.find((link) => link.financialPersonKey === employeeForm.financialPersonKey);
+          const linkPayload = {
+            financialPersonName: employeeForm.financialPersonName,
+            financialPersonKey: employeeForm.financialPersonKey,
+            expertId,
+            status: 'confirmed' as const,
+            confidence: 1,
+            source: 'financial' as const,
+            createdBy: 'financial-session',
+            updatedBy: 'financial-session',
+          };
+          if (existingLink) await updateLink(existingLink.id, linkPayload);
+          else await createLink(linkPayload);
+        }
         setEmployeeForm((current) => current ? { ...current, expertId } : current);
         setContractForm((current) => current ? { ...current, expertId } : current);
       }
@@ -311,7 +332,17 @@ export function FinancialEmployeesDashboard() {
       title="Salariati si validare HR"
       description="Verificare salariați fata de tabelul Excel trimis catre HR. Aplicatia ramane sursa pentru export; Excelul este reperul de control."
       reportingMonth={`${MONTHS[month]} ${year}`}
-      actions={<Button asChild variant="outline"><Link href="/financiar/pontaje">Pontaje</Link></Button>}
+      actions={(
+        <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+          <Button onClick={addEmployee}>
+            <Plus className="mr-2 h-4 w-4" />
+            Adauga salariat
+          </Button>
+          <Button asChild variant="outline">
+            <Link href="/financiar/pontaje">Pontaje</Link>
+          </Button>
+        </div>
+      )}
     >
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <Card><CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-sm"><Users className="h-4 w-4" />Total</CardTitle></CardHeader><CardContent className="text-2xl font-semibold">{summary.total}</CardContent></Card>
@@ -383,7 +414,7 @@ export function FinancialEmployeesDashboard() {
 
       {employeeForm && contractForm ? (
         <div className="grid gap-4 xl:grid-cols-2">
-          <Card>
+          <Card id="employee-editor">
             <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-sm"><Users className="h-4 w-4" />Profil salariat</CardTitle></CardHeader>
             <CardContent className="grid gap-3 md:grid-cols-2">
               <Input value={employeeForm.name} onChange={(event) => setEmployeeForm((current) => current ? { ...current, name: event.target.value } : current)} placeholder="Nume salariat" />

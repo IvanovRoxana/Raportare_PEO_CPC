@@ -114,3 +114,10 @@ test('Concedii ramane separat de pagina Salariati', () => {
   assert.match(nav, /href: '\/financiar\/salariati'/);
   assert.match(nav, /href: '\/financiar\/concedii'/);
 });
+
+test('pagina Salariati expune actiunea de adaugare manuala sus in header', () => {
+  const source = readFileSync('components/financial/financial-employees-dashboard.tsx', 'utf8');
+  assert.match(source, /Adauga salariat/);
+  assert.match(source, /const addEmployee = \(\) =>/);
+  assert.match(source, /id="employee-editor"/);
+});
