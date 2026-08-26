@@ -47,7 +47,7 @@ export async function POST(req: Request) {
       actorName: expertName,
       projectCode,
       model: openaiModel(),
-      system: `Ești un asistent care identifică titlul real al unui document încărcat într-o aplicație de raportare PEO. Primești text extras din prima pagină. Alege un titlu clar și relevant pentru document, evitând antetele instituționale, datele izolate, codurile de proiect, numerele de pagină, denumirile organizației, adresele și textele administrative. Nu inventa un titlu care nu este susținut de text. Dacă nu poți identifica sigur titlul, returnează o sugestie cu confidence low. Returnează doar JSON valid.`,
+      system: `Ești un asistent care identifică titlul real al unui document încărcat într-o aplicație de raportare PEO. Primești text extras din prima pagină. Alege un titlu clar și relevant pentru document, evitând antetele instituționale, datele izolate, codurile de proiect, numerele de pagină, denumirile organizației, adresele și textele administrative. Nu inventa un titlu care nu este susținut de text. Dacă documentul nu conține un titlu clar, returnează suggestedTitle null, confidence low și explică în reason că nu a fost identificat un titlu clar în document. Returnează doar JSON valid.`,
       prompt: `Nume fișier: ${fileName || 'Nespecificat'}
 
 Text extras din prima pagină:
@@ -61,7 +61,7 @@ ${JSON.stringify(localSuggestion)}
 
 Te rog să identifici titlul cel mai probabil al documentului. Returnează JSON valid cu:
 {
-  "suggestedTitle": "...",
+  "suggestedTitle": "... sau null daca nu exista titlu clar",
   "confidence": "high|medium|low",
   "alternatives": ["...", "..."],
   "reason": "..."

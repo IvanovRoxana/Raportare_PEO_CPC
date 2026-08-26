@@ -3,6 +3,8 @@ import test from 'node:test';
 import {
   applyAutomaticTitleSuggestion,
   detectSuggestedTitleFromText,
+  firstLinesLookAdministrative,
+  shouldUseAiTitleSuggestion,
   titleExistsInFirstPage,
   validateDeclaredTitleOnFirstPage,
 } from '../lib/title-suggestion.ts';
@@ -101,6 +103,43 @@ test('ignores very short lines, page numbers, dates and generic labels', () => {
   ].join('\n');
 
   assert.equal(detectSuggestedTitleFromText(firstPage), 'Plan de interventie pentru dialog social');
+});
+
+test('routes uncertain or administrative title suggestions to AI', () => {
+  const momText = [
+    'Data: 12.03.2026',
+    'Locatie: Microsoft Teams',
+    'Participanti: experti si membri GT',
+    'Minuta intalnirii de lucru privind activitatea A1',
+  ].join('\n');
+
+  assert.equal(firstLinesLookAdministrative(momText), true);
+  assert.equal(shouldUseAiTitleSuggestion({
+    text: momText,
+    suggestion: {
+      suggestedTitle: 'Locatie: Microsoft Teams',
+      confidence: 'medium',
+      alternatives: [],
+    },
+  }), true);
+});
+
+test('keeps high-confidence non-administrative suggestions local', () => {
+  const text = [
+    'Metodologie pentru recrutarea grupului tinta',
+    'Versiunea finala',
+    'Capitolul 1',
+  ].join('\n');
+
+  assert.equal(firstLinesLookAdministrative(text), false);
+  assert.equal(shouldUseAiTitleSuggestion({
+    text,
+    suggestion: {
+      suggestedTitle: 'Metodologie pentru recrutarea grupului tinta',
+      confidence: 'high',
+      alternatives: [],
+    },
+  }), false);
 });
 
 test('keeps source admin_override matched for administrator exception', () => {

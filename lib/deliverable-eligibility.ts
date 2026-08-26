@@ -66,6 +66,12 @@ export const deliverableEligibilityDocumentSchema = z.object({
   workBlockId: z.string().optional(),
   isPrimary: z.boolean().optional(),
   documentTitle: z.string().optional(),
+  declaredTitle: z.string().optional(),
+  suggestedTitle: z.string().optional(),
+  titleSource: z.string().optional(),
+  titleSuggestionConfidence: z.string().optional(),
+  titleCheckStatus: z.string().optional(),
+  titleCheckMessage: z.string().optional(),
   fileName: z.string().optional(),
   extractedText: z.string().optional(),
   deliverableType: z.string().optional(),
@@ -91,6 +97,10 @@ type NormalizedEligibilitySuggestedSettings = {
 type NormalizedEligibilityAnalyzedDeliverable = {
   id?: string;
   documentTitle?: string;
+  declaredTitle?: string;
+  suggestedTitle?: string;
+  titleSource?: string;
+  titleSuggestionConfidence?: string;
   fileName?: string;
   deliverableType?: string;
   isPrimary?: boolean;
@@ -107,6 +117,10 @@ function analyzedDeliverablesArray(value: unknown): NormalizedEligibilityAnalyze
     .map((item) => ({
       ...(typeof item.id === 'string' && item.id ? { id: item.id } : {}),
       ...(typeof item.documentTitle === 'string' && item.documentTitle ? { documentTitle: item.documentTitle } : {}),
+      ...(typeof item.declaredTitle === 'string' && item.declaredTitle ? { declaredTitle: item.declaredTitle } : {}),
+      ...(typeof item.suggestedTitle === 'string' && item.suggestedTitle ? { suggestedTitle: item.suggestedTitle } : {}),
+      ...(typeof item.titleSource === 'string' && item.titleSource ? { titleSource: item.titleSource } : {}),
+      ...(typeof item.titleSuggestionConfidence === 'string' && item.titleSuggestionConfidence ? { titleSuggestionConfidence: item.titleSuggestionConfidence } : {}),
       ...(typeof item.fileName === 'string' && item.fileName ? { fileName: item.fileName } : {}),
       ...(typeof item.deliverableType === 'string' && item.deliverableType ? { deliverableType: item.deliverableType } : {}),
       ...(typeof item.isPrimary === 'boolean' ? { isPrimary: item.isPrimary } : {}),
@@ -192,6 +206,11 @@ export type EligibilitySemanticAudit = {
   documentsRead: Array<{
     id?: string;
     documentTitle?: string;
+    declaredTitle?: string;
+    suggestedTitle?: string;
+    titleSource?: string;
+    titleSuggestionConfidence?: string;
+    titleCheckStatus?: string;
     fileName?: string;
     deliverableType?: string;
     isPrimary?: boolean;
@@ -449,6 +468,12 @@ export function normalizeDeliverableEligibilityDocuments(input: {
     ? parsed.data
     : [{
         documentTitle: String(input.documentTitle || ''),
+        declaredTitle: String(input.documentTitle || ''),
+        suggestedTitle: '',
+        titleSource: '',
+        titleSuggestionConfidence: '',
+        titleCheckStatus: '',
+        titleCheckMessage: '',
         fileName: String(input.fileName || ''),
         extractedText: String(input.extractedText || ''),
         deliverableType: String(input.deliverableType || ''),
@@ -465,6 +490,12 @@ export function normalizeDeliverableEligibilityDocuments(input: {
     .map((deliverable) => ({
       ...deliverable,
       documentTitle: String(deliverable.documentTitle || '').trim(),
+      declaredTitle: String(deliverable.declaredTitle || '').trim(),
+      suggestedTitle: String(deliverable.suggestedTitle || '').trim(),
+      titleSource: String(deliverable.titleSource || '').trim(),
+      titleSuggestionConfidence: String(deliverable.titleSuggestionConfidence || '').trim(),
+      titleCheckStatus: String(deliverable.titleCheckStatus || '').trim(),
+      titleCheckMessage: String(deliverable.titleCheckMessage || '').trim(),
       fileName: String(deliverable.fileName || '').trim(),
       extractedText: String(deliverable.extractedText || '').slice(0, 12000),
       deliverableType: String(deliverable.deliverableType || '').trim(),
@@ -562,6 +593,8 @@ export function buildDeliverableEligibilitySemanticAudit(input: {
   const documents = input.documents;
   const combinedText = documents.map((document) => [
     document.documentTitle,
+    document.declaredTitle,
+    document.suggestedTitle,
     document.fileName,
     document.deliverableType,
     document.extractedText,
@@ -707,6 +740,11 @@ export function buildDeliverableEligibilitySemanticAudit(input: {
     documentsRead: documents.map((document) => ({
       id: document.id,
       documentTitle: document.documentTitle,
+      declaredTitle: document.declaredTitle,
+      suggestedTitle: document.suggestedTitle,
+      titleSource: document.titleSource,
+      titleSuggestionConfidence: document.titleSuggestionConfidence,
+      titleCheckStatus: document.titleCheckStatus,
       fileName: document.fileName,
       deliverableType: document.deliverableType,
       isPrimary: document.isPrimary,

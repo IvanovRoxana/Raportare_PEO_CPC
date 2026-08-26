@@ -55,7 +55,7 @@ import { filterActivityCatalogForFormTab, getActiveGdprActivityCatalog, isActivi
 import { buildDocumentS3Key, findDuplicateCandidates, getDocumentAuditTitle, hashFirstPageText, normalizeDocumentTextForFingerprint, sha256Hex } from '@/lib/document-sharing';
 import { getSecureDocumentUrl } from '@/lib/document-retrieval';
 import { extractDocxFirstPageText, extractDocxTextWithSource, extractHtmlTextWithSource, extractImageTextWithSource, extractPdfFirstPageTextWithSource, extractPdfTextWithSource, extractXlsxTextWithSource, isImageFile } from '@/lib/document-utils';
-import { applyAutomaticTitleSuggestion, formatTitleFromFilename, suggestTitleFromFirstPage, validateDeclaredTitleOnFirstPage } from '@/lib/title-suggestion';
+import { applyAutomaticTitleSuggestion, formatTitleFromFilename, shouldUseAiTitleSuggestion, suggestTitleFromFirstPage, validateDeclaredTitleOnFirstPage } from '@/lib/title-suggestion';
 import {
   areActivitiesCompatibleForDeliverableGroup,
   findActivityOwningDeliverableSignature,
@@ -421,8 +421,54 @@ async function extractDeliverableTextForActivityAutofill(deliverable: Deliverabl
     textExtractionSource = htmlResult.source;
   }
 
-  titleSuggestion = suggestTitleFromFirstPage(firstPageText || docText);
-  docTitle = titleSuggestion.suggestedTitle || formatTitleFromFilename(fileName) || null;
+  const titleText = firstPageText || docText;
+  titleSuggestion = suggestTitleFromFirstPage(titleText);
+  docTitle = titleSuggestion.suggestedTitle;
+  if (shouldUseAiTitleSuggestion({ text: titleText, suggestion: titleSuggestion })) {
+    try {
+      const response = await fetch('/api/ai/suggest-document-title', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fileName,
+          firstPageText: titleText,
+          selectedDeliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
+        }),
+      });
+      if (response.ok) {
+        const aiSuggestion = await response.json();
+        titleSuggestion = {
+          suggestedTitle: typeof aiSuggestion.suggestedTitle === 'string' && aiSuggestion.suggestedTitle.trim()
+            ? aiSuggestion.suggestedTitle.trim()
+            : null,
+          confidence: ['high', 'medium', 'low'].includes(aiSuggestion.confidence)
+            ? aiSuggestion.confidence
+            : titleSuggestion.confidence,
+          alternatives: Array.isArray(aiSuggestion.alternatives)
+            ? aiSuggestion.alternatives.filter((item: unknown): item is string => typeof item === 'string')
+            : titleSuggestion.alternatives,
+          reason: typeof aiSuggestion.reason === 'string' && aiSuggestion.reason.trim()
+            ? aiSuggestion.reason.trim()
+            : titleSuggestion.reason,
+        };
+        docTitle = titleSuggestion.suggestedTitle;
+      }
+    } catch (error) {
+      console.warn('AI title suggestion unavailable:', error);
+    }
+  }
+  if (!docTitle) {
+    const hasExtractedText = Boolean(titleText && titleText.trim());
+    docTitle = hasExtractedText ? null : formatTitleFromFilename(fileName) || null;
+    titleSuggestion = {
+      suggestedTitle: docTitle,
+      confidence: 'low',
+      alternatives: titleSuggestion.alternatives,
+      reason: hasExtractedText
+        ? 'Nu a fost identificat un titlu clar sustinut de textul extras din document.'
+        : 'Titlu propus din numele fisierului; textul extras nu a oferit un titlu clar.',
+    };
+  }
   const automaticTitle = applyAutomaticTitleSuggestion({
     currentDeclaredTitle: deliverable.declaredTitle,
     suggestedTitle: docTitle,

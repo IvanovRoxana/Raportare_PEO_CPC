@@ -10,7 +10,7 @@ import { ALL_DELIVERABLE_TYPES, DOCUMENT_STADIU_OPTIONS, type DeliverableSlot } 
 import { extractDocxFirstPageText, extractDocxTextWithSource, extractHtmlTextWithSource, extractImageTextWithSource, extractPdfFirstPageTextWithSource, extractPdfTextWithSource, extractXlsxTextWithSource, isImageFile } from '@/lib/document-utils';
 import { DELIVERABLE_ELIGIBILITY_UI_MESSAGE, isDeliverableEligibilityCheckEnabledClient } from '@/lib/feature-flags';
 import { hasSufficientDeliverableEvidenceForEligibility } from '@/lib/deliverable-eligibility';
-import { applyAutomaticTitleSuggestion, formatTitleFromFilename, suggestTitleFromFirstPage, validateDeclaredTitleOnFirstPage } from '@/lib/title-suggestion';
+import { applyAutomaticTitleSuggestion, formatTitleFromFilename, shouldUseAiTitleSuggestion, suggestTitleFromFirstPage, validateDeclaredTitleOnFirstPage } from '@/lib/title-suggestion';
 import { getDocumentAuditTitle, hashFirstPageText, normalizeDocumentTextForFingerprint, sha256Hex, type DuplicateIssueType } from '@/lib/document-sharing';
 import type { ActivityCatalog } from '@/lib/types';
 
@@ -79,6 +79,12 @@ function buildEligibilityDocumentPayload(deliverable: DeliverableSlot, activityG
       fileName: deliverable.filename || deliverable.name,
       originalFileName: deliverable.filename || deliverable.name,
     }),
+    declaredTitle: deliverable.declaredTitle,
+    suggestedTitle: deliverable.suggestedTitle,
+    titleSource: deliverable.titleSource,
+    titleSuggestionConfidence: deliverable.titleSuggestionConfidence,
+    titleCheckStatus: deliverable.titleCheckStatus,
+    titleCheckMessage: deliverable.titleCheckMessage,
     fileName: deliverable.filename || deliverable.name,
     extractedText: (deliverable.docText || deliverable.firstPageText || '').slice(0, 12000),
     deliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
@@ -331,13 +337,54 @@ export function DeliverableItem({
         docTitle = titleSuggestion.suggestedTitle;
       }
 
+      const titleText = firstPageText || docText;
+      if (shouldUseAiTitleSuggestion({ text: titleText, suggestion: titleSuggestion })) {
+        try {
+          const response = await fetch('/api/ai/suggest-document-title', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              fileName: file.name,
+              firstPageText: titleText,
+              selectedActivityId: selectedActivityId || subActivity,
+              selectedDeliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
+              projectCode,
+              expertName,
+            }),
+          });
+          if (response.ok) {
+            const aiSuggestion = await response.json();
+            titleSuggestion = {
+              suggestedTitle: typeof aiSuggestion.suggestedTitle === 'string' && aiSuggestion.suggestedTitle.trim()
+                ? aiSuggestion.suggestedTitle.trim()
+                : null,
+              confidence: ['high', 'medium', 'low'].includes(aiSuggestion.confidence)
+                ? aiSuggestion.confidence
+                : titleSuggestion.confidence,
+              alternatives: Array.isArray(aiSuggestion.alternatives)
+                ? aiSuggestion.alternatives.filter((item: unknown): item is string => typeof item === 'string')
+                : titleSuggestion.alternatives,
+              reason: typeof aiSuggestion.reason === 'string' && aiSuggestion.reason.trim()
+                ? aiSuggestion.reason.trim()
+                : titleSuggestion.reason,
+            };
+            docTitle = titleSuggestion.suggestedTitle;
+          }
+        } catch (error) {
+          console.warn('AI title suggestion unavailable:', error);
+        }
+      }
+
       if (!docTitle) {
-        docTitle = formatTitleFromFilename(file.name) || null;
+        const hasExtractedText = Boolean(titleText && titleText.trim());
+        docTitle = hasExtractedText ? null : formatTitleFromFilename(file.name) || null;
         titleSuggestion = {
           suggestedTitle: docTitle,
           confidence: 'low',
           alternatives: titleSuggestion.alternatives,
-          reason: titleSuggestion.reason || 'Titlu propus din numele fisierului; textul extras nu a oferit un titlu clar.',
+          reason: hasExtractedText
+            ? 'Nu a fost identificat un titlu clar sustinut de textul extras din document.'
+            : 'Titlu propus din numele fisierului; textul extras nu a oferit un titlu clar.',
         };
       }
 

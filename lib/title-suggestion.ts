@@ -95,6 +95,24 @@ const ADMINISTRATIVE_TERMS = [
   'email',
 ];
 
+const ADMINISTRATIVE_FIRST_LINE_PATTERNS = [
+  /^data\b/i,
+  /^dat(a|ă)\s*[:.-]/i,
+  /^loca(t|ț)ie\b/i,
+  /^locul\b/i,
+  /^participant/i,
+  /^semn(a|ă)turi?/i,
+  /^dovad(a|ă)\b/i,
+  /^captur(a|ă)\b/i,
+  /^screenshot\b/i,
+  /^teams\b/i,
+  /^zoom\b/i,
+  /^link\b/i,
+  /^agenda\b/i,
+  /^prezen(t|ț)(a|ă)\b/i,
+  /^tabel\b/i,
+];
+
 function normalizeSpaces(value: string) {
   return value.replace(/\s+/g, ' ').trim();
 }
@@ -123,6 +141,13 @@ function wordCount(line: string) {
 function hasRelevantTitleTerm(line: string) {
   const normalized = line.toLowerCase();
   return RELEVANT_TITLE_TERMS.some((term) => normalized.includes(term));
+}
+
+function looksAdministrative(line: string) {
+  const normalized = normalizeSpaces(line);
+  const lower = normalized.toLowerCase();
+  return ADMINISTRATIVE_FIRST_LINE_PATTERNS.some((pattern) => pattern.test(normalized))
+    || (ADMINISTRATIVE_TERMS.some((term) => lower.includes(term)) && !hasRelevantTitleTerm(normalized));
 }
 
 function isGenericStandalone(line: string) {
@@ -253,6 +278,22 @@ export function suggestTitleFromFirstPage(text?: string | null): TitleSuggestion
       ? `Candidat selectat din primele linii ale primei pagini (scor ${bestScore}).`
       : 'Nu a fost identificat un candidat relevant pentru titlu.',
   };
+}
+
+export function firstLinesLookAdministrative(text?: string | null) {
+  const lines = splitRelevantLines(text).slice(0, 8);
+  if (lines.length === 0) return false;
+  const administrativeLines = lines.filter((line) => looksAdministrative(line)).length;
+  return administrativeLines >= 2 || looksAdministrative(lines[0]);
+}
+
+export function shouldUseAiTitleSuggestion(args: {
+  text?: string | null;
+  suggestion?: TitleSuggestionResult | null;
+}) {
+  const suggestion = args.suggestion || suggestTitleFromFirstPage(args.text);
+  if (!args.text || String(args.text).trim().length < 20) return false;
+  return suggestion.confidence !== 'high' || firstLinesLookAdministrative(args.text);
 }
 
 export function detectSuggestedTitleFromText(text?: string | null) {
