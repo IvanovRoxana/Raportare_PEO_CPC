@@ -236,6 +236,18 @@ export function MultiSelectCalendar({
   const remainingHours = workingInfo.remaining;
   const projectedTotalHours = workingInfo.totalHours + selectedTotalHours;
   const projectedRemainingHours = workingInfo.maxHoursWithNorma - projectedTotalHours;
+  const availableDates = useMemo(
+    () => daysInMonth.filter(({ date, isCurrentMonth }) => {
+      if (!isCurrentMonth || getNonWorkingDayInfo(date).isNonWorkingDay || remainingHours <= 0) return false;
+      return getAvailableHoursForDate(formatDate(date)) > 0;
+    }),
+    [daysInMonth, getAvailableHoursForDate, remainingHours],
+  );
+  const availableDateCount = availableDates.length;
+  const availableDailyCapacity = useMemo(
+    () => availableDates.reduce((sum, { date }) => sum + getAvailableHoursForDate(formatDate(date)), 0),
+    [availableDates, getAvailableHoursForDate],
+  );
 
   return (
     <div
@@ -280,6 +292,9 @@ export function MultiSelectCalendar({
           const isToday = formatDate(new Date()) === dateStr;
           const selectedHour = normalizeHoursForDate(dateStr, selectedHours[dateStr]);
           const projectedDailyHours = totalHours + (isSelected ? Number(selectedHour) || 0 : 0);
+          const availableDailyHours = isCurrentMonth && !isNonWorkingDay ? getAvailableHoursForDate(dateStr) : 0;
+          const canAddHours = remainingHours > 0 && availableDailyHours > 0;
+          const visibleAvailableHours = Math.min(availableDailyHours, Math.max(0, remainingHours));
           const exceedsDailyLimit = isCurrentMonth
             && !isNonWorkingDay
             && projectedDailyHours > cimDailyHoursLimit;
@@ -295,10 +310,11 @@ export function MultiSelectCalendar({
                 !isCurrentMonth && 'cursor-default opacity-30',
                 isNonWorkingDay && 'cursor-default bg-muted/50',
                 isCurrentMonth && !isNonWorkingDay && 'hover:bg-accent',
+                canAddHours && !isSelected && 'border-blue-300 bg-blue-50/70 ring-1 ring-blue-100 hover:bg-blue-100/80 dark:border-blue-700 dark:bg-blue-950/25',
                 isSelected && 'border-primary bg-primary/20',
                 isToday && !isSelected && 'ring-1 ring-slate-300',
                 isToday && isSelected && 'ring-2 ring-primary',
-                hasActivities && !isSelected && 'bg-green-50 dark:bg-green-950/30',
+                hasActivities && !isSelected && !canAddHours && 'bg-green-50 dark:bg-green-950/30',
                 exceedsDailyLimit && 'border-amber-500 bg-amber-50 text-amber-950 dark:bg-amber-950/30',
               )}
             >
@@ -347,17 +363,24 @@ export function MultiSelectCalendar({
                     )}
                   </div>
                 ) : (
-                  hasActivities &&
-                  isCurrentMonth && (
-                    <div className="mt-auto">
-                      <span
-                        className={cn(
-                          'text-xs font-medium text-green-600 dark:text-green-400',
-                          exceedsDailyLimit && 'text-amber-700 dark:text-amber-400',
-                        )}
-                      >
-                        {totalHours}h
-                      </span>
+                  isCurrentMonth &&
+                  !isNonWorkingDay && (
+                    <div className="mt-auto space-y-0.5">
+                      {hasActivities && (
+                        <span
+                          className={cn(
+                            'block text-xs font-medium text-green-600 dark:text-green-400',
+                            exceedsDailyLimit && 'text-amber-700 dark:text-amber-400',
+                          )}
+                        >
+                          {totalHours}h pontate
+                        </span>
+                      )}
+                      {canAddHours && (
+                        <span className="block rounded bg-blue-600 px-1.5 py-0.5 text-[10px] font-semibold leading-4 text-white">
+                          mai poti {visibleAvailableHours}h
+                        </span>
+                      )}
                     </div>
                   )
                 )}
@@ -380,10 +403,17 @@ export function MultiSelectCalendar({
         >
           {remainingHours === 0 && <Check className="h-4 w-4" />}
           {remainingHours < 0 && <AlertTriangle className="h-4 w-4" />}
-          <span>
+          <span className="leading-5">
             {workingInfo.totalHours}h / {workingInfo.maxHoursWithNorma}h
             {remainingHours > 0 && ` - ${remainingHours}h ramase`}
             {remainingHours < 0 && ` - depasire ${Math.abs(remainingHours)}h`}
+            {remainingHours > 0 && (
+              <span className="block font-medium">
+                {availableDateCount > 0
+                  ? `Zile marcate cu albastru: poti ponta inca pana la ${Math.min(remainingHours, availableDailyCapacity)}h in ${availableDateCount} zile disponibile.`
+                  : 'Nu exista zile lucratoare cu capacitate zilnica disponibila in luna afisata.'}
+              </span>
+            )}
           </span>
         </div>
 
