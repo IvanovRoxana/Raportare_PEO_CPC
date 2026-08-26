@@ -40,7 +40,7 @@ import {
   ExistingDeliverablePicker,
   type ExistingDeliverableCandidate,
 } from './existing-deliverable-picker';
-import { createDeliverableSlot, type DeliverableSlot } from '@/lib/deliverable-types';
+import { createDeliverableSlot, inferDeliverableStadiuFromEligibility, type DeliverableSlot } from '@/lib/deliverable-types';
 import { getEventDocumentationStatus } from '@/lib/event-documentation';
 import { 
   isExceptionActivity,
@@ -294,7 +294,7 @@ function mapSavedDeliverableToSlot(deliverable: Deliverable, preserveId: boolean
     isPhoto: deliverable.fileType?.startsWith('image/') || false,
     declaredTitle: deliverable.declaredTitle || '',
     titleConfirmed: deliverable.titleConfirmed ?? false,
-    stadiu: deliverable.stadiu || '',
+    stadiu: inferDeliverableStadiuFromEligibility(deliverable.stadiu, eligibilityCheck),
     aiCheck: deliverable.aiStatus || deliverable.aiReason
       ? {
           eligible: deliverable.aiStatus === 'eligible' ? true : deliverable.aiStatus === 'ineligible' ? false : null,
@@ -2546,7 +2546,7 @@ export function ActivityForm({
       item.saCode === sourceSaCode
       && item.activityName === sourceActivityName
     ));
-    const inferredStadiu = candidate.stadiu || (candidate.eligibilityCheck ? 'final' : '');
+    const inferredStadiu = inferDeliverableStadiuFromEligibility(candidate.stadiu, savedEligibilityCheck);
     const existingDeliverableType = candidate.deliverableType || 'livrabil';
     const slot: DeliverableSlot = {
       ...createDeliverableSlot('livrabil', candidate.fileName),

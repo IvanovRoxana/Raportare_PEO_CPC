@@ -1,7 +1,7 @@
 'use client';
 
-import type { TitleCheckStatus, TitleSource, TitleSuggestionConfidence } from './title-suggestion';
-import { titleExistsInFirstPage } from './title-suggestion';
+import type { TitleCheckStatus, TitleSource, TitleSuggestionConfidence } from './title-suggestion.ts';
+import { titleExistsInFirstPage } from './title-suggestion.ts';
 
 // All deliverable types available in the system
 export const ALL_DELIVERABLE_TYPES = [
@@ -217,6 +217,25 @@ export interface DeliverableSlot {
   lockedExistingMetadata?: boolean;
   uploadError?: string;
   isPendingConfirm: boolean;
+}
+
+export function inferDeliverableStadiuFromEligibility(
+  stadiu?: string | null,
+  eligibilityCheck?: DeliverableEligibilityCheck | null,
+) {
+  const normalizedStadiu = String(stadiu || '').trim();
+  if (normalizedStadiu) return normalizedStadiu;
+
+  const status = eligibilityCheck?.status;
+  if (
+    status === 'eligibil'
+    || status === 'eligibil_cu_observatii'
+    || eligibilityCheck?.pmUnlockApproved
+  ) {
+    return 'final';
+  }
+
+  return '';
 }
 
 // Default empty deliverable slot

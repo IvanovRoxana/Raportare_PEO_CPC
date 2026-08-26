@@ -1,4 +1,4 @@
-import type { DeliverableSlot } from './deliverable-types';
+import { inferDeliverableStadiuFromEligibility, type DeliverableSlot } from './deliverable-types.ts';
 import type { Activity, ActivityCatalog } from './types';
 
 export type ExistingDeliverableSourceAction = 'activity' | 'deliverableType' | 'stadiu';
@@ -28,8 +28,7 @@ export interface ExistingDeliverableSourceSuggestion {
 }
 
 function inferSourceStadiu(deliverable: Pick<DeliverableSlot, 'stadiu' | 'eligibilityCheck'>) {
-  if (deliverable.stadiu) return deliverable.stadiu;
-  return deliverable.eligibilityCheck ? 'final' : undefined;
+  return inferDeliverableStadiuFromEligibility(deliverable.stadiu, deliverable.eligibilityCheck) || undefined;
 }
 
 function getContextTitle(deliverable: DeliverableSlot) {

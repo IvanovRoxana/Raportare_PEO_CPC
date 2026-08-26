@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ALL_DELIVERABLE_TYPES, DOCUMENT_STADIU_OPTIONS, type DeliverableSlot } from '@/lib/deliverable-types';
+import { ALL_DELIVERABLE_TYPES, DOCUMENT_STADIU_OPTIONS, inferDeliverableStadiuFromEligibility, type DeliverableSlot } from '@/lib/deliverable-types';
 import { extractDocxFirstPageText, extractDocxTextWithSource, extractHtmlTextWithSource, extractImageTextWithSource, extractPdfFirstPageTextWithSource, extractPdfTextWithSource, extractXlsxTextWithSource, isImageFile } from '@/lib/document-utils';
 import { DELIVERABLE_ELIGIBILITY_UI_MESSAGE, isDeliverableEligibilityCheckEnabledClient } from '@/lib/feature-flags';
 import { hasSufficientDeliverableEvidenceForEligibility } from '@/lib/deliverable-eligibility';
@@ -597,18 +597,20 @@ export function DeliverableItem({
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Verificarea eligibilității a eșuat');
 
+      const nextEligibilityCheck = mergeEligibilityCheckWithPmUnlockTracking(deliverable.eligibilityCheck, {
+        ...result,
+        checkedAt: new Date().toISOString(),
+        checkedBy: expertName,
+        checkedActivityId: selectedActivityId || subActivity,
+        checkedSaCode: subActivity,
+        checkedActivityName: activityTitle,
+        checkedDeliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
+        modelAuditId: result.modelAuditId,
+        analyzedDeliverables: result.analyzedDeliverables,
+      });
       onUpdate({
-        eligibilityCheck: mergeEligibilityCheckWithPmUnlockTracking(deliverable.eligibilityCheck, {
-          ...result,
-          checkedAt: new Date().toISOString(),
-          checkedBy: expertName,
-          checkedActivityId: selectedActivityId || subActivity,
-          checkedSaCode: subActivity,
-          checkedActivityName: activityTitle,
-          checkedDeliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
-          modelAuditId: result.modelAuditId,
-          analyzedDeliverables: result.analyzedDeliverables,
-        }),
+        eligibilityCheck: nextEligibilityCheck,
+        stadiu: inferDeliverableStadiuFromEligibility(deliverable.stadiu, nextEligibilityCheck),
         aiStatus: getAiStatusForEligibilityResult(result.status),
         aiCheck: {
           eligible: result.status === 'eligibil' || result.status === 'eligibil_cu_observatii'
@@ -1473,18 +1475,20 @@ export function DeliverableEligibilityControl({
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Verificarea eligibilitatii a esuat');
 
+      const nextEligibilityCheck = mergeEligibilityCheckWithPmUnlockTracking(deliverable.eligibilityCheck, {
+        ...result,
+        checkedAt: new Date().toISOString(),
+        checkedBy: expertName,
+        checkedActivityId: selectedActivityId || subActivity,
+        checkedSaCode: subActivity,
+        checkedActivityName: activityTitle,
+        checkedDeliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
+        modelAuditId: result.modelAuditId,
+        analyzedDeliverables: result.analyzedDeliverables,
+      });
       onUpdate({
-        eligibilityCheck: mergeEligibilityCheckWithPmUnlockTracking(deliverable.eligibilityCheck, {
-          ...result,
-          checkedAt: new Date().toISOString(),
-          checkedBy: expertName,
-          checkedActivityId: selectedActivityId || subActivity,
-          checkedSaCode: subActivity,
-          checkedActivityName: activityTitle,
-          checkedDeliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
-          modelAuditId: result.modelAuditId,
-          analyzedDeliverables: result.analyzedDeliverables,
-        }),
+        eligibilityCheck: nextEligibilityCheck,
+        stadiu: inferDeliverableStadiuFromEligibility(deliverable.stadiu, nextEligibilityCheck),
         aiStatus: getAiStatusForEligibilityResult(result.status),
         aiCheck: {
           eligible: result.status === 'eligibil' || result.status === 'eligibil_cu_observatii'
