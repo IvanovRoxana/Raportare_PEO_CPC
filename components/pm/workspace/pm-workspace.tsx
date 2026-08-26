@@ -156,7 +156,7 @@ function PmTopBar({
   props: PmWorkspaceProps;
 }) {
   return (
-    <header className="sticky top-0 z-20 -mx-4 -mt-5 border-b border-[#17396c] bg-[#1f3f75] px-4 text-white shadow-md sm:-mx-6 sm:px-6 lg:-mx-8 lg:-mt-7 lg:px-8">
+    <header className="sticky top-16 z-20 -mx-4 mt-4 border-b border-[#17396c] bg-[#1f3f75] px-4 text-white shadow-md sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
       <nav className="mx-auto flex min-h-12 max-w-screen-2xl items-end gap-2 overflow-x-auto pt-2">
         {views.map((view) => {
           const count = view.badge?.(props) || 0;
