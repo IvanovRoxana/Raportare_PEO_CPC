@@ -868,18 +868,21 @@ export default function ExpertHomeDashboard() {
     });
   };
 
+  const welcomeExpertCard = (
+    <div className="flex min-w-[250px] items-center justify-end gap-4 rounded-2xl border border-[#dce5ef] bg-white px-4 py-3 shadow-sm">
+      <div className="min-w-0 text-right">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Bine ai venit,</p>
+        <p className="truncate text-2xl font-bold text-slate-950">{expertFirstName}</p>
+      </div>
+      <ExpertAvatar
+        expert={currentExpert ?? { id: signedInUserId || 'expert', name: expertName }}
+        className="h-20 w-20 border-4 border-[#eaf3fb] text-2xl shadow-sm sm:h-24 sm:w-24"
+      />
+    </div>
+  );
+
   const calendarToolbar = (
     <>
-      <div className="flex min-w-[250px] items-center justify-end gap-4 rounded-2xl border border-[#dce5ef] bg-white px-4 py-3 shadow-sm">
-        <div className="min-w-0 text-right">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Bine ai venit,</p>
-          <p className="truncate text-2xl font-bold text-slate-950">{expertFirstName}</p>
-        </div>
-        <ExpertAvatar
-          expert={currentExpert ?? { id: signedInUserId || 'expert', name: expertName }}
-          className="h-20 w-20 border-4 border-[#eaf3fb] text-2xl shadow-sm sm:h-24 sm:w-24"
-        />
-      </div>
       {hasActiveConcurrentProjects && (
         <div className="min-w-[240px] rounded-xl border border-[#dce5ef] bg-slate-50/80 p-2 shadow-sm">
           <p className="mb-1 px-1 text-xs font-semibold text-slate-600">Panou proiecte</p>
@@ -991,6 +994,7 @@ export default function ExpertHomeDashboard() {
         reportingMonth={`${getMonthName(currentMonth)} ${currentYear}`}
         description={`Centralizeaza activitatile si orele raportate pentru ${getMonthName(currentMonth)} ${currentYear}.`}
         contentClassName="max-w-none"
+        actions={welcomeExpertCard}
         quickTabs={[
           { label: 'Activitățile mele', href: peoHref, icon: ClipboardList },
           { label: 'Livrabile', href: `${peoHref}#livrabile`, icon: CheckCircle2 },
