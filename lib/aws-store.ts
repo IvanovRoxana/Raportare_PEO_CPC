@@ -60,6 +60,8 @@ import type {
   MonthlyExpertReport,
   MonthAccessRequest,
   Neconformitate,
+  NotificationLog,
+  NotificationLogCreateInput,
   PersistedReportingWorkBlock,
   PersistedWorkBlockActivityLink,
   PersistedWorkBlockDeliverableLink,
@@ -571,6 +573,22 @@ function mapAuditLog(item: any): AuditLog {
     newValue: item.newValue ?? undefined,
     justification: item.justification ?? undefined,
     source: item.source,
+  };
+}
+
+function mapNotificationLog(item: any): NotificationLog {
+  return {
+    id: item.id,
+    kind: item.kind,
+    recipientEmail: item.recipientEmail,
+    subject: item.subject,
+    body: item.body,
+    status: item.status ?? 'pending',
+    metadata: item.metadata ?? null,
+    sentAt: item.sentAt ?? undefined,
+    errorMessage: item.errorMessage ?? undefined,
+    createdAt: item.createdAt ?? undefined,
+    updatedAt: item.updatedAt ?? undefined,
   };
 }
 
@@ -2167,6 +2185,59 @@ export const auditLogsService = {
 
     assertNoErrors(result, 'AWS create audit log');
     return mapAuditLog(result.data);
+  },
+};
+
+export const notificationLogsService = {
+  async create(input: NotificationLogCreateInput): Promise<NotificationLog> {
+    const client = getAwsDataClient() as any;
+    const fallback: NotificationLog = {
+      id: `notification-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      kind: input.kind,
+      recipientEmail: input.recipientEmail,
+      subject: input.subject,
+      body: input.body,
+      status: input.status || 'pending',
+      metadata: input.metadata ?? null,
+      sentAt: input.sentAt,
+      errorMessage: input.errorMessage,
+      createdAt: new Date().toISOString(),
+    };
+
+    if (!client.models.NotificationLog) {
+      return fallback;
+    }
+
+    const result = await client.models.NotificationLog.create({
+      kind: input.kind,
+      recipientEmail: input.recipientEmail,
+      subject: input.subject,
+      body: input.body,
+      status: input.status || 'pending',
+      metadata: input.metadata ?? undefined,
+      sentAt: input.sentAt,
+      errorMessage: input.errorMessage,
+    });
+
+    const unauthorizedError = result.errors?.some((error: any) =>
+      error?.errorType === 'Unauthorized'
+      || String(error?.message || '').toLowerCase().includes('not authorized'),
+    );
+    if (unauthorizedError && process.env.NODE_ENV !== 'production') {
+      console.warn('Skipping notification log persistence due to Unauthorized on create NotificationLog.');
+      return fallback;
+    }
+
+    assertNoErrors(result, 'AWS create notification log');
+    return mapNotificationLog(result.data);
+  },
+
+  async createMany(inputs: NotificationLogCreateInput[]): Promise<NotificationLog[]> {
+    const results: NotificationLog[] = [];
+    for (const input of inputs) {
+      results.push(await notificationLogsService.create(input));
+    }
+    return results;
   },
 };
 

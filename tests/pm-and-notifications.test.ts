@@ -3,6 +3,12 @@ import test from 'node:test';
 import { buildDashboardComplianceRows } from '../lib/reporting-dashboard.ts';
 import { generatePmMonthlyActivities } from '../lib/pm-auto-generation.ts';
 import { buildMissingActivityEmailDrafts, buildWeeklyPmStatusEmailDraft } from '../lib/notification-jobs.ts';
+import {
+  buildExpertSubmittedMonthNotifications,
+  buildPmApprovedMonthNotification,
+  buildPmRequestedClarificationNotification,
+  getPmNotificationRecipients,
+} from '../lib/pm-email-notifications.ts';
 import type { Activity, Expert } from '../lib/types.ts';
 
 const pmExpert: Expert = {
@@ -110,4 +116,46 @@ test('emailul saptamanal PM include statusul normei', () => {
   assert.equal(draft.kind, 'pm_weekly_status');
   assert.match(draft.body, /PM Test/);
   assert.match(draft.body, /0\/16h/);
+});
+
+test('notificarile PM folosesc doar destinatarii PM activi si deduplicati', () => {
+  const recipients = getPmNotificationRecipients([
+    pmExpert,
+    { ...pmExpert, id: 'pm-2', email: 'PM@test.ro', hasPmAccess: true },
+    { ...pmExpert, id: 'expert-1', role: 'Expert', email: 'expert@test.ro', hasPmAccess: false },
+    { ...pmExpert, id: 'admin-1', role: 'Admin aplicatie', email: 'admin@test.ro' },
+    { ...pmExpert, id: 'inactive-pm', email: 'inactive@test.ro', hasPmAccess: true, isActive: false },
+  ]);
+
+  assert.deepEqual(recipients, ['pm@test.ro', 'admin@test.ro']);
+});
+
+test('submiterea expertului construieste notificari catre PM', () => {
+  const drafts = buildExpertSubmittedMonthNotifications({
+    expert: { ...pmExpert, id: 'expert-1', name: 'Expert Test', role: 'Expert', projectCode: '302141' },
+    pmEmails: ['pm@test.ro', 'pm@test.ro'],
+    month: 7,
+    year: 2026,
+  });
+
+  assert.equal(drafts.length, 1);
+  assert.equal(drafts[0].kind, 'pm_expert_month_submitted');
+  assert.equal(drafts[0].recipientEmail, 'pm@test.ro');
+  assert.match(drafts[0].subject, /Expert Test/);
+});
+
+test('actiunile PM construiesc notificari catre expert', () => {
+  const expert = { ...pmExpert, id: 'expert-1', role: 'Expert', email: 'expert@test.ro' };
+  const clarification = buildPmRequestedClarificationNotification({
+    expert,
+    month: 7,
+    year: 2026,
+    note: 'Te rog completeaza justificarea.',
+  });
+  const approval = buildPmApprovedMonthNotification({ expert, month: 7, year: 2026 });
+
+  assert.equal(clarification[0].kind, 'pm_clarification_requested');
+  assert.equal(clarification[0].recipientEmail, 'expert@test.ro');
+  assert.match(clarification[0].body, /Te rog completeaza justificarea/);
+  assert.equal(approval[0].kind, 'pm_month_approved');
 });

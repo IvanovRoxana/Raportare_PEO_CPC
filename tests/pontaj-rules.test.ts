@@ -248,6 +248,12 @@ test('normalizeaza orele selectate la capacitatea ramasa in ziua partial pontata
   assert.equal(normalizePontajHoursForAvailableCapacity(2, 4, 8), '2');
 });
 
+test('permite default gol cand norma PEO este deja acoperita, fara sa limiteze optiunile CIM', () => {
+  assert.equal(normalizePontajHoursForAvailableCapacity(undefined, 6, ''), '');
+  assert.equal(normalizePontajHoursForAvailableCapacity(5, 6, ''), '5');
+  assert.equal(normalizePontajHoursForAvailableCapacity(8, 6, ''), '6');
+});
+
 test('pastreaza orele selectate cand lista de rubrici/date se resincronizeaza', () => {
   const selected = buildSelectedHoursForDates(
     ['2026-02-03', '2026-02-02'],

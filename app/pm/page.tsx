@@ -61,6 +61,7 @@ import {
   useActivityCatalog,
   useAuditLogs,
   useAuditLogMutations,
+  useNotificationLogMutations,
   useDocuments,
   useDocumentMutations,
   useGTEntities,
@@ -96,6 +97,12 @@ import { findLatestClarificationAudit, PM_CLARIFICATION_AUDIT_ACTION } from '@/l
 import { buildPmClarificationThreads } from '@/lib/pm-clarification-flow';
 import { buildOpisXlsxBlob, buildOpisXlsxFilename } from '@/lib/opis-xls-export';
 import { isActivePmUnlockRequest, isAutoResolvedPmUnlockRequest } from '@/lib/pm-unlock-status';
+import {
+  buildPmApprovedDeliverableNotification,
+  buildPmApprovedMonthNotification,
+  buildPmOpenedMonthAccessNotification,
+  buildPmRequestedClarificationNotification,
+} from '@/lib/pm-email-notifications';
 import type {
   PontajRow,
   RaportRow,
@@ -206,6 +213,7 @@ export default function PMDashboard() {
   const { create: createNote, update: updateNote, remove: removeNote } = useNoteMutations();
   const { create: createActivity, update: updateActivity } = useActivityMutations();
   const { create: createAuditLog } = useAuditLogMutations();
+  const { createMany: createNotificationLogs } = useNotificationLogMutations();
   const { updateEligibilityCheck: updateDocumentEligibilityCheck } = useDocumentMutations();
   const {
     status: reportStatus,
@@ -353,6 +361,14 @@ export default function PMDashboard() {
   const reviewExpert = useMemo(() => {
     return reviewExpertId ? visibleExperts.find((expert) => expert.id === reviewExpertId) || null : null;
   }, [visibleExperts, reviewExpertId]);
+  const notifyByEmail = async (notifications: Parameters<typeof createNotificationLogs>[0]) => {
+    if (notifications.length === 0) return;
+    try {
+      await createNotificationLogs(notifications);
+    } catch (error) {
+      console.warn('Notificarea email nu a putut fi inregistrata.', error);
+    }
+  };
   const selectedClarificationActivities = useMemo(
     () => monthActivities.filter((activity) => activity.expertId === selectedExpertId && activity.pmNotes?.trim()),
     [monthActivities, selectedExpertId],
@@ -419,6 +435,14 @@ export default function PMDashboard() {
       expertAccessApprovedAt: reportStatus?.expertAccessApprovedAt,
       pmNotes,
     });
+
+    if (status === 'approved') {
+      await notifyByEmail(buildPmApprovedMonthNotification({
+        expert: selectedExpert,
+        month: selectedMonth,
+        year: selectedYear,
+      }));
+    }
   };
 
   const toggleExpertMonthAccess = async () => {
@@ -436,6 +460,14 @@ export default function PMDashboard() {
       expertAccessApprovedAt: nextValue ? new Date().toISOString() : undefined,
       pmNotes: reportStatus?.pmNotes,
     });
+
+    if (nextValue) {
+      await notifyByEmail(buildPmOpenedMonthAccessNotification({
+        expert: selectedExpert,
+        month: selectedMonth,
+        year: selectedYear,
+      }));
+    }
   };
 
   const approveMonthAccessRequest = async (request: MonthAccessRequest) => {
@@ -448,6 +480,15 @@ export default function PMDashboard() {
       closedAt: undefined,
       closedBy: undefined,
     });
+
+    const expert = visibleExperts.find((item) => item.id === request.expertId);
+    if (expert) {
+      await notifyByEmail(buildPmOpenedMonthAccessNotification({
+        expert,
+        month: request.month,
+        year: request.year,
+      }));
+    }
   };
 
   const approvePmUnlockRequest = async (document: DocumentMetadata) => {
@@ -498,6 +539,16 @@ export default function PMDashboard() {
     }
 
     await updateDocumentEligibilityCheck(document.id, approvedCheck);
+
+    const expert = visibleExperts.find((item) => item.id === document.uploadedByExpertId);
+    if (expert) {
+      await notifyByEmail(buildPmApprovedDeliverableNotification({
+        expert,
+        document,
+        month: selectedMonth,
+        year: selectedYear,
+      }));
+    }
   };
 
   const rejectMonthAccessRequest = async (request: MonthAccessRequest) => {
@@ -528,6 +579,12 @@ export default function PMDashboard() {
     const pmNote = note.trim() || 'Clarificări solicitate de PM.';
     await setMonthlyStatus('clarifications', pmNote);
     await recordClarificationAudit({ expert: selectedExpert, note: pmNote });
+    await notifyByEmail(buildPmRequestedClarificationNotification({
+      expert: selectedExpert,
+      month: selectedMonth,
+      year: selectedYear,
+      note: pmNote,
+    }));
   };
 
   const rejectMonth = async () => {
@@ -551,6 +608,14 @@ export default function PMDashboard() {
       expertAccessApprovedAt: currentStatus?.expertAccessApprovedAt,
       pmNotes,
     });
+
+    if (status === 'approved' && reviewExpert) {
+      await notifyByEmail(buildPmApprovedMonthNotification({
+        expert: reviewExpert,
+        month: selectedMonth,
+        year: selectedYear,
+      }));
+    }
   };
 
   const requestReviewClarifications = async () => {
@@ -560,6 +625,12 @@ export default function PMDashboard() {
     await setReviewMonthlyStatus('clarifications', pmNote);
     if (reviewExpert) {
       await recordClarificationAudit({ expert: reviewExpert, note: pmNote });
+      await notifyByEmail(buildPmRequestedClarificationNotification({
+        expert: reviewExpert,
+        month: selectedMonth,
+        year: selectedYear,
+        note: pmNote,
+      }));
     }
   };
 
@@ -601,6 +672,13 @@ export default function PMDashboard() {
         note: pmNote,
         activityIds: activities.map((activity) => activity.id),
       });
+      await notifyByEmail(buildPmRequestedClarificationNotification({
+        expert: reviewExpert,
+        month: selectedMonth,
+        year: selectedYear,
+        note: pmNote,
+        targetLabel: `activitatea din ${dates}`,
+      }));
     }
     await refreshMonthActivities();
   };
@@ -654,6 +732,15 @@ export default function PMDashboard() {
 
       if (!audit) {
         window.alert('Clarificarea a fost salvata pe statusul lunar, dar auditul documentului nu a putut fi inregistrat. Reincearca daca badge-ul nu ramane dupa refresh.');
+      }
+      if (expert) {
+        await notifyByEmail(buildPmRequestedClarificationNotification({
+          expert,
+          month: selectedMonth,
+          year: selectedYear,
+          note: pmNote,
+          targetLabel: `documentul ${documentMeta.originalFileName}`,
+        }));
       }
     } catch (error) {
       window.alert(error instanceof Error ? error.message : 'Clarificarea nu a putut fi salvata.');

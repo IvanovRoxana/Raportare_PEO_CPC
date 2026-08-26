@@ -34,6 +34,7 @@ export const gtImportBatchesService = awsStore.gtImportBatchesService;
 export const businessHubEntityDirectoryService = awsStore.businessHubEntityDirectoryService;
 export const historicalImportService = awsStore.historicalImportService;
 export const auditLogsService = awsStore.auditLogsService;
+export const notificationLogsService = awsStore.notificationLogsService;
 export const activityAutofillAuditsService = awsStore.activityAutofillAuditsService;
 export const documentsService = awsStore.documentsService;
 export const indexedDeliverableCandidatesService = awsStore.indexedDeliverableCandidatesService;

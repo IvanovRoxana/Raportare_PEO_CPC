@@ -1,6 +1,7 @@
 'use client';
 
 import useSWR, { mutate } from 'swr';
+import { fetchAuthSession } from 'aws-amplify/auth';
 import {
   expertsService,
   activitiesService,
@@ -29,6 +30,7 @@ import {
   gtPersonsService,
   businessHubEntityDirectoryService,
   auditLogsService,
+  notificationLogsService,
   documentsService,
   indexedDeliverableCandidatesService,
   historicalImportService,
@@ -48,7 +50,7 @@ import {
   sharedDeliverablesService,
   reportingWorkBlocksService,
 } from '@/lib/backend-store';
-import type { Activity, Expert, ExpertNormContract, FinancialPersonLink, LeaveEntry, VerificationData, Neconformitate, VerificationNote, AppSettings, ActivityCatalog, AiEligibilityRuleset, AiEligibilityRuleVersion, WorkingGroup, ConcurrentProject, ConcurrentProjectTimesheetEntry, ReportStatus, MonthAccessRequest, GrupTintaEntry, BusinessHubEntityDirectoryEntry, AuditLog, ActivityAutofillAudit, AdminInterventionRequest, HistoricalImportBatch, HistoricalTimesheetDayEntry, IndexedDeliverableCandidate, MonthlyActivityItem, MonthlyExpertReport, UploadedReportingFile, DocumentMetadata, SharedDeliverable } from '@/lib/types';
+import type { Activity, Expert, ExpertNormContract, FinancialPersonLink, LeaveEntry, VerificationData, Neconformitate, VerificationNote, AppSettings, ActivityCatalog, AiEligibilityRuleset, AiEligibilityRuleVersion, WorkingGroup, ConcurrentProject, ConcurrentProjectTimesheetEntry, ReportStatus, MonthAccessRequest, GrupTintaEntry, BusinessHubEntityDirectoryEntry, AuditLog, ActivityAutofillAudit, AdminInterventionRequest, HistoricalImportBatch, HistoricalTimesheetDayEntry, IndexedDeliverableCandidate, MonthlyActivityItem, MonthlyExpertReport, UploadedReportingFile, DocumentMetadata, SharedDeliverable, NotificationLogCreateInput } from '@/lib/types';
 import { getContractedProcurementProjects, type ProcurementChecklist, type ProcurementContract, type ProcurementDeliverable, type ProcurementDocument, type ProcurementEvaluation, type ProcurementInvoice, type ProcurementLaunch, type ProcurementOffer, type ProcurementProject, type ProcurementReception, type ProcurementStatusHistory, type ProcurementSupplier } from '@/lib/procurement';
 import {
   buildDeterministicWorkBlockConsolidation,
@@ -1504,6 +1506,65 @@ export function useAuditLogMutations() {
   };
 
   return { create };
+}
+
+export function useNotificationLogMutations() {
+  type NotificationDelivery = Pick<NotificationLogCreateInput, 'status' | 'sentAt' | 'errorMessage'>;
+  const pendingDeliveries = (inputs: NotificationLogCreateInput[], errorMessage: string): NotificationDelivery[] =>
+    inputs.map(() => ({ status: 'pending', errorMessage }));
+  const sendForDelivery = async (inputs: NotificationLogCreateInput[]) => {
+    try {
+      const session = await fetchAuthSession();
+      const token = session.tokens?.accessToken?.toString();
+      if (!token) {
+        return pendingDeliveries(inputs, 'Lipseste tokenul Cognito pentru trimiterea emailului.');
+      }
+
+      const response = await fetch('/api/notifications/send', {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${token}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ notifications: inputs }),
+      });
+      const body = await response.json().catch(() => null) as {
+        deliveries?: NotificationDelivery[];
+        error?: string;
+      } | null;
+
+      if (!response.ok) {
+        return pendingDeliveries(inputs, body?.error || 'Trimiterea emailului nu a putut fi pornita.');
+      }
+
+      return inputs.map((_, index) => body?.deliveries?.[index] ?? { status: 'pending' });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Trimiterea emailului nu a putut fi pornita.';
+      return pendingDeliveries(inputs, errorMessage);
+    }
+  };
+
+  const create = async (input: NotificationLogCreateInput) => {
+    const [delivery] = await sendForDelivery([input]);
+    return notificationLogsService.create({
+      ...input,
+      status: delivery?.status || input.status || 'pending',
+      sentAt: delivery?.sentAt || input.sentAt,
+      errorMessage: delivery?.errorMessage || input.errorMessage,
+    });
+  };
+  const createMany = async (inputs: NotificationLogCreateInput[]) => {
+    if (inputs.length === 0) return [];
+    const deliveries = await sendForDelivery(inputs);
+    return notificationLogsService.createMany(inputs.map((input, index) => ({
+      ...input,
+      status: deliveries[index]?.status || input.status || 'pending',
+      sentAt: deliveries[index]?.sentAt || input.sentAt,
+      errorMessage: deliveries[index]?.errorMessage || input.errorMessage,
+    })));
+  };
+
+  return { create, createMany };
 }
 
 export function useActivityAutofillAudits(month?: number, year?: number, expertId?: string | null) {

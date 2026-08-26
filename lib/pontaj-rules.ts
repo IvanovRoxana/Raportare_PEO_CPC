@@ -228,9 +228,11 @@ export function normalizePontajHoursForAvailableCapacity(
   const maxAvailableHours = availableOptions[availableOptions.length - 1];
   const numericValue = typeof value === 'string' ? Number(value) : typeof value === 'number' ? value : Number.NaN;
   if (isValidPontajHours(numericValue) && numericValue <= maxAvailableHours) return String(numericValue);
+  if (isValidPontajHours(numericValue)) return String(maxAvailableHours);
 
   const fallbackValue = typeof fallback === 'string' ? Number(fallback) : fallback;
   if (isValidPontajHours(fallbackValue)) return String(Math.min(fallbackValue, maxAvailableHours));
+  if (fallback === '') return '';
 
   return String(maxAvailableHours);
 }

@@ -274,6 +274,22 @@ export interface EmailDraft {
   metadata?: Record<string, string | number | boolean | undefined>;
 }
 
+export interface NotificationLog {
+  id: string;
+  kind: string;
+  recipientEmail: string;
+  subject: string;
+  body: string;
+  status: 'pending' | 'sent' | 'failed' | string;
+  metadata?: Record<string, unknown> | null;
+  sentAt?: string;
+  errorMessage?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type NotificationLogCreateInput = Omit<NotificationLog, 'id' | 'createdAt' | 'updatedAt'>;
+
 export interface DashboardComplianceRow {
   expertId: string;
   expertName: string;

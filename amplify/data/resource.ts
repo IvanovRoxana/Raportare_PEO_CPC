@@ -1488,6 +1488,7 @@ const schema = a.schema({
     })
     .secondaryIndexes((index) => [index("kind"), index("recipientEmail")])
     .authorization((allow) => [
+      allow.authenticated().to(["create"]),
       allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
     ]),
 });

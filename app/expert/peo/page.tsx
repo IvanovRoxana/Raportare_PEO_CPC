@@ -64,6 +64,7 @@ import {
   useSharedActivityRegistrationContext,
   useSharedDeliverableMutations,
   useSharedDeliverables,
+  useNotificationLogMutations,
 } from '@/hooks/use-backend-data';
 import type { Activity, Deliverable, Expert, ReportStatus } from '@/lib/types';
 import { buildFinancialReportingSummary, normalizeFinancialPersonName } from '@/lib/financial-reporting';
@@ -103,6 +104,7 @@ import { isCurrentOrPreviousMonth } from '@/lib/pm-clarifications';
 import { isReportingWorkBlocksEnabledClient } from '@/lib/feature-flags';
 import { buildActivitySaveWorkBlockInput } from '@/lib/activity-report/activity-save-work-block';
 import { cn } from '@/lib/utils';
+import { buildExpertSubmittedMonthNotifications, getPmNotificationRecipients } from '@/lib/pm-email-notifications';
 
 type SubmitReadinessSeverity = 'ok' | 'warning' | 'blocking';
 const SUBMISSION_DATA_LOADING_MESSAGE = 'Se verifică datele raportului…';
@@ -147,6 +149,16 @@ type DeletedActivityUndo = {
 type PendingGroupedActivitySave = {
   activities: Activity[];
   groupSize: number;
+};
+
+type OutlookCalendarEvent = {
+  id: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  title: string;
+  location: string;
+  durationHours: number;
 };
 
 const SUBMIT_MIN_NORM_PERCENT = 80;
@@ -543,6 +555,186 @@ function OutlookMonthCalendar({
   );
 }
 
+function OutlookCalendarModule({
+  month,
+  year,
+  events,
+  selectedEventId,
+  onSelectEvent,
+  onAddEventToTimesheet,
+  onMonthChange,
+  canGoToPreviousMonth,
+  canGoToNextMonth,
+  isActionDisabled,
+}: {
+  month: number;
+  year: number;
+  events: OutlookCalendarEvent[];
+  selectedEventId: string | null;
+  onSelectEvent: (event: OutlookCalendarEvent) => void;
+  onAddEventToTimesheet: (event: OutlookCalendarEvent) => void;
+  onMonthChange: (month: number, year: number) => void;
+  canGoToPreviousMonth: boolean;
+  canGoToNextMonth: boolean;
+  isActionDisabled: boolean;
+}) {
+  const today = useMemo(() => new Date(), []);
+  const selectedEvent = events.find((event) => event.id === selectedEventId) ?? events[0] ?? null;
+  const eventsByDate = useMemo(() => {
+    const grouped = new Map<string, OutlookCalendarEvent[]>();
+    events.forEach((event) => {
+      const dayEvents = grouped.get(event.date) ?? [];
+      dayEvents.push(event);
+      grouped.set(event.date, dayEvents);
+    });
+    return grouped;
+  }, [events]);
+  const days = useMemo(() => {
+    const firstDay = new Date(year, month, 1);
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const offset = (firstDay.getDay() + 6) % 7;
+    return [
+      ...Array.from({ length: offset }, () => null),
+      ...Array.from({ length: daysInMonth }, (_, index) => {
+        const day = index + 1;
+        const date = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        return { day, date, nativeDate: new Date(year, month, day) };
+      }),
+    ];
+  }, [month, year]);
+  const goToPrevious = () => {
+    const next = new Date(year, month - 1, 1);
+    onMonthChange(next.getMonth(), next.getFullYear());
+  };
+  const goToNext = () => {
+    const next = new Date(year, month + 1, 1);
+    onMonthChange(next.getMonth(), next.getFullYear());
+  };
+
+  return (
+    <div className="grid min-h-[calc(100dvh-15rem)] overflow-hidden rounded-2xl border bg-white lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="flex min-w-0 flex-col">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={() => onMonthChange(today.getMonth(), today.getFullYear())}>
+              Azi
+            </Button>
+            <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={goToPrevious} disabled={!canGoToPreviousMonth}>
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={goToNext} disabled={!canGoToNextMonth}>
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+            <h2 className="px-2 text-xl font-semibold text-slate-900">{getMonthName(month)} {year}</h2>
+          </div>
+          <Badge variant="outline" className="border-blue-200 bg-blue-50 text-blue-800">
+            Calendar Outlook in pagina
+          </Badge>
+        </div>
+        <div className="grid grid-cols-7 border-b bg-slate-50 text-xs font-semibold text-slate-600">
+          {['Luni', 'Marti', 'Miercuri', 'Joi', 'Vineri', 'Sambata', 'Duminica'].map((day) => (
+            <div key={day} className="border-r px-3 py-2 last:border-r-0">{day}</div>
+          ))}
+        </div>
+        <div className="grid flex-1 grid-cols-7 auto-rows-fr">
+          {days.map((day, index) => {
+            if (!day) return <div key={`empty-${index}`} className="min-h-[118px] border-b border-r bg-slate-50/50" />;
+            const dayEvents = eventsByDate.get(day.date) ?? [];
+            const isToday = day.nativeDate.toDateString() === today.toDateString();
+            const nonWorking = getNonWorkingDayInfo(day.nativeDate);
+
+            return (
+              <div
+                key={day.date}
+                className={cn(
+                  'min-h-[118px] border-b border-r p-2',
+                  nonWorking.isWeekend ? 'bg-slate-50/70' : 'bg-white',
+                )}
+              >
+                <div className="mb-1 flex items-center justify-between gap-2 text-xs">
+                  <span className={cn('font-semibold text-slate-700', isToday && 'rounded-full bg-blue-600 px-1.5 py-0.5 text-white')}>
+                    {day.day}
+                  </span>
+                  {dayEvents.length > 0 && <span className="text-[11px] font-medium text-blue-700">{dayEvents.length}</span>}
+                </div>
+                <div className="space-y-1">
+                  {dayEvents.map((event) => (
+                    <button
+                      key={event.id}
+                      type="button"
+                      className={cn(
+                        'w-full rounded border-l-2 border-sky-500 bg-sky-50 px-1.5 py-1 text-left text-[11px] leading-tight text-slate-800 transition hover:bg-sky-100',
+                        selectedEvent?.id === event.id && 'ring-2 ring-sky-400',
+                      )}
+                      onClick={() => onSelectEvent(event)}
+                    >
+                      <span className="block font-semibold text-sky-800">{event.startTime} - {event.endTime}</span>
+                      <span className="block truncate">{event.title}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <aside className="min-h-0 overflow-y-auto border-l bg-slate-50/70 p-3">
+        <div className="space-y-3">
+          <div className="rounded-xl border bg-white p-3 shadow-sm">
+            <p className="text-sm font-semibold text-slate-900">Sedinta selectata</p>
+            {selectedEvent ? (
+              <div className="mt-3 space-y-3">
+                <div>
+                  <p className="text-xs font-medium uppercase text-slate-500">Titlu</p>
+                  <p className="mt-1 text-sm font-semibold text-slate-900">{selectedEvent.title}</p>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div>
+                    <p className="text-xs font-medium uppercase text-slate-500">Data</p>
+                    <p className="mt-1 text-slate-800">{formatDateRo(selectedEvent.date)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium uppercase text-slate-500">Ore</p>
+                    <p className="mt-1 text-slate-800">{selectedEvent.durationHours}h</p>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs font-medium uppercase text-slate-500">Interval</p>
+                  <p className="mt-1 text-sm text-slate-800">{selectedEvent.startTime} - {selectedEvent.endTime}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium uppercase text-slate-500">Locatie</p>
+                  <p className="mt-1 text-sm text-slate-800">{selectedEvent.location || 'Neprecizata'}</p>
+                </div>
+                <Button
+                  type="button"
+                  className="w-full"
+                  onClick={() => onAddEventToTimesheet(selectedEvent)}
+                  disabled={isActionDisabled}
+                >
+                  <Plus className="h-4 w-4" />
+                  Adauga in pontaj
+                </Button>
+              </div>
+            ) : (
+              <p className="mt-2 text-sm text-muted-foreground">Nu exista sedinte in luna selectata.</p>
+            )}
+          </div>
+
+          <div className="rounded-xl border bg-white p-3 text-xs leading-5 text-slate-600 shadow-sm">
+            <p className="mb-1 font-semibold text-slate-900">Conectare Microsoft Graph</p>
+            <p>
+              Acest calendar este pregatit pentru evenimentele reale din Outlook. Dupa configurarea OAuth, lista va fi incarcata
+              din calendarul individual al expertului.
+            </p>
+          </div>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
 function readMonthParam(value: string | null, fallback: number) {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed >= 0 && parsed <= 11 ? parsed : fallback;
@@ -556,6 +748,27 @@ function readYearParam(value: string | null, fallback: number) {
 function toRestoredActivityInput(activity: Activity): Omit<Activity, 'id' | 'createdAt' | 'updatedAt'> {
   const { id: _id, createdAt: _createdAt, updatedAt: _updatedAt, ...restoredActivity } = activity;
   return restoredActivity;
+}
+
+function buildDemoOutlookEvents(month: number, year: number): OutlookCalendarEvent[] {
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const candidateDays = [5, 12, 18, 24].filter((day) => day <= daysInMonth);
+
+  return candidateDays.map((day, index) => {
+    const date = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const templates = [
+      { title: 'Sedinta coordonare proiect', startTime: '09:30', endTime: '11:00', location: 'Microsoft Teams', durationHours: 1.5 },
+      { title: 'Consultare parteneri sociali', startTime: '12:00', endTime: '13:00', location: 'Sala conferinte', durationHours: 1 },
+      { title: 'Pregatire livrabile lunare', startTime: '14:00', endTime: '16:00', location: 'Birou', durationHours: 2 },
+      { title: 'Follow-up activitati PEO', startTime: '10:00', endTime: '11:30', location: 'Microsoft Teams', durationHours: 1.5 },
+    ];
+    const template = templates[index % templates.length];
+    return {
+      id: `outlook-demo-${date}-${index}`,
+      date,
+      ...template,
+    };
+  });
 }
 
 function ExpertDashboardContent() {
@@ -607,6 +820,7 @@ function ExpertDashboardContent() {
   const [pendingGroupedActivitySave, setPendingGroupedActivitySave] = useState<PendingGroupedActivitySave | null>(null);
   const [sharedActivityIntent, setSharedActivityIntent] = useState<'create' | 'associate' | null>(null);
   const [startingColleagueActivityId, setStartingColleagueActivityId] = useState<string | null>(null);
+  const [selectedOutlookEventId, setSelectedOutlookEventId] = useState<string | null>(null);
 
   // Data hooks
   const { experts, isLoading: expertsLoading } = useExperts();
@@ -619,6 +833,7 @@ function ExpertDashboardContent() {
   const { documents, isReady: documentsReady } = useDocuments();
   const { documents: colleagueDocuments } = useColleagueDocumentsByMonth(currentMonth, currentYear);
   const { create: createActivity, createBatch, update: updateActivity, remove: removeActivity } = useActivityMutations();
+  const { createMany: createNotificationLogs } = useNotificationLogMutations();
   const { status: reportStatus, updateStatus: updateReportStatus, isLoading: reportStatusLoading, isReady: reportStatusReady } = useReportStatus(selectedExpertId, currentMonth, currentYear);
   const previousMonthDate = useMemo(() => new Date(baseYear, baseMonth - 1, 1), [baseMonth, baseYear]);
   const nextMonthDate = useMemo(() => new Date(baseYear, baseMonth + 1, 1), [baseMonth, baseYear]);
@@ -646,6 +861,7 @@ function ExpertDashboardContent() {
     isLoading: sharedActivityRegistrationLoading,
   } = useSharedActivityRegistrationContext(pendingSharedActivityRelationId);
   const { ensureActivitySuggestion, registerForActivity } = useSharedDeliverableMutations();
+  const outlookEvents = useMemo(() => buildDemoOutlookEvents(currentMonth, currentYear), [currentMonth, currentYear]);
 
   useEffect(() => {
     if (!deletedActivityUndo) return undefined;
@@ -2020,6 +2236,18 @@ function ExpertDashboardContent() {
       expertAccessApprovedAt: reportStatus?.expertAccessApprovedAt,
       pmNotes: reportStatus?.pmNotes,
     });
+
+    const pmEmails = getPmNotificationRecipients(experts);
+    try {
+      await createNotificationLogs(buildExpertSubmittedMonthNotifications({
+        expert: selectedExpert,
+        pmEmails,
+        month: currentMonth,
+        year: currentYear,
+      }));
+    } catch (error) {
+      console.warn('Notificarea catre PM nu a putut fi inregistrata.', error);
+    }
   };
 
   const getFirstWorkingDateInMonth = () => {
@@ -2047,7 +2275,10 @@ function ExpertDashboardContent() {
     return getFirstWorkingDateInMonth();
   };
 
-  const getDefaultHours = () => selectedExpertCimDailyLimit > 0 ? selectedExpertCimDailyLimit.toString() : '';
+  const getDefaultHours = () => {
+    const suggestedHours = Math.min(selectedExpertPeoDailyLimit, selectedExpertCimDailyLimit);
+    return suggestedHours > 0 ? suggestedHours.toString() : '';
+  };
   const getAvailableHoursForDate = (date: string) => {
     const editingGroupMemberIds = editingActivity
       ? new Set(getActivityGroupMembers(editingActivity, activities).map((activity) => activity.id))
@@ -2058,8 +2289,15 @@ function ExpertDashboardContent() {
     return Math.max(0, selectedExpertCimDailyLimit - existingHours);
   };
   const getDefaultHoursForDate = (date: string) => {
-    const remainingDailyHours = getAvailableHoursForDate(date);
-    const preferredHours = Math.min(Number(getDefaultHours()) || 0, remainingDailyHours);
+    const editingGroupMemberIds = editingActivity
+      ? new Set(getActivityGroupMembers(editingActivity, activities).map((activity) => activity.id))
+      : new Set<string>();
+    const existingPeoHours = activities
+      .filter((activity) => activity.date === date && !editingGroupMemberIds.has(activity.id))
+      .reduce((sum, activity) => sum + (Number(activity.hours) || 0), 0);
+    const remainingCimHours = getAvailableHoursForDate(date);
+    const remainingPeoHours = Math.max(0, selectedExpertPeoDailyLimit - existingPeoHours);
+    const preferredHours = Math.min(remainingPeoHours, remainingCimHours);
     return preferredHours > 0 ? preferredHours.toString() : '';
   };
 
@@ -2498,6 +2736,70 @@ function ExpertDashboardContent() {
   const handleCalendarEditActivity = (activity: Activity) => {
     handleEditActivity(activity);
     setActiveTab('calendar');
+  };
+
+  const handleAddOutlookEventToTimesheet = (event: OutlookCalendarEvent) => {
+    if (isClarificationScopedAccess) {
+      setSaveError('In modul clarificari nu poti adauga activitati noi.');
+      return;
+    }
+    if (monthlyBlocking.isBlocked) {
+      setSaveError(monthlyBlocking.reason);
+      return;
+    }
+    try {
+      assertCanLogHoursOnDate(event.date);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'Ziua selectata este nelucratoare.');
+      return;
+    }
+
+    const suggestedHours = normalizePontajHoursForAvailableCapacity(
+      event.durationHours.toString(),
+      getAvailableHoursForDate(event.date),
+      getDefaultHoursForDate(event.date),
+    );
+    if (!suggestedHours) {
+      setSaveError('Nu mai exista ore disponibile pentru aceasta zi in pontaj.');
+      return;
+    }
+
+    setSaveError(null);
+    setActivitySaveError(null);
+    setActivitySaveNotice(null);
+    setWorkBlockSaveNotice(null);
+    setEditingActivity(null);
+    setPendingSharedActivityRelationId(null);
+    setPendingSharedDeliverableRelationId(null);
+    setSharedActivityIntent(null);
+    setSharedActivityPrefill({
+      expertId: selectedExpertId || selectedExpert.id,
+      expertName: selectedExpert.name,
+      date: event.date,
+      hours: Number(suggestedHours),
+      activityType: event.title,
+      title: event.title,
+      location: event.location || 'Outlook',
+      dayType: 'lucratoare',
+      status: 'draft',
+      description: [
+        `Intalnire Outlook: ${event.title}`,
+        `Interval: ${event.startTime} - ${event.endTime}`,
+        event.location ? `Locatie: ${event.location}` : '',
+      ].filter(Boolean).join('\n'),
+    });
+    setActivityResolutionHint({
+      id: `outlook-${event.id}-${Date.now()}`,
+      title: 'Activitate din Outlook',
+      detail: 'Verifica incadrarea, descrierea si livrabilele inainte de salvarea in pontaj.',
+      meta: `${formatDateRo(event.date)}, ${event.startTime} - ${event.endTime}`,
+      section: 'details',
+    });
+    setSelectedDates([event.date]);
+    setSelectedHours({ [event.date]: suggestedHours });
+    setDraftSessionId((current) => current + 1);
+    setShowForm(true);
+    setActiveTab('activitati');
   };
 
   const isLoading = isAuthLoading || expertsLoading || activitiesLoading;
@@ -3204,47 +3506,19 @@ function ExpertDashboardContent() {
             </div>
           </TabsContent>
 
-          <TabsContent id="outlook" value="outlook" className="space-y-6 scroll-mt-24">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <CalendarDays className="h-5 w-5 text-primary" />
-                  Outlook
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="rounded-lg border bg-slate-50 p-4">
-                  <p className="text-sm font-semibold text-slate-900">Modul separat pentru calendarul personal</p>
-                  <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                    Deschide Outlook intr-o fila noua si foloseste calendarul personal ca reper. Cand vrei sa raportezi o intalnire,
-                    revino aici si adauga activitatea prin fluxul existent, cu aceleasi validari de pontaj si livrabile.
-                  </p>
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  <Button asChild>
-                    <Link href="https://outlook.office.com/calendar/" target="_blank" rel="noreferrer">
-                      <ArrowRight className="h-4 w-4" />
-                      Deschide Outlook
-                    </Link>
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={handleAddActivity}
-                    disabled={!selectedExpert.id || isApproved || monthlyBlocking.isBlocked || isClarificationScopedAccess}
-                  >
-                    <Plus className="h-4 w-4" />
-                    Adauga activitate
-                  </Button>
-                </div>
-
-                <p className="text-xs leading-5 text-muted-foreground">
-                  Urmatorul pas poate fi conectarea prin Microsoft Graph, ca evenimentele Outlook sa apara aici si fiecare sa aiba
-                  buton propriu de Add activity cu precompletare.
-                </p>
-              </CardContent>
-            </Card>
+          <TabsContent id="outlook" value="outlook" className="scroll-mt-24">
+            <OutlookCalendarModule
+              month={currentMonth}
+              year={currentYear}
+              events={outlookEvents}
+              selectedEventId={selectedOutlookEventId}
+              onSelectEvent={(event) => setSelectedOutlookEventId(event.id)}
+              onAddEventToTimesheet={handleAddOutlookEventToTimesheet}
+              onMonthChange={handleMonthChange}
+              canGoToPreviousMonth={canOpenMonth(previousCalendarDate.getMonth(), previousCalendarDate.getFullYear())}
+              canGoToNextMonth={canOpenMonth(nextCalendarDate.getMonth(), nextCalendarDate.getFullYear())}
+              isActionDisabled={!selectedExpert.id || isApproved || monthlyBlocking.isBlocked || isClarificationScopedAccess}
+            />
           </TabsContent>
 
           {/* Tab: Grup Tinta - doar pentru Expert Recrutare si Selectie GT */}

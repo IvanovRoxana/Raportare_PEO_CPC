@@ -601,6 +601,10 @@ export function ActivityForm({
   const peoDailyNorm = expert?.oreZi ?? expert?.dailyHours ?? expert?.norma ?? 8;
   const cimDailyHoursLimit = Math.max(0, Math.min(MAX_PONTAJ_HOURS, Math.floor(Number(dailyHoursLimit) || 0)));
   const defaultDailyHours = cimDailyHoursLimit > 0 ? Number(normalizePontajHoursValue(cimDailyHoursLimit)) : 0;
+  const suggestedDailyHours = Math.max(
+    0,
+    Math.min(Number(peoDailyNorm) || 0, cimDailyHoursLimit),
+  );
   const editedActivityGroupId = initialActivity ? getActivityEditGroupId(initialActivity) : undefined;
   const existingPontajHoursByDate = useMemo(() => {
     const hoursByDate: Record<string, number> = {};
@@ -631,19 +635,33 @@ export function ActivityForm({
   const defaultHoursByDate = useMemo(() => {
     const hoursByDate: Record<string, string> = {};
     selectedActivityDates.forEach((date) => {
+      const availableHours = availablePontajHoursByDate[date] ?? defaultDailyHours;
+      const remainingPeoHours = Math.max(
+        0,
+        suggestedDailyHours - (existingPontajHoursByDate[date] ?? 0),
+      );
+      const suggestedHours = Math.min(remainingPeoHours, availableHours);
       hoursByDate[date] = normalizePontajHoursForAvailableCapacity(
         activitySeed?.date === date ? activitySeed.hours : undefined,
-        availablePontajHoursByDate[date] ?? defaultDailyHours,
-        defaultDailyHours,
+        availableHours,
+        suggestedHours > 0 ? suggestedHours : '',
       );
     });
     return hoursByDate;
-  }, [activitySeed?.date, activitySeed?.hours, availablePontajHoursByDate, defaultDailyHours, selectedActivityDates]);
+  }, [
+    activitySeed?.date,
+    activitySeed?.hours,
+    availablePontajHoursByDate,
+    defaultDailyHours,
+    existingPontajHoursByDate,
+    selectedActivityDates,
+    suggestedDailyHours,
+  ]);
   const getDefaultHoursForDate = useCallback(
     (date: string) => Object.prototype.hasOwnProperty.call(defaultHoursByDate, date)
       ? defaultHoursByDate[date]
-      : String(defaultDailyHours),
-    [defaultDailyHours, defaultHoursByDate],
+      : (suggestedDailyHours > 0 ? String(suggestedDailyHours) : ''),
+    [defaultHoursByDate, suggestedDailyHours],
   );
   const defaultHours = Number(getDefaultHoursForDate(selectedActivityDates[0] || activitySeed?.date || '') || defaultDailyHours);
   const getHourOptionsForDate = useCallback(
