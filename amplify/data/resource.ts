@@ -266,6 +266,7 @@ const schema = a.schema({
       index("projectCode").sortKeys(["year", "month"]),
     ])
     .authorization((allow) => [
+      allow.authenticated().to(["read"]),
       allow.ownerDefinedIn("owner"),
       allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
     ]),
@@ -302,6 +303,7 @@ const schema = a.schema({
       index("status"),
     ])
     .authorization((allow) => [
+      allow.authenticated().to(["read"]),
       allow.ownerDefinedIn("owner"),
       allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
     ]),

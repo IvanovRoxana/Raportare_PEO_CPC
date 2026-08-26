@@ -51,7 +51,7 @@ type ProjectItem = {
 
 const WORK_TABS = [
   { label: 'Grupuri de lucru', href: '#', icon: Users, active: false },
-  { label: 'Activități Colegi', href: '#', icon: BriefcaseBusiness, active: false },
+  { label: 'Activități Colegi', href: '/expert/peo?tab=colegi', icon: BriefcaseBusiness, active: false },
   { label: 'EU Affairs', href: '#', icon: Globe2, active: false },
 ];
 

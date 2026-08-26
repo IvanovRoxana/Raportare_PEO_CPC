@@ -38,6 +38,7 @@ import { MultiSelectCalendar } from '@/components/expert/multi-select-calendar';
 import { ActivityForm, type ActivityResolutionHint, type ActivityResolutionSection } from '@/components/expert/activity-form';
 import type { ExistingDeliverableCandidate } from '@/components/expert/existing-deliverable-picker';
 import { ActivitiesTable } from '@/components/expert/activities-table';
+import { ColleagueActivitiesNewsletter } from '@/components/expert/colleague-activities-newsletter';
 import { ExpertDeliverablesDialog } from '@/components/expert/expert-deliverables-dialog';
 import { MonthlyEvidencePanel } from '@/components/expert/monthly-evidence-panel';
 import { MonthlyReportExport } from '@/components/expert/monthly-report-export';
@@ -47,6 +48,7 @@ import {
   useActivityCatalog,
   useActivityMutations,
   useCollaborationExperts,
+  useColleagueActivitiesByMonth,
   useFinancialPersonLinks,
   useColleagueDocumentsByMonth,
   useConcurrentProjects,
@@ -564,6 +566,7 @@ function ExpertDashboardContent() {
   const baseYear = today.getFullYear();
   const queryMonthParam = searchParams.get('month');
   const queryYearParam = searchParams.get('year');
+  const queryTabParam = searchParams.get('tab');
   const agentDraftId = searchParams.get('agentDraftId');
   const hasExplicitMonthContext = queryMonthParam !== null || queryYearParam !== null;
   const queryMonth = readMonthParam(queryMonthParam, baseMonth);
@@ -574,7 +577,7 @@ function ExpertDashboardContent() {
   const [selectedHours, setSelectedHours] = useState<Record<string, string>>({});
   const [currentMonth, setCurrentMonth] = useState(queryMonth);
   const [currentYear, setCurrentYear] = useState(queryYear);
-  const [activeTab, setActiveTab] = useState('activitati');
+  const [activeTab, setActiveTab] = useState(queryTabParam === 'colegi' ? 'colegi' : 'activitati');
   const [showForm, setShowForm] = useState(false);
   const [draftSessionId, setDraftSessionId] = useState(0);
   const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
@@ -602,12 +605,15 @@ function ExpertDashboardContent() {
   const [selectedExistingSharedActivityId, setSelectedExistingSharedActivityId] = useState<string>('');
   const [isRegisteringExistingSharedActivity, setIsRegisteringExistingSharedActivity] = useState(false);
   const [pendingGroupedActivitySave, setPendingGroupedActivitySave] = useState<PendingGroupedActivitySave | null>(null);
+  const [sharedActivityIntent, setSharedActivityIntent] = useState<'create' | 'associate' | null>(null);
+  const [startingColleagueActivityId, setStartingColleagueActivityId] = useState<string | null>(null);
 
   // Data hooks
   const { experts, isLoading: expertsLoading } = useExperts();
   const { catalog: activityCatalog } = useActivityCatalog();
   const { experts: collaborationExperts } = useCollaborationExperts();
   const { activities: allMonthActivities, isLoading: activitiesLoading, isReady: activitiesReady, mutate: refreshActivities } = useActivitiesByMonth(currentMonth, currentYear);
+  const { activities: colleagueActivities, isLoading: colleagueActivitiesLoading, mutate: refreshColleagueActivities } = useColleagueActivitiesByMonth(currentMonth, currentYear);
   const { leaveEntries, mutate: refreshLeaveEntries } = useLeaveEntries(currentMonth, currentYear);
   const { createAutomatic: createAutomaticLeave, remove: removeLeaveEntry } = useLeaveEntryMutations(currentMonth, currentYear);
   const { documents, isReady: documentsReady } = useDocuments();
@@ -629,6 +635,7 @@ function ExpertDashboardContent() {
   const submissionDataReady = activitiesReady && documentsReady && reportStatusReady && workBlocksReady && normContractsReady;
   const { saveDraft: saveReportingWorkBlockDraft } = useReportingWorkBlockDraft();
   const { sharedDeliverables, isLoading: sharedDeliverablesLoading, mutate: refreshSharedDeliverables } = useSharedDeliverables(selectedExpertId || undefined);
+  const { sharedDeliverables: scopedSharedDeliverables } = useSharedDeliverables();
   const visibleSharedDeliverables = useMemo(() => filterSharedRelationsForMonths({
     sharedDeliverables,
     documents,
@@ -638,7 +645,7 @@ function ExpertDashboardContent() {
     context: sharedActivityRegistrationContext,
     isLoading: sharedActivityRegistrationLoading,
   } = useSharedActivityRegistrationContext(pendingSharedActivityRelationId);
-  const { registerForActivity } = useSharedDeliverableMutations();
+  const { ensureActivitySuggestion, registerForActivity } = useSharedDeliverableMutations();
 
   useEffect(() => {
     if (!deletedActivityUndo) return undefined;
@@ -898,6 +905,10 @@ function ExpertDashboardContent() {
       }
       if (window.location.hash === '#activitati') {
         setActiveTab('activitati');
+        return;
+      }
+      if (window.location.hash === '#colegi') {
+        setActiveTab('colegi');
         return;
       }
       if (window.location.hash === '#livrabile') {
@@ -2076,7 +2087,67 @@ function ExpertDashboardContent() {
     setSharedActivityPrefill(null);
     setActivityResolutionHint(null);
     setSelectedExistingSharedActivityId('');
+    setSharedActivityIntent(null);
     clearSharedRelationQueryParams();
+  };
+
+  const startColleagueSharedActivityFlow = async (sourceActivity: Activity, intent: 'create' | 'associate') => {
+    if (!selectedExpertId) {
+      setSaveError('Selecteaza un expert inainte de asocierea activitatii colegului.');
+      return;
+    }
+    if (isApproved || isClarificationScopedAccess) {
+      setSaveError('Luna nu permite modificari in acest moment.');
+      return;
+    }
+    if (monthlyBlocking.isBlocked && intent === 'create') {
+      setSaveError(monthlyBlocking.reason);
+      return;
+    }
+
+    setSaveError(null);
+    setActivitySaveError(null);
+    setActivitySaveNotice(null);
+    setWorkBlockSaveNotice(null);
+    setStartingColleagueActivityId(sourceActivity.id);
+    try {
+      const relation = await ensureActivitySuggestion(sourceActivity.id, selectedExpertId);
+      if (!relation?.id) {
+        throw new Error('Nu am putut crea legatura de activitate comuna.');
+      }
+      if (relation.status === 'registered') {
+        setActivitySaveNotice('Activitatea colegului este deja asociata in pontajul tau.');
+        return;
+      }
+      setSharedActivityIntent(intent);
+      setPendingSharedDeliverableRelationId(null);
+      setPendingSharedActivityRelationId(relation.id);
+      setShowForm(false);
+      setEditingActivity(null);
+      setSharedActivityPrefill(null);
+      setActivityResolutionHint(null);
+      setSelectedDates([]);
+      setSelectedHours({});
+      setActiveTab('activitati');
+      await Promise.all([refreshSharedDeliverables(), refreshColleagueActivities()]);
+    } catch (error) {
+      console.error('Error starting colleague shared activity flow:', error);
+      setSaveError(
+        error instanceof Error
+          ? error.message
+          : 'Activitatea colegului nu a putut fi pregatita pentru pontaj.',
+      );
+    } finally {
+      setStartingColleagueActivityId(null);
+    }
+  };
+
+  const handleAddColleagueActivityToTimesheet = (sourceActivity: Activity) => {
+    void startColleagueSharedActivityFlow(sourceActivity, 'create');
+  };
+
+  const handleAssociateColleagueActivityToExisting = (sourceActivity: Activity) => {
+    void startColleagueSharedActivityFlow(sourceActivity, 'associate');
   };
 
   const handleRegisterSharedActivityOnExisting = async () => {
@@ -2091,6 +2162,7 @@ function ExpertDashboardContent() {
         await registerForActivity(relationId, selectedExistingSharedActivityId);
       }
       await Promise.all([refreshActivities(), refreshSharedDeliverables()]);
+      await refreshColleagueActivities();
       resetSharedRegistrationFlow();
       setShowForm(false);
       setEditingActivity(null);
@@ -2208,7 +2280,7 @@ function ExpertDashboardContent() {
   }, [pendingSharedActivityRelationId, pendingSharedDeliverableRelationId]);
 
   useEffect(() => {
-    if (!pendingSharedActivityRelationId || showForm || !selectedExpertId || sharedActivityRegistrationLoading) return;
+    if (!pendingSharedActivityRelationId || showForm || !selectedExpertId || sharedActivityRegistrationLoading || sharedActivityIntent === 'associate') return;
 
     const sourceActivity = sharedActivityRegistrationContext?.sourceActivity;
     if (!sourceActivity) {
@@ -2272,6 +2344,7 @@ function ExpertDashboardContent() {
     monthlyBlocking.reason,
     pendingSharedActivityRelationId,
     selectedExpertId,
+    sharedActivityIntent,
     sharedActivityRegistrationContext,
     sharedActivityRegistrationLoading,
     showForm,
@@ -2673,6 +2746,7 @@ function ExpertDashboardContent() {
         }
         quickTabs={[
           { label: 'Activități', href: '#activitati', icon: ClipboardList, active: activeTab === 'activitati' },
+          { label: 'Activități colegi', href: '#colegi', icon: ClipboardList, active: activeTab === 'colegi' },
           { label: 'Calendar', href: '#calendar', icon: CalendarDays, active: activeTab === 'calendar' },
           { label: 'Outlook', href: '#outlook', icon: CalendarDays, active: activeTab === 'outlook' },
           { label: 'Livrabile', href: '#livrabile', icon: Upload },
@@ -2682,8 +2756,9 @@ function ExpertDashboardContent() {
 
         <div id="livrabile" className="scroll-mt-24" />
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className={`grid w-full ${isGtExpert && isComExpert ? 'grid-cols-5' : isGtExpert || isComExpert ? 'grid-cols-4' : 'grid-cols-3'}`}>
+          <TabsList className={`grid w-full ${isGtExpert && isComExpert ? 'grid-cols-6' : isGtExpert || isComExpert ? 'grid-cols-5' : 'grid-cols-4'}`}>
             <TabsTrigger value="activitati">Activitati</TabsTrigger>
+            <TabsTrigger value="colegi">Activitati Colegi</TabsTrigger>
             <TabsTrigger value="calendar">Calendar</TabsTrigger>
             <TabsTrigger value="outlook">Outlook</TabsTrigger>
             {isGtExpert && <TabsTrigger value="gt">Grup Tinta</TabsTrigger>}
@@ -2999,6 +3074,35 @@ function ExpertDashboardContent() {
                 </Card>
               </div>
             </div>
+          </TabsContent>
+
+          <TabsContent id="colegi" value="colegi" className="space-y-6 scroll-mt-24">
+            {saveError && (
+              <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                <p>{saveError}</p>
+              </div>
+            )}
+            {activitySaveNotice && !saveError && (
+              <div className="flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
+                <CheckCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                <p>{activitySaveNotice}</p>
+              </div>
+            )}
+            <ColleagueActivitiesNewsletter
+              activities={colleagueActivities}
+              experts={experts}
+              selectedExpertId={selectedExpertId}
+              month={currentMonth}
+              year={currentYear}
+              isLoading={colleagueActivitiesLoading}
+              isActionDisabled={isApproved || isClarificationScopedAccess}
+              actionDisabledReason={isApproved ? 'Luna este aprobata.' : isClarificationScopedAccess ? 'Modul clarificari permite doar activitatea marcata de PM.' : undefined}
+              sharedRelations={scopedSharedDeliverables}
+              activeActivityId={startingColleagueActivityId}
+              onAddToTimesheet={handleAddColleagueActivityToTimesheet}
+              onAssociateExisting={handleAssociateColleagueActivityToExisting}
+            />
           </TabsContent>
 
           {/* Tab: Calendar - vizualizare calendar cu statistici si detalii pe zi */}
