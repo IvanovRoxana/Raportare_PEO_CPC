@@ -758,7 +758,7 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
             peoHours: peoPerDay,
             cpcHours: cpcPerDay,
             source: 'FINANCIAL',
-            status: 'DRAFT',
+            status: 'VALIDATED',
             lockedForExpert: true,
             automaticSplit: false,
             justification: `Actualizare manuala CO Financiar: ${draft.period || date}`,
@@ -770,7 +770,7 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
       await refreshLeaveEntries();
       setVerificationMessage(
         savedLeaveCount > 0
-          ? `CO pentru ${row.name} a fost salvat: ${savedLeaveCount} zile, ${formatNumericCell(totalHours)} ore.`
+          ? `CO pentru ${row.name} a fost salvat si validat: ${savedLeaveCount} zile, ${formatNumericCell(totalHours)} ore.`
           : `CO pentru ${row.name} a fost actualizat. Nu exista zile CO de salvat pentru acest rand.`,
       );
     } catch (error) {

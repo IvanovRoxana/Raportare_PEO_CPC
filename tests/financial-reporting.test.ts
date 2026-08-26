@@ -56,6 +56,18 @@ test('salvarea CO financiar pastreaza CIM din coloana financiara, nu il deduce d
   assert.match(source, /const cimDailyCap = Math\.max\(0, parseDailyHoursLabel\(row\.cimNorm\)/);
 });
 
+test('salvarea din grila CO financiar valideaza direct randurile salvate', () => {
+  const source = readFileSync('components/financial/financial-reporting-dashboard.tsx', 'utf8');
+  const saveGridStart = source.indexOf('const saveLeaveGridRow = async');
+  const saveGridEnd = source.indexOf('const saveFinancialLeave = async');
+  const saveGridSource = source.slice(saveGridStart, saveGridEnd);
+
+  assert.notEqual(saveGridStart, -1);
+  assert.notEqual(saveGridEnd, -1);
+  assert.match(saveGridSource, /status:\s*'VALIDATED'/);
+  assert.doesNotMatch(saveGridSource, /status:\s*'DRAFT'/);
+});
+
 test('modulul financiar preia CO doar din modulul CO manual', () => {
   const activities: Activity[] = [
     { id: 'a1', expertId: expert.id, date: '2026-06-02', hours: 8, activityType: 'A', title: 'Activitate', status: 'approved' },
