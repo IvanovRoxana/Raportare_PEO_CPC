@@ -151,12 +151,12 @@ export function ReportGenerator({
   const deterministicWorkBlockSourceLabel = persistedWorkBlockCount > 0
     ? `Work block-uri persistate: ${persistedWorkBlockCount}`
     : 'Work block-uri generate din activitati (fallback)';
-  const deterministicExportButtonTitle = !canExportApprovedDocuments
-    ? approvedDocumentsBlockedReason
-    : activities.length === 0
+  const deterministicExportButtonTitle = activities.length === 0
     ? 'Nu exista activitati pentru export Anexa 10.'
     : isLoadingDeterministicWorkBlocks
       ? 'Se incarca work block-urile persistate pentru Anexa 10.'
+    : !canExportApprovedDocuments
+      ? approvedDocumentsBlockedReason
     : deterministicExportReadiness?.canExport
       ? `${deterministicExportReadiness.statusLabel}. ${deterministicWorkBlockSourceLabel}.`
       : deterministicExportReadiness?.blockingMessages[0] ?? 'Exportul Anexa 10 este blocat pentru verificare.';

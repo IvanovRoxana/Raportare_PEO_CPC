@@ -1,4 +1,4 @@
-import { getDefaultExpertAvatarUrl } from './expert-avatar-utils';
+import { getDefaultExpertAvatarUrl } from './expert-avatar-utils.ts';
 import type { Expert } from './types';
 
 export type PeoUserRole = 'expert' | 'pm' | 'admin';
