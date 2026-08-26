@@ -67,6 +67,7 @@ import {
   useGTPersons,
   useSharedDeliverables,
   useGrupTintaByMonth,
+  useWorkingGroups,
   useAllConcurrentProjects,
   useConcurrentProjects,
   useConcurrentProjectTimesheetByMonth,
@@ -113,6 +114,7 @@ import type {
 import { UserMenu } from '@/components/user-menu';
 import { ProgressReportTab } from '@/components/pm/progress-report-tab';
 import { GTProgressTab } from '@/components/pm/gt-progress-tab';
+import { WorkingGroupsTab } from '@/components/pm/working-groups-tab';
 import { DosarExpertModal } from '@/components/pm/dosar-expert-modal';
 import { DoubleFundingTab } from '@/components/pm/double-funding-tab';
 import { PmDashboardKpiCards } from '@/components/pm/pm-dashboard-kpi-cards';
@@ -247,6 +249,7 @@ export default function PMDashboard() {
   const { entries: allGrupTintaEntries } = useGrupTintaByMonth(selectedMonth, selectedYear);
   const { records: gtEntities } = useGTEntities();
   const { records: gtPersons } = useGTPersons();
+  const { groups: workingGroups, isLoading: workingGroupsLoading, error: workingGroupsError } = useWorkingGroups();
   const { projects: allConcurrentProjects } = useAllConcurrentProjects();
   const { addProject: createConcurrentProject, updateProject: updateConcurrentProject, removeProject: archiveConcurrentProject } = useConcurrentProjects(selectedExpertId);
   const { entries: allConcurrentTimesheetEntries } = useConcurrentProjectTimesheetByMonth(selectedMonth, selectedYear);
@@ -1492,6 +1495,7 @@ export default function PMDashboard() {
             {hasExtendedExpertAccess && <TabsTrigger value="cross-expert">Cross-Expert</TabsTrigger>}
             <TabsTrigger value="double-funding">Dublă finanțare</TabsTrigger>
             <TabsTrigger value="progres">Raport Progres</TabsTrigger>
+            <TabsTrigger value="working-groups">Grupuri lucru</TabsTrigger>
             <TabsTrigger value="gt">Progres GT</TabsTrigger>
             {hasExtendedExpertAccess && <TabsTrigger value="eligibility-governance">Catalog eligibilitate</TabsTrigger>}
             {hasExtendedExpertAccess && <TabsTrigger value="ai-rag">AI RAG</TabsTrigger>}
@@ -1553,6 +1557,14 @@ export default function PMDashboard() {
               activities={monthActivities}
               month={selectedMonth}
               year={selectedYear}
+            />
+          </TabsContent>
+
+          <TabsContent value="working-groups">
+            <WorkingGroupsTab
+              groups={workingGroups}
+              isLoading={workingGroupsLoading}
+              error={workingGroupsError}
             />
           </TabsContent>
 
