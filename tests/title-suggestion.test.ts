@@ -67,22 +67,22 @@ test('does not overwrite an existing declaredTitle', () => {
   );
 });
 
-test('accepts suggested title and validates when it exists on the first page', () => {
-  const firstPage = 'Ghid de lucru pentru experti\nCapitolul 1';
-  assert.equal(titleExistsInFirstPage(firstPage, 'Ghid de lucru pentru experti'), true);
+test('accepts suggested title and validates when it exists in the document text', () => {
+  const documentText = 'Ghid de lucru pentru experti\nCapitolul 1';
+  assert.equal(titleExistsInFirstPage(documentText, 'Ghid de lucru pentru experti'), true);
 
   assert.deepEqual(validateDeclaredTitleOnFirstPage({
-    firstPageText: firstPage,
+    firstPageText: documentText,
     declaredTitle: 'Ghid de lucru pentru experti',
     titleSource: 'auto_detected',
   }), {
     titleMatch: true,
     titleCheckStatus: 'matched',
-    titleCheckMessage: 'Titlul se regaseste in prima pagina.',
+    titleCheckMessage: 'Titlul se regaseste in document.',
   });
 });
 
-test('blocks validation when edited title is not present on the first page', () => {
+test('blocks validation when edited title is not present in the document text', () => {
   const result = validateDeclaredTitleOnFirstPage({
     firstPageText: 'Raport privind activitatile de informare',
     declaredTitle: 'Alt titlu ales de expert',

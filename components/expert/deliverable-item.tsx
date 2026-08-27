@@ -1077,8 +1077,8 @@ export function DeliverableItem({
               : 'bg-slate-100 text-slate-600'
         }`}>
           {deliverable.titleMatch === true
-            ? (deliverable.titleCheckMessage || 'Titlul se regaseste in prima pagina.')
-            : (deliverable.titleCheckMessage || 'Titlul nu a fost gasit in prima pagina.')}
+            ? (deliverable.titleCheckMessage || 'Titlul se regaseste in document.')
+            : (deliverable.titleCheckMessage || 'Titlul nu a fost gasit in document.')}
         </div>
       )}
 
