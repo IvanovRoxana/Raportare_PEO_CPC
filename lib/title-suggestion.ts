@@ -301,16 +301,16 @@ export function detectSuggestedTitleFromText(text?: string | null) {
 }
 
 export function titleExistsInFirstPage(firstPageText: string | null | undefined, declaredTitle: string | null | undefined) {
-  const pageNorm = normalizeTitleForMatch(firstPageText || '');
+  const documentNorm = normalizeTitleForMatch(firstPageText || '');
   const titleNorm = normalizeTitleForMatch(declaredTitle || '');
-  if (!pageNorm || !titleNorm) return false;
+  if (!documentNorm || !titleNorm) return false;
 
-  if (pageNorm.includes(titleNorm)) return true;
+  if (documentNorm.includes(titleNorm)) return true;
 
   const words = titleNorm.split(' ').filter((word) => word.length > 3);
   if (words.length === 0) return false;
 
-  const matchedWords = words.filter((word) => pageNorm.includes(word)).length;
+  const matchedWords = words.filter((word) => documentNorm.includes(word)).length;
   return matchedWords >= Math.ceil(words.length * 0.8);
 }
 
@@ -340,7 +340,7 @@ export function validateDeclaredTitleOnFirstPage(args: {
     return {
       titleMatch: false,
       titleCheckStatus: 'extraction_failed',
-      titleCheckMessage: 'Nu am putut extrage textul din prima pagina pentru verificarea titlului.',
+      titleCheckMessage: 'Nu am putut extrage textul documentului pentru verificarea titlului.',
     };
   }
 
@@ -349,8 +349,8 @@ export function validateDeclaredTitleOnFirstPage(args: {
     titleMatch: matched,
     titleCheckStatus: matched ? 'matched' : 'mismatch',
     titleCheckMessage: matched
-      ? 'Titlul se regaseste in prima pagina.'
-      : 'Titlul final nu se regaseste in prima pagina. Validarea este blocata pana la corectare sau suprascriere de administrator.',
+      ? 'Titlul se regaseste in document.'
+      : 'Titlul final nu se regaseste in document. Validarea este blocata pana la corectare sau suprascriere de administrator.',
   };
 }
 

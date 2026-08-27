@@ -401,7 +401,11 @@ function textMentionsTitleGap(value: unknown) {
   if (!normalized.includes('titlu')) return false;
   return (
     normalized.includes('suspect')
+    || normalized.includes('titlu clar')
     || normalized.includes('clar identificat')
+    || normalized.includes('incorporat')
+    || normalized.includes('incorporat in corpul documentului')
+    || normalized.includes('prima pagina')
     || normalized.includes('clarific')
     || normalized.includes('lips')
     || normalized.includes('neclar')

@@ -471,7 +471,10 @@ test('nu pastreaza riscul de titlu cand titlul documentului este confirmat', () 
         { criterion: 'Tip livrabil', status: 'pass', explanation: 'Tipul este adecvat.' },
       ],
       missingElements: ['Titlu clar identificat in document.'],
-      recommendations: ['Clarificarea titlului documentului.'],
+      recommendations: [
+        'Clarificarea titlului documentului.',
+        'Un titlu clar ar trebui incorporat in corpul documentului, nu doar pe prima pagina.',
+      ],
       riskFlags: ['Titlu suspect sau lipsa'],
       suggestedSettings: null,
     },
