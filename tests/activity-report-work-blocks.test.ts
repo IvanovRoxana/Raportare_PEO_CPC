@@ -147,7 +147,20 @@ test('valideaza work block fara SA si fara ore', () => {
 
 test('infereaza tipurile principale de flux raportabil', () => {
   assert.equal(buildWorkBlocks([activity({ id: 'leave', dayType: 'CO', title: 'Concediu' })])[0].workBlock.reportingFlowType, 'leave');
+  assert.equal(buildWorkBlocks([activity({ id: 'report', title: 'Elaborare RA / OPIS' })])[0].workBlock.reportingFlowType, 'report_preparation');
   assert.equal(buildWorkBlocks([activity({ id: 'event', title: 'Eveniment national' })])[0].workBlock.reportingFlowType, 'event');
   assert.equal(buildWorkBlocks([activity({ id: 'meeting', title: 'Reuniune TF Consumers' })])[0].workBlock.reportingFlowType, 'meeting');
   assert.equal(buildWorkBlocks([activity({ id: 'deliverable', deliverables: [{ id: 'd1', fileName: 'Doc.docx', fileType: 'docx', fileSize: 1 }] })])[0].workBlock.reportingFlowType, 'deliverable');
+});
+
+test('nu clasifica raportarea unei participari drept elaborare RA OPIS', () => {
+  const bundles = buildWorkBlocks([
+    activity({
+      id: 'consultation-reporting',
+      title: 'Raportare participare / reprezentare consultare publica sau dezbatere',
+      activityType: 'Raportare participare / reprezentare consultare publica sau dezbatere',
+    }),
+  ]);
+
+  assert.equal(bundles[0].workBlock.reportingFlowType, 'consultation');
 });

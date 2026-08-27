@@ -91,6 +91,29 @@ test('Anexa 10 include numele expertului pentru livrabile comune', () => {
   assert.equal(model.tableRows[0].commonDeliverable, 'Da - Andreea Cojocaru');
 });
 
+test('Anexa 10 afiseaza livrabilele existente chiar daca titlul contine raportare', () => {
+  const model = buildAnexa10ReportModel({
+    expert,
+    activities: [activity({
+      id: 'a1',
+      title: 'Raportare participare / reprezentare consultare publica sau dezbatere',
+      activityType: 'Raportare participare / reprezentare consultare publica sau dezbatere',
+      deliverables: [{
+        id: 'd1',
+        fileName: 'Raport participare consultare publica.docx',
+        fileType: 'docx',
+        fileSize: 10,
+        declaredTitle: 'Raport participare consultare publica',
+      }],
+    })],
+    month: 5,
+    year: 2026,
+  });
+
+  assert.equal(model.tableRows[0].reportingFlowType, 'consultation');
+  assert.deepEqual(model.tableRows[0].resultsAndDeliverables, ['Raport participare consultare publica']);
+});
+
 test('preflight blocheaza regresiile de tabel Anexa 10', () => {
   const model = buildAnexa10ReportModel({
     expert,
@@ -135,4 +158,47 @@ test('preflight permite randurile de concediu fara activitate A din cererea de f
 
   assert.equal(report.canExport, true);
   assert.equal(report.findings.some((finding) => finding.id === 'non-financing-activity-title'), false);
+});
+
+test('Anexa 10 consolideaza concediul pe un singur rand la finalul tabelului', () => {
+  const model = buildAnexa10ReportModel({
+    expert,
+    activities: [
+      activity({
+        id: 'work',
+        date: '2026-06-03',
+        hours: 6,
+        periodGroupId: 'work',
+        title: 'Analiza acte normative',
+      }),
+      activity({
+        id: 'co-1',
+        date: '2026-06-10',
+        hours: 6,
+        dayType: 'CO',
+        title: 'CO - Concediu odihna',
+        activityType: 'CO - Concediu odihna',
+        saCode: '',
+        activitySummary: '',
+      }),
+      activity({
+        id: 'co-2',
+        date: '2026-06-11',
+        hours: 6,
+        dayType: 'CO',
+        title: 'CO - Concediu odihna',
+        activityType: 'CO - Concediu odihna',
+        saCode: '',
+        activitySummary: '',
+      }),
+    ],
+    month: 5,
+    year: 2026,
+    settings: ANEXA10_EXPORT_SETTINGS,
+  });
+
+  assert.equal(model.tableRows.length, 2);
+  assert.equal(model.tableRows.at(-1)?.reportingFlowType, 'leave');
+  assert.equal(model.tableRows.at(-1)?.performedActivity, 'Concediu de odihna');
+  assert.equal(model.tableRows.at(-1)?.hours, 12);
 });

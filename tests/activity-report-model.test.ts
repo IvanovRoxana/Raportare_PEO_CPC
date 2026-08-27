@@ -549,7 +549,7 @@ test('concediul este exclus implicit din total si poate fi inclus configurabil',
   assert.equal(includeLeaveModel.totalHours, 8);
 });
 
-test('concediul inclus in Anexa 10 apare doar in tabel, inainte de elaborarea RA, cu orele PEO', () => {
+test('concediul inclus in Anexa 10 apare doar in tabel, la final, cu orele PEO', () => {
   const activities = [
     activity({
       id: 'work',
@@ -588,10 +588,10 @@ test('concediul inclus in Anexa 10 apare doar in tabel, inainte de elaborarea RA
     settings: { includeLeaveInTable: true, includeLeaveInTotal: true },
   });
 
-  assert.equal(model.tableRows.at(-2)?.performedActivity, 'Concediu de odihna');
-  assert.doesNotMatch(model.tableRows.at(-2)?.performedActivity || '', /CPC|PEO/);
-  assert.equal(model.tableRows.at(-2)?.hours, 4);
-  assert.match(model.tableRows.at(-1)?.performedActivity || '', /Raportului de Activitate lunar/);
+  assert.match(model.tableRows.at(-2)?.performedActivity || '', /Raportului de Activitate lunar/);
+  assert.equal(model.tableRows.at(-1)?.performedActivity, 'Concediu de odihna');
+  assert.doesNotMatch(model.tableRows.at(-1)?.performedActivity || '', /CPC|PEO/);
+  assert.equal(model.tableRows.at(-1)?.hours, 4);
   assert.equal(model.totalHours, 12);
   assert.equal(model.problems.some((problem) => /Concediu|SA/.test(problem.message)), false);
   assert.equal(model.saSections.flatMap((section) => section.items).some((item) => /Concediu/i.test(item.body)), false);

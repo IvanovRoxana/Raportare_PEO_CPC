@@ -245,13 +245,19 @@ function inferReportingFlowType(activities: Activity[], deliverables: Deliverabl
     .map((activity) => `${activity.activityType} ${activity.title} ${activity.description ?? ''}`)
     .join(' ')
     .toLowerCase();
-  if (/raport/.test(text)) return 'report_preparation';
+  if (isReportPreparationText(text)) return 'report_preparation';
   if (/eveniment|event/.test(text)) return 'event';
   if (/consult/.test(text)) return 'consultation';
   if (/sedinta|ședință|reuniune|meeting/.test(text)) return 'meeting';
   if (/coordon/.test(text)) return 'project_coordination';
   if (deliverables.length > 0) return 'deliverable';
   return 'other';
+}
+
+function isReportPreparationText(text: string) {
+  return /\belabor(?:are|area|at)?\b.*\b(?:ra|raport(?:ul|ului)?\s+de\s+activitate)\b/.test(text)
+    || /\b(?:ra|raport(?:ul|ului)?\s+de\s+activitate)\b.*\bopis\b/.test(text)
+    || /\bopis(?:-ului)?\b.*\blivrabile/i.test(text);
 }
 
 function compareWorkBlockBundles(first: ReportingWorkBlockBundle, second: ReportingWorkBlockBundle) {

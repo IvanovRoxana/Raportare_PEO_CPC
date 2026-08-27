@@ -117,7 +117,7 @@ export function buildAnexa10ReportModel({
   const validationBundles = filteredBundles.filter((bundle) => !isLeaveBundle(bundle));
   const problems = validateWorkBlockAllocation(activities, validationBundles);
   const warnings = buildReportWarnings(filteredBundles, activityById, settings);
-  const tableRows = orderedBundles.map((bundle) => buildTableRow(bundle, activityById, expert));
+  const tableRows = buildTableRows(orderedBundles, activityById, expert);
   const saSections = buildSaSections(
     orderedBundles.filter((bundle) => !isReportPreparationBundle(bundle) && !isLeaveBundle(bundle)),
     activityById,
@@ -152,6 +152,31 @@ export function buildAnexa10ReportModel({
   };
 }
 
+function buildTableRows(
+  bundles: ReportingWorkBlockBundle[],
+  activityById: Map<string, Activity>,
+  expert: Pick<Expert, 'jobDescriptionText'>,
+) {
+  const regularRows = bundles
+    .filter((bundle) => !isLeaveBundle(bundle))
+    .map((bundle) => buildTableRow(bundle, activityById, expert));
+  const leaveRows = bundles
+    .filter(isLeaveBundle)
+    .map((bundle) => buildTableRow(bundle, activityById, expert));
+
+  if (leaveRows.length === 0) return regularRows;
+
+  return [
+    ...regularRows,
+    {
+      ...leaveRows[0],
+      workBlockId: leaveRows.map((row) => row.workBlockId).join(';'),
+      performedActivity: getConsolidatedLeavePerformedActivity(leaveRows.map((row) => row.performedActivity)),
+      hours: roundHours(leaveRows.reduce((sum, row) => sum + row.hours, 0)),
+    },
+  ];
+}
+
 function buildTableRow(
   bundle: ReportingWorkBlockBundle,
   activityById: Map<string, Activity>,
@@ -169,9 +194,9 @@ function buildTableRow(
     officialActivityTitle: getOfficialActivityTitle(bundle, activities),
     responsibilities: expert.jobDescriptionText || bundle.workBlock.expertContribution || '-',
     performedActivity: isLeave ? getLeavePerformedActivity(activities) : getPerformedActivity(bundle, activities),
-    resultsAndDeliverables: isReportPreparation || isLeave
-      ? ['N/A']
-      : deliverables.length > 0 ? deliverables : [getResultWithoutDeliverable(bundle)],
+    resultsAndDeliverables: deliverables.length > 0
+      ? deliverables
+      : isReportPreparation || isLeave ? ['N/A'] : [getResultWithoutDeliverable(bundle)],
     commonDeliverable: isReportPreparation || isLeave ? 'Nu' : getCommonDeliverableLabel(activities),
     hours,
   };
@@ -405,6 +430,12 @@ function getLeavePerformedActivity(activities: Activity[]) {
   return activities.some((activity) => activity.dayType === 'CM')
     ? 'Concediu medical'
     : 'Concediu de odihna';
+}
+
+function getConsolidatedLeavePerformedActivity(labels: string[]) {
+  const uniqueLabels = uniqueStrings(labels);
+  if (uniqueLabels.length === 0) return 'Concediu';
+  return uniqueLabels.join(' / ');
 }
 
 function selectPerformedActivityText(bundle: ReportingWorkBlockBundle, activities: Activity[]) {
