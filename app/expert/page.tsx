@@ -1054,8 +1054,6 @@ export default function ExpertHomeDashboard() {
         contentClassName="max-w-none"
         actions={welcomeExpertCard}
         quickTabs={[
-          { label: 'Activitățile mele', href: peoHref, icon: ClipboardList },
-          { label: 'Livrabile', href: `${peoHref}#livrabile`, icon: CheckCircle2 },
           { label: 'Rapoarte', href: `${peoHref}#rapoarte`, icon: BriefcaseBusiness },
         ]}
         aside={
