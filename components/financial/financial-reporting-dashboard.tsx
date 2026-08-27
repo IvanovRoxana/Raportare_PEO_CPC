@@ -23,6 +23,7 @@ import {
   useLeaveEntryMutations,
 } from '@/hooks/use-backend-data';
 import { buildFinancialReportingSummary, type FinancialTimesheetRow } from '@/lib/financial-reporting';
+import { buildFinancialLeaveGridAllocations, getPeoLeaveDates } from '@/lib/financial-leave-grid';
 import { normalizeFinancialPersonKey, rankFinancialPersonMatches } from '@/lib/financial-person-matching';
 import { isFinancialLeaveEnabledClient, isFinancialTimesheetsEnabledClient } from '@/lib/feature-flags';
 import { buildPontajExportPayload } from '@/lib/pontaj-export-payload';
@@ -485,7 +486,7 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
         cpcNorm: formatNumericCell(cpcNorm),
         cpcDays: formatNumericCell(cpcNorm > 0 ? row.concordiaLeave / cpcNorm : 0),
         cpcHours: formatNumericCell(row.concordiaLeave),
-        period: formatLeavePeriod(row.leaveDates),
+        period: formatLeavePeriod(getPeoLeaveDates(row.leaveEntries)),
       };
     }
     setLeaveGridDrafts(nextDrafts);
@@ -669,12 +670,11 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
     const cpcDays = draftCpcDays || (cpcNorm > 0 ? selectedDays : 0);
     const peoHours = draftPeoHours || peoNorm * peoDays;
     const cpcHours = draftCpcHours || cpcNorm * cpcDays;
-    const totalHours = peoHours + cpcHours;
-    if (totalHours > 0 && replacementDates.length === 0) {
-      setVerificationMessage(`Completeaza perioada CO pentru ${row.name}, de exemplu 01-08; 29-31.`);
+    if (peoHours > 0 && replacementDates.length === 0) {
+      setVerificationMessage(`Completeaza perioada CO PEO pentru ${row.name}, de exemplu 01-08; 29-31.`);
       return;
     }
-    if (selectedDays > 0 && totalHours === 0) {
+    if (selectedDays > 0 && peoHours + cpcHours === 0) {
       setVerificationMessage(`Completeaza norma sau orele CO pentru ${row.name} inainte de salvare.`);
       return;
     }
@@ -690,13 +690,16 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
         },
       }));
     }
-    const preservedFinalLeaves = row.leaveEntries.filter((leave) => leave.source === 'FINANCIAL' && (leave.status === 'VALIDATED' || leave.status === 'REJECTED'));
-    if (preservedFinalLeaves.length) {
-      setVerificationMessage(`${row.name} are CO financiar validat/respins. Aceste inregistrari raman neschimbate; respinge sau corecteaza separat inainte de inlocuire completa.`);
-    }
-
     setSavingLeaveRow(key);
     try {
+      const allocations = buildFinancialLeaveGridAllocations({
+        existingLeaveDates: row.coLeaveDates,
+        peoDates: replacementDates,
+        peoHours,
+        cpcHours,
+        peoDays,
+        cpcDays,
+      });
       const validFrom = isoDate(year, month, 1);
       const sameDateContract = contracts.find((contract) => contract.expertId === row.expertId && contract.validFrom === validFrom);
       const cpcDailyCap = Math.max(0, cpcNorm);
@@ -738,30 +741,28 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
         });
       }
 
-      const replaceableLeaves = row.leaveEntries.filter((leave) => leave.status !== 'VALIDATED' && leave.status !== 'REJECTED');
+      const replaceableLeaves = row.leaveEntries.filter((leave) => leave.type === 'CO' && leave.status !== 'REJECTED');
       for (const leave of replaceableLeaves) {
         await removeLeaveEntry(leave.id);
       }
 
       let savedLeaveCount = 0;
-      if (totalHours > 0) {
-        const peoPerDay = peoHours / replacementDates.length;
-        const cpcPerDay = cpcHours / replacementDates.length;
-        for (const date of replacementDates) {
+      if (allocations.length > 0) {
+        for (const allocation of allocations) {
           await createManual({
             expertId: row.expertId,
-            date,
+            date: allocation.date,
             month,
             year,
             type: 'CO',
-            totalHours: peoPerDay + cpcPerDay,
-            peoHours: peoPerDay,
-            cpcHours: cpcPerDay,
+            totalHours: allocation.totalHours,
+            peoHours: allocation.peoHours,
+            cpcHours: allocation.cpcHours,
             source: 'FINANCIAL',
             status: 'VALIDATED',
             lockedForExpert: true,
             automaticSplit: false,
-            justification: `Actualizare manuala CO Financiar: ${draft.period || date}`,
+            justification: `Actualizare manuala CO Financiar: PEO ${draft.period || '-'}, CPC ${formatLeavePeriod(allocations.filter((allocationItem) => allocationItem.cpcHours > 0).map((allocationItem) => allocationItem.date)) || '-'}`,
             createdBy: 'financial-session',
           });
           savedLeaveCount += 1;
@@ -770,7 +771,7 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
       await refreshLeaveEntries();
       setVerificationMessage(
         savedLeaveCount > 0
-          ? `CO pentru ${row.name} a fost salvat si validat: ${savedLeaveCount} zile, ${formatNumericCell(totalHours)} ore.`
+          ? `CO pentru ${row.name} a fost salvat si validat: ${savedLeaveCount} zile calendar, ${formatNumericCell(peoHours)} ore PEO, ${formatNumericCell(cpcHours)} ore CPC.`
           : `CO pentru ${row.name} a fost actualizat. Nu exista zile CO de salvat pentru acest rand.`,
       );
     } catch (error) {

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { buildFinancialLeaveGridAllocations, getPeoLeaveDates } from '../lib/financial-leave-grid.ts';
 import { buildFinancialReportingSummary } from '../lib/financial-reporting.ts';
 import type { Activity, ConcurrentProject, ConcurrentProjectTimesheetEntry, Expert, ExpertNormContract, LeaveEntry } from '../lib/types.ts';
 
@@ -68,6 +69,45 @@ test('salvarea din grila CO financiar valideaza direct randurile salvate', () =>
   assert.doesNotMatch(saveGridSource, /status:\s*'DRAFT'/);
 });
 
+test('grila CO financiar foloseste perioada ca selectie PEO si pastreaza zilele CIM pentru CPC', () => {
+  const allocations = buildFinancialLeaveGridAllocations({
+    existingLeaveDates: [
+      '2026-08-17',
+      '2026-08-18',
+      '2026-08-19',
+      '2026-08-20',
+      '2026-08-21',
+      '2026-08-24',
+      '2026-08-25',
+      '2026-08-26',
+      '2026-08-27',
+    ],
+    peoDates: ['2026-08-17', '2026-08-18'],
+    peoHours: 16,
+    cpcHours: 72,
+    peoDays: 2,
+    cpcDays: 9,
+  });
+
+  assert.equal(allocations.length, 9);
+  assert.equal(allocations.reduce((sum, allocation) => sum + allocation.peoHours, 0), 16);
+  assert.equal(allocations.reduce((sum, allocation) => sum + allocation.cpcHours, 0), 72);
+  assert.equal(allocations.reduce((sum, allocation) => sum + allocation.totalHours, 0), 72);
+  assert.deepEqual(
+    allocations.filter((allocation) => allocation.peoHours > 0).map((allocation) => allocation.date),
+    ['2026-08-17', '2026-08-18'],
+  );
+});
+
+test('perioada initiala din grila CO financiar afiseaza doar zilele cu CO PEO', () => {
+  const leaves: LeaveEntry[] = [
+    { id: 'leave-peo', expertId: expert.id, date: '2026-08-17', month: 7, year: 2026, type: 'CO', totalHours: 8, peoHours: 8, cpcHours: 8, source: 'FINANCIAL', status: 'VALIDATED', lockedForExpert: true },
+    { id: 'leave-cpc', expertId: expert.id, date: '2026-08-19', month: 7, year: 2026, type: 'CO', totalHours: 8, peoHours: 0, cpcHours: 8, source: 'FINANCIAL', status: 'VALIDATED', lockedForExpert: true },
+  ];
+
+  assert.deepEqual(getPeoLeaveDates(leaves), ['2026-08-17']);
+});
+
 test('modulul financiar preia CO doar din modulul CO manual', () => {
   const activities: Activity[] = [
     { id: 'a1', expertId: expert.id, date: '2026-06-02', hours: 8, activityType: 'A', title: 'Activitate', status: 'approved' },
@@ -113,6 +153,7 @@ test('modulul financiar preia CO doar din modulul CO manual', () => {
   assert.equal(summary.rows[0].medicalLeave, 4);
   assert.equal(summary.rows[0].concordiaLeave, 2);
   assert.equal(summary.rows[0].draftHours, 4);
+  assert.deepEqual(summary.rows[0].coLeaveDates, ['2026-06-03']);
 });
 
 test('auditul evidentiaza persoanele lipsa si diferentele de norma fara a inlocui aplicatia', () => {
