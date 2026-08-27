@@ -57,6 +57,7 @@ export type FinancialTimesheetRow = {
   workbookGoodworksWorked?: number;
   draftHours: number;
   leaveDates: string[];
+  coLeaveDates: string[];
   conflicts: FinancialConflict[];
   financialPersonKey: string;
   matchSuggestions: FinancialPersonMatchSuggestion[];
@@ -261,6 +262,7 @@ export function buildFinancialReportingSummary(input: {
       ?? goodworksProject?.expertFunction
       ?? '-';
     const leaveDates = new Set<string>();
+    const coLeaveDates = new Set<string>();
     let peoWorked = 0;
     let peoLeave = 0;
     let medicalLeave = 0;
@@ -271,6 +273,7 @@ export function buildFinancialReportingSummary(input: {
       const hours = Number(activity.hours) || 0;
       if (activity.dayType === 'CO' || activity.dayType === 'CM') {
         leaveDates.add(activity.date);
+        if (activity.dayType === 'CO') coLeaveDates.add(activity.date);
       } else {
         peoWorked += hours;
         dailyTotals.set(activity.date, (dailyTotals.get(activity.date) ?? 0) + hours);
@@ -286,6 +289,7 @@ export function buildFinancialReportingSummary(input: {
       const bucket = projectBucket(projectById.get(entry.concurrentProjectId));
       if (entry.dayType === 'CO' || entry.dayType === 'CM') {
         leaveDates.add(entry.date);
+        if (entry.dayType === 'CO') coLeaveDates.add(entry.date);
       } else if (bucket === 'goodworks') {
         goodworksWorked += hours;
         dailyTotals.set(entry.date, (dailyTotals.get(entry.date) ?? 0) + hours);
@@ -304,6 +308,7 @@ export function buildFinancialReportingSummary(input: {
       }
       concordiaLeave += Number(leave.cpcHours) || 0;
       leaveDates.add(leave.date);
+      if (leave.type === 'CO') coLeaveDates.add(leave.date);
       dailyTotals.set(leave.date, (dailyTotals.get(leave.date) ?? 0) + (Number(leave.totalHours) || 0));
     }
 
@@ -367,6 +372,7 @@ export function buildFinancialReportingSummary(input: {
       workbookGoodworksWorked: compareHours ? reference?.goodworksWorked : undefined,
       draftHours,
       leaveDates: [...leaveDates].sort(),
+      coLeaveDates: [...coLeaveDates].sort(),
       conflicts: [],
       financialPersonKey: normalizedName,
       matchSuggestions: expert ? [] : rankFinancialPersonMatches(reference?.name ?? normalizedName, input.experts, financialPersonLinks),
