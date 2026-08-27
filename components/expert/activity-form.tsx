@@ -749,8 +749,8 @@ export function ActivityForm({
   const [activitySummary, setActivitySummary] = useState(activitySeed?.activitySummary || '');
   const [activitySummaryGeneratedAt, setActivitySummaryGeneratedAt] = useState(activitySeed?.activitySummaryGeneratedAt || '');
   const [activitySummaryAuditId, setActivitySummaryAuditId] = useState(activitySeed?.activitySummaryAuditId || '');
-  const [activityKeywords, setActivityKeywords] = useState(activitySeed?.activityKeywords || '');
-  const [location, setLocation] = useState(activitySeed?.location || 'Birou');
+  const [activityKeywords] = useState(activitySeed?.activityKeywords || '');
+  const [location] = useState(activitySeed?.location || 'Birou');
   const [validationError, setValidationError] = useState<string | null>(null);
   const [isPreparingActivityAutofill, setIsPreparingActivityAutofill] = useState(false);
   const [isSubmittingActivity, setIsSubmittingActivity] = useState(false);
@@ -3385,52 +3385,8 @@ export function ActivityForm({
                         </p>
                       )}
                     </Field>
-                  ) : (
-                    <Field>
-                      <FieldLabel htmlFor="location">Locatie</FieldLabel>
-                      <Select value={location} onValueChange={setLocation}>
-                        <SelectTrigger id="location">
-                          <SelectValue placeholder="Selecteaza locatia" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Birou">Birou</SelectItem>
-                          <SelectItem value="Teren">Teren</SelectItem>
-                          <SelectItem value="Online">Online</SelectItem>
-                          <SelectItem value="Sediu CPC">Sediu CPC</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </Field>
-                  )}
+                  ) : null}
                 </div>
-
-                {!isGdprExpert && (
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <Field>
-                      <FieldLabel htmlFor="location">Locatie</FieldLabel>
-                      <Select value={location} onValueChange={setLocation}>
-                        <SelectTrigger id="location">
-                          <SelectValue placeholder="Selecteaza locatia" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Birou">Birou</SelectItem>
-                          <SelectItem value="Teren">Teren</SelectItem>
-                          <SelectItem value="Online">Online</SelectItem>
-                          <SelectItem value="Sediu CPC">Sediu CPC</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </Field>
-                    <Field>
-                      <FieldLabel htmlFor="activityKeywords">Cheie interna optionala</FieldLabel>
-                      <Input
-                        id="activityKeywords"
-                        value={activityKeywords}
-                        onChange={(event) => setActivityKeywords(event.target.value)}
-                        placeholder="ex: monitorizare iulie"
-                        maxLength={120}
-                      />
-                    </Field>
-                  </div>
-                )}
               </div>
             )}
 
