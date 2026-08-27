@@ -564,6 +564,7 @@ function OutlookMonthCalendar({
 }
 
 function OutlookCalendarModule({
+  expertName,
   month,
   year,
   events,
@@ -575,6 +576,7 @@ function OutlookCalendarModule({
   canGoToNextMonth,
   isActionDisabled,
 }: {
+  expertName: string;
   month: number;
   year: number;
   events: OutlookCalendarEvent[];
@@ -636,7 +638,7 @@ function OutlookCalendarModule({
             <h2 className="px-2 text-xl font-semibold text-slate-900">{getMonthName(month)} {year}</h2>
           </div>
           <Badge variant="outline" className="border-blue-200 bg-blue-50 text-blue-800">
-            Calendar Outlook in pagina
+            Outlook - {expertName}
           </Badge>
         </div>
         <div className="grid grid-cols-7 border-b bg-slate-50 text-xs font-semibold text-slate-600">
@@ -758,17 +760,21 @@ function toRestoredActivityInput(activity: Activity): Omit<Activity, 'id' | 'cre
   return restoredActivity;
 }
 
-function buildDemoOutlookEvents(month: number, year: number): OutlookCalendarEvent[] {
+function buildDemoOutlookEvents(month: number, year: number, expert: Pick<Expert, 'id' | 'name' | 'email'>): OutlookCalendarEvent[] {
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const candidateDays = [5, 12, 18, 24].filter((day) => day <= daysInMonth);
+  const identity = `${expert.id || expert.email || expert.name || 'expert'}`;
+  const identityOffset = identity.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0) % 4;
+  const candidateDays = [5, 12, 18, 24]
+    .map((day) => Math.min(daysInMonth, day + identityOffset))
+    .filter((day, index, days) => day > 0 && days.indexOf(day) === index);
 
   return candidateDays.map((day, index) => {
     const date = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     const templates = [
-      { title: 'Sedinta coordonare proiect', startTime: '09:30', endTime: '11:00', location: 'Microsoft Teams', durationHours: 1.5 },
-      { title: 'Consultare parteneri sociali', startTime: '12:00', endTime: '13:00', location: 'Sala conferinte', durationHours: 1 },
-      { title: 'Pregatire livrabile lunare', startTime: '14:00', endTime: '16:00', location: 'Birou', durationHours: 2 },
-      { title: 'Follow-up activitati PEO', startTime: '10:00', endTime: '11:30', location: 'Microsoft Teams', durationHours: 1.5 },
+      { title: `Sedinta coordonare - ${expert.name}`, startTime: '09:30', endTime: '11:00', location: 'Microsoft Teams', durationHours: 1.5 },
+      { title: `Consultare parteneri - ${expert.name}`, startTime: '12:00', endTime: '13:00', location: 'Sala conferinte', durationHours: 1 },
+      { title: `Pregatire livrabile - ${expert.name}`, startTime: '14:00', endTime: '16:00', location: 'Birou', durationHours: 2 },
+      { title: `Follow-up PEO - ${expert.name}`, startTime: '10:00', endTime: '11:30', location: 'Microsoft Teams', durationHours: 1.5 },
     ];
     const template = templates[index % templates.length];
     return {
@@ -869,7 +875,6 @@ function ExpertDashboardContent() {
     isLoading: sharedActivityRegistrationLoading,
   } = useSharedActivityRegistrationContext(pendingSharedActivityRelationId);
   const { ensureActivitySuggestion, registerForActivity } = useSharedDeliverableMutations();
-  const outlookEvents = useMemo(() => buildDemoOutlookEvents(currentMonth, currentYear), [currentMonth, currentYear]);
 
   useEffect(() => {
     if (!deletedActivityUndo) return undefined;
@@ -933,6 +938,15 @@ function ExpertDashboardContent() {
     const expert = experts.find((e) => e.id === selectedExpertId) || experts[0];
     return expert || { id: '', name: 'Expert', role: '', norma: 8, saCodes: [] };
   }, [experts, selectedExpertId]);
+  const outlookEvents = useMemo(
+    () => buildDemoOutlookEvents(currentMonth, currentYear, selectedExpert),
+    [currentMonth, currentYear, selectedExpert],
+  );
+
+  useEffect(() => {
+    setSelectedOutlookEventId(null);
+  }, [currentMonth, currentYear, selectedExpert.id]);
+
   const financialSummary = useMemo(() => buildFinancialReportingSummary({
     experts,
     activities: allMonthActivities,
@@ -3514,6 +3528,7 @@ function ExpertDashboardContent() {
 
           <TabsContent id="outlook" value="outlook" className="scroll-mt-24">
             <OutlookCalendarModule
+              expertName={selectedExpert.name}
               month={currentMonth}
               year={currentYear}
               events={outlookEvents}
