@@ -1,4 +1,8 @@
-import { findLatestClarificationAudit, PM_CLARIFICATION_AUDIT_ACTION } from './pm-clarifications.ts';
+import {
+  findClarificationRealertAudits,
+  findLatestClarificationAudit,
+  PM_CLARIFICATION_AUDIT_ACTION,
+} from './pm-clarifications.ts';
 import type { Activity, AuditLog, DocumentMetadata, Expert, PmClarificationThread, ReportStatus } from './types.ts';
 
 export type PmProblemType =
@@ -43,13 +47,23 @@ export function buildPmClarificationThreads({
   year: number;
 }): PmClarificationThread[] {
   const threads: PmClarificationThread[] = [];
+  const getRealertMeta = (targetKey: string) => {
+    const realerts = findClarificationRealertAudits(auditLogs, targetKey);
+    const latest = realerts[0];
+    return {
+      lastRealertedAt: latest?.createdAt,
+      lastRealertedBy: latest?.actorName,
+      realertCount: realerts.length || undefined,
+    };
+  };
 
   if (reportStatus?.pmNotes?.trim()) {
     const audit = findLatestClarificationAudit(auditLogs);
+    const targetId = reportStatus.id || `${expert.id}-${year}-${month}`;
     threads.push({
       id: `month-${expert.id}-${year}-${month}`,
       targetType: 'month',
-      targetId: reportStatus.id || `${expert.id}-${year}-${month}`,
+      targetId,
       expertId: expert.id,
       month,
       year,
@@ -58,6 +72,7 @@ export function buildPmClarificationThreads({
       requestedAt: audit?.createdAt || reportStatus.updatedAt || reportStatus.sentDate,
       requestedBy: audit?.actorName,
       resolvedAt: reportStatus.status === 'approved' ? reportStatus.approvalDate || reportStatus.updatedAt : undefined,
+      ...getRealertMeta(`month:${targetId}`),
     });
   }
 
@@ -80,6 +95,7 @@ export function buildPmClarificationThreads({
         requestedBy: audit?.actorName,
         answeredAt: answered ? activity.updatedAt : undefined,
         resolvedAt: activity.status === 'approved' ? activity.updatedAt : undefined,
+        ...getRealertMeta(`activity:${activity.id}`),
       });
     });
 
@@ -100,6 +116,7 @@ export function buildPmClarificationThreads({
         pmMessage: String(audit.newValue),
         requestedAt: audit.createdAt,
         requestedBy: audit.actorName,
+        ...getRealertMeta(`document:${document.id}`),
       });
     });
 

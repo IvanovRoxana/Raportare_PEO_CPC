@@ -94,7 +94,11 @@ import {
   getEventDocumentationStatus,
   isActivityEventForDocumentation,
 } from '@/lib/event-documentation';
-import { findLatestClarificationAudit, PM_CLARIFICATION_AUDIT_ACTION } from '@/lib/pm-clarifications';
+import {
+  findLatestClarificationAudit,
+  PM_CLARIFICATION_AUDIT_ACTION,
+  PM_CLARIFICATION_REALERT_AUDIT_ACTION,
+} from '@/lib/pm-clarifications';
 import { buildPmClarificationThreads } from '@/lib/pm-clarification-flow';
 import { buildOpisXlsxBlob, buildOpisXlsxFilename } from '@/lib/opis-xls-export';
 import { isActivePmUnlockRequest, isAutoResolvedPmUnlockRequest } from '@/lib/pm-unlock-status';
@@ -789,6 +793,51 @@ export default function PMDashboard() {
     }
   };
 
+  const realertClarification = async (thread: PmClarificationThread) => {
+    if (!canManagePmReview) return;
+    const expert = visibleExperts.find((item) => item.id === thread.expertId);
+    if (!expert) {
+      window.alert('Expertul asociat clarificării nu a fost găsit.');
+      return;
+    }
+
+    const targetLabel =
+      thread.targetType === 'activity'
+        ? 'activitatea indicată de PM'
+        : thread.targetType === 'document'
+          ? 'documentul indicat de PM'
+          : 'raportarea lunară';
+    const targetKey = `${thread.targetType}:${thread.targetId}`;
+
+    try {
+      await createAuditLog({
+        actionType: PM_CLARIFICATION_REALERT_AUDIT_ACTION,
+        actorId: currentUser?.id || currentUser?.email || 'pm',
+        actorName: currentUser?.displayName || currentUser?.email || 'PM',
+        actorRole: currentUser?.roles?.join(',') || 'pm',
+        affectedExpertId: expert.id,
+        affectedExpertName: expert.name,
+        projectCode: expert.projectCode,
+        month: thread.month ?? selectedMonth,
+        year: thread.year ?? selectedYear,
+        fieldName: targetKey,
+        oldValue: thread.status,
+        newValue: thread.pmMessage,
+        justification: `Re-alertare clarificare PM pentru ${expert.name}: ${targetKey}.`,
+        source: 'manual',
+      });
+      await notifyByEmail(buildPmRequestedClarificationNotification({
+        expert,
+        month: thread.month ?? selectedMonth,
+        year: thread.year ?? selectedYear,
+        note: thread.pmMessage,
+        targetLabel,
+      }));
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Re-alertarea nu a putut fi trimisă.');
+    }
+  };
+
   const rejectReviewMonth = async () => {
     const note = window.prompt('Motiv respingere pentru aceasta raportare:');
     if (note === null) return;
@@ -1264,6 +1313,7 @@ export default function PMDashboard() {
         onRejectMonthAccessRequest={rejectMonthAccessRequest}
         onCloseMonthAccess={closeMonthAccess}
         onRequestDocumentClarification={requestDocumentClarification}
+        onRealertClarification={realertClarification}
         onApprovePmUnlock={approvePmUnlockRequest}
         onDownloadTotalOpisXls={handleDownloadTotalOpisXls}
         fallbackCatalog={fallbackActivityCatalog as ActivityCatalog[]}

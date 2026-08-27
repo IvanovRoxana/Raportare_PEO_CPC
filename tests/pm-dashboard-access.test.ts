@@ -278,6 +278,20 @@ test('clarificarile PM pentru documente title_mismatch apar ca fire document', (
       year: 2026,
       createdAt: '2026-05-05T10:00:00.000Z',
       source: 'manual',
+    }, {
+      id: 'audit-2',
+      actionType: 'pm_clarification_realerted',
+      actorId: 'pm',
+      actorName: 'PM',
+      actorRole: 'pm',
+      affectedExpertId: 'e1',
+      fieldName: 'document:d1',
+      oldValue: 'requested',
+      newValue: 'Te rog clarifica titlul documentului.',
+      month: 4,
+      year: 2026,
+      createdAt: '2026-05-06T12:00:00.000Z',
+      source: 'manual',
     }] as AuditLog[],
     month: 4,
     year: 2026,
@@ -288,6 +302,9 @@ test('clarificarile PM pentru documente title_mismatch apar ca fire document', (
   assert.equal(threads[0].targetId, 'd1');
   assert.equal(threads[0].status, 'requested');
   assert.equal(threads[0].pmMessage, 'Te rog clarifica titlul documentului.');
+  assert.equal(threads[0].lastRealertedAt, '2026-05-06T12:00:00.000Z');
+  assert.equal(threads[0].lastRealertedBy, 'PM');
+  assert.equal(threads[0].realertCount, 1);
 });
 
 test('randul PM numara activitatile inregistrate cu livrabile lipsa', () => {

@@ -113,6 +113,7 @@ type PmWorkspaceProps = {
   onRejectMonthAccessRequest: (request: MonthAccessRequest) => void | Promise<void>;
   onCloseMonthAccess: (request: MonthAccessRequest) => void | Promise<void>;
   onRequestDocumentClarification: (document: DocumentMetadata) => void;
+  onRealertClarification: (thread: PmClarificationThread) => void | Promise<void>;
   onApprovePmUnlock: (document: DocumentMetadata) => void | Promise<void>;
   onDownloadTotalOpisXls: () => void;
   fallbackCatalog?: ActivityCatalog[];
@@ -732,7 +733,11 @@ function ReportsView(props: PmWorkspaceProps) {
       </div>
       <aside className="space-y-4">
         <SideCard title="Activitate recentă" items={props.submittedReportRows.slice(0, 5).map((row) => `${row.expert.name} - ${props.statusLabels[row.status.status]?.label || row.status.status}`)} />
-        <SideCard title="Clarificări recente" items={props.clarificationThreads.slice(0, 5).map((thread) => thread.pmMessage)} />
+        <ClarificationRealertCard
+          threads={props.clarificationThreads.slice(0, 5)}
+          experts={props.experts}
+          onRealertClarification={props.onRealertClarification}
+        />
       </aside>
     </div>
   );
@@ -1135,6 +1140,55 @@ function EligibilityRulesActionPanel({
 
 function SideCard({ title, items }: { title: string; items: string[] }) {
   return <section className="rounded-lg border bg-white p-4 shadow-sm"><h3 className="mb-3 text-sm font-semibold">{title}</h3><div className="space-y-3">{items.length === 0 ? <p className="text-xs text-slate-500">Nu există activitate.</p> : items.map((item, index) => <div key={`${item}-${index}`} className="rounded-md border p-3 text-xs text-slate-600">{item}</div>)}</div></section>;
+}
+
+function ClarificationRealertCard({
+  threads,
+  experts,
+  onRealertClarification,
+}: {
+  threads: PmClarificationThread[];
+  experts: Expert[];
+  onRealertClarification: (thread: PmClarificationThread) => void | Promise<void>;
+}) {
+  const openThreads = threads.filter((thread) => thread.status !== 'resolved');
+
+  return (
+    <section className="rounded-lg border bg-white p-4 shadow-sm">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold">Clarificări recente</h3>
+        <Badge variant="outline">{openThreads.length} deschise</Badge>
+      </div>
+      <div className="space-y-3">
+        {openThreads.length === 0 ? (
+          <p className="text-xs text-slate-500">Nu există clarificări deschise.</p>
+        ) : openThreads.map((thread) => {
+          const expert = experts.find((item) => item.id === thread.expertId);
+          return (
+            <div key={thread.id} className="rounded-md border p-3 text-xs text-slate-600">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="font-semibold text-slate-900">{expert?.name || thread.expertId}</p>
+                  <p className="mt-1 line-clamp-3">{thread.pmMessage}</p>
+                </div>
+                <Badge variant="outline">{thread.status === 'answered' ? 'Răspuns' : 'Cerută'}</Badge>
+              </div>
+              {thread.lastRealertedAt ? (
+                <p className="mt-2 text-[11px] text-amber-700">
+                  Re-alertat {new Date(thread.lastRealertedAt).toLocaleDateString('ro-RO')}
+                  {thread.realertCount ? ` · ${thread.realertCount}x` : ''}
+                </p>
+              ) : null}
+              <Button size="sm" variant="outline" className="mt-3 w-full" onClick={() => onRealertClarification(thread)}>
+                <Send className="h-4 w-4" />
+                Re-alertează
+              </Button>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
 }
 
 function EmptyState({ text }: { text: string }) {
