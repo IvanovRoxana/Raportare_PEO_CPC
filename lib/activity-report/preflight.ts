@@ -166,6 +166,7 @@ function checkTable(model: Anexa10ReportModel) {
 
   const nonFinancingActivityRows = model.tableRows
     .map((row, index) => ({ row, index }))
+    .filter(({ row }) => row.reportingFlowType !== 'leave')
     .filter(({ row }) => !/^A\d+\s+-\s+/.test(row.officialActivityTitle.trim()));
   if (nonFinancingActivityRows.length > 0) {
     findings.push(finding({

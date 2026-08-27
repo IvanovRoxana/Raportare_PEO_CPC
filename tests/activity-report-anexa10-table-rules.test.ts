@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildAnexa10ReportModel } from '../lib/activity-report/build-report-model.ts';
+import { ANEXA10_EXPORT_SETTINGS, buildAnexa10ReportModel } from '../lib/activity-report/build-report-model.ts';
 import { buildDeterministicAnexa10Preflight } from '../lib/activity-report/preflight.ts';
 import type { Activity, Expert } from '../lib/types.ts';
 
@@ -106,4 +106,33 @@ test('preflight blocheaza regresiile de tabel Anexa 10', () => {
   assert.equal(report.canExport, false);
   assert.equal(report.findings.some((finding) => finding.id === 'non-financing-activity-title'), true);
   assert.equal(report.findings.some((finding) => finding.id === 'performed-activity-over-word-limit'), true);
+});
+
+test('preflight permite randurile de concediu fara activitate A din cererea de finantare', () => {
+  const model = buildAnexa10ReportModel({
+    expert,
+    activities: [
+      activity({
+        id: 'co-1',
+        date: '2026-06-10',
+        hours: 8,
+        dayType: 'CO',
+        title: 'CO - Concediu odihna',
+        activityType: 'CO - Concediu odihna',
+        saCode: '',
+        activitySummary: '',
+      }),
+    ],
+    month: 5,
+    year: 2026,
+    settings: ANEXA10_EXPORT_SETTINGS,
+  });
+
+  assert.equal(model.tableRows[0].reportingFlowType, 'leave');
+  assert.doesNotMatch(model.tableRows[0].officialActivityTitle, /^A\d+\s+-\s+/);
+
+  const report = buildDeterministicAnexa10Preflight(model);
+
+  assert.equal(report.canExport, true);
+  assert.equal(report.findings.some((finding) => finding.id === 'non-financing-activity-title'), false);
 });

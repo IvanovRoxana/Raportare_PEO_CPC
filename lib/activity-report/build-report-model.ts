@@ -49,6 +49,7 @@ export const ANEXA10_EXPORT_SETTINGS: ProjectReportingSettings = {
 
 export type Anexa10TableRow = {
   workBlockId: string;
+  reportingFlowType: ReportingWorkBlockBundle['workBlock']['reportingFlowType'];
   officialActivityTitle: string;
   responsibilities: string;
   performedActivity: string;
@@ -164,6 +165,7 @@ function buildTableRow(
 
   return {
     workBlockId: bundle.workBlock.id,
+    reportingFlowType: bundle.workBlock.reportingFlowType,
     officialActivityTitle: getOfficialActivityTitle(bundle, activities),
     responsibilities: expert.jobDescriptionText || bundle.workBlock.expertContribution || '-',
     performedActivity: isLeave ? getLeavePerformedActivity(activities) : getPerformedActivity(bundle, activities),
