@@ -19,6 +19,8 @@ const SOURCE_TYPES_BY_FOLDER = new Map([
 function parseArgs(argv) {
   const args = {
     dir: DEFAULT_DIR,
+    category: 'ap',
+    positionInProject: '',
     dryRun: false,
     endpoint: '',
     token: '',
@@ -30,6 +32,8 @@ function parseArgs(argv) {
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--dir') args.dir = path.resolve(argv[++index]);
+    if (arg === '--category') args.category = argv[++index] || 'ap';
+    if (arg === '--position-in-project') args.positionInProject = argv[++index] || '';
     if (arg === '--dry-run') args.dryRun = true;
     if (arg === '--endpoint') args.endpoint = argv[++index] || '';
     if (arg === '--token') args.token = argv[++index] || '';
@@ -162,7 +166,7 @@ async function listFiles(folderPath) {
     .map((entry) => path.join(folderPath, entry.name));
 }
 
-async function collectDocuments(rootDir) {
+async function collectDocuments(rootDir, args) {
   const folders = await readdir(rootDir, { withFileTypes: true });
   const documents = [];
   const skipped = [];
@@ -199,14 +203,17 @@ async function collectDocuments(rootDir) {
         continue;
       }
       const activityName = metadataValue(row.activityName);
+      const category = metadataValue(row.category) || metadataValue(row.expertCategory) || args.category;
+      const positionInProject = metadataValue(row.positionInProject) || args.positionInProject;
+      const expertRole = metadataValue(row.expertRole) || positionInProject;
       documents.push({
         title: activityName || path.basename(fileName, extension),
         sourceType,
         text: normalizedText,
-        category: 'ap',
+        category,
         expertId: metadataValue(row.expertId),
         expertName: metadataValue(row.expertName),
-        expertRole: metadataValue(row.expertRole),
+        expertRole,
         month: metadataNumber(row.month),
         year: metadataNumber(row.year),
         saCode: metadataValue(row.saCode),
@@ -217,6 +224,9 @@ async function collectDocuments(rootDir) {
         createdBy: 'script-import-rag-pa-documents',
         metadata: {
           folder: folder.name,
+          category,
+          positionInProject,
+          expertRole,
           fileSize: fileStat.size,
           textHash: hashText(normalizedText),
           sourceFileName: metadataValue(row.sourceFileName),
@@ -249,12 +259,15 @@ async function postDocument(endpoint, token, cognitoToken, document, dryRun) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const { documents, skipped } = await collectDocuments(args.dir);
+  const { documents, skipped } = await collectDocuments(args.dir, args);
   const summary = documents.map((document) => {
     const chunks = splitText(document.text);
     return {
       fileName: document.originalFileName,
       sourceType: document.sourceType,
+      category: document.category,
+      expertRole: document.expertRole,
+      positionInProject: document.metadata.positionInProject,
       title: document.title,
       month: document.month,
       year: document.year,
@@ -271,7 +284,7 @@ async function main() {
     dir: args.dir,
     documents: summary,
     skipped,
-    note: 'MVP proceseaza doar .txt/.md. Pentru PDF/DOCX exporta textul in folderele rag-seed/PA inainte de import.',
+    note: 'MVP proceseaza doar .txt/.md. Pentru PDF/DOCX exporta textul in folderele rag-seed inainte de import.',
   }, null, 2));
 
   if (args.dryRun) return;

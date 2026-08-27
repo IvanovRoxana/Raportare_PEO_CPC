@@ -63,6 +63,51 @@ test('retrieval fallback returns empty context when RAG is disabled', async () =
   restoreEnv('ACTIVITY_AUTOFILL_RAG_ENABLED', previousEnabled);
 });
 
+test('PA-only RAG can be extended to an explicitly allowed project position', () => {
+  const previousEnabled = process.env.ACTIVITY_AUTOFILL_RAG_ENABLED;
+  const previousPaOnly = process.env.ACTIVITY_AUTOFILL_RAG_PA_ONLY;
+  const previousAllowedPositions = process.env.ACTIVITY_AUTOFILL_RAG_ALLOWED_POSITIONS;
+
+  process.env.ACTIVITY_AUTOFILL_RAG_ENABLED = 'true';
+  process.env.ACTIVITY_AUTOFILL_RAG_PA_ONLY = 'true';
+  delete process.env.ACTIVITY_AUTOFILL_RAG_ALLOWED_POSITIONS;
+
+  const blocked = shouldRunActivityAutofillRag({
+    category: 'cr',
+    expertRole: 'Coordonator Centre Regionale',
+  });
+  assert.equal(blocked.ok, false);
+  assert.equal(blocked.reason, 'not_pa_category');
+
+  process.env.ACTIVITY_AUTOFILL_RAG_ALLOWED_POSITIONS = 'Coordonator Centre Regionale';
+  const allowed = shouldRunActivityAutofillRag({
+    category: 'cr',
+    expertRole: 'Coordonator Centre Regionale',
+  });
+  assert.equal(allowed.ok, true);
+
+  restoreEnv('ACTIVITY_AUTOFILL_RAG_ENABLED', previousEnabled);
+  restoreEnv('ACTIVITY_AUTOFILL_RAG_PA_ONLY', previousPaOnly);
+  restoreEnv('ACTIVITY_AUTOFILL_RAG_ALLOWED_POSITIONS', previousAllowedPositions);
+});
+
+test('PA-only RAG can be extended to an explicitly allowed category', () => {
+  const previousEnabled = process.env.ACTIVITY_AUTOFILL_RAG_ENABLED;
+  const previousPaOnly = process.env.ACTIVITY_AUTOFILL_RAG_PA_ONLY;
+  const previousAllowedCategories = process.env.ACTIVITY_AUTOFILL_RAG_ALLOWED_CATEGORIES;
+
+  process.env.ACTIVITY_AUTOFILL_RAG_ENABLED = 'true';
+  process.env.ACTIVITY_AUTOFILL_RAG_PA_ONLY = 'true';
+  process.env.ACTIVITY_AUTOFILL_RAG_ALLOWED_CATEGORIES = 'cr';
+
+  const allowed = shouldRunActivityAutofillRag({ category: 'cr' });
+  assert.equal(allowed.ok, true);
+
+  restoreEnv('ACTIVITY_AUTOFILL_RAG_ENABLED', previousEnabled);
+  restoreEnv('ACTIVITY_AUTOFILL_RAG_PA_ONLY', previousPaOnly);
+  restoreEnv('ACTIVITY_AUTOFILL_RAG_ALLOWED_CATEGORIES', previousAllowedCategories);
+});
+
 test('RAG admin guard fails closed when token is not configured', () => {
   const previousToken = process.env.RAG_ADMIN_IMPORT_TOKEN;
   delete process.env.RAG_ADMIN_IMPORT_TOKEN;

@@ -48,6 +48,21 @@ export function isActivityAutofillRagPaOnly() {
   return process.env.ACTIVITY_AUTOFILL_RAG_PA_ONLY !== 'false';
 }
 
+function parseCsvFlag(value: string | undefined) {
+  return (value ?? '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+export function getActivityAutofillRagAllowedCategories() {
+  return parseCsvFlag(process.env.ACTIVITY_AUTOFILL_RAG_ALLOWED_CATEGORIES);
+}
+
+export function getActivityAutofillRagAllowedPositions() {
+  return parseCsvFlag(process.env.ACTIVITY_AUTOFILL_RAG_ALLOWED_POSITIONS);
+}
+
 export function isActivityAutofillRagAuditEnabled() {
   return process.env.ACTIVITY_AUTOFILL_RAG_AUDIT_ENABLED !== 'false';
 }

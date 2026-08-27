@@ -67,10 +67,12 @@ METADATA_HEADERS = [
     "sourceFileName",
     "sourcePath",
     "sourceType",
+    "category",
     "approvalStatus",
     "expertId",
     "expertName",
     "expertRole",
+    "positionInProject",
     "projectCode",
     "month",
     "year",
@@ -94,10 +96,12 @@ class ReportMetadata:
     sourceFileName: str
     sourcePath: str
     sourceType: str
+    category: str
     approvalStatus: str
     expertId: str
     expertName: str
     expertRole: str
+    positionInProject: str
     projectCode: str
     month: str
     year: str
@@ -112,6 +116,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--repo", default=".", help="Repository root. Defaults to current directory.")
     parser.add_argument("--target", default="rag-seed/PA", help="Target PA seed directory.")
+    parser.add_argument("--default-category", default="ap", help="Default PEO category written to metadata.csv.")
+    parser.add_argument("--default-expert-id", default="", help="Default expertId when local app data is the source of truth.")
+    parser.add_argument("--default-expert-name", default="", help="Default expertName when local app data is the source of truth.")
+    parser.add_argument("--default-expert-role", default="", help="Default expertRole when it cannot be extracted safely.")
+    parser.add_argument("--default-position-in-project", default="", help="Default positionInProject when it cannot be extracted safely.")
+    parser.add_argument("--default-project-code", default="", help="Default projectCode when it cannot be extracted safely.")
     parser.add_argument(
         "--source",
         action="append",
@@ -192,10 +202,10 @@ def classify_file(path: Path, repo: Path, target: Path) -> SourceDocument | None
         if f"RAG SEED PA {normalized_token(folder)}" in rel_norm:
             return SourceDocument(path, folder, folder, source_type)
 
-    if "LIVRABILE ISTORICE" in rel_norm or "LIVRABIL" in rel_norm:
-        return SourceDocument(path, "livrabil_istoric", "livrabile-istorice", "livrabil_istoric")
     if "RAPORTARI PA" in rel_norm or parse_report_identity(path).get("hasMonthYear"):
         return SourceDocument(path, "raportare_aprobata_oir", "raportari-aprobate-oir", "raportare_aprobata_oir")
+    if "LIVRABILE ISTORICE" in rel_norm or "LIVRABIL" in rel_norm:
+        return SourceDocument(path, "livrabil_istoric", "livrabile-istorice", "livrabil_istoric")
     if "CERERE" in rel_tokens and "FINANTARE" in rel_tokens:
         return SourceDocument(path, "cerere_finantare", "cerere-finantare", "cerere_finantare")
     if {"MANUAL", "BENEFICIAR"} & rel_tokens or ("MANUALUL" in rel_tokens and "BENEFICIARULUI" in rel_tokens):
@@ -524,17 +534,30 @@ def write_text_if_needed(path: Path, text: str, overwrite: bool, dry_run: bool) 
     return "written"
 
 
-def build_report_metadata(source: SourceDocument, output_path: Path, repo: Path, text: str, method: str) -> ReportMetadata:
+def build_report_metadata(
+    source: SourceDocument,
+    output_path: Path,
+    repo: Path,
+    text: str,
+    method: str,
+    default_category: str,
+    default_expert_id: str,
+    default_expert_name: str,
+    default_expert_role: str,
+    default_position_in_project: str,
+    default_project_code: str,
+) -> ReportMetadata:
     identity = parse_report_identity(source.path)
     content = extract_report_metadata_from_text(text)
     month = content.get("month") or identity["month"] or NEEDS_REVIEW
     year = content.get("year") or identity["year"] or NEEDS_REVIEW
-    expert_name = str(content.get("expertName") or identity["expertName"])
-    expert_id = slugify(expert_name) if expert_name != NEEDS_REVIEW else str(identity["expertId"])
-    project_code = str(content.get("projectCode") or identity["projectCode"] or NEEDS_REVIEW)
-    expert_role = str(content.get("expertRole") or NEEDS_REVIEW)
+    expert_name = str(default_expert_name or content.get("expertName") or identity["expertName"])
+    expert_id = default_expert_id or (slugify(expert_name) if expert_name != NEEDS_REVIEW else str(identity["expertId"]))
+    project_code = str(content.get("projectCode") or default_project_code or identity["projectCode"] or NEEDS_REVIEW)
+    expert_role = str(content.get("expertRole") or default_expert_role or NEEDS_REVIEW)
+    position_in_project = str(content.get("expertRole") or default_position_in_project or default_expert_role or NEEDS_REVIEW)
 
-    review_fields = ["expertRole", "projectCode", "saCode", "activityName"]
+    review_fields = ["expertRole", "positionInProject", "projectCode", "saCode", "activityName"]
     if expert_name == NEEDS_REVIEW:
         review_fields.append("expertName")
     if month == NEEDS_REVIEW:
@@ -543,6 +566,8 @@ def build_report_metadata(source: SourceDocument, output_path: Path, repo: Path,
         review_fields.append("year")
     if expert_role != NEEDS_REVIEW and "expertRole" in review_fields:
         review_fields.remove("expertRole")
+    if position_in_project != NEEDS_REVIEW and "positionInProject" in review_fields:
+        review_fields.remove("positionInProject")
     if project_code != NEEDS_REVIEW and "projectCode" in review_fields:
         review_fields.remove("projectCode")
     if len(text) < 100:
@@ -564,10 +589,12 @@ def build_report_metadata(source: SourceDocument, output_path: Path, repo: Path,
         sourceFileName=source.path.name,
         sourcePath=relative_to_repo(source.path, repo),
         sourceType=source.source_type,
+        category=default_category or NEEDS_REVIEW,
         approvalStatus="approved_oir",
         expertId=expert_id,
         expertName=expert_name,
         expertRole=expert_role,
+        positionInProject=position_in_project,
         projectCode=project_code,
         month=str(month),
         year=str(year),
@@ -701,7 +728,19 @@ def main() -> int:
         conversions.append(conversion)
 
         if source.target_folder == "raportari-aprobate-oir":
-            report_rows.append(build_report_metadata(source, output_path, repo, text, method))
+            report_rows.append(build_report_metadata(
+                source,
+                output_path,
+                repo,
+                text,
+                method,
+                args.default_category,
+                args.default_expert_id,
+                args.default_expert_name,
+                args.default_expert_role,
+                args.default_position_in_project,
+                args.default_project_code,
+            ))
 
     metadata_path = target / "raportari-aprobate-oir" / "metadata.csv"
     if report_rows or not metadata_path.exists():

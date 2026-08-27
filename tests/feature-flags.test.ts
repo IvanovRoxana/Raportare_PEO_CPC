@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  getActivityAutofillRagAllowedCategories,
+  getActivityAutofillRagAllowedPositions,
   getActivityAutofillEmbeddingModel,
   isAnexa10DeterministicDocxEnabledClient,
   isActivityAgentEnabled,
@@ -71,22 +73,44 @@ test('activity autofill RAG flags are safe by default', () => {
   const previousEnabled = process.env.ACTIVITY_AUTOFILL_RAG_ENABLED;
   const previousPaOnly = process.env.ACTIVITY_AUTOFILL_RAG_PA_ONLY;
   const previousAudit = process.env.ACTIVITY_AUTOFILL_RAG_AUDIT_ENABLED;
+  const previousAllowedCategories = process.env.ACTIVITY_AUTOFILL_RAG_ALLOWED_CATEGORIES;
+  const previousAllowedPositions = process.env.ACTIVITY_AUTOFILL_RAG_ALLOWED_POSITIONS;
   const previousEmbedding = process.env.OPENAI_EMBEDDING_MODEL;
 
   delete process.env.ACTIVITY_AUTOFILL_RAG_ENABLED;
   delete process.env.ACTIVITY_AUTOFILL_RAG_PA_ONLY;
   delete process.env.ACTIVITY_AUTOFILL_RAG_AUDIT_ENABLED;
+  delete process.env.ACTIVITY_AUTOFILL_RAG_ALLOWED_CATEGORIES;
+  delete process.env.ACTIVITY_AUTOFILL_RAG_ALLOWED_POSITIONS;
   delete process.env.OPENAI_EMBEDDING_MODEL;
 
   assert.equal(isActivityAutofillRagEnabled(), false);
   assert.equal(isActivityAutofillRagPaOnly(), true);
   assert.equal(isActivityAutofillRagAuditEnabled(), true);
+  assert.deepEqual(getActivityAutofillRagAllowedCategories(), []);
+  assert.deepEqual(getActivityAutofillRagAllowedPositions(), []);
   assert.equal(getActivityAutofillEmbeddingModel(), 'text-embedding-3-small');
 
   restoreEnv('ACTIVITY_AUTOFILL_RAG_ENABLED', previousEnabled);
   restoreEnv('ACTIVITY_AUTOFILL_RAG_PA_ONLY', previousPaOnly);
   restoreEnv('ACTIVITY_AUTOFILL_RAG_AUDIT_ENABLED', previousAudit);
+  restoreEnv('ACTIVITY_AUTOFILL_RAG_ALLOWED_CATEGORIES', previousAllowedCategories);
+  restoreEnv('ACTIVITY_AUTOFILL_RAG_ALLOWED_POSITIONS', previousAllowedPositions);
   restoreEnv('OPENAI_EMBEDDING_MODEL', previousEmbedding);
+});
+
+test('activity autofill RAG scope allow-lists parse comma-separated values', () => {
+  const previousAllowedCategories = process.env.ACTIVITY_AUTOFILL_RAG_ALLOWED_CATEGORIES;
+  const previousAllowedPositions = process.env.ACTIVITY_AUTOFILL_RAG_ALLOWED_POSITIONS;
+
+  process.env.ACTIVITY_AUTOFILL_RAG_ALLOWED_CATEGORIES = 'cr, comunicare';
+  process.env.ACTIVITY_AUTOFILL_RAG_ALLOWED_POSITIONS = 'Coordonator Centre Regionale, Responsabil Centre Regionale';
+
+  assert.deepEqual(getActivityAutofillRagAllowedCategories(), ['cr', 'comunicare']);
+  assert.deepEqual(getActivityAutofillRagAllowedPositions(), ['Coordonator Centre Regionale', 'Responsabil Centre Regionale']);
+
+  restoreEnv('ACTIVITY_AUTOFILL_RAG_ALLOWED_CATEGORIES', previousAllowedCategories);
+  restoreEnv('ACTIVITY_AUTOFILL_RAG_ALLOWED_POSITIONS', previousAllowedPositions);
 });
 
 test('reporting work blocks UI is disabled by default and enables only on explicit public flag', () => {

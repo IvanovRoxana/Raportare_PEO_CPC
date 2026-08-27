@@ -43,6 +43,7 @@ export interface RagRetrievalRequest {
   expertId?: string;
   expertName?: string;
   expertRole?: string;
+  positionInProject?: string;
   category?: string;
   projectCode?: string;
   month?: number | string;

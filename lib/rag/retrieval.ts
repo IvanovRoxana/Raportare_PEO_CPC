@@ -1,4 +1,6 @@
 import {
+  getActivityAutofillRagAllowedCategories,
+  getActivityAutofillRagAllowedPositions,
   isActivityAutofillRagEnabled,
   isActivityAutofillRagPaOnly,
 } from '../feature-flags.ts';
@@ -18,7 +20,7 @@ const REFERENCE_SOURCE_TYPES = ['cerere_finantare', 'manual_beneficiar', 'descri
 const SA_PURPOSE_SOURCE_TYPES = ['scop_sa', 'descriere_activitati', 'other'];
 const MIN_EXPERT_HISTORY_CHUNKS = 30;
 
-type CandidateBucket = 'expert_history' | 'same_sa' | 'reference';
+type CandidateBucket = 'expert_history' | 'position_history' | 'same_sa' | 'reference';
 
 interface CandidateChunk {
   chunk: KnowledgeChunk;
@@ -35,9 +37,33 @@ export function isPaRagCategory(category?: string) {
   return normalizePeoCategory(category) === 'ap';
 }
 
-export function shouldRunActivityAutofillRag(request: Pick<RagRetrievalRequest, 'category'>) {
+function normalizeScopeValue(value?: string) {
+  return normalizeRagText(value ?? '').toLocaleLowerCase('ro-RO');
+}
+
+function getRequestProjectPosition(request: Pick<RagRetrievalRequest, 'expertRole' | 'positionInProject'>) {
+  return request.positionInProject?.trim() || request.expertRole?.trim() || '';
+}
+
+function getAllowedCategorySet() {
+  return new Set(getActivityAutofillRagAllowedCategories().map((category) => normalizePeoCategory(category)).filter(Boolean));
+}
+
+function getAllowedPositionSet() {
+  return new Set(getActivityAutofillRagAllowedPositions().map(normalizeScopeValue).filter(Boolean));
+}
+
+function isExplicitlyAllowedRagScope(request: Pick<RagRetrievalRequest, 'category' | 'expertRole' | 'positionInProject'>) {
+  const category = normalizePeoCategory(request.category);
+  if (category && getAllowedCategorySet().has(category)) return true;
+
+  const position = normalizeScopeValue(getRequestProjectPosition(request));
+  return Boolean(position && getAllowedPositionSet().has(position));
+}
+
+export function shouldRunActivityAutofillRag(request: Pick<RagRetrievalRequest, 'category' | 'expertRole' | 'positionInProject'>) {
   if (!isActivityAutofillRagEnabled()) return { ok: false as const, reason: 'rag_disabled' };
-  if (isActivityAutofillRagPaOnly() && !isPaRagCategory(request.category)) {
+  if (isActivityAutofillRagPaOnly() && !isPaRagCategory(request.category) && !isExplicitlyAllowedRagScope(request)) {
     return { ok: false as const, reason: 'not_pa_category' };
   }
   return { ok: true as const };
@@ -70,6 +96,7 @@ export function buildActivityAutofillRagQuery(request: RagRetrievalRequest) {
 
   return normalizeRagText([
     `Expert: ${request.expertName ?? ''}`,
+    `Pozitie in proiect: ${getRequestProjectPosition(request)}`,
     `Rol: ${request.expertRole ?? ''}`,
     `Categorie: ${request.category ?? ''}`,
     `Proiect: ${request.projectCode ?? ''}`,
@@ -143,6 +170,7 @@ function selectDiverseTopChunks(
 
   const quotas: Record<CandidateBucket, number> = {
     expert_history: Math.max(4, Math.ceil(topK / 2)),
+    position_history: Math.max(2, Math.ceil(topK / 3)),
     same_sa: Math.max(2, Math.ceil(topK / 3)),
     reference: 2,
   };
@@ -150,6 +178,7 @@ function selectDiverseTopChunks(
   const selected: typeof scored = [];
   const counts: Record<CandidateBucket, number> = {
     expert_history: 0,
+    position_history: 0,
     same_sa: 0,
     reference: 0,
   };
@@ -174,6 +203,38 @@ function selectDiverseTopChunks(
     score: item.score,
     rank: index + 1,
   }));
+}
+
+function metadataForChunk(chunk: KnowledgeChunk) {
+  if (!chunk.metadataJson) return {};
+  try {
+    const parsed = JSON.parse(chunk.metadataJson);
+    return parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : {};
+  } catch {
+    return {};
+  }
+}
+
+function chunkMatchesProjectPosition(chunk: KnowledgeChunk, position: string) {
+  const expected = normalizeScopeValue(position);
+  if (!expected) return false;
+  const metadata = metadataForChunk(chunk);
+  const values = [
+    metadata.positionInProject,
+    metadata.projectPosition,
+    metadata.expertRole,
+  ]
+    .filter((value): value is string => typeof value === 'string')
+    .map(normalizeScopeValue);
+  return values.some((value) => value === expected);
+}
+
+function filterChunksByProjectPosition(chunks: KnowledgeChunk[], request: RagRetrievalRequest, requireMatch = false) {
+  const position = getRequestProjectPosition(request);
+  if (!position) return chunks;
+  const matching = chunks.filter((chunk) => chunkMatchesProjectPosition(chunk, position));
+  if (matching.length > 0 || requireMatch) return matching;
+  return chunks;
 }
 
 async function collectRagCandidates(
@@ -230,15 +291,30 @@ async function collectRagCandidates(
     });
   }
 
+  if (category && getRequestProjectPosition(request)) {
+    await run('istoric dupa pozitia in proiect', 'position_history', async () => {
+      const requestConfig = requestOptions(options, deadline, 350);
+      if (!requestConfig) return [];
+      const chunks = await store.listKnowledgeChunksByCategoryAndSourceType(
+        category,
+        APPROVED_REPORT_SOURCE_TYPE,
+        activeChunkFilter(),
+        requestConfig,
+      );
+      return filterChunksByProjectPosition(chunks, request, true);
+    });
+  }
+
   for (const saCode of getCandidateSaCodes(request)) {
-    await run(`istoric AP pentru ${saCode}`, 'same_sa', async () => {
+    await run(`istoric categorie pentru ${saCode}`, 'same_sa', async () => {
       const requestConfig = requestOptions(options, deadline, 120, 80);
       if (!requestConfig) return [];
-      return store.listKnowledgeChunksBySaCode(
+      const chunks = await store.listKnowledgeChunksBySaCode(
         saCode,
         activeChunkFilter(category, { sourceType: { eq: APPROVED_REPORT_SOURCE_TYPE } }),
         requestConfig,
       );
+      return filterChunksByProjectPosition(chunks, request);
     });
   }
 
@@ -289,7 +365,7 @@ export async function retrieveActivityAutofillContext(
       chunks: scored,
       warnings: [
         ...warnings,
-        ...(candidates.length === 0 ? ['Nu exista fragmente RAG indexate pentru contextul AP selectat.'] : []),
+        ...(candidates.length === 0 ? ['Nu exista fragmente RAG indexate pentru contextul selectat.'] : []),
         ...(remainingMs(deadline) <= 250 ? ['RAG a folosit rezultatele gasite in bugetul de timp disponibil.'] : []),
       ],
     };
