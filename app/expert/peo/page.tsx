@@ -565,6 +565,9 @@ function OutlookMonthCalendar({
 
 function OutlookCalendarModule({
   expertName,
+  expertEmail,
+  realUserEmail,
+  canUsePersonalCalendar,
   month,
   year,
   events,
@@ -577,6 +580,9 @@ function OutlookCalendarModule({
   isActionDisabled,
 }: {
   expertName: string;
+  expertEmail?: string;
+  realUserEmail?: string | null;
+  canUsePersonalCalendar: boolean;
   month: number;
   year: number;
   events: OutlookCalendarEvent[];
@@ -589,16 +595,22 @@ function OutlookCalendarModule({
   isActionDisabled: boolean;
 }) {
   const today = useMemo(() => new Date(), []);
-  const selectedEvent = events.find((event) => event.id === selectedEventId) ?? events[0] ?? null;
+  const normalizedExpertEmail = normalizeOutlookIdentity(expertEmail);
+  const normalizedRealUserEmail = normalizeOutlookIdentity(realUserEmail);
+  const isDifferentSignedInOutlookAccount = Boolean(
+    normalizedExpertEmail && normalizedRealUserEmail && normalizedExpertEmail !== normalizedRealUserEmail,
+  );
+  const visibleEvents = useMemo(() => (canUsePersonalCalendar ? events : []), [canUsePersonalCalendar, events]);
+  const selectedEvent = visibleEvents.find((event) => event.id === selectedEventId) ?? visibleEvents[0] ?? null;
   const eventsByDate = useMemo(() => {
     const grouped = new Map<string, OutlookCalendarEvent[]>();
-    events.forEach((event) => {
+    visibleEvents.forEach((event) => {
       const dayEvents = grouped.get(event.date) ?? [];
       dayEvents.push(event);
       grouped.set(event.date, dayEvents);
     });
     return grouped;
-  }, [events]);
+  }, [visibleEvents]);
   const days = useMemo(() => {
     const firstDay = new Date(year, month, 1);
     const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -641,6 +653,20 @@ function OutlookCalendarModule({
             Outlook - {expertName}
           </Badge>
         </div>
+        <div className="border-b bg-slate-50 px-4 py-2 text-xs text-slate-600">
+          Calendar tinta: <span className="font-semibold text-slate-800">{expertEmail || 'email expert lipsa'}</span>
+          {isDifferentSignedInOutlookAccount && (
+            <span className="ml-2 text-amber-700">
+              Cont autentificat: {realUserEmail}. Pentru calendar real, expertul trebuie sa autorizeze propriul cont Outlook.
+            </span>
+          )}
+        </div>
+        {!canUsePersonalCalendar && (
+          <div className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            Nu incarc calendarul Outlook pentru {expertName} prin sesiunea Outlook a altui utilizator. In modul admin/view-as poti completa pontajul,
+            dar calendarul Outlook real va fi disponibil doar cand expertul este autentificat cu propriul cont si autorizeaza Microsoft Graph.
+          </div>
+        )}
         <div className="grid grid-cols-7 border-b bg-slate-50 text-xs font-semibold text-slate-600">
           {['Luni', 'Marti', 'Miercuri', 'Joi', 'Vineri', 'Sambata', 'Duminica'].map((day) => (
             <div key={day} className="border-r px-3 py-2 last:border-r-0">{day}</div>
@@ -728,7 +754,9 @@ function OutlookCalendarModule({
                 </Button>
               </div>
             ) : (
-              <p className="mt-2 text-sm text-muted-foreground">Nu exista sedinte in luna selectata.</p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                {canUsePersonalCalendar ? 'Nu exista sedinte in luna selectata.' : 'Calendarul Outlook nu este disponibil pentru acest context.'}
+              </p>
             )}
           </div>
 
@@ -736,7 +764,7 @@ function OutlookCalendarModule({
             <p className="mb-1 font-semibold text-slate-900">Conectare Microsoft Graph</p>
             <p>
               Acest calendar este pregatit pentru evenimentele reale din Outlook. Dupa configurarea OAuth, lista va fi incarcata
-              din calendarul individual al expertului.
+              din calendarul individual al expertului autentificat.
             </p>
           </div>
         </div>
@@ -785,6 +813,10 @@ function buildDemoOutlookEvents(month: number, year: number, expert: Pick<Expert
   });
 }
 
+function normalizeOutlookIdentity(value?: string | null) {
+  return String(value || '').trim().toLowerCase();
+}
+
 function ExpertDashboardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -813,6 +845,7 @@ function ExpertDashboardContent() {
   const activitySaveInFlightRef = useRef(false);
   const [signedInUserId, setSignedInUserId] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [realUserEmail, setRealUserEmail] = useState<string | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -890,8 +923,11 @@ function ExpertDashboardContent() {
   useEffect(() => {
     let isMounted = true;
 
-    getSignedInUser()
-      .then((user) => {
+    Promise.all([
+      getSignedInUser(),
+      getSignedInUser({ ignoreViewAs: true }),
+    ])
+      .then(([user, realUser]) => {
         if (!isMounted) return;
 
         if (!user) {
@@ -904,6 +940,7 @@ function ExpertDashboardContent() {
         setIsAuthenticated(true);
         setSignedInUserId(user.id ?? null);
         setUserEmail(user.email ?? user.displayName ?? null);
+        setRealUserEmail(realUser?.email ?? null);
         setIsAuthLoading(false);
       })
       .catch(() => {
@@ -942,10 +979,15 @@ function ExpertDashboardContent() {
     () => buildDemoOutlookEvents(currentMonth, currentYear, selectedExpert),
     [currentMonth, currentYear, selectedExpert],
   );
+  const canUseSelectedExpertOutlook = useMemo(() => {
+    const expertEmail = normalizeOutlookIdentity(selectedExpert.email);
+    const authenticatedEmail = normalizeOutlookIdentity(realUserEmail);
+    return Boolean(expertEmail && authenticatedEmail && expertEmail === authenticatedEmail);
+  }, [realUserEmail, selectedExpert.email]);
 
   useEffect(() => {
     setSelectedOutlookEventId(null);
-  }, [currentMonth, currentYear, selectedExpert.id]);
+  }, [canUseSelectedExpertOutlook, currentMonth, currentYear, selectedExpert.id]);
 
   const financialSummary = useMemo(() => buildFinancialReportingSummary({
     experts,
@@ -3529,6 +3571,9 @@ function ExpertDashboardContent() {
           <TabsContent id="outlook" value="outlook" className="scroll-mt-24">
             <OutlookCalendarModule
               expertName={selectedExpert.name}
+              expertEmail={selectedExpert.email}
+              realUserEmail={realUserEmail}
+              canUsePersonalCalendar={canUseSelectedExpertOutlook}
               month={currentMonth}
               year={currentYear}
               events={outlookEvents}
