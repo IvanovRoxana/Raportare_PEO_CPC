@@ -65,6 +65,9 @@ import type {
   PersistedReportingWorkBlock,
   PersistedWorkBlockActivityLink,
   PersistedWorkBlockDeliverableLink,
+  ReportingPeriod,
+  ReportingPeriodCreateInput,
+  ReportingPeriodUpdateInput,
   ReportStatus,
   SharedActivityRegistrationContext,
   SharedDeliverable,
@@ -589,6 +592,27 @@ function mapNotificationLog(item: any): NotificationLog {
     metadata: item.metadata ?? null,
     sentAt: item.sentAt ?? undefined,
     errorMessage: item.errorMessage ?? undefined,
+    createdAt: item.createdAt ?? undefined,
+    updatedAt: item.updatedAt ?? undefined,
+  };
+}
+
+function mapReportingPeriod(item: any): ReportingPeriod {
+  return {
+    id: item.id,
+    projectCode: item.projectCode,
+    code: item.code,
+    startMonth: item.startMonth,
+    startYear: item.startYear,
+    monthCount: item.monthCount,
+    endMonth: item.endMonth,
+    endYear: item.endYear,
+    status: item.status ?? 'draft',
+    notes: item.notes ?? undefined,
+    createdBy: item.createdBy ?? undefined,
+    updatedBy: item.updatedBy ?? undefined,
+    publishedAt: item.publishedAt ?? undefined,
+    closedAt: item.closedAt ?? undefined,
     createdAt: item.createdAt ?? undefined,
     updatedAt: item.updatedAt ?? undefined,
   };
@@ -2243,6 +2267,49 @@ export const notificationLogsService = {
   },
 };
 
+export const reportingPeriodsService = {
+  async getAll(): Promise<ReportingPeriod[]> {
+    const client = getAwsDataClient() as any;
+    const model = client.models.ReportingPeriod;
+    if (!model) return [];
+
+    const scope = await getCurrentDataAccessScope(client);
+    if (!scope.canUsePmDashboard && !scope.canAccessAllExperts) return [];
+
+    const data = await listModel<any>(model);
+    return data.map(mapReportingPeriod).sort((a, b) => {
+      const startA = a.startYear * 12 + a.startMonth;
+      const startB = b.startYear * 12 + b.startMonth;
+      if (startA !== startB) return startA - startB;
+      return a.code.localeCompare(b.code);
+    });
+  },
+
+  async create(input: ReportingPeriodCreateInput): Promise<ReportingPeriod> {
+    const client = getAwsDataClient() as any;
+    const model = client.models.ReportingPeriod;
+    if (!model) {
+      throw new Error('Modelul ReportingPeriod nu este disponibil in backend.');
+    }
+
+    const result = await model.create(input);
+    assertNoErrors(result, 'AWS create reporting period');
+    return mapReportingPeriod(result.data);
+  },
+
+  async update(id: string, updates: ReportingPeriodUpdateInput): Promise<ReportingPeriod> {
+    const client = getAwsDataClient() as any;
+    const model = client.models.ReportingPeriod;
+    if (!model) {
+      throw new Error('Modelul ReportingPeriod nu este disponibil in backend.');
+    }
+
+    const result = await model.update({ id, ...updates });
+    assertNoErrors(result, 'AWS update reporting period');
+    return mapReportingPeriod(result.data);
+  },
+};
+
 export const activityAutofillAuditsService = {
   async getAll(month?: number, year?: number): Promise<ActivityAutofillAudit[]> {
     const client = getAwsDataClient() as any;
@@ -2724,23 +2791,19 @@ export const activitiesService = {
   },
 
   async getColleagueOverviewByMonth(month: number, year: number): Promise<Activity[]> {
-    const client = getAwsDataClient() as any;
-    const scope = await getCurrentDataAccessScope(client);
-    if (scope.accessLevel === 'none' || !scope.currentExpertId) return [];
-    const data = await listModel<any>(client.models.Activity, {
-      month: { eq: month },
-      year: { eq: year },
+    const token = (await fetchAuthSession()).tokens?.accessToken?.toString();
+    if (!token) return [];
+
+    const response = await fetch(`/api/activities/colleague-overview?month=${month}&year=${year}`, {
+      headers: {
+        authorization: `Bearer ${token}`,
+      },
     });
-    const mapped = await Promise.all(data.map(attachActivityChildren));
-    const currentProjectCode = scope.currentExpert?.projectCode;
-    return mapped
-      .filter((activity) => activity.expertId !== scope.currentExpertId)
-      .filter((activity) => scope.canAccessAllExperts || !currentProjectCode || !activity.projectCode || activity.projectCode === currentProjectCode)
-      .sort((a, b) => {
-        const expertCompare = (a.expertName || '').localeCompare(b.expertName || '');
-        if (expertCompare !== 0) return expertCompare;
-        return a.date.localeCompare(b.date);
-      });
+    const body = await response.json().catch(() => null);
+    if (!response.ok) {
+      throw new Error(body?.error || 'Newsletterul colegilor nu a putut fi incarcat.');
+    }
+    return Array.isArray(body?.activities) ? body.activities : [];
   },
 
   async getByDateRange(startDate: string, endDate: string): Promise<Activity[]> {

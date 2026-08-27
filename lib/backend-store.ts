@@ -35,6 +35,7 @@ export const businessHubEntityDirectoryService = awsStore.businessHubEntityDirec
 export const historicalImportService = awsStore.historicalImportService;
 export const auditLogsService = awsStore.auditLogsService;
 export const notificationLogsService = awsStore.notificationLogsService;
+export const reportingPeriodsService = awsStore.reportingPeriodsService;
 export const activityAutofillAuditsService = awsStore.activityAutofillAuditsService;
 export const documentsService = awsStore.documentsService;
 export const indexedDeliverableCandidatesService = awsStore.indexedDeliverableCandidatesService;

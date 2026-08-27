@@ -57,6 +57,7 @@ import {
   useMonthAccessRequestsByMonth,
   useMonthAccessRequestsForMonths,
   useMonthAccessRequestMutations,
+  useReportingPeriods,
   useActivitiesByMonth,
   useActivityCatalog,
   useAuditLogs,
@@ -229,6 +230,7 @@ export default function PMDashboard() {
     [selectedMonth, selectedYear]
   );
   const { statuses: allMonthlyReportStatuses } = useReportStatusByMonth(selectedMonth, selectedYear);
+  const { reportingPeriods } = useReportingPeriods();
   const { statuses: allPreviousMonthlyReportStatuses } = useReportStatusByMonth(
     previousSelectedMonthDate.getMonth(),
     previousSelectedMonthDate.getFullYear()
@@ -1235,6 +1237,7 @@ export default function PMDashboard() {
         statusLabels={statusLabels}
         selectedMonth={selectedMonth}
         selectedYear={selectedYear}
+        reportingPeriods={reportingPeriods}
         months={months}
         onMonthChange={setSelectedMonth}
         yearOptions={yearOptions}

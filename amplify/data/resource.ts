@@ -90,6 +90,31 @@ const schema = a.schema({
       allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
     ]),
 
+  ReportingPeriod: a
+    .model({
+      projectCode: a.string().required(),
+      code: a.string().required(),
+      startMonth: a.integer().required(),
+      startYear: a.integer().required(),
+      monthCount: a.integer().required(),
+      endMonth: a.integer().required(),
+      endYear: a.integer().required(),
+      status: a.string().default("draft"),
+      notes: a.string(),
+      createdBy: a.string(),
+      updatedBy: a.string(),
+      publishedAt: a.datetime(),
+      closedAt: a.datetime(),
+    })
+    .secondaryIndexes((index) => [
+      index("projectCode").sortKeys(["code"]),
+      index("status"),
+    ])
+    .authorization((allow) => [
+      allow.groups(["pm"]).to(["read"]),
+      allow.groups(["admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
   LeaveEntry: a
     .model({
       owner: a.string(),

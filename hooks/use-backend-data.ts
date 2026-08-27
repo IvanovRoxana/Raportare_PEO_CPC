@@ -31,6 +31,7 @@ import {
   businessHubEntityDirectoryService,
   auditLogsService,
   notificationLogsService,
+  reportingPeriodsService,
   documentsService,
   indexedDeliverableCandidatesService,
   historicalImportService,
@@ -50,7 +51,7 @@ import {
   sharedDeliverablesService,
   reportingWorkBlocksService,
 } from '@/lib/backend-store';
-import type { Activity, Expert, ExpertNormContract, FinancialPersonLink, LeaveEntry, VerificationData, Neconformitate, VerificationNote, AppSettings, ActivityCatalog, AiEligibilityRuleset, AiEligibilityRuleVersion, WorkingGroup, ConcurrentProject, ConcurrentProjectTimesheetEntry, ReportStatus, MonthAccessRequest, GrupTintaEntry, BusinessHubEntityDirectoryEntry, AuditLog, ActivityAutofillAudit, AdminInterventionRequest, HistoricalImportBatch, HistoricalTimesheetDayEntry, IndexedDeliverableCandidate, MonthlyActivityItem, MonthlyExpertReport, UploadedReportingFile, DocumentMetadata, SharedDeliverable, NotificationLogCreateInput } from '@/lib/types';
+import type { Activity, Expert, ExpertNormContract, FinancialPersonLink, LeaveEntry, VerificationData, Neconformitate, VerificationNote, AppSettings, ActivityCatalog, AiEligibilityRuleset, AiEligibilityRuleVersion, WorkingGroup, ConcurrentProject, ConcurrentProjectTimesheetEntry, ReportStatus, MonthAccessRequest, GrupTintaEntry, BusinessHubEntityDirectoryEntry, AuditLog, ActivityAutofillAudit, AdminInterventionRequest, HistoricalImportBatch, HistoricalTimesheetDayEntry, IndexedDeliverableCandidate, MonthlyActivityItem, MonthlyExpertReport, UploadedReportingFile, DocumentMetadata, SharedDeliverable, NotificationLogCreateInput, ReportingPeriodCreateInput, ReportingPeriodUpdateInput } from '@/lib/types';
 import { getContractedProcurementProjects, type ProcurementChecklist, type ProcurementContract, type ProcurementDeliverable, type ProcurementDocument, type ProcurementEvaluation, type ProcurementInvoice, type ProcurementLaunch, type ProcurementOffer, type ProcurementProject, type ProcurementReception, type ProcurementStatusHistory, type ProcurementSupplier } from '@/lib/procurement';
 import {
   buildDeterministicWorkBlockConsolidation,
@@ -1284,6 +1285,37 @@ export function useReportStatusesForMonths(monthRefs: Array<{ month: number; yea
     isLoading,
     error,
   };
+}
+
+export function useReportingPeriods() {
+  const key = 'reporting-periods';
+  const { data, error, isLoading } = useSWR(
+    isBackendAvailable() ? key : null,
+    safeFetcher(reportingPeriodsService.getAll)
+  );
+
+  return {
+    reportingPeriods: stableList(data),
+    isLoading,
+    error,
+    mutate: () => mutate(key),
+  };
+}
+
+export function useReportingPeriodMutations() {
+  const create = async (input: ReportingPeriodCreateInput) => {
+    const created = await reportingPeriodsService.create(input);
+    mutate('reporting-periods');
+    return created;
+  };
+
+  const update = async (id: string, updates: ReportingPeriodUpdateInput) => {
+    const updated = await reportingPeriodsService.update(id, updates);
+    mutate('reporting-periods');
+    return updated;
+  };
+
+  return { create, update };
 }
 
 export function useMonthAccessRequestsByMonth(month: number, year: number) {

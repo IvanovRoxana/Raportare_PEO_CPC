@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   AlertTriangle,
   CalendarDays,
@@ -36,6 +36,12 @@ import {
 } from '@/components/ui/select';
 import { getMonthName } from '@/lib/app-utils';
 import { isActivePmUnlockRequest } from '@/lib/pm-unlock-status';
+import {
+  formatReportingPeriodLabel,
+  reportingPeriodIncludesMonth,
+  resolveDefaultReportingPeriod,
+  resolveReportingPeriods,
+} from '@/lib/reporting-periods';
 import type {
   Activity,
   DashboardComplianceRow,
@@ -45,6 +51,7 @@ import type {
   MonthAccessRequest,
   Neconformitate,
   PmClarificationThread,
+  ReportingPeriod,
   ReportStatus,
   SharedDeliverable,
 } from '@/lib/types';
@@ -68,6 +75,7 @@ type PmWorkspaceProps = {
   statusLabels: Record<ReportStatus['status'], StatusMeta>;
   selectedMonth: number;
   selectedYear: number;
+  reportingPeriods: ReportingPeriod[];
   months: Array<{ value: number; label: string }>;
   onMonthChange: (month: number) => void;
   yearOptions: number[];
@@ -186,8 +194,22 @@ function PmTopBar({
 }
 
 function KpiView(props: PmWorkspaceProps) {
-  const [selectedReport, setSelectedReport] = useState('rp12');
+  const reportingPeriods = useMemo(() => resolveReportingPeriods(props.reportingPeriods), [props.reportingPeriods]);
+  const defaultReportingPeriod = useMemo(
+    () => resolveDefaultReportingPeriod(reportingPeriods, props.selectedMonth, props.selectedYear),
+    [props.selectedMonth, props.selectedYear, reportingPeriods]
+  );
+  const [selectedReport, setSelectedReport] = useState(defaultReportingPeriod?.id ?? '');
+  useEffect(() => {
+    if (!selectedReport && defaultReportingPeriod) {
+      setSelectedReport(defaultReportingPeriod.id);
+    }
+  }, [defaultReportingPeriod, selectedReport]);
   const [isReportOpen, setIsReportOpen] = useState(false);
+  const activeReportingPeriod = reportingPeriods.find((period) => period.id === selectedReport)
+    ?? defaultReportingPeriod
+    ?? reportingPeriods[0]
+    ?? null;
   const reportRows = props.dashboardRows;
   const onTime = reportRows.filter((row) => row.utilizationPercent >= 100 && !(props.reportStatusByExpertId.get(row.expertId)?.status === 'clarifications')).length;
   const verified = props.pmSummary.statusCounts.in_review + props.pmSummary.statusCounts.approved;
@@ -204,19 +226,15 @@ function KpiView(props: PmWorkspaceProps) {
     ['Finalizate', completed, 'normă completă', 'bg-white text-emerald-700 border-slate-200'],
     ['Necesită acțiune', actionNeeded, 'neconformități', 'bg-amber-50 text-amber-700 border-amber-200'],
   ];
-  const reportOptions = [
-    ['rp9', 'RP 9 - Noiembrie 2025 / Ianuarie 2026'],
-    ['rp10', 'RP 10 - Februarie 2026 / Aprilie 2026'],
-    ['rp12', 'RP 12 - Mai 2026 / Iulie 2026'],
-    ['rp13', 'RP 13 - August 2026 / Octombrie 2026'],
-    ['rp14', 'RP 14 - Noiembrie 2026 / Ianuarie 2027'],
-    ['rp15', 'RP 15 - Februarie 2027 / Aprilie 2027'],
-    ['rp16', 'RP 16 - Mai 2027 / Iulie 2027'],
-    ['rp17', 'RP 17 - August 2027 / Octombrie 2027'],
-    ['rp18', 'RP 18 - Noiembrie 2027 / Ianuarie 2028'],
-    ['rp19', 'RP 19 - Februarie 2028 / Aprilie 2028'],
-    ['rp20', 'RP 20 - Mai 2028 / Iulie 2028'],
-  ];
+  const handleReportChange = (periodId: string) => {
+    setSelectedReport(periodId);
+    const period = reportingPeriods.find((item) => item.id === periodId);
+    if (!period) return;
+    if (!reportingPeriodIncludesMonth(period, props.selectedMonth, props.selectedYear)) {
+      props.onYearChange(period.endYear);
+      props.onMonthChange(period.endMonth);
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -224,11 +242,11 @@ function KpiView(props: PmWorkspaceProps) {
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-wrap items-center gap-2 text-xs">
             <span className="text-slate-600">Raport de progres:</span>
-            <Select value={selectedReport} onValueChange={setSelectedReport}>
+            <Select value={activeReportingPeriod?.id ?? selectedReport} onValueChange={handleReportChange}>
               <SelectTrigger className="h-9 w-[17rem] bg-white"><SelectValue placeholder="RP 12 - Mai 2026 / Iulie 2026" /></SelectTrigger>
               <SelectContent>
-                {reportOptions.map(([value, label]) => (
-                  <SelectItem key={value} value={value}>{label}</SelectItem>
+                {reportingPeriods.map((period) => (
+                  <SelectItem key={period.id} value={period.id}>{formatReportingPeriodLabel(period)}</SelectItem>
                 ))}
               </SelectContent>
             </Select>

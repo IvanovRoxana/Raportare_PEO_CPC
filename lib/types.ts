@@ -74,6 +74,30 @@ export interface FinancialPersonLink {
   updatedAt?: string;
 }
 
+export type ReportingPeriodStatus = 'draft' | 'published' | 'closed' | 'archived' | string;
+
+export interface ReportingPeriod {
+  id: string;
+  projectCode: string;
+  code: string;
+  startMonth: number;
+  startYear: number;
+  monthCount: number;
+  endMonth: number;
+  endYear: number;
+  status: ReportingPeriodStatus;
+  notes?: string;
+  createdBy?: string;
+  updatedBy?: string;
+  publishedAt?: string;
+  closedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type ReportingPeriodCreateInput = Omit<ReportingPeriod, 'id' | 'createdAt' | 'updatedAt'>;
+export type ReportingPeriodUpdateInput = Partial<Omit<ReportingPeriod, 'id' | 'createdAt' | 'updatedAt'>>;
+
 export type LeaveType = 'CO' | 'CM';
 export type LeaveSource = 'EXPERT' | 'FINANCIAL' | 'LEGACY_IMPORT';
 export type LeaveStatus = 'DRAFT' | 'SUBMITTED' | 'VALIDATED' | 'REJECTED';
@@ -198,6 +222,7 @@ export type AuditActionType =
   | 'ai_eligibility_ruleset_rollback'
   | 'pm_hours_generated'
   | 'pm_hours_regenerated'
+  | 'pm_clarification_realerted'
   | 'expert_deactivated'
   | 'expert_reactivated'
   | 'expert_role_updated'
@@ -940,6 +965,9 @@ export interface PmClarificationThread {
   requestedBy?: string;
   answeredAt?: string;
   resolvedAt?: string;
+  lastRealertedAt?: string;
+  lastRealertedBy?: string;
+  realertCount?: number;
 }
 
 export interface ConcurrentProject {
