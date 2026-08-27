@@ -77,6 +77,60 @@ type SharedActivityAlertSummary = {
   status: string;
 };
 
+type SharedActivityAlert = SharedActivityAlertSummary & {
+  relationId: string;
+  sourceActivityId?: string;
+  sourceExpertName?: string;
+  targetExpertName?: string;
+  message?: string;
+};
+
+type GroupedSharedActivityAlert = SharedActivityAlert & {
+  alerts: SharedActivityAlert[];
+  relationIds: string[];
+  sourceActivityDates: string[];
+};
+
+function getSharedActivityGroupKey(alert: SharedActivityAlert) {
+  return JSON.stringify([
+    alert.sourceExpertName,
+    alert.sourceActivityTitle,
+    alert.sourceActivityDescription,
+    alert.sourceActivityHours,
+    alert.sourceActivityLocation,
+    alert.sourceActivityDayType,
+    alert.sourceActivitySaCode,
+    alert.sourceActivityProjectCode || alert.projectId,
+    alert.sourceActivityEventDurationHours,
+    alert.sourceActivityEventExtendedDescription,
+    alert.status,
+  ].map((value) => value ?? ''));
+}
+
+function groupSharedActivityAlerts(alerts: SharedActivityAlert[]): GroupedSharedActivityAlert[] {
+  const groups = new Map<string, SharedActivityAlert[]>();
+
+  alerts.forEach((alert) => {
+    const key = getSharedActivityGroupKey(alert);
+    groups.set(key, [...(groups.get(key) || []), alert]);
+  });
+
+  return Array.from(groups.values()).map((groupAlerts) => {
+    const sortedAlerts = [...groupAlerts].sort((first, second) => {
+      return (first.sourceActivityDate || '').localeCompare(second.sourceActivityDate || '');
+    });
+    const sourceActivityDates = Array.from(new Set(sortedAlerts.map((alert) => alert.sourceActivityDate).filter(Boolean) as string[]));
+
+    return {
+      ...sortedAlerts[0],
+      alerts: sortedAlerts,
+      relationIds: sortedAlerts.map((alert) => alert.relationId),
+      sourceActivityDate: sourceActivityDates.join(', '),
+      sourceActivityDates,
+    };
+  });
+}
+
 function formatSharedActivityHours(hours?: number) {
   return typeof hours === 'number' && Number.isFinite(hours) ? `${hours}h` : undefined;
 }
@@ -565,6 +619,10 @@ export default function ExpertHomeDashboard() {
       sourceActivities: monthActivities,
     });
   }, [currentExpert, experts, monthActivities, visibleSharedActivitySuggestions]);
+  const groupedPendingActivityAlerts = useMemo(
+    () => groupSharedActivityAlerts(pendingActivityAlerts),
+    [pendingActivityAlerts]
+  );
   const returnedActivityAlerts = useMemo(() => {
     if (!currentExpert) return [];
     return buildReturnedSharedActivityAlerts({
@@ -584,8 +642,8 @@ export default function ExpertHomeDashboard() {
     });
   }, [currentExpert, experts, monthActivities, visibleSharedActivitySuggestions]);
 
-  const handleIgnoreActivitySuggestion = async (relationId: string) => {
-    await ignoreSharedSuggestion(relationId);
+  const handleIgnoreActivitySuggestionGroup = async (relationIds: string[]) => {
+    await Promise.all(relationIds.map((relationId) => ignoreSharedSuggestion(relationId)));
     await refreshSharedDeliverables();
   };
 
@@ -689,8 +747,8 @@ export default function ExpertHomeDashboard() {
     pendingSharedAlerts.length > 0
       ? { label: 'Livrabile comune neînregistrate', detail: `${pendingSharedAlerts.length} livrabile necesita asociere in pontaj.`, severity: 'blocking' }
       : null,
-    pendingActivityAlerts.length > 0
-      ? { label: 'Activitati comune sugerate', detail: `${pendingActivityAlerts.length} activitati comune necesita decizie.`, severity: 'warning' }
+    groupedPendingActivityAlerts.length > 0
+      ? { label: 'Activitati comune sugerate', detail: `${groupedPendingActivityAlerts.length} activitati comune necesita decizie.`, severity: 'warning' }
       : null,
     exceededDays > 0
       ? { label: 'Depasiri limita zilnica', detail: `${exceededDays} zile depasesc limita de 8 ore.`, severity: 'blocking' }
@@ -1200,15 +1258,15 @@ export default function ExpertHomeDashboard() {
             </TabsList>
 
             <TabsContent value="active" className="space-y-4">
-              {pendingActivityAlerts.length > 0 && (
+              {groupedPendingActivityAlerts.length > 0 && (
                 <section className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-950">
                   <div className="flex items-center gap-2 font-semibold">
                     <AlertTriangle className="h-4 w-4" />
                     Activitati comune sugerate
                   </div>
                   <div className="mt-3 space-y-2">
-                    {pendingActivityAlerts.map((alert) => (
-                      <div key={alert.relationId} className="rounded-md border border-amber-200 bg-white/70 p-3 text-sm">
+                    {groupedPendingActivityAlerts.map((alert) => (
+                      <div key={alert.relationIds.join('|')} className="rounded-md border border-amber-200 bg-white/70 p-3 text-sm">
                         <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
                           <div>
                             <div className="font-medium">Sugestie de la {alert.sourceExpertName}</div>
@@ -1220,17 +1278,23 @@ export default function ExpertHomeDashboard() {
                         <SharedActivityDescription alert={alert} />
                         <SharedActivityMetadata alert={alert} />
                         <div className="mt-3 flex flex-wrap gap-2">
-                          <Button asChild size="sm" className="h-8 rounded-md">
-                            <Link href={`${peoHref}&sharedActivityRelationId=${encodeURIComponent(alert.relationId)}`}>Adauga activitate</Link>
-                          </Button>
+                          {alert.alerts.map((activityAlert) => (
+                            <Button key={activityAlert.relationId} asChild size="sm" className="h-8 rounded-md">
+                              <Link href={`${peoHref}&sharedActivityRelationId=${encodeURIComponent(activityAlert.relationId)}`}>
+                                {alert.alerts.length > 1 && activityAlert.sourceActivityDate
+                                  ? `Adauga ${activityAlert.sourceActivityDate}`
+                                  : 'Adauga activitate'}
+                              </Link>
+                            </Button>
+                          ))}
                           <Button
                             type="button"
                             variant="outline"
                             size="sm"
                             className="h-8 rounded-md border-amber-300 text-amber-900"
-                            onClick={() => handleIgnoreActivitySuggestion(alert.relationId)}
+                            onClick={() => handleIgnoreActivitySuggestionGroup(alert.relationIds)}
                           >
-                            Ignora activitatea
+                            {alert.relationIds.length > 1 ? 'Ignora activitatile' : 'Ignora activitatea'}
                           </Button>
                         </div>
                       </div>

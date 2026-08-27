@@ -1757,6 +1757,7 @@ export default function PMDashboard() {
         onApproveMonth={() => setReviewMonthlyStatus('approved', activeReviewReportStatus?.pmNotes)}
         onApproveActivity={approveReviewActivities}
         onRequestActivityClarification={requestReviewActivityClarification}
+        onApprovePmUnlock={approvePmUnlockRequest}
         clarificationThreads={reviewExpert ? clarificationThreadsByExpertId.get(reviewExpert.id) || [] : []}
         initialFocus={reviewFocus || undefined}
         concurrentProjects={concurrentProjects.filter((project) => project.expertId === reviewExpertId)}

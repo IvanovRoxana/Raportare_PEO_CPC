@@ -83,6 +83,7 @@ interface DosarExpertModalProps {
   onApproveMonth?: () => Promise<void> | void;
   onApproveActivity?: (activities: Activity[]) => Promise<void> | void;
   onRequestActivityClarification?: (activities: Activity[]) => Promise<void> | void;
+  onApprovePmUnlock?: (document: DocumentMetadata) => Promise<void> | void;
   clarificationThreads?: PmClarificationThread[];
   initialFocus?: { activityId?: string; documentId?: string; issueType?: string };
   concurrentProjects?: ConcurrentProject[];
@@ -249,6 +250,7 @@ export function DosarExpertModal({
   onApproveMonth,
   onApproveActivity,
   onRequestActivityClarification,
+  onApprovePmUnlock,
   clarificationThreads = [],
   initialFocus,
   concurrentProjects = [],
@@ -1105,7 +1107,7 @@ export function DosarExpertModal({
                   </CardContent>
                 </Card>
 
-                {canManagePmReview && (
+                {isFocusedEligibilityDossier && (
                   <Card>
                     <CardHeader className="pb-2">
                       <CardTitle className="text-sm">Reincadrare PM</CardTitle>
@@ -1280,6 +1282,18 @@ export function DosarExpertModal({
                         <div><span className="font-semibold text-slate-800">Aprobat:</span> {focusedEligibilityCheck.pmUnlockApprovedAt || '-'}</div>
                         <div><span className="font-semibold text-slate-800">Aprobat de:</span> {focusedEligibilityCheck.pmUnlockApprovedBy || '-'}</div>
                       </>
+                    ) : null}
+                    {focusedDocument && focusedEligibilityCheck?.pmUnlockRequested && !focusedEligibilityCheck.pmUnlockApproved ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="mt-2"
+                        onClick={() => void onApprovePmUnlock?.(focusedDocument)}
+                        disabled={!onApprovePmUnlock}
+                      >
+                        <ShieldCheck className="h-4 w-4" />
+                        Aproba deblocare PM
+                      </Button>
                     ) : null}
                   </CardContent>
                 </Card>
