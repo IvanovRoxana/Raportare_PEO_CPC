@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useState, useEffect, useMemo, useRef, type ReactNode } from 'react';
+import { Suspense, useState, useEffect, useMemo, useRef, useCallback, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowLeft, ArrowRight, CalendarDays, CheckCircle, ChevronLeft, ChevronRight, ClipboardList, FileText, Loader2, Plus, RotateCcw, Send, Lock, AlertTriangle, Upload, X } from 'lucide-react';
 import Link from 'next/link';
@@ -159,6 +159,13 @@ type OutlookCalendarEvent = {
   title: string;
   location: string;
   durationHours: number;
+};
+
+type OutlookConnectionStatus = {
+  configured: boolean;
+  connected: boolean;
+  connectedEmail?: string | null;
+  missing?: string[];
 };
 
 const SUBMIT_MIN_NORM_PERCENT = 80;
@@ -568,12 +575,18 @@ function OutlookCalendarModule({
   expertEmail,
   realUserEmail,
   canUsePersonalCalendar,
+  status,
+  isLoading,
+  error,
   month,
   year,
   events,
   selectedEventId,
   onSelectEvent,
   onAddEventToTimesheet,
+  onConnect,
+  onRefresh,
+  onDisconnect,
   onMonthChange,
   canGoToPreviousMonth,
   canGoToNextMonth,
@@ -583,12 +596,18 @@ function OutlookCalendarModule({
   expertEmail?: string;
   realUserEmail?: string | null;
   canUsePersonalCalendar: boolean;
+  status: OutlookConnectionStatus | null;
+  isLoading: boolean;
+  error: string | null;
   month: number;
   year: number;
   events: OutlookCalendarEvent[];
   selectedEventId: string | null;
   onSelectEvent: (event: OutlookCalendarEvent) => void;
   onAddEventToTimesheet: (event: OutlookCalendarEvent) => void;
+  onConnect: () => void;
+  onRefresh: () => void;
+  onDisconnect: () => void;
   onMonthChange: (month: number, year: number) => void;
   canGoToPreviousMonth: boolean;
   canGoToNextMonth: boolean;
@@ -600,7 +619,10 @@ function OutlookCalendarModule({
   const isDifferentSignedInOutlookAccount = Boolean(
     normalizedExpertEmail && normalizedRealUserEmail && normalizedExpertEmail !== normalizedRealUserEmail,
   );
-  const visibleEvents = useMemo(() => (canUsePersonalCalendar ? events : []), [canUsePersonalCalendar, events]);
+  const visibleEvents = useMemo(
+    () => (canUsePersonalCalendar && status?.connected ? events : []),
+    [canUsePersonalCalendar, events, status?.connected],
+  );
   const selectedEvent = visibleEvents.find((event) => event.id === selectedEventId) ?? visibleEvents[0] ?? null;
   const eventsByDate = useMemo(() => {
     const grouped = new Map<string, OutlookCalendarEvent[]>();
@@ -653,18 +675,52 @@ function OutlookCalendarModule({
             Outlook - {expertName}
           </Badge>
         </div>
-        <div className="border-b bg-slate-50 px-4 py-2 text-xs text-slate-600">
-          Calendar tinta: <span className="font-semibold text-slate-800">{expertEmail || 'email expert lipsa'}</span>
-          {isDifferentSignedInOutlookAccount && (
-            <span className="ml-2 text-amber-700">
-              Cont autentificat: {realUserEmail}. Pentru calendar real, expertul trebuie sa autorizeze propriul cont Outlook.
-            </span>
-          )}
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-slate-50 px-4 py-2 text-xs text-slate-600">
+          <p>
+            Calendar tinta: <span className="font-semibold text-slate-800">{expertEmail || 'email expert lipsa'}</span>
+            {isDifferentSignedInOutlookAccount && (
+              <span className="ml-2 text-amber-700">
+                Cont autentificat: {realUserEmail}. Pentru calendar real, expertul trebuie sa autorizeze propriul cont Outlook.
+              </span>
+            )}
+          </p>
+          <div className="flex items-center gap-2">
+            {status?.connected && (
+              <Button type="button" variant="outline" size="sm" onClick={onDisconnect}>
+                Deconecteaza
+              </Button>
+            )}
+            <Button type="button" variant="outline" size="sm" onClick={onRefresh} disabled={isLoading || !canUsePersonalCalendar}>
+              {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+              Refresh
+            </Button>
+            <Button type="button" size="sm" onClick={onConnect} disabled={!canUsePersonalCalendar || isLoading}>
+              Conecteaza Outlook
+            </Button>
+          </div>
         </div>
-        {!canUsePersonalCalendar && (
+        {error && (
+          <div className="border-b border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
+            {error}
+          </div>
+        )}
+        {!canUsePersonalCalendar ? (
           <div className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
             Nu incarc calendarul Outlook pentru {expertName} prin sesiunea Outlook a altui utilizator. In modul admin/view-as poti completa pontajul,
             dar calendarul Outlook real va fi disponibil doar cand expertul este autentificat cu propriul cont si autorizeaza Microsoft Graph.
+          </div>
+        ) : status?.configured === false ? (
+          <div className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            Integrarea Outlook nu este configurata inca pe server. Lipsesc: {(status.missing || []).join(', ') || 'variabilele Microsoft Graph'}.
+          </div>
+        ) : status && !status.connected ? (
+          <div className="border-b border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+            Conecteaza contul Outlook {expertEmail} pentru a vedea sedintele reale in aplicatie.
+          </div>
+        ) : null}
+        {isLoading && (
+          <div className="border-b bg-white px-4 py-2 text-sm text-slate-600">
+            Se incarca evenimentele Outlook...
           </div>
         )}
         <div className="grid grid-cols-7 border-b bg-slate-50 text-xs font-semibold text-slate-600">
@@ -763,8 +819,7 @@ function OutlookCalendarModule({
           <div className="rounded-xl border bg-white p-3 text-xs leading-5 text-slate-600 shadow-sm">
             <p className="mb-1 font-semibold text-slate-900">Conectare Microsoft Graph</p>
             <p>
-              Acest calendar este pregatit pentru evenimentele reale din Outlook. Dupa configurarea OAuth, lista va fi incarcata
-              din calendarul individual al expertului autentificat.
+              Evenimentele sunt citite din calendarul individual al expertului autentificat si pot fi transformate in activitati de pontaj.
             </p>
           </div>
         </div>
@@ -786,31 +841,6 @@ function readYearParam(value: string | null, fallback: number) {
 function toRestoredActivityInput(activity: Activity): Omit<Activity, 'id' | 'createdAt' | 'updatedAt'> {
   const { id: _id, createdAt: _createdAt, updatedAt: _updatedAt, ...restoredActivity } = activity;
   return restoredActivity;
-}
-
-function buildDemoOutlookEvents(month: number, year: number, expert: Pick<Expert, 'id' | 'name' | 'email'>): OutlookCalendarEvent[] {
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const identity = `${expert.id || expert.email || expert.name || 'expert'}`;
-  const identityOffset = identity.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0) % 4;
-  const candidateDays = [5, 12, 18, 24]
-    .map((day) => Math.min(daysInMonth, day + identityOffset))
-    .filter((day, index, days) => day > 0 && days.indexOf(day) === index);
-
-  return candidateDays.map((day, index) => {
-    const date = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    const templates = [
-      { title: `Sedinta coordonare - ${expert.name}`, startTime: '09:30', endTime: '11:00', location: 'Microsoft Teams', durationHours: 1.5 },
-      { title: `Consultare parteneri - ${expert.name}`, startTime: '12:00', endTime: '13:00', location: 'Sala conferinte', durationHours: 1 },
-      { title: `Pregatire livrabile - ${expert.name}`, startTime: '14:00', endTime: '16:00', location: 'Birou', durationHours: 2 },
-      { title: `Follow-up PEO - ${expert.name}`, startTime: '10:00', endTime: '11:30', location: 'Microsoft Teams', durationHours: 1.5 },
-    ];
-    const template = templates[index % templates.length];
-    return {
-      id: `outlook-demo-${date}-${index}`,
-      date,
-      ...template,
-    };
-  });
 }
 
 function normalizeOutlookIdentity(value?: string | null) {
@@ -868,6 +898,10 @@ function ExpertDashboardContent() {
   const [sharedActivityIntent, setSharedActivityIntent] = useState<'create' | 'associate' | null>(null);
   const [startingColleagueActivityId, setStartingColleagueActivityId] = useState<string | null>(null);
   const [selectedOutlookEventId, setSelectedOutlookEventId] = useState<string | null>(null);
+  const [outlookEvents, setOutlookEvents] = useState<OutlookCalendarEvent[]>([]);
+  const [outlookStatus, setOutlookStatus] = useState<OutlookConnectionStatus | null>(null);
+  const [outlookLoading, setOutlookLoading] = useState(false);
+  const [outlookError, setOutlookError] = useState<string | null>(null);
 
   // Data hooks
   const { experts, isLoading: expertsLoading } = useExperts();
@@ -975,10 +1009,6 @@ function ExpertDashboardContent() {
     const expert = experts.find((e) => e.id === selectedExpertId) || experts[0];
     return expert || { id: '', name: 'Expert', role: '', norma: 8, saCodes: [] };
   }, [experts, selectedExpertId]);
-  const outlookEvents = useMemo(
-    () => buildDemoOutlookEvents(currentMonth, currentYear, selectedExpert),
-    [currentMonth, currentYear, selectedExpert],
-  );
   const canUseSelectedExpertOutlook = useMemo(() => {
     const expertEmail = normalizeOutlookIdentity(selectedExpert.email);
     const authenticatedEmail = normalizeOutlookIdentity(realUserEmail);
@@ -988,6 +1018,66 @@ function ExpertDashboardContent() {
   useEffect(() => {
     setSelectedOutlookEventId(null);
   }, [canUseSelectedExpertOutlook, currentMonth, currentYear, selectedExpert.id]);
+
+  const loadOutlookCalendar = useCallback(async () => {
+    const expertEmail = normalizeOutlookIdentity(selectedExpert.email);
+    setSelectedOutlookEventId(null);
+    setOutlookError(null);
+    setOutlookEvents([]);
+
+    if (!expertEmail || !canUseSelectedExpertOutlook) {
+      setOutlookStatus(null);
+      return;
+    }
+
+    setOutlookLoading(true);
+    try {
+      const statusResponse = await fetch(`/api/outlook/status?expertEmail=${encodeURIComponent(expertEmail)}`, { cache: 'no-store' });
+      const statusBody = await statusResponse.json().catch(() => null) as OutlookConnectionStatus | null;
+      if (!statusResponse.ok || !statusBody) {
+        throw new Error('Statusul conexiunii Outlook nu a putut fi citit.');
+      }
+      setOutlookStatus(statusBody);
+
+      if (!statusBody.configured || !statusBody.connected) return;
+
+      const eventsResponse = await fetch(
+        `/api/outlook/events?expertEmail=${encodeURIComponent(expertEmail)}&month=${currentMonth}&year=${currentYear}`,
+        { cache: 'no-store' },
+      );
+      const eventsBody = await eventsResponse.json().catch(() => null) as {
+        events?: OutlookCalendarEvent[];
+        error?: string;
+      } | null;
+      if (!eventsResponse.ok || !eventsBody) {
+        throw new Error(eventsBody?.error || 'Evenimentele Outlook nu au putut fi incarcate.');
+      }
+      setOutlookEvents(eventsBody.events || []);
+    } catch (error) {
+      setOutlookError(error instanceof Error ? error.message : 'Calendarul Outlook nu a putut fi incarcat.');
+    } finally {
+      setOutlookLoading(false);
+    }
+  }, [canUseSelectedExpertOutlook, currentMonth, currentYear, selectedExpert.email]);
+
+  useEffect(() => {
+    if (activeTab !== 'outlook') return;
+    void loadOutlookCalendar();
+  }, [activeTab, loadOutlookCalendar]);
+
+  const handleConnectOutlook = useCallback(() => {
+    const expertEmail = normalizeOutlookIdentity(selectedExpert.email);
+    if (!expertEmail || !canUseSelectedExpertOutlook) return;
+    const returnTo = `/expert/peo?month=${currentMonth}&year=${currentYear}#outlook`;
+    window.location.assign(`/api/outlook/start?expertEmail=${encodeURIComponent(expertEmail)}&returnTo=${encodeURIComponent(returnTo)}`);
+  }, [canUseSelectedExpertOutlook, currentMonth, currentYear, selectedExpert.email]);
+
+  const handleDisconnectOutlook = useCallback(async () => {
+    await fetch('/api/outlook/disconnect', { method: 'POST' });
+    setOutlookStatus((status) => status ? { ...status, connected: false, connectedEmail: null } : status);
+    setOutlookEvents([]);
+    setSelectedOutlookEventId(null);
+  }, []);
 
   const financialSummary = useMemo(() => buildFinancialReportingSummary({
     experts,
@@ -3574,12 +3664,18 @@ function ExpertDashboardContent() {
               expertEmail={selectedExpert.email}
               realUserEmail={realUserEmail}
               canUsePersonalCalendar={canUseSelectedExpertOutlook}
+              status={outlookStatus}
+              isLoading={outlookLoading}
+              error={outlookError}
               month={currentMonth}
               year={currentYear}
               events={outlookEvents}
               selectedEventId={selectedOutlookEventId}
               onSelectEvent={(event) => setSelectedOutlookEventId(event.id)}
               onAddEventToTimesheet={handleAddOutlookEventToTimesheet}
+              onConnect={handleConnectOutlook}
+              onRefresh={loadOutlookCalendar}
+              onDisconnect={handleDisconnectOutlook}
               onMonthChange={handleMonthChange}
               canGoToPreviousMonth={canOpenMonth(previousCalendarDate.getMonth(), previousCalendarDate.getFullYear())}
               canGoToNextMonth={canOpenMonth(nextCalendarDate.getMonth(), nextCalendarDate.getFullYear())}
