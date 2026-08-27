@@ -82,6 +82,39 @@ function firstPersonCurrentDescription(request: ActivityAgentRequest) {
   return `Am realizat ${activity}, prin ${lowerFirst(cleanedCurrent)}.`;
 }
 
+function normalizeDescriptionText(value: unknown) {
+  return String(value ?? '').replace(/\s+/g, ' ').trim();
+}
+
+function normalizeEvidenceText(value: unknown) {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function hasRepeatedSentenceContent(value: string) {
+  const sentences = splitSentences(value)
+    .map((sentence) => normalizeEvidenceText(sentence))
+    .filter(Boolean);
+  if (sentences.length < 3) return false;
+  return new Set(sentences).size <= Math.ceil(sentences.length / 2);
+}
+
+function hasRawDeliverableLeak(value: string) {
+  const normalized = normalizeEvidenceText(value);
+  return [
+    /\b(?:sedinta|intalnire)\s+ref\b/,
+    /\bdata\s+\d{1,2}[./]\d{1,2}[./]\d{4}\s+locatia\b/,
+    /\blista\s+de\s+participanti\b/,
+    /\bnr\s+nume\s+si\s+prenume\s+organizatia\s+functia\b/,
+    /\badresa\s+de\s+email\b/,
+    /\bmeeting\s+notes\b/,
+  ].some((pattern) => pattern.test(normalized));
+}
+
 function cleanFinalDescription(value: unknown, request: ActivityAgentRequest) {
   const normalized = String(value ?? '')
     .replace(/\s+/g, ' ')
@@ -101,6 +134,102 @@ function cleanFinalDescription(value: unknown, request: ActivityAgentRequest) {
   }
 
   return `${prefix}, ${lowerFirst(safeCleaned).replace(/^\s*în\s+data\s+de\s+/i, '')}`;
+}
+
+function isMetadataLikeEvidence(sentence: string) {
+  const normalized = normalizeEvidenceText(sentence);
+  return !normalized
+    || /\b(?:sedinta|intalnire)\s+ref\b/.test(normalized)
+    || /\bdata\s+\d{1,2}[./]\d{1,2}[./]\d{4}\s+locatia\b/.test(normalized)
+    || /\blista\s+de\s+participanti\b/.test(normalized)
+    || /\bnr\s+nume\s+si\s+prenume\s+organizatia\s+functia\b/.test(normalized)
+    || /\badresa\s+de\s+email\b/.test(normalized)
+    || /\binterval\s+orar\b/.test(normalized)
+    || /\bsemnatura\b/.test(normalized)
+    || /\bmeeting\s+notes\b/.test(normalized)
+    || /@/.test(sentence);
+}
+
+function cleanEvidenceSentences(sentences: string[]) {
+  return uniqueMessages(sentences
+    .map((sentence) => normalizeDescriptionText(sentence))
+    .filter((sentence) => sentence.length >= 45 && sentence.length <= 360)
+    .filter((sentence) => !isMetadataLikeEvidence(sentence))
+    .filter((sentence) => !hasForbiddenDescriptionContent(sentence)))
+    .slice(0, 6);
+}
+
+function getDeliverableCorpus(request: ActivityAgentRequest) {
+  return request.deliverables.map((deliverable) => [
+    deliverable.documentTitle,
+    deliverable.deliverableType,
+    deliverable.eligibilitySummary,
+    deliverable.extractedText,
+  ].filter(Boolean).join('\n')).join('\n');
+}
+
+function isMeetingMinuteRequest(request: ActivityAgentRequest) {
+  const normalized = normalizeEvidenceText(getDeliverableCorpus(request));
+  return /\bminuta\b/.test(normalized)
+    || /\b(?:sedinta|intalnire)\b/.test(normalized)
+    || /\bmeeting\s+notes\b/.test(normalized)
+    || /\bpanel\b/.test(normalized);
+}
+
+function extractMeetingSubject(request: ActivityAgentRequest) {
+  const corpus = getDeliverableCorpus(request);
+  const explicitSubject = corpus.match(/(?:Ședință|Sedinta|Întâlnire|Intalnire)\s*:\s*([^\n]+)/i)?.[1]
+    || request.deliverables.map((deliverable) => deliverable.documentTitle).find(Boolean)
+    || request.activityName
+    || 'activitatea raportata';
+  return normalizeDescriptionText(explicitSubject)
+    .replace(/^Ref\.\s*/i, '')
+    .replace(/\s+[-–]\s*\d{1,2}[./]\d{1,2}[./]\d{4}\s*$/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function extractMeetingTopics(request: ActivityAgentRequest) {
+  const normalized = normalizeEvidenceText(getDeliverableCorpus(request));
+  return uniqueMessages([
+    /\bpanel\b/.test(normalized) || /\bagenda\b/.test(normalized)
+      ? 'structura agendei si a panelurilor'
+      : '',
+    /\bspeaker/.test(normalized) || /\bmoderator/.test(normalized)
+      ? 'alinierea speakerilor si a rolurilor de moderare'
+      : '',
+    /\btema\b/.test(normalized) || /\bdirectii\s+tematice\b/.test(normalized)
+      ? 'principalele directii tematice ale evenimentului'
+      : '',
+    /\bobservatii\b/.test(normalized) || /\bclarific/.test(normalized)
+      ? 'observatiile si clarificarile necesare pentru organizare'
+      : '',
+    /\bfurnizor\b/.test(normalized) || /\bprestator\b/.test(normalized)
+      ? 'cerintele care urmau sa fie transmise prestatorului'
+      : '',
+  ]).slice(0, 4);
+}
+
+function buildMeetingMinuteFallbackDescription(request: ActivityAgentRequest) {
+  const subject = extractMeetingSubject(request);
+  const topics = extractMeetingTopics(request);
+  const prefix = formatActivityDates(request);
+  const topicText = topics.length > 0
+    ? topics.join(', ')
+    : 'obiectivele, structura generala si elementele de continut ale intalnirii';
+  const currentDescription = firstPersonCurrentDescription(request);
+  const selectedActivity = request.activityName ? `, in cadrul activitatii "${request.activityName}"` : '';
+  const sa = request.saCode ? ` aferente ${request.saCode}` : '';
+  const firstSentence = `${prefix || 'Am participat'} la o intalnire interna de lucru pentru ${lowerFirst(subject)}${selectedActivity}, in cadrul careia am analizat ${topicText}.`;
+  const secondSentence = 'Am centralizat elementele de continut discutate, cerintele operationale si aspectele care necesitau clarificare pentru dezvoltarea si operationalizarea agendei.';
+  const thirdSentence = `Prin aceasta activitate am contribuit la pregatirea coerenta a evenimentului si la documentarea rezultatelor${sa} pentru raportarea tehnica a proiectului.`;
+
+  return cleanFinalDescription([
+    currentDescription && currentDescription.length > 80 ? currentDescription : '',
+    firstSentence,
+    secondSentence,
+    thirdSentence,
+  ].filter(Boolean).join(' '), request);
 }
 
 function shortSummaryFromDescription(description: string, request: ActivityAgentRequest) {
@@ -128,9 +257,8 @@ function extractFallbackEvidence(request: ActivityAgentRequest) {
     .slice(0, 5)
     .map((item) => item.sentence);
 
-  return preferred.length > 0
-    ? preferred
-    : request.deliverables.flatMap((deliverable) => splitSentences(deliverable.extractedText)).slice(0, 4);
+  const fallback = request.deliverables.flatMap((deliverable) => splitSentences(deliverable.extractedText));
+  return cleanEvidenceSentences(preferred.length > 0 ? preferred : fallback);
 }
 
 function fallbackDeliverableInterpretation(request: ActivityAgentRequest) {
@@ -161,6 +289,10 @@ function fallbackDeliverableInterpretation(request: ActivityAgentRequest) {
 }
 
 function fallbackDescription(request: ActivityAgentRequest) {
+  if (isMeetingMinuteRequest(request)) {
+    return buildMeetingMinuteFallbackDescription(request);
+  }
+
   const activity = request.activityName || request.title || 'activitatea raportata';
   const sa = request.saCode ? ` pentru ${request.saCode}` : '';
   const evidence = extractFallbackEvidence(request);
@@ -181,6 +313,8 @@ function selectDisplaySafeDescription(generatedDescription: string, request: Act
   const generatedQuality = evaluateFinalActivityDescription(generatedDescription, request);
   const shouldUseFallback = generatedQuality.evidenceSupport.score < 0.55
     || !hasFirstPersonSingularDescription(generatedDescription)
+    || hasRawDeliverableLeak(generatedDescription)
+    || hasRepeatedSentenceContent(generatedDescription)
     || generatedQuality.evidenceSupport.unsupportedNumbers.length > 0
     || generatedQuality.evidenceSupport.unsupportedTerms.length >= 8;
   if (!shouldUseFallback) {

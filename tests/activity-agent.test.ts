@@ -14,6 +14,7 @@ import {
   validateActivityHoursValue,
   validateSubactivityClassificationValue,
 } from '../lib/agents/activity-agent-tools.ts';
+import { hasForbiddenDescriptionContent } from '../lib/agents/activity-agent-quality.ts';
 
 const baseRequest: ActivityAgentRequest = {
   expertId: 'expert-1',
@@ -258,4 +259,19 @@ test('validateSubactivityClassification proposes another SA when selection is in
 
   assert.equal(result.proposedSaCode, 'SA3.2');
   assert.ok(result.warnings.length > 0);
+});
+
+test('quality filter rejects raw meeting-minute headers in descriptions', () => {
+  assert.equal(
+    hasForbiddenDescriptionContent('Ședință Ref. Întâlnirea de aliniere privind speakerii Data: 07.08.2026 Locația: Sediul CPC.'),
+    true,
+  );
+  assert.equal(
+    hasForbiddenDescriptionContent('Lista de participanți | Nr. | Nume și prenume | Organizația | Funcția | Adresa de email | Semnătura.'),
+    true,
+  );
+  assert.equal(
+    hasForbiddenDescriptionContent('Am participat la o întâlnire internă de lucru pentru definirea cerințelor CPC privind evenimentul anual.'),
+    false,
+  );
 });
