@@ -993,6 +993,7 @@ export function DosarExpertModal({
     if (!handler) return;
 
     setActivityActionId(`${action}-${group.key}`);
+    setDocumentError(null);
     try {
       await handler(group.activities);
       if (action === 'approve') {
@@ -1002,6 +1003,8 @@ export function DosarExpertModal({
           return next;
         });
       }
+    } catch (error) {
+      setDocumentError(error instanceof Error ? error.message : 'Actiunea PM nu a putut fi salvata.');
     } finally {
       setActivityActionId(null);
     }
@@ -1595,6 +1598,7 @@ export function DosarExpertModal({
                                   {canManagePmReview && (
                                     <div className="mt-3 flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-2">
                                       <Button
+                                        type="button"
                                         variant="outline"
                                         size="sm"
                                         className="h-7 px-2 text-[10px]"
@@ -1606,6 +1610,7 @@ export function DosarExpertModal({
                                         Bifeaza conform
                                       </Button>
                                       <Button
+                                        type="button"
                                         variant="outline"
                                         size="sm"
                                         className="h-7 px-2 text-[10px]"
