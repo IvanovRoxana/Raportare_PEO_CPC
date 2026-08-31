@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { BriefcaseBusiness, CalendarDays, CheckCircle2, FileText, Loader2, SearchIcon, UsersRound } from 'lucide-react';
+import { AlertTriangle, BriefcaseBusiness, CalendarDays, CheckCircle2, FileText, Loader2, SearchIcon, UsersRound } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -24,6 +24,7 @@ type ColleagueActivitiesNewsletterProps = {
   month: number;
   year: number;
   isLoading?: boolean;
+  error?: unknown;
   isActionDisabled?: boolean;
   actionDisabledReason?: string;
   sharedRelations?: SharedDeliverable[];
@@ -119,6 +120,7 @@ export function ColleagueActivitiesNewsletter({
   month,
   year,
   isLoading = false,
+  error,
   isActionDisabled = false,
   actionDisabledReason,
   sharedRelations = [],
@@ -184,6 +186,11 @@ export function ColleagueActivitiesNewsletter({
     });
     return Array.from(groups.entries());
   }, [expertNameById, filteredActivities]);
+  const errorMessage = error instanceof Error
+    ? error.message
+    : error
+      ? 'Newsletterul colegilor nu a putut fi incarcat.'
+      : null;
 
   return (
     <section className="space-y-4">
@@ -249,6 +256,16 @@ export function ColleagueActivitiesNewsletter({
           <CardContent className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
             <Loader2 className="h-5 w-5 animate-spin" />
             Se incarca newsletterul activitatilor colegilor...
+          </CardContent>
+        </Card>
+      ) : errorMessage ? (
+        <Card className="border-amber-200 bg-amber-50">
+          <CardContent className="flex items-start gap-3 py-6 text-sm text-amber-900">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
+            <div>
+              <p className="font-semibold">Nu am putut incarca activitatile colegilor.</p>
+              <p className="mt-1 leading-6">{errorMessage}</p>
+            </div>
           </CardContent>
         </Card>
       ) : groupedActivities.length === 0 ? (

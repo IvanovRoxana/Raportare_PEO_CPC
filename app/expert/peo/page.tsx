@@ -908,7 +908,12 @@ function ExpertDashboardContent() {
   const { catalog: activityCatalog } = useActivityCatalog();
   const { experts: collaborationExperts } = useCollaborationExperts();
   const { activities: allMonthActivities, isLoading: activitiesLoading, isReady: activitiesReady, mutate: refreshActivities } = useActivitiesByMonth(currentMonth, currentYear);
-  const { activities: colleagueActivities, isLoading: colleagueActivitiesLoading, mutate: refreshColleagueActivities } = useColleagueActivitiesByMonth(currentMonth, currentYear);
+  const {
+    activities: colleagueActivities,
+    isLoading: colleagueActivitiesLoading,
+    error: colleagueActivitiesError,
+    mutate: refreshColleagueActivities,
+  } = useColleagueActivitiesByMonth(currentMonth, currentYear);
   const { leaveEntries, mutate: refreshLeaveEntries } = useLeaveEntries(currentMonth, currentYear);
   const { createAutomatic: createAutomaticLeave, remove: removeLeaveEntry } = useLeaveEntryMutations(currentMonth, currentYear);
   const { documents, isReady: documentsReady } = useDocuments();
@@ -3550,6 +3555,7 @@ function ExpertDashboardContent() {
               month={currentMonth}
               year={currentYear}
               isLoading={colleagueActivitiesLoading}
+              error={colleagueActivitiesError}
               isActionDisabled={isApproved || isClarificationScopedAccess}
               actionDisabledReason={isApproved ? 'Luna este aprobata.' : isClarificationScopedAccess ? 'Modul clarificari permite doar activitatea marcata de PM.' : undefined}
               sharedRelations={scopedSharedDeliverables}

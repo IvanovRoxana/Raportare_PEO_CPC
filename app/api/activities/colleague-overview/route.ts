@@ -342,19 +342,23 @@ function mapActivity(item: RawItem, deliverables: Deliverable[]): Activity {
   };
 }
 
-async function listDeliverablesByActivityIds(activityIds: string[]) {
+async function listDeliverablesByActivityIds(activityIds: string[], month: number, year: number) {
   if (activityIds.length === 0) return new Map<string, Deliverable[]>();
+  const allowedActivityIds = new Set(activityIds);
 
-  const deliverables = await Promise.all(activityIds.map(async (activityId) => {
-    const rows = await scanTable<RawItem>('Deliverable', {
-      FilterExpression: 'activityId = :activityId',
-      ExpressionAttributeValues: { ':activityId': toDdbAttribute(activityId) },
-    });
-    return rows.map(mapDeliverable);
-  }));
+  const deliverables = (await scanTable<RawItem>('Deliverable', {
+    FilterExpression: '#year = :year AND #month = :month',
+    ExpressionAttributeNames: { '#year': 'year', '#month': 'month' },
+    ExpressionAttributeValues: {
+      ':year': toDdbAttribute(year),
+      ':month': toDdbAttribute(month),
+    },
+  }))
+    .map(mapDeliverable)
+    .filter((deliverable) => allowedActivityIds.has(deliverable.activityId || ''));
 
   const byActivityId = new Map<string, Deliverable[]>();
-  deliverables.flat().forEach((deliverable) => {
+  deliverables.forEach((deliverable) => {
     const activityId = deliverable.activityId;
     if (!activityId) return;
     byActivityId.set(activityId, [...(byActivityId.get(activityId) ?? []), deliverable]);
@@ -386,7 +390,7 @@ export async function GET(request: Request) {
       .filter((activity) => activity.expertId && activity.expertId !== caller.currentExpert?.id)
       .filter((activity) => caller.canAccessAllExperts || !currentProjectCode || !activity.projectCode || activity.projectCode === currentProjectCode);
     const activityIds = filtered.map((activity) => String(activity.id || '')).filter((id) => id.length > 0);
-    const deliverablesByActivityId = await listDeliverablesByActivityIds(activityIds);
+    const deliverablesByActivityId = await listDeliverablesByActivityIds(activityIds, month, year);
     const activities = filtered
       .map((activity) => mapActivity(activity, deliverablesByActivityId.get(String(activity.id)) ?? []))
       .sort((a, b) => {
