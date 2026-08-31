@@ -21,6 +21,16 @@ export async function getAuthenticatedStorageIdentityId() {
   return session.identityId;
 }
 
+export function normalizeAuthenticatedUploadPath(path: string, identityId?: string | null) {
+  if (!identityId || !path.startsWith('deliverables/')) return path;
+
+  const safeIdentityId = identityId.replace(/[^a-zA-Z0-9._:-]/g, '_');
+  const rest = path.slice('deliverables/'.length);
+  if (!rest || rest.startsWith(`${safeIdentityId}/`)) return path;
+
+  return `deliverables/${safeIdentityId}/${rest}`;
+}
+
 export function uploadAuthenticatedData(input: AuthenticatedUploadInput) {
   return {
     result: (async () => {
@@ -29,7 +39,12 @@ export function uploadAuthenticatedData(input: AuthenticatedUploadInput) {
         throw new Error('Sesiunea de autentificare a expirat. Autentifica-te din nou inainte de upload.');
       }
 
-      return uploadData(input as any).result;
+      const normalizedInput = {
+        ...input,
+        path: normalizeAuthenticatedUploadPath(input.path, session.identityId),
+      };
+
+      return uploadData(normalizedInput as any).result;
     })(),
   };
 }
