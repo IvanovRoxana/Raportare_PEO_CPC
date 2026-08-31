@@ -419,12 +419,21 @@ export function DosarExpertModal({
     window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
   };
 
+  const displayActivities = useMemo(() => {
+    if (locallyApprovedActivityIds.size === 0) return activities;
+    return activities.map((activity) => (
+      locallyApprovedActivityIds.has(activity.id)
+        ? { ...activity, status: 'approved' as const, pmNotes: '' }
+        : activity
+    ));
+  }, [activities, locallyApprovedActivityIds]);
+
   // Group activities by SA and consolidate multi-day entries from the same pontaj thread.
   const activitiesByType = useMemo(() => {
     const byType: Record<string, DossierActivityGroup[]> = {};
     const groupsByKey = new Map<string, DossierActivityGroup>();
 
-    activities.forEach(act => {
+    displayActivities.forEach(act => {
       const type = getActivitySaLabel(act);
       const groupIdentity = act.periodGroupId
         || act.workingGroupId
@@ -470,7 +479,7 @@ export function DosarExpertModal({
         groups.sort((a, b) => a.dates[0].localeCompare(b.dates[0]) || a.title.localeCompare(b.title)),
       ] as const)
       .sort((a, b) => b[1].length - a[1].length);
-  }, [activities]);
+  }, [displayActivities]);
 
   const documentsById = useMemo(() => {
     return new Map(documents.map((document) => [document.id, document]));
