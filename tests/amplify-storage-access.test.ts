@@ -29,6 +29,12 @@ test('project storage retains existing authenticated and admin permissions', () 
   assert.match(projectDocumentsRule, /allow\.groups\(\["pm", "admin"\]\)\.to\(\["read", "write", "delete"\]\)/);
 });
 
+test('deliverable storage grants the expert group role upload access', () => {
+  const deliverablesRule = storageResource.match(/"deliverables\/\{entity_id\}\/\*": \[([\s\S]*?)\n    \],/)?.[1] ?? '';
+  assert.match(deliverablesRule, /allow\.entity\("identity"\)\.to\(\["read", "write", "delete"\]\)/);
+  assert.match(deliverablesRule, /allow\.groups\(\["expert", "pm", "admin"\]\)\.to\(\["read", "write", "delete"\]\)/);
+});
+
 test('client uploads refresh authenticated storage credentials before PutObject', () => {
   assert.match(authenticatedStorageSource, /fetchAuthSession\(\{ forceRefresh: true \}\)/);
   assert.match(authenticatedStorageSource, /!session\.tokens \|\| !session\.credentials/);

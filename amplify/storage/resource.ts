@@ -5,7 +5,7 @@ export const storage = defineStorage({
   access: (allow) => ({
     "deliverables/{entity_id}/*": [
       allow.entity("identity").to(["read", "write", "delete"]),
-      allow.groups(["pm", "admin"]).to(["read", "write", "delete"]),
+      allow.groups(["expert", "pm", "admin"]).to(["read", "write", "delete"]),
     ],
     "deliverable-index/*": [
       allow.authenticated.to(["read", "write"]),
