@@ -42,6 +42,12 @@ export function hasForbiddenDescriptionContent(value: string) {
     /\bvalidare(?:a)?\s+(?:de catre\s+)?pm\b/,
     /\braportarea lunara\b/,
     /\bpregatit(?:a)?\s+formularea\b/,
+    /\b(?:sedinta|intalnire)\s+ref\b/,
+    /\bdata\s+\d{1,2}[./]\d{1,2}[./]\d{4}\s+locatia\b/,
+    /\blista\s+de\s+participanti\b/,
+    /\bnr\s+nume\s+si\s+prenume\s+organizatia\s+functia\b/,
+    /\badresa\s+de\s+email\b/,
+    /\bmeeting\s+notes\b/,
   ];
   const normalized = normalizePolicyText(value);
   return forbiddenPatterns.some((pattern) => pattern.test(normalized));
