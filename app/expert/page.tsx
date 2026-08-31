@@ -131,6 +131,20 @@ function groupSharedActivityAlerts(alerts: SharedActivityAlert[]): GroupedShared
   });
 }
 
+function buildSharedActivityRegistrationHref(baseHref: string, alert: GroupedSharedActivityAlert) {
+  const params = [
+    `sharedActivityRelationId=${encodeURIComponent(alert.relationId)}`,
+    alert.relationIds.length > 1
+      ? `sharedActivityRelationIds=${encodeURIComponent(alert.relationIds.join(','))}`
+      : null,
+    alert.sourceActivityDates.length > 1
+      ? `sharedActivityDates=${encodeURIComponent(alert.sourceActivityDates.join(','))}`
+      : null,
+  ].filter(Boolean);
+
+  return `${baseHref}&${params.join('&')}`;
+}
+
 function formatSharedActivityHours(hours?: number) {
   return typeof hours === 'number' && Number.isFinite(hours) ? `${hours}h` : undefined;
 }
@@ -1285,15 +1299,13 @@ export default function ExpertHomeDashboard() {
                         <SharedActivityDescription alert={alert} />
                         <SharedActivityMetadata alert={alert} />
                         <div className="mt-3 flex flex-wrap gap-2">
-                          {alert.alerts.map((activityAlert) => (
-                            <Button key={activityAlert.relationId} asChild size="sm" className="h-8 rounded-md">
-                              <Link href={`${peoHref}&sharedActivityRelationId=${encodeURIComponent(activityAlert.relationId)}`}>
-                                {alert.alerts.length > 1 && activityAlert.sourceActivityDate
-                                  ? `Adauga ${activityAlert.sourceActivityDate}`
-                                  : 'Adauga activitate'}
-                              </Link>
-                            </Button>
-                          ))}
+                          <Button asChild size="sm" className="h-8 rounded-md">
+                            <Link href={buildSharedActivityRegistrationHref(peoHref, alert)}>
+                              {alert.relationIds.length > 1
+                                ? 'Adauga activitatea si selecteaza zilele'
+                                : 'Adauga activitate'}
+                            </Link>
+                          </Button>
                           <Button
                             type="button"
                             variant="outline"
