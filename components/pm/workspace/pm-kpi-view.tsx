@@ -23,6 +23,10 @@ import { getMonthName } from '@/lib/app-utils';
 import { buildPmKpiMetrics, type PmKpiTone } from '@/lib/pm-kpi-metrics';
 import { buildPmReportSituation } from '@/lib/pm-report-situation';
 import {
+  buildPmReportSituationXlsxBlob,
+  buildPmReportSituationXlsxFilename,
+} from '@/lib/pm-report-situation-export';
+import {
   buildPmReportingPeriodSelection,
   resolvePmReportingPeriodChange,
 } from '@/lib/pm-reporting-period-selector';
@@ -45,6 +49,17 @@ function statusClass(status: ReportStatus['status']) {
 
 function MiniAvatar({ expert }: { expert: Expert }) {
   return <ExpertAvatar expert={expert} className="h-7 w-7 bg-[#1f73d8] text-[10px] text-white" />;
+}
+
+function triggerDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 export function KpiView(props: PmWorkspaceProps) {
@@ -189,6 +204,19 @@ function ReportSituationDialog({
     submittedReportRows: props.submittedReportRows,
     dashboardRows: props.dashboardRows,
   });
+  const downloadSituation = () => {
+    const blob = buildPmReportSituationXlsxBlob({
+      experts: props.experts,
+      submittedReportRows: props.submittedReportRows,
+      dashboardRows: props.dashboardRows,
+      reportStatusByExpertId: props.reportStatusByExpertId,
+      statusLabels: props.statusLabels,
+      month: props.selectedMonth,
+      year: props.selectedYear,
+      projectCode: '302141',
+    });
+    triggerDownload(blob, buildPmReportSituationXlsxFilename(props.selectedMonth, props.selectedYear));
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -200,6 +228,10 @@ function ReportSituationDialog({
               <p className="mt-1 text-xs text-blue-100">PEO 302141 - Confederația Patronală CONCORDIA - 23 zile lucrătoare</p>
             </div>
             <div className="flex gap-2">
+              <Button size="sm" variant="secondary" onClick={downloadSituation}>
+                <FileText className="h-4 w-4" />
+                Export XLSX
+              </Button>
               <Button size="sm" variant="secondary" onClick={() => window.print()}>
                 <FileText className="h-4 w-4" />
                 Print
