@@ -1681,16 +1681,23 @@ export function ActivityForm({
       reportingWarnings.push(isEvent ? MISSING_EVENT_DOCUMENTATION_MESSAGE : MISSING_MAIN_DELIVERABLE_MESSAGE);
     }
 
-    const invalidTitleDeliverable = deliverables.find((d) => (
-      d.uploaded
-      && !d.isPhoto
-      && (
-        !d.titleConfirmed
+    const invalidTitleDeliverable = deliverables.find((d) => {
+      if (!d.uploaded || d.isPhoto) return false;
+      const currentValidation = d.declaredTitle
+        ? validateDeclaredTitleInDocumentText({
+            documentText: d.firstPageText || d.docText,
+            declaredTitle: d.declaredTitle,
+            titleSource: d.titleSource,
+          })
+        : null;
+      return !d.titleConfirmed
         || d.titleCheckStatus === 'mismatch'
         || d.titleCheckStatus === 'extraction_failed'
         || d.titleMatch === false
-      )
-    ));
+        || currentValidation?.titleCheckStatus === 'mismatch'
+        || currentValidation?.titleCheckStatus === 'extraction_failed'
+        || isLikelyFilenameDerivedTitle(d.declaredTitle, d.filename || d.name);
+    });
 
     if (invalidTitleDeliverable) {
       reportingWarnings.push(

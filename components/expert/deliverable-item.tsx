@@ -915,7 +915,31 @@ export function DeliverableItem({
 
   const hasPendingUpload = deliverable.duplicateStatus === 'pending_upload' || Boolean(deliverable.uploadError);
   const step1ok = deliverable.uploaded && !hasPendingUpload;
-  const step2ok = deliverable.isPhoto || (deliverable.uploaded && deliverable.titleConfirmed);
+  const currentTitleValidation = deliverable.uploaded && !deliverable.isPhoto && deliverable.declaredTitle
+    ? validateDeclaredTitleInDocumentText({
+        documentText: deliverable.firstPageText || deliverable.docText,
+        declaredTitle: deliverable.declaredTitle,
+        titleSource: deliverable.titleSource,
+      })
+    : null;
+  const hasInvalidConfirmedTitle = Boolean(
+    deliverable.titleConfirmed
+    && !deliverable.isPhoto
+    && (
+      currentTitleValidation?.titleCheckStatus === 'mismatch'
+      || currentTitleValidation?.titleCheckStatus === 'extraction_failed'
+      || isLikelyFilenameDerivedTitle(deliverable.declaredTitle, deliverable.filename || deliverable.name)
+    ),
+  );
+  const effectiveTitleConfirmed = Boolean(deliverable.titleConfirmed && !hasInvalidConfirmedTitle);
+  const effectiveTitleMatch = hasInvalidConfirmedTitle ? false : deliverable.titleMatch;
+  const effectiveTitleCheckStatus = hasInvalidConfirmedTitle
+    ? (currentTitleValidation?.titleCheckStatus || 'mismatch')
+    : deliverable.titleCheckStatus;
+  const effectiveTitleCheckMessage = hasInvalidConfirmedTitle
+    ? (currentTitleValidation?.titleCheckMessage || 'Titlul confirmat anterior nu mai trece validarea curenta.')
+    : deliverable.titleCheckMessage;
+  const step2ok = deliverable.isPhoto || (deliverable.uploaded && effectiveTitleConfirmed);
   const step3ok = deliverable.isPhoto || (deliverable.uploaded && !!deliverable.stadiu);
   const step4ok = deliverable.isPhoto || !eligibilityCheckEnabled || (deliverable.uploaded && !!deliverable.aiCheck);
   const textExtractionGateReason = visibleEligibilityCheck ? null : getTextExtractionGateReason(deliverable, undefined, expertCategory);
@@ -937,9 +961,9 @@ export function DeliverableItem({
     && deliverable.duplicateStatus !== 'fingerprinted'
     && deliverable.duplicateStatus !== 'pending_upload'
   ));
-  const showCompactConfirmedTitle = deliverable.uploaded && deliverable.titleConfirmed && !isEditingConfirmedTitle;
+  const showCompactConfirmedTitle = deliverable.uploaded && effectiveTitleConfirmed && !isEditingConfirmedTitle;
   const hasSideNotes = renderInlineNotes && deliverable.uploaded && !deliverable.isPhoto && Boolean(
-    (!deliverable.titleConfirmed && (deliverable.docText || deliverable.firstPageText || deliverable.suggestedTitle || deliverable.declaredTitle))
+    (!effectiveTitleConfirmed && (deliverable.docText || deliverable.firstPageText || deliverable.suggestedTitle || deliverable.declaredTitle))
     || hasDuplicateSignal
     || hasPendingUpload
     || deliverable.common
@@ -1072,7 +1096,7 @@ export function DeliverableItem({
         </div>
       )}
 
-      {renderInlineNotes && deliverable.uploaded && !deliverable.titleConfirmed && (deliverable.docText || deliverable.firstPageText) && (
+      {renderInlineNotes && deliverable.uploaded && !effectiveTitleConfirmed && (deliverable.docText || deliverable.firstPageText) && (
         <div className="rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] text-blue-800 xl:col-start-2">
           {deliverable.textExtractionSource === 'ocr'
             ? 'Text OCR extras pentru autocompletare.'
@@ -1114,7 +1138,7 @@ export function DeliverableItem({
 
       {!deliverable.isPhoto && (
         <div className={`space-y-1.5 ${renderInlineNotes ? 'xl:contents' : ''}`}>
-          {deliverable.uploaded && !deliverable.titleConfirmed && (
+          {deliverable.uploaded && !effectiveTitleConfirmed && (
             <div className={`rounded border border-slate-200 bg-white p-2 text-[10px] text-slate-700 ${renderInlineNotes ? 'xl:col-start-1' : ''}`}>
               <div className="font-medium text-slate-900">Titlu auditabil document</div>
               <div className="mt-0.5 break-words text-xs font-semibold text-slate-950">{visibleAuditTitle}</div>
@@ -1125,7 +1149,7 @@ export function DeliverableItem({
               )}
               <div className="mt-1 flex flex-wrap gap-1.5">
                 <Badge variant="outline" className="bg-white text-[10px]">
-                  {deliverable.titleConfirmed ? 'titlu confirmat' : 'neconfirmat'}
+                  {effectiveTitleConfirmed ? 'titlu confirmat' : 'neconfirmat'}
                 </Badge>
                 {deliverable.titleSource && (
                   <Badge variant="outline" className="bg-white text-[10px]">
@@ -1146,7 +1170,7 @@ export function DeliverableItem({
             </div>
           )}
 
-          {renderInlineNotes && !deliverable.titleConfirmed && deliverable.suggestedTitle && (
+          {renderInlineNotes && !effectiveTitleConfirmed && deliverable.suggestedTitle && (
             <div className="rounded border border-blue-200 bg-blue-50 p-2 text-[10px] text-blue-900 xl:col-start-2">
               <div className="flex items-start justify-between gap-2">
                 <div>
@@ -1199,7 +1223,7 @@ export function DeliverableItem({
             )}
           </div>
           )}
-          {!renderInlineNotes && !deliverable.titleConfirmed && deliverable.suggestedTitle && deliverable.suggestedTitle !== deliverable.declaredTitle && (
+          {!renderInlineNotes && !effectiveTitleConfirmed && deliverable.suggestedTitle && deliverable.suggestedTitle !== deliverable.declaredTitle && (
             <Button
               type="button"
               variant="outline"
@@ -1213,17 +1237,17 @@ export function DeliverableItem({
         </div>
       )}
 
-      {renderInlineNotes && deliverable.uploaded && !deliverable.isPhoto && !deliverable.titleConfirmed && deliverable.declaredTitle && (
+      {renderInlineNotes && deliverable.uploaded && !deliverable.isPhoto && !effectiveTitleConfirmed && deliverable.declaredTitle && (
         <div className={`rounded p-1.5 text-[10px] xl:col-start-2 ${
-          deliverable.titleMatch === true
+          effectiveTitleMatch === true
             ? 'bg-green-100 text-green-700'
-            : deliverable.titleMatch === false
+            : effectiveTitleMatch === false
               ? 'bg-amber-100 text-amber-700'
               : 'bg-slate-100 text-slate-600'
         }`}>
-          {deliverable.titleMatch === true
-            ? (deliverable.titleCheckMessage || 'Titlul se regaseste in document.')
-            : (deliverable.titleCheckMessage || 'Titlul nu a fost gasit in document.')}
+          {effectiveTitleMatch === true
+            ? (effectiveTitleCheckMessage || 'Titlul se regaseste in document.')
+            : (effectiveTitleCheckMessage || 'Titlul nu a fost gasit in document.')}
         </div>
       )}
 
@@ -1271,15 +1295,15 @@ export function DeliverableItem({
         </div>
       )}
 
-      {deliverable.uploaded && !deliverable.isPhoto && deliverable.declaredTitle && !deliverable.titleConfirmed && (
+      {deliverable.uploaded && !deliverable.isPhoto && deliverable.declaredTitle && !effectiveTitleConfirmed && (
         <Button
           variant="outline"
           size="sm"
           onClick={handleConfirmTitle}
-          disabled={metadataLocked || deliverable.titleCheckStatus === 'mismatch'}
+          disabled={metadataLocked || effectiveTitleCheckStatus === 'mismatch'}
           className={`justify-self-start border-green-400 text-xs text-green-700 hover:bg-green-50 disabled:border-amber-300 disabled:text-amber-700 ${renderInlineNotes ? 'xl:col-start-1' : ''}`}
         >
-          {deliverable.titleCheckStatus === 'mismatch' || deliverable.titleCheckStatus === 'extraction_failed' ? (
+          {effectiveTitleCheckStatus === 'mismatch' || effectiveTitleCheckStatus === 'extraction_failed' ? (
             <AlertTriangle className="h-3 w-3 mr-1" />
           ) : (
             <Check className="h-3 w-3 mr-1" />
