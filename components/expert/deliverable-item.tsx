@@ -555,13 +555,13 @@ export function DeliverableItem({
         };
       }
 
-      const currentTitle = isLikelyFilenameDerivedTitle(currentDeclaredTitle, deliverable.filename || deliverable.name)
-        ? ''
-        : currentDeclaredTitle;
       const titleSuggestionPatch = applyAutomaticTitleSuggestion({
-        currentDeclaredTitle: currentTitle,
+        currentDeclaredTitle,
+        currentTitleSource: deliverable.titleSource,
         suggestedTitle: docTitle,
         confidence: titleSuggestion.confidence,
+        documentText: firstPageText || docText,
+        fileName: file.name || deliverable.filename || deliverable.name,
       });
       const validation = isPhoto || !titleSuggestionPatch.declaredTitle
         ? null

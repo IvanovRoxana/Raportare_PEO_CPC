@@ -85,6 +85,42 @@ test('does not overwrite an existing declaredTitle', () => {
   );
 });
 
+test('replaces stale non-expert title with high confidence document title', () => {
+  assert.deepEqual(
+    applyAutomaticTitleSuggestion({
+      currentDeclaredTitle: 'medat',
+      currentTitleSource: 'manual',
+      suggestedTitle: 'Document de pozitie privind reorganizarea MEDAT',
+      confidence: 'high',
+      documentText: 'Document de pozitie privind reorganizarea MEDAT\nAugust 2026',
+      fileName: 'CPC-reorganizare-medat.docx',
+    }),
+    {
+      declaredTitle: 'Document de pozitie privind reorganizarea MEDAT',
+      titleSource: 'auto_detected',
+      autoFilled: true,
+    },
+  );
+});
+
+test('keeps explicit expert title and leaves validation to title check', () => {
+  assert.deepEqual(
+    applyAutomaticTitleSuggestion({
+      currentDeclaredTitle: 'Varianta expertului',
+      currentTitleSource: 'edited_by_expert',
+      suggestedTitle: 'Document de pozitie privind reorganizarea MEDAT',
+      confidence: 'high',
+      documentText: 'Document de pozitie privind reorganizarea MEDAT',
+      fileName: 'CPC-reorganizare-medat.docx',
+    }),
+    {
+      declaredTitle: 'Varianta expertului',
+      titleSource: 'edited_by_expert',
+      autoFilled: false,
+    },
+  );
+});
+
 test('accepts suggested title and validates when it exists in the document text', () => {
   const documentText = 'Ghid de lucru pentru experti\nCapitolul 1';
   assert.equal(titleExistsInDocumentText(documentText, 'Ghid de lucru pentru experti'), true);

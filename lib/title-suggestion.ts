@@ -371,22 +371,46 @@ export function validateDeclaredTitleInDocumentText(args: {
 
 export function applyAutomaticTitleSuggestion(args: {
   currentDeclaredTitle?: string | null;
+  currentTitleSource?: TitleSource | string | null;
   suggestedTitle?: string | null;
   confidence?: TitleSuggestionConfidence | string | null;
+  documentText?: string | null;
+  fileName?: string | null;
 }) {
   const declaredTitle = normalizeSpaces(args.currentDeclaredTitle || '');
   const suggestedTitle = normalizeSpaces(args.suggestedTitle || '');
   const canAutoFill = args.confidence === 'high';
+  const currentTitleSource = args.currentTitleSource || (declaredTitle ? 'manual' : undefined);
+  const keepExplicitExpertTitle = currentTitleSource === 'edited_by_expert' || currentTitleSource === 'admin_override';
+  const currentTitleExistsInDocument = declaredTitle
+    ? titleExistsInDocumentText(args.documentText, declaredTitle)
+    : false;
+  const currentTitleLooksStale = Boolean(
+    declaredTitle
+    && !keepExplicitExpertTitle
+    && (
+      isLikelyFilenameDerivedTitle(declaredTitle, args.fileName)
+      || (args.documentText && !currentTitleExistsInDocument)
+    ),
+  );
 
-  if (!suggestedTitle) {
+  if (keepExplicitExpertTitle) {
     return {
       declaredTitle,
-      titleSource: declaredTitle ? ('manual' as TitleSource) : undefined,
+      titleSource: currentTitleSource as TitleSource,
       autoFilled: false,
     };
   }
 
-  if (!declaredTitle && canAutoFill) {
+  if (!suggestedTitle) {
+    return {
+      declaredTitle: currentTitleLooksStale ? '' : declaredTitle,
+      titleSource: currentTitleLooksStale ? undefined : currentTitleSource as TitleSource | undefined,
+      autoFilled: false,
+    };
+  }
+
+  if ((!declaredTitle || currentTitleLooksStale) && canAutoFill) {
     return {
       declaredTitle: suggestedTitle,
       titleSource: 'auto_detected' as TitleSource,
@@ -396,7 +420,7 @@ export function applyAutomaticTitleSuggestion(args: {
 
   return {
     declaredTitle,
-    titleSource: declaredTitle ? ('manual' as TitleSource) : undefined,
+    titleSource: currentTitleSource as TitleSource | undefined,
     autoFilled: false,
   };
 }

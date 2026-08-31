@@ -469,16 +469,13 @@ async function extractDeliverableTextForActivityAutofill(deliverable: Deliverabl
         : 'Titlu propus din numele fisierului; textul extras nu a oferit un titlu clar.',
     };
   }
-  const currentTitle = isLikelyFilenameDerivedTitle(
-    deliverable.declaredTitle,
-    deliverable.filename || deliverable.name,
-  )
-    ? ''
-    : deliverable.declaredTitle;
   const automaticTitle = applyAutomaticTitleSuggestion({
-    currentDeclaredTitle: currentTitle,
+    currentDeclaredTitle: deliverable.declaredTitle,
+    currentTitleSource: deliverable.titleSource,
     suggestedTitle: docTitle,
     confidence: titleSuggestion.confidence,
+    documentText: firstPageText || docText,
+    fileName,
   });
   const titleValidation = isPhoto || !automaticTitle.declaredTitle
     ? null
