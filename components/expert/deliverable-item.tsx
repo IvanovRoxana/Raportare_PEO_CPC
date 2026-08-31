@@ -227,12 +227,6 @@ function buildEligibilityDocumentPayload(deliverable: DeliverableSlot, activityG
       fileName: deliverable.filename || deliverable.name,
       originalFileName: deliverable.filename || deliverable.name,
     }),
-    declaredTitle: deliverable.declaredTitle,
-    suggestedTitle: deliverable.suggestedTitle,
-    titleSource: deliverable.titleSource,
-    titleSuggestionConfidence: deliverable.titleSuggestionConfidence,
-    titleCheckStatus: deliverable.titleCheckStatus,
-    titleCheckMessage: deliverable.titleCheckMessage,
     fileName: deliverable.filename || deliverable.name,
     extractedText: (deliverable.docText || deliverable.firstPageText || '').slice(0, 12000),
     deliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
@@ -923,11 +917,9 @@ export function DeliverableItem({
   const step4ok = deliverable.isPhoto || !eligibilityCheckEnabled || (deliverable.uploaded && !!deliverable.aiCheck);
   const textExtractionGateReason = visibleEligibilityCheck ? null : getTextExtractionGateReason(deliverable, undefined, expertCategory);
   const eligibilityGateReason = textExtractionGateReason
-    || (!deliverable.titleConfirmed
-      ? 'Confirma titlul livrabilului inainte de verificarea eligibilitatii.'
-      : !deliverable.stadiu
-        ? 'Selecteaza stadiul documentului inainte de verificarea eligibilitatii.'
-        : eligibilityBlockedReason);
+    || (!deliverable.stadiu
+      ? 'Selecteaza stadiul documentului inainte de verificarea eligibilitatii.'
+      : eligibilityBlockedReason);
   const canRunEligibilityCheck = canCheckEligibility && !eligibilityGateReason && !hasReusableEligibilityCheck;
   const allOk = step1ok && step2ok && step3ok && step4ok;
   const auditTitle = getDocumentAuditTitle({
@@ -1526,11 +1518,9 @@ export function DeliverableEligibilityControl({
 
   const textExtractionGateReason = visibleEligibilityCheck ? null : getTextExtractionGateReason(deliverable, relatedDeliverables, expertCategory);
   const eligibilityGateReason = textExtractionGateReason
-    || (!deliverable.titleConfirmed
-      ? 'Confirma titlul livrabilului inainte de verificarea eligibilitatii.'
-      : !deliverable.stadiu
-        ? 'Selecteaza stadiul documentului inainte de verificarea eligibilitatii.'
-        : eligibilityBlockedReason);
+    || (!deliverable.stadiu
+      ? 'Selecteaza stadiul documentului inainte de verificarea eligibilitatii.'
+      : eligibilityBlockedReason);
   const canRunEligibilityCheck = canCheckEligibility && !eligibilityGateReason && !hasReusableEligibilityCheck;
 
   const handleAiCheck = async () => {

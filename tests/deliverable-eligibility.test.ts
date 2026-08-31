@@ -14,7 +14,6 @@ import {
   normalizeDeliverableEligibilityCheck,
   normalizeDeliverableEligibilityDocuments,
   protectConcordiaPublicationEligibility,
-  protectVerifiedDocumentTitleEligibility,
   validateEligibilitySuggestedSettings,
 } from '../lib/deliverable-eligibility.ts';
 
@@ -244,7 +243,7 @@ test('promptul include regulile Concordia doar pentru livrabile de publicare', (
   assert.equal(isConcordiaPublishedDeliverableType('Analiza acte normative'), false);
 });
 
-test('permite verificarea unui PDF Concordia cu titlu confirmat chiar daca OCR-ul este scurt', () => {
+test('nu foloseste titlul confirmat ca substitut pentru text extras suficient', () => {
   assert.equal(hasSufficientDeliverableEvidenceForEligibility({
     extractedText: 'Green Transition Forum 6.0',
     documentTitle: 'Green Transition Forum 6.0',
@@ -252,7 +251,7 @@ test('permite verificarea unui PDF Concordia cu titlu confirmat chiar daca OCR-u
     fileName: '20260602_Green Transition Forum 6.0.pdf',
     fileType: 'application/pdf',
     deliverableType: 'Articole tematice publicate pe concordia.ro',
-  }), true);
+  }), false);
 });
 
 test('nu relaxeaza pragul pentru un PDF generic fara tip de articol Concordia', () => {
@@ -266,7 +265,7 @@ test('nu relaxeaza pragul pentru un PDF generic fara tip de articol Concordia', 
   }), false);
 });
 
-test('permite verificarea livrabilelor COM cu titlu confirmat si OCR scurt', () => {
+test('nu relaxeaza pragul pentru livrabile COM doar pentru ca titlul este confirmat', () => {
   assert.equal(hasSufficientDeliverableEvidenceForEligibility({
     extractedText: 'Newsletter iunie',
     documentTitle: 'Newsletter informativ lunar CPC',
@@ -275,7 +274,7 @@ test('permite verificarea livrabilelor COM cu titlu confirmat si OCR scurt', () 
     fileType: 'application/pdf',
     deliverableType: 'Newsletter informativ lunar CPC',
     expertCategory: 'com',
-  }), true);
+  }), false);
 });
 
 test('nu accepta sugestii de activitate din alta categorie cand categoria curenta este COM', () => {
@@ -453,83 +452,14 @@ test('pastreaza compatibilitatea cu payloadul vechi cu un singur livrabil', () =
   assert.equal(documents[0].isPrimary, true);
 });
 
-test('nu pastreaza riscul de titlu cand titlul documentului este confirmat', () => {
-  const result = protectVerifiedDocumentTitleEligibility({
-    documents: [
-      {
-        documentTitle: 'Pregatire participare dezbatere pe marginea taxarii transportului rutier greu in Bucuresti',
-        declaredTitle: 'Pregatire participare dezbatere pe marginea taxarii transportului rutier greu in Bucuresti',
-        suggestedTitle: 'Pregatire participare dezbatere pe marginea taxarii transportului rutier greu in Bucuresti',
-        titleCheckStatus: 'matched',
-        fileName: 'pregatire-dezbatere.pdf',
-        extractedText: 'Pregatire participare dezbatere pe marginea taxarii transportului rutier greu in Bucuresti. Context si obiective.',
-      },
-    ],
-    result: {
-      status: 'eligibil_cu_observatii',
-      score: 84,
-      summary: 'Documentul este corelat cu activitatea.',
-      checks: [
-        { criterion: 'Elemente lipsa', status: 'warning', explanation: 'Titlu clar identificat in document.' },
-        { criterion: 'Tip livrabil', status: 'pass', explanation: 'Tipul este adecvat.' },
-      ],
-      missingElements: ['Titlu clar identificat in document.'],
-      recommendations: [
-        'Clarificarea titlului documentului.',
-        'Un titlu clar ar trebui incorporat in corpul documentului, nu doar pe prima pagina.',
-      ],
-      riskFlags: ['Titlu suspect sau lipsa'],
-      suggestedSettings: null,
-    },
-  });
-
-  assert.deepEqual(result.riskFlags, []);
-  assert.deepEqual(result.missingElements, []);
-  assert.deepEqual(result.recommendations, []);
-  assert.equal(result.checks[0].status, 'pass');
-  assert.match(result.checks[0].explanation, /Titlul documentului este confirmat/);
-});
-
-test('nu ascunde riscul de titlu al livrabilului principal cand doar un livrabil secundar are titlu confirmat', () => {
-  const result = protectVerifiedDocumentTitleEligibility({
-    documents: [
-      {
-        id: 'principal',
-        documentTitle: 'Raport fara titlu confirmat',
-        declaredTitle: 'Raport fara titlu confirmat',
-        titleCheckStatus: 'mismatch',
-        fileName: 'principal.pdf',
-        extractedText: 'Continut fara titlul declarat.',
-        isPrimary: true,
-      },
-      {
-        id: 'secundar',
-        documentTitle: 'Anexa confirmata',
-        declaredTitle: 'Anexa confirmata',
-        titleCheckStatus: 'matched',
-        fileName: 'anexa.pdf',
-        extractedText: 'Anexa confirmata.',
-        isPrimary: false,
-      },
-    ],
-    result: {
-      status: 'eligibil_cu_observatii',
-      score: 82,
-      summary: 'Documentul principal are titlu neconfirmat.',
-      checks: [
-        { criterion: 'Titlu document', status: 'warning', explanation: 'Titlu suspect sau lipsa pe livrabilul principal.' },
-      ],
-      missingElements: ['Titlu clar identificat in documentul principal.'],
-      recommendations: ['Clarifica titlul documentului principal.'],
-      riskFlags: ['Titlu suspect sau lipsa'],
-      suggestedSettings: null,
-    },
-  });
-
-  assert.deepEqual(result.riskFlags, ['Titlu suspect sau lipsa']);
-  assert.deepEqual(result.missingElements, ['Titlu clar identificat in documentul principal.']);
-  assert.deepEqual(result.recommendations, ['Clarifica titlul documentului principal.']);
-  assert.equal(result.checks[0].status, 'warning');
+test('ruta de eligibilitate nu foloseste verificarea titlului ca regula de verdict', () => {
+  assert.doesNotMatch(eligibilityRouteSource, /protectVerifiedDocumentTitleEligibility/);
+  assert.doesNotMatch(eligibilityRouteSource, /Status verificare titlu/);
+  assert.doesNotMatch(eligibilityRouteSource, /Incredere sugestie titlu/);
+  assert.doesNotMatch(eligibilityRouteSource, /Verifica separat titlul documentului/);
+  assert.doesNotMatch(eligibilityRouteSource, /Daca titlul declarat lipseste/);
+  assert.doesNotMatch(deliverableItemSource, /titleCheckStatus: deliverable\.titleCheckStatus/);
+  assert.doesNotMatch(deliverableItemSource, /titleSuggestionConfidence: deliverable\.titleSuggestionConfidence/);
 });
 
 test('reincadrarea PM sincronizeaza si metadatele documentului, nu doar eligibilityCheck', () => {

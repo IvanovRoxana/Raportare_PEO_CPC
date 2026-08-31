@@ -16,7 +16,6 @@ import {
   normalizeDeliverableEligibilityDocuments,
   normalizeDeliverableEligibilityStringList,
   protectConcordiaPublicationEligibility,
-  protectVerifiedDocumentTitleEligibility,
   validateEligibilitySuggestedSettings,
 } from '@/lib/deliverable-eligibility';
 import {
@@ -172,8 +171,6 @@ export async function POST(req: Request) {
     const hasSufficientExtractedEvidence = eligibilityDocuments.some((deliverable) =>
       hasSufficientDeliverableEvidenceForEligibility({
         extractedText: deliverable.extractedText,
-        documentTitle: deliverable.documentTitle || deliverable.declaredTitle || deliverable.suggestedTitle,
-        titleConfirmed: deliverable.titleCheckStatus === 'matched' || deliverable.titleCheckStatus === 'admin_overridden',
         fileName: deliverable.fileName,
         deliverableType: deliverable.deliverableType || deliverableType,
         expertCategory,
@@ -183,12 +180,6 @@ export async function POST(req: Request) {
       .map((deliverable, index) => [
         `Livrabil ${index + 1}${deliverable.isPrimary ? ' (principal)' : ''}`,
         `Titlu: ${deliverable.documentTitle || 'Nespecificat'}`,
-        `Titlu declarat: ${deliverable.declaredTitle || 'Nespecificat'}`,
-        `Titlu sugerat din document: ${deliverable.suggestedTitle || 'Nespecificat'}`,
-        `Sursa titlu: ${deliverable.titleSource || 'Nespecificat'}`,
-        `Incredere sugestie titlu: ${deliverable.titleSuggestionConfidence || 'Nespecificat'}`,
-        `Status verificare titlu: ${deliverable.titleCheckStatus || 'Nespecificat'}`,
-        `Mesaj verificare titlu: ${deliverable.titleCheckMessage || 'Nespecificat'}`,
         `Fisier: ${deliverable.fileName || 'Nespecificat'}`,
         `Tip: ${deliverable.deliverableType || 'Nespecificat'}`,
         `Arie text: ${deliverable.textScope || 'Text extras disponibil'}`,
@@ -208,12 +199,6 @@ export async function POST(req: Request) {
       ? CONCORDIA_PUBLICATION_ELIGIBILITY_PROMPT_RULES
       : '';
     const currentDocumentTitle = primaryEligibilityDocument?.documentTitle || documentTitle;
-    const currentDeclaredTitle = primaryEligibilityDocument?.declaredTitle || '';
-    const currentSuggestedTitle = primaryEligibilityDocument?.suggestedTitle || '';
-    const currentTitleSource = primaryEligibilityDocument?.titleSource || '';
-    const currentTitleSuggestionConfidence = primaryEligibilityDocument?.titleSuggestionConfidence || '';
-    const currentTitleCheckStatus = primaryEligibilityDocument?.titleCheckStatus || '';
-    const currentTitleCheckMessage = primaryEligibilityDocument?.titleCheckMessage || '';
     const currentFileName = primaryEligibilityDocument?.fileName || fileName;
     const activityCatalogCandidates = shortlistActivityCandidates(
       allActivityCatalogCandidates,
@@ -274,12 +259,6 @@ export async function POST(req: Request) {
 Date livrabil principal:
 - Nume fișier: ${currentFileName || 'Nespecificat'}
 - Titlu document: ${currentDocumentTitle || 'Nespecificat'}
-- Titlu declarat: ${currentDeclaredTitle || 'Nespecificat'}
-- Titlu sugerat din document: ${currentSuggestedTitle || 'Nespecificat'}
-- Sursa titlu: ${currentTitleSource || 'Nespecificat'}
-- Incredere sugestie titlu: ${currentTitleSuggestionConfidence || 'Nespecificat'}
-- Status verificare titlu: ${currentTitleCheckStatus || 'Nespecificat'}
-- Mesaj verificare titlu: ${currentTitleCheckMessage || 'Nespecificat'}
 - Tip livrabil selectat: ${currentDeliverableType || 'Nespecificat'}
 - Grup activități: ${activityGroupId || workBlockId || 'Nespecificat'}
 - Working group / perioada: ${workingGroupId || periodGroupId || 'Nespecificat'}
@@ -336,10 +315,6 @@ Reguli:
 - „neconcludent” dacă textul extras este insuficient sau documentul nu poate fi analizat.
 - Nu inventa conținut care nu apare în document.
 - Nu valida automat un document doar pentru că titlul pare potrivit.
-- Verifica separat titlul documentului. Daca Status verificare titlu este "matched" sau "admin_overridden", considera titlul confirmat si nu marca probleme de titlu doar pentru ca Incredere sugestie titlu este low/medium.
-- Daca titlul declarat lipseste, este doar numele fisierului, nu este sustinut de text sau pare o linie administrativa (data, locatie, participanti, semnaturi, screenshot, Teams/Zoom, tabel), marcheaza explicit problema in checks si riskFlags.
-- Daca documentul nu contine un titlu clar, mentioneaza explicit in summary sau recommendations: "Nu a fost identificat un titlu clar in document." Nu inventa un titlu ca sa compensezi lipsa lui.
-- Daca documentul pare eligibil ca livrabil, dar titlul este suspect sau lipseste, foloseste cel mult eligibil_cu_observatii si explica problema de titlu separat de potrivirea continutului.
 ${concordiaPublicationPromptRules}
 - Dacă textul extras conține secțiuni marcate ca OCR din screenshot-uri/imagini sau mențiunea că documentul conține imagini încorporate, tratează-le ca dovadă vizuală extrasă din document. Pentru livrabile de tip screenshot confirmare publicare, caută indicii de postare publicată: platformă social media, dată/oră, autor/pagină, interfață de postare, reacții, comentarii, distribuiri sau link/URL. Nu marca automat lipsă screenshot-ul dacă documentul conține imagini încorporate relevante pentru social media; folosește cel mult eligibil_cu_observatii când dovada vizuală există, dar OCR-ul nu poate confirma toate detaliile.
 - Menționează explicit în summary sau recommendations dacă analiza s-a bazat doar pe prima pagină.
@@ -369,12 +344,8 @@ suggestedSettings trebuie sa fie mereu obiect cu: hasSuggestion, saCode, activit
       });
     }
 
-    const titleProtectedData = protectVerifiedDocumentTitleEligibility({
-      result: parsed.data,
-      documents: eligibilityDocuments,
-    });
     const protectedData = protectConcordiaPublicationEligibility({
-      result: titleProtectedData,
+      result: parsed.data,
       deliverableType: currentDeliverableType,
       documentTitle: currentDocumentTitle,
       fileName: currentFileName,

@@ -272,33 +272,6 @@ export function isConcordiaPublishedDeliverableType(deliverableType: unknown) {
 
 export const MIN_ELIGIBILITY_TEXT_LENGTH = 80;
 
-function isCommunicationEligibilityContext(input: {
-  expertCategory?: unknown;
-  deliverableType?: unknown;
-  documentTitle?: unknown;
-  fileName?: unknown;
-}) {
-  const category = normalizeEligibilityText(input.expertCategory);
-  const text = normalizeEligibilityText([
-    input.deliverableType,
-    input.documentTitle,
-    input.fileName,
-  ].filter(Boolean).join(' '));
-
-  return (
-    category === 'com'
-    || category === 'comunicare'
-    || text.includes('newsletter')
-    || text.includes('comunicat')
-    || text.includes('material informativ')
-    || text.includes('materiale informative')
-    || text.includes('postare')
-    || text.includes('social media')
-    || text.includes('link')
-    || text.includes('articol')
-  );
-}
-
 export function hasSufficientDeliverableEvidenceForEligibility(input: {
   extractedText?: unknown;
   firstPageText?: unknown;
@@ -312,19 +285,7 @@ export function hasSufficientDeliverableEvidenceForEligibility(input: {
   const extractedText = String(input.extractedText || input.firstPageText || '')
     .replace(/\s+/g, ' ')
     .trim();
-  if (extractedText.length >= MIN_ELIGIBILITY_TEXT_LENGTH) return true;
-
-  const fileName = String(input.fileName || '').trim();
-  const fileType = String(input.fileType || '').trim().toLowerCase();
-  const isPdf = /\.pdf$/i.test(fileName) || fileType === 'application/pdf';
-  const isImage = /\.(png|jpe?g|webp)$/i.test(fileName) || fileType.startsWith('image/');
-  const hasConfirmedTitle = Boolean(input.titleConfirmed && String(input.documentTitle || '').trim());
-  const hasNamedFile = Boolean(fileName);
-
-  return (
-    (isPdf && hasConfirmedTitle && isConcordiaPublishedDeliverableType(input.deliverableType))
-    || (hasNamedFile && hasConfirmedTitle && isCommunicationEligibilityContext(input) && (isPdf || isImage || fileType === 'text/html'))
-  );
+  return extractedText.length >= MIN_ELIGIBILITY_TEXT_LENGTH;
 }
 
 export function getConcordiaPublicationEvidence(input: {
@@ -386,75 +347,6 @@ function textMentionsActivityMismatch(value: unknown) {
     || normalized.includes('activitate gresita')
     || normalized.includes('tip de livrabil gresit')
   );
-}
-
-function isVerifiedDocumentTitle(document: Pick<EligibilityDocument, 'declaredTitle' | 'suggestedTitle' | 'documentTitle' | 'titleCheckStatus'>) {
-  const titleStatus = normalizeEligibilityText(document.titleCheckStatus);
-  const hasTitle = Boolean(
-    String(document.declaredTitle || document.suggestedTitle || document.documentTitle || '').trim(),
-  );
-  return hasTitle && (titleStatus === 'matched' || titleStatus === 'admin_overridden');
-}
-
-function getPrimaryEligibilityDocument(documents: EligibilityDocument[]) {
-  return documents.find((document) => document.isPrimary) ?? (documents.length === 1 ? documents[0] : null);
-}
-
-function textMentionsTitleGap(value: unknown) {
-  const normalized = normalizeEligibilityText(value);
-  if (!normalized.includes('titlu')) return false;
-  return (
-    normalized.includes('suspect')
-    || normalized.includes('titlu clar')
-    || normalized.includes('clar identificat')
-    || normalized.includes('incorporat')
-    || normalized.includes('incorporat in corpul documentului')
-    || normalized.includes('prima pagina')
-    || normalized.includes('clarific')
-    || normalized.includes('lips')
-    || normalized.includes('neclar')
-    || normalized.includes('nu a fost identificat')
-    || normalized.includes('nu este sustinut')
-    || normalized.includes('doar numele fisierului')
-    || normalized.includes('linie administrativa')
-  );
-}
-
-export function protectVerifiedDocumentTitleEligibility(input: {
-  result: z.infer<typeof deliverableEligibilitySchema>;
-  documents: EligibilityDocument[];
-}) {
-  const primaryDocument = getPrimaryEligibilityDocument(input.documents);
-  if (!primaryDocument || !isVerifiedDocumentTitle(primaryDocument)) return input.result;
-
-  const riskFlags = input.result.riskFlags.filter((item) => !textMentionsTitleGap(item));
-  const missingElements = input.result.missingElements.filter((item) => !textMentionsTitleGap(item));
-  const recommendations = input.result.recommendations.filter((item) => !textMentionsTitleGap(item));
-  const checks = input.result.checks.map((check) => {
-    if (!textMentionsTitleGap([check.criterion, check.explanation].join(' '))) return check;
-    return {
-      ...check,
-      status: 'pass' as const,
-      explanation: 'Titlul documentului este confirmat de verificarea automata sau de validarea PM.',
-    };
-  });
-
-  if (
-    riskFlags.length === input.result.riskFlags.length
-    && missingElements.length === input.result.missingElements.length
-    && recommendations.length === input.result.recommendations.length
-    && checks.every((check, index) => check === input.result.checks[index])
-  ) {
-    return input.result;
-  }
-
-  return {
-    ...input.result,
-    checks,
-    missingElements,
-    recommendations,
-    riskFlags,
-  };
 }
 
 export function protectConcordiaPublicationEligibility(input: {
@@ -661,9 +553,6 @@ export function buildDeliverableEligibilitySemanticAudit(input: {
 }): EligibilitySemanticAudit {
   const documents = input.documents;
   const combinedText = documents.map((document) => [
-    document.documentTitle,
-    document.declaredTitle,
-    document.suggestedTitle,
     document.fileName,
     document.deliverableType,
     document.extractedText,
@@ -809,11 +698,6 @@ export function buildDeliverableEligibilitySemanticAudit(input: {
     documentsRead: documents.map((document) => ({
       id: document.id,
       documentTitle: document.documentTitle,
-      declaredTitle: document.declaredTitle,
-      suggestedTitle: document.suggestedTitle,
-      titleSource: document.titleSource,
-      titleSuggestionConfidence: document.titleSuggestionConfidence,
-      titleCheckStatus: document.titleCheckStatus,
       fileName: document.fileName,
       deliverableType: document.deliverableType,
       isPrimary: document.isPrimary,
