@@ -171,6 +171,7 @@ function looksLikeContinuation(line: string) {
   if (isGenericTitleLine(normalized)) return false;
   if (wordCount(normalized) > 16) return false;
   if (/[.!?]$/.test(normalized)) return false;
+  if (/^(ianuarie|februarie|martie|aprilie|mai|iunie|iulie|august|septembrie|octombrie|noiembrie|decembrie)\s+\d{4}$/i.test(normalized)) return false;
   if (/^(aprobat|avizat|întocmit|intocmit|data|semn(a|ă)tura)/i.test(normalized)) return false;
   return normalized.length >= 8 && normalized.length <= 120;
 }
@@ -198,6 +199,7 @@ function scoreTitleCandidate(candidate: string, index: number, lineCount: number
   if (words >= 4 && words <= 14) score += 24;
   else if (words >= 3 && words <= 18) score += 12;
   else score -= 15;
+  if (words < 3 && !hasRelevantTitleTerm(normalized)) score -= 35;
 
   if (normalized.length >= 24 && normalized.length <= 140) score += 12;
   if (hasRelevantTitleTerm(normalized)) score += 22;
@@ -237,7 +239,14 @@ export function formatTitleFromFilename(fileName?: string | null) {
 export function isLikelyFilenameDerivedTitle(title?: string | null, fileName?: string | null) {
   const titleNorm = normalizeTitleForMatch(String(title || '').replace(/\.[a-z0-9]{2,5}$/i, ''));
   const fileTitleNorm = normalizeTitleForMatch(formatTitleFromFilename(fileName));
-  return Boolean(titleNorm && fileTitleNorm && titleNorm === fileTitleNorm);
+  if (!titleNorm || !fileTitleNorm) return false;
+  if (titleNorm === fileTitleNorm) return true;
+
+  const titleWords = titleNorm.split(' ').filter(Boolean);
+  if (titleWords.length > 2 || titleNorm.length > 24) return false;
+
+  const fileWords = new Set(fileTitleNorm.split(' ').filter(Boolean));
+  return titleWords.every((word) => word.length > 3 && fileWords.has(word));
 }
 
 export function suggestTitleFromFirstPage(text?: string | null): TitleSuggestionResult {

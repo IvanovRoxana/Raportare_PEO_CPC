@@ -129,6 +129,21 @@ test('does not validate short filename-derived titles by loose word overlap', ()
   assert.equal(result.titleCheckStatus, 'mismatch');
 });
 
+test('prefers document title over short filename fragments', () => {
+  const firstPage = [
+    'medat',
+    'Confederatia Patronala Concordia',
+    'Document de pozitie privind reorganizarea MEDAT si impactul legislativ',
+    'August 2026',
+  ].join('\n');
+
+  assert.equal(isLikelyFilenameDerivedTitle('medat', 'CPC-reorganizare-medat.docx'), true);
+  assert.equal(
+    detectSuggestedTitleFromText(firstPage),
+    'Document de pozitie privind reorganizarea MEDAT si impactul legislativ',
+  );
+});
+
 test('ignores very short lines, page numbers, dates and generic labels', () => {
   const firstPage = [
     'A',
