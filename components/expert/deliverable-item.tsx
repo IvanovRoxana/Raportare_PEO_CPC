@@ -11,7 +11,7 @@ import { extractDocxFirstPageText, extractDocxTextWithSource, extractHtmlTextWit
 import { DELIVERABLE_ELIGIBILITY_UI_MESSAGE, isDeliverableEligibilityCheckEnabledClient } from '@/lib/feature-flags';
 import { hasSufficientDeliverableEvidenceForEligibility } from '@/lib/deliverable-eligibility';
 import { mergeEligibilityCheckWithPmUnlockTracking } from '@/lib/pm-unlock-status';
-import { applyAutomaticTitleSuggestion, formatTitleFromFilename, shouldUseAiTitleSuggestion, suggestTitleFromFirstPage, validateDeclaredTitleInDocumentText } from '@/lib/title-suggestion';
+import { applyAutomaticTitleSuggestion, formatTitleFromFilename, isLikelyFilenameDerivedTitle, shouldUseAiTitleSuggestion, suggestTitleFromFirstPage, validateDeclaredTitleInDocumentText } from '@/lib/title-suggestion';
 import { getDocumentAuditTitle, hashFirstPageText, normalizeDocumentTextForFingerprint, sha256Hex, type DuplicateIssueType } from '@/lib/document-sharing';
 import { getSecureDocumentUrl } from '@/lib/document-retrieval';
 import type { ActivityCatalog } from '@/lib/types';
@@ -555,8 +555,11 @@ export function DeliverableItem({
         };
       }
 
+      const currentTitle = isLikelyFilenameDerivedTitle(currentDeclaredTitle, deliverable.filename || deliverable.name)
+        ? ''
+        : currentDeclaredTitle;
       const titleSuggestionPatch = applyAutomaticTitleSuggestion({
-        currentDeclaredTitle,
+        currentDeclaredTitle: currentTitle,
         suggestedTitle: docTitle,
         confidence: titleSuggestion.confidence,
       });
@@ -927,6 +930,8 @@ export function DeliverableItem({
     fileName: deliverable.filename || deliverable.name,
     originalFileName: deliverable.filename || deliverable.name,
   });
+  const hasDocumentTitle = Boolean((deliverable.declaredTitle || deliverable.suggestedTitle || deliverable.docTitle || '').trim());
+  const visibleAuditTitle = hasDocumentTitle ? auditTitle : 'Titlu neidentificat in document';
   const hasDuplicateSignal = Boolean(duplicateInfo || deliverable.possibleDuplicateOfDocumentId || (
     deliverable.duplicateStatus
     && deliverable.duplicateStatus !== 'fingerprinted'
@@ -1112,7 +1117,12 @@ export function DeliverableItem({
           {deliverable.uploaded && !deliverable.titleConfirmed && (
             <div className={`rounded border border-slate-200 bg-white p-2 text-[10px] text-slate-700 ${renderInlineNotes ? 'xl:col-start-1' : ''}`}>
               <div className="font-medium text-slate-900">Titlu auditabil document</div>
-              <div className="mt-0.5 break-words text-xs font-semibold text-slate-950">{auditTitle}</div>
+              <div className="mt-0.5 break-words text-xs font-semibold text-slate-950">{visibleAuditTitle}</div>
+              {!hasDocumentTitle && (
+                <div className="mt-0.5 break-words text-[10px] text-slate-500">
+                  Fisier: {deliverable.filename || deliverable.name || 'neatasat'}
+                </div>
+              )}
               <div className="mt-1 flex flex-wrap gap-1.5">
                 <Badge variant="outline" className="bg-white text-[10px]">
                   {deliverable.titleConfirmed ? 'titlu confirmat' : 'neconfirmat'}

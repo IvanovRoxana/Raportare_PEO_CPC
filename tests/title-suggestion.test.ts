@@ -5,6 +5,7 @@ import {
   detectSuggestedTitleFromText,
   firstLinesLookAdministrative,
   shouldUseAiTitleSuggestion,
+  isLikelyFilenameDerivedTitle,
   titleExistsInDocumentText,
   validateDeclaredTitleInDocumentText,
 } from '../lib/title-suggestion.ts';
@@ -107,6 +108,24 @@ test('blocks validation when edited title is not present in the document text', 
   });
 
   assert.equal(result.titleMatch, false);
+  assert.equal(result.titleCheckStatus, 'mismatch');
+});
+
+test('does not validate short filename-derived titles by loose word overlap', () => {
+  const documentText = [
+    'Confederatia Patronala Concordia',
+    'Material prezentare eveniment',
+    'Reorganizarea MEDAT si implicatii pentru mediul de afaceri',
+  ].join('\n');
+
+  assert.equal(titleExistsInDocumentText(documentText, 'CPC-reorganizare-medat.pdf'), false);
+  assert.equal(isLikelyFilenameDerivedTitle('CPC reorganizare medat', 'CPC-reorganizare-medat.pdf'), true);
+
+  const result = validateDeclaredTitleInDocumentText({
+    documentText,
+    declaredTitle: 'CPC-reorganizare-medat.pdf',
+    titleSource: 'edited_by_expert',
+  });
   assert.equal(result.titleCheckStatus, 'mismatch');
 });
 

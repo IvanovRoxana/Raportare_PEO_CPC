@@ -234,6 +234,12 @@ export function formatTitleFromFilename(fileName?: string | null) {
     .trim();
 }
 
+export function isLikelyFilenameDerivedTitle(title?: string | null, fileName?: string | null) {
+  const titleNorm = normalizeTitleForMatch(String(title || '').replace(/\.[a-z0-9]{2,5}$/i, ''));
+  const fileTitleNorm = normalizeTitleForMatch(formatTitleFromFilename(fileName));
+  return Boolean(titleNorm && fileTitleNorm && titleNorm === fileTitleNorm);
+}
+
 export function suggestTitleFromFirstPage(text?: string | null): TitleSuggestionResult {
   const lines = splitRelevantLines(text);
   if (lines.length === 0) {
@@ -308,9 +314,10 @@ export function titleExistsInDocumentText(documentText: string | null | undefine
 
   const words = titleNorm.split(' ').filter((word) => word.length > 3);
   if (words.length === 0) return false;
+  if (words.length < 5 || titleNorm.length < 32) return false;
 
   const matchedWords = words.filter((word) => documentNorm.includes(word)).length;
-  return matchedWords >= Math.ceil(words.length * 0.8);
+  return matchedWords >= Math.max(5, Math.ceil(words.length * 0.9));
 }
 
 export function validateDeclaredTitleInDocumentText(args: {

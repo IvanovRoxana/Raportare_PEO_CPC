@@ -54,7 +54,7 @@ import { filterActivityCatalogForFormTab, getActiveGdprActivityCatalog, isActivi
 import { buildIdentityDocumentS3Key, findDuplicateCandidates, getDocumentAuditTitle, hashFirstPageText, normalizeDocumentTextForFingerprint, sha256Hex } from '@/lib/document-sharing';
 import { getSecureDocumentUrl } from '@/lib/document-retrieval';
 import { extractDocxFirstPageText, extractDocxTextWithSource, extractHtmlTextWithSource, extractImageTextWithSource, extractPdfFirstPageTextWithSource, extractPdfTextWithSource, extractXlsxTextWithSource, isImageFile } from '@/lib/document-utils';
-import { applyAutomaticTitleSuggestion, formatTitleFromFilename, shouldUseAiTitleSuggestion, suggestTitleFromFirstPage, validateDeclaredTitleInDocumentText } from '@/lib/title-suggestion';
+import { applyAutomaticTitleSuggestion, formatTitleFromFilename, isLikelyFilenameDerivedTitle, shouldUseAiTitleSuggestion, suggestTitleFromFirstPage, validateDeclaredTitleInDocumentText } from '@/lib/title-suggestion';
 import {
   areActivitiesCompatibleForDeliverableGroup,
   findActivityOwningDeliverableSignature,
@@ -469,8 +469,14 @@ async function extractDeliverableTextForActivityAutofill(deliverable: Deliverabl
         : 'Titlu propus din numele fisierului; textul extras nu a oferit un titlu clar.',
     };
   }
+  const currentTitle = isLikelyFilenameDerivedTitle(
+    deliverable.declaredTitle,
+    deliverable.filename || deliverable.name,
+  )
+    ? ''
+    : deliverable.declaredTitle;
   const automaticTitle = applyAutomaticTitleSuggestion({
-    currentDeclaredTitle: deliverable.declaredTitle,
+    currentDeclaredTitle: currentTitle,
     suggestedTitle: docTitle,
     confidence: titleSuggestion.confidence,
   });
