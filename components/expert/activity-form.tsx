@@ -891,7 +891,11 @@ export function ActivityForm({
         || a.label.localeCompare(b.label),
       );
   }, [businessHubDirectoryEntries]);
-  const selectedBusinessHubEntityExists = businessHubEntityOptions.some((entry) => entry.value === businessHubEntityName);
+  const selectedBusinessHubEntityOption = businessHubEntityOptions.find((entry) => entry.value === businessHubEntityName);
+  const selectedBusinessHubEntityExists = Boolean(selectedBusinessHubEntityOption);
+  const isBusinessHubActivitySeed = isBusinessHubExpert && (
+    !initialActivity || isBusinessHubRegistryActivity(initialActivity, expertCategory)
+  );
   const handleBusinessHubEntityChange = useCallback((value: string) => {
     setBusinessHubEntityName(value);
     const selectedEntry = businessHubEntityOptions.find((entry) => entry.value === value);
@@ -899,6 +903,23 @@ export function ActivityForm({
       setBusinessHubContactPersonName(selectedEntry.designatedPersonName);
     }
   }, [businessHubContactPersonName, businessHubEntityOptions]);
+
+  useEffect(() => {
+    const nextMeta = parseBusinessHubMetaJson(activitySeed?.businessHubMetaJson);
+    setBusinessHubEntityName(nextMeta?.entityName || '');
+    setBusinessHubEventTitle(nextMeta?.eventTitle || '');
+    setBusinessHubStartTime(nextMeta?.startTime || '');
+    setBusinessHubEndTime(nextMeta?.endTime || '');
+    setBusinessHubContactPersonName(nextMeta?.contactPersonName || '');
+
+    if (isBusinessHubActivitySeed) {
+      setActivityFormTab('business_hub');
+    }
+  }, [
+    activitySeed?.businessHubMetaJson,
+    activitySeed?.id,
+    isBusinessHubActivitySeed,
+  ]);
   
   // Verification
 
@@ -1280,7 +1301,11 @@ export function ActivityForm({
     startTime: businessHubStartTime,
     endTime: businessHubEndTime,
     contactPersonName: businessHubContactPersonName,
-    contactSource: businessHubContactPersonName.trim() ? 'manual' as const : 'empty' as const,
+    contactSource: businessHubContactPersonName.trim()
+      ? selectedBusinessHubEntityOption?.designatedPersonName === businessHubContactPersonName.trim()
+        ? 'entity_directory' as const
+        : 'manual' as const
+      : 'empty' as const,
   }), [
     businessHubContactPersonName,
     businessHubEndTime,
@@ -1288,6 +1313,7 @@ export function ActivityForm({
     businessHubEventTitle,
     businessHubMetaDate,
     businessHubStartTime,
+    selectedBusinessHubEntityOption?.designatedPersonName,
   ]);
 
   const effectiveActivityTitle = isGdprExpert && selectedGdprTemplate
