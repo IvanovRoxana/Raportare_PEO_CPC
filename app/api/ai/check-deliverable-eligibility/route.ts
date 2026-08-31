@@ -9,6 +9,7 @@ import {
   DEFAULT_ELIGIBILITY_RULE_VERSION_ID,
   deliverableEligibilityAiSchema,
   deliverableEligibilitySchema,
+  hasSufficientDeliverableEvidenceForEligibility,
   isConcordiaPublishedDeliverableType,
   normalizeDeliverableEligibilityAiOutput,
   normalizeDeliverableEligibilityActivityCandidates,
@@ -168,6 +169,16 @@ export async function POST(req: Request) {
     });
     const primaryEligibilityDocument = eligibilityDocuments.find((deliverable) => deliverable.isPrimary)
       ?? eligibilityDocuments[0];
+    const hasSufficientExtractedEvidence = eligibilityDocuments.some((deliverable) =>
+      hasSufficientDeliverableEvidenceForEligibility({
+        extractedText: deliverable.extractedText,
+        documentTitle: deliverable.documentTitle || deliverable.declaredTitle || deliverable.suggestedTitle,
+        titleConfirmed: deliverable.titleCheckStatus === 'matched' || deliverable.titleCheckStatus === 'admin_overridden',
+        fileName: deliverable.fileName,
+        deliverableType: deliverable.deliverableType || deliverableType,
+        expertCategory,
+      }),
+    );
     const trimmedExtractedText = eligibilityDocuments
       .map((deliverable, index) => [
         `Livrabil ${index + 1}${deliverable.isPrimary ? ' (principal)' : ''}`,
@@ -186,7 +197,7 @@ export async function POST(req: Request) {
       .join('\n\n---\n\n')
       .slice(0, 18000)
       .trim();
-    if (trimmedExtractedText.length < 80) {
+    if (!hasSufficientExtractedEvidence) {
       return NextResponse.json(nonConclusive('Textul extras este insuficient pentru verificarea eligibilității.'));
     }
 
