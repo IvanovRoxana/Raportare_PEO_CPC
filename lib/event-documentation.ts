@@ -26,6 +26,13 @@ export interface EventDocumentationStatus {
   missing: Array<'mom_or_report' | 'proof'>;
 }
 
+export interface EventDateConflictGroup {
+  eventKey: string;
+  title: string;
+  dates: string[];
+  activities: Activity[];
+}
+
 function getEventDeliverableKind(deliverable: EventDocumentationDeliverable) {
   return deliverable.category || deliverable.deliverableType || deliverable.slotType || deliverable.type || '';
 }
@@ -62,6 +69,70 @@ export function isActivityEventForDocumentation(
   }
 
   return isLegacyEventActivity(activity.activityType || activity.title || '');
+}
+
+function normalizeEventTitleKey(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\b(participare|participat|prezenta|la|in|online|offline|eveniment|conferinta|workshop|atelier|webinar|forum|seminar)\b/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
+function getEventTitleCandidate(activity: Activity) {
+  if (activity.businessHubMetaJson) {
+    try {
+      const meta = JSON.parse(activity.businessHubMetaJson) as { eventTitle?: string };
+      if (typeof meta.eventTitle === 'string' && meta.eventTitle.trim()) return meta.eventTitle;
+    } catch {
+      // Invalid legacy metadata should not hide an otherwise usable activity title.
+    }
+  }
+  return activity.title || activity.activityType || activity.description || '';
+}
+
+export function groupEventActivitiesWithDateConflicts(
+  activities: Activity[],
+  catalog: ActivityCatalog[],
+): EventDateConflictGroup[] {
+  const groups = new Map<string, EventDateConflictGroup>();
+
+  activities
+    .filter((activity) => isActivityEventForDocumentation(activity, catalog))
+    .forEach((activity) => {
+      const title = getEventTitleCandidate(activity);
+      const key = normalizeEventTitleKey(title);
+      if (!key || key.length < 4) return;
+      const date = activity.date?.slice(0, 10) || '';
+      if (!date) return;
+      const existing = groups.get(key);
+      if (existing) {
+        existing.activities.push(activity);
+        if (!existing.dates.includes(date)) existing.dates.push(date);
+        return;
+      }
+      groups.set(key, {
+        eventKey: key,
+        title,
+        dates: [date],
+        activities: [activity],
+      });
+    });
+
+  return Array.from(groups.values())
+    .filter((group) => group.dates.length > 1)
+    .sort((a, b) => b.activities.length - a.activities.length || a.title.localeCompare(b.title));
+}
+
+export function getEventDateConflictActivities(
+  activities: Activity[],
+  catalog: ActivityCatalog[],
+) {
+  return groupEventActivitiesWithDateConflicts(activities, catalog)
+    .flatMap((group) => group.activities);
 }
 
 function isEventDeliverableUploaded(deliverable: EventDocumentationDeliverable) {

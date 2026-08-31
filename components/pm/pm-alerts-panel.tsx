@@ -4,8 +4,13 @@ import { AlertCircle, CheckCircle2, Download, Eye, FileWarning, FolderOpen, Mess
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { getSecureDocumentUrl } from '@/lib/document-retrieval';
-import { getDocumentAuditTitle, isActivitySuggestionRelation } from '@/lib/document-sharing';
+import {
+  getDocumentAuditTitle,
+  getSharedRelationReciprocalStatus,
+  isActivitySuggestionRelation,
+} from '@/lib/document-sharing';
 import { clarificationStatusLabel } from '@/lib/pm-clarification-flow';
+import { groupPmTitleIssues } from '@/lib/pm-title-issues';
 import type { Activity, DashboardComplianceRow, DocumentMetadata, Expert, Neconformitate, PmClarificationThread, SharedDeliverable } from '@/lib/types';
 
 type PendingSharedDeliverable = {
@@ -66,7 +71,9 @@ export function PmAlertsPanel({
   const showPmUnlockRequests = activeAlertFilter === 'all' || activeAlertFilter === 'pm_unlock_requests';
   const showSharedDeliverables = activeAlertFilter === 'all' || activeAlertFilter === 'shared_deliverables';
   const showEventDocuments = activeAlertFilter === 'all' || activeAlertFilter === 'event_documents';
-  const sharedDeliverableGroups = groupPendingSharedDeliverables(pendingSharedDeliverables.slice(0, 4));
+  const titleIssueGroups = groupPmTitleIssues(titleIssues);
+  const sharedDeliverableGroups = groupPendingSharedDeliverables(pendingSharedDeliverables);
+  const pendingSharedRelations = pendingSharedDeliverables.map((item) => item.relation);
   const documentClarificationById = new Map(
     clarificationThreads
       .filter((thread) => thread.targetType === 'document')
@@ -152,57 +159,72 @@ export function PmAlertsPanel({
       ) : (
         <div className="mt-4 grid gap-3 lg:grid-cols-2">
           {showTitleIssues && titleIssues.length > 0 && (
-            <AlertCard title={`Documente cu title_mismatch (${titleIssues.length})`} tone="destructive">
-              {titleIssues.slice(0, 6).map((document) => {
-                const clarificationThread = documentClarificationById.get(document.id);
-
-                return (
-                  <div key={document.id} className="rounded-md border bg-background/80 p-3 text-sm">
-                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-medium">{document.originalFileName}</span>
-                          {clarificationThread && (
-                            <Badge variant="secondary">{clarificationStatusLabel(clarificationThread.status)}</Badge>
-                          )}
-                        </div>
-                        <div className="mt-1 text-xs text-muted-foreground">
-                          {document.uploadedByExpertName || document.uploadedByExpertId}
-                          {document.activityDate ? ` / ${document.activityDate}` : ''}
-                          {document.saCode ? ` / ${document.saCode}` : ''}
-                        </div>
-                        <div className="mt-2 grid gap-1 text-xs">
-                          <span>Denumire OPIS: {document.originalFileName}</span>
-                          <span>Titlu detectat/declarat: {getDocumentAuditTitle(document)}</span>
-                          {clarificationThread && (
-                            <span className="line-clamp-2 text-foreground/80">
-                              Clarificare PM: {clarificationThread.pmMessage}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex flex-wrap justify-end gap-2">
-                        <Button variant="outline" size="sm" onClick={() => openDocument(document)} disabled={documentActionId !== null}>
-                          {documentActionId === `open-${document.id}` ? <FileWarning className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                          Deschide
-                        </Button>
-                        <Button variant="outline" size="sm" onClick={() => downloadDocument(document)} disabled={documentActionId !== null}>
-                          {documentActionId === `download-${document.id}` ? <FileWarning className="h-4 w-4" /> : <Download className="h-4 w-4" />}
-                          Descarca
-                        </Button>
-                        <Button variant="outline" size="sm" onClick={() => onRequestDocumentClarification?.(document)}>
-                          <MessageSquare className="h-4 w-4" />
-                          Cere clarificari
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={() => onOpenDossier?.(document.uploadedByExpertId, { documentId: document.id, activityId: document.sourceActivityId, issueType: 'title_mismatch' })}>
-                          <FolderOpen className="h-4 w-4" />
-                          Dosar
-                        </Button>
-                      </div>
+            <AlertCard title={`Denumiri diferite (${titleIssueGroups.length} grupuri / ${titleIssues.length} documente)`} tone="destructive">
+              {titleIssueGroups.slice(0, 4).map((group) => (
+                <div key={group.id} className="rounded-md border bg-background/80 p-3 text-sm">
+                  <div className="mb-3 flex flex-col gap-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-medium">{group.title}</span>
+                      <Badge variant="outline">{group.documents.length} cazuri</Badge>
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {group.expertNames.join(', ') || 'Expert neprecizat'}
+                      {group.saCodes.length > 0 ? ` / ${group.saCodes.join(', ')}` : ''}
                     </div>
                   </div>
-                );
-              })}
+                  <div className="space-y-2">
+                    {group.documents.slice(0, 3).map((document) => {
+                      const clarificationThread = documentClarificationById.get(document.id);
+
+                      return (
+                        <div key={document.id} className="rounded-md border bg-background px-3 py-2">
+                          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="font-medium">{document.originalFileName}</span>
+                                {clarificationThread && (
+                                  <Badge variant="secondary">{clarificationStatusLabel(clarificationThread.status)}</Badge>
+                                )}
+                              </div>
+                              <div className="mt-1 text-xs text-muted-foreground">
+                                {document.uploadedByExpertName || document.uploadedByExpertId}
+                                {document.activityDate ? ` / ${document.activityDate}` : ''}
+                              </div>
+                              <div className="mt-2 grid gap-1 text-xs">
+                                <span>Denumire OPIS: {document.originalFileName}</span>
+                                <span>Titlu detectat/declarat: {getDocumentAuditTitle(document)}</span>
+                                {clarificationThread && (
+                                  <span className="line-clamp-2 text-foreground/80">
+                                    Clarificare PM: {clarificationThread.pmMessage}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex flex-wrap justify-end gap-2">
+                              <Button variant="outline" size="sm" onClick={() => openDocument(document)} disabled={documentActionId !== null}>
+                                {documentActionId === `open-${document.id}` ? <FileWarning className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                Deschide
+                              </Button>
+                              <Button variant="outline" size="sm" onClick={() => downloadDocument(document)} disabled={documentActionId !== null}>
+                                {documentActionId === `download-${document.id}` ? <FileWarning className="h-4 w-4" /> : <Download className="h-4 w-4" />}
+                                Descarca
+                              </Button>
+                              <Button variant="outline" size="sm" onClick={() => onRequestDocumentClarification?.(document)}>
+                                <MessageSquare className="h-4 w-4" />
+                                Cere clarificari
+                              </Button>
+                              <Button variant="ghost" size="sm" onClick={() => onOpenDossier?.(document.uploadedByExpertId, { documentId: document.id, activityId: document.sourceActivityId, issueType: 'title_mismatch' })}>
+                                <FolderOpen className="h-4 w-4" />
+                                Dosar
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
             </AlertCard>
           )}
 
@@ -266,7 +288,7 @@ export function PmAlertsPanel({
           )}
 
           {showEventDocuments && eventDocumentIssues.length > 0 && (
-            <AlertCard title={`Evenimente fara MOM sau dovada eveniment (${eventDocumentIssues.length})`} tone="warning">
+            <AlertCard title={`Evenimente cu documente lipsă sau zile diferite (${eventDocumentIssues.length})`} tone="warning">
               {eventDocumentIssues.slice(0, 4).map((activity) => (
                 <div key={activity.id} className="flex flex-wrap items-center justify-between gap-2">
                   <span>{activity.date} - {activity.expertName}: {activity.title || activity.activityType}</span>
@@ -282,9 +304,12 @@ export function PmAlertsPanel({
           {showSharedDeliverables && pendingSharedDeliverables.length > 0 && (
             <AlertCard title={`Activitati/livrabile comune de verificat (${pendingSharedDeliverables.length})`} tone="warning">
               <div className="grid gap-3">
-                {sharedDeliverableGroups.map((group) => (
+                {sharedDeliverableGroups.slice(0, 4).map((group) => (
                   <div key={group.label} className="grid gap-2">
-                    <div className="text-xs font-semibold uppercase text-muted-foreground">{group.label}</div>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="text-xs font-semibold uppercase text-muted-foreground">{group.label}</div>
+                      <Badge variant="outline">{group.items.length} cazuri</Badge>
+                    </div>
                     {group.items.map(({ relation, document, sourceActivity, sourceExpert, targetExpert }, index) => (
                       <div key={relation.id} className="rounded-md border bg-background/70 p-3">
                         <div className="flex items-start gap-2">
@@ -316,7 +341,11 @@ export function PmAlertsPanel({
                             <Badge variant="outline">{relation.sourceActivitySaCode}</Badge>
                           )}
                           {document?.activityDate && <Badge variant="outline">{document.activityDate}</Badge>}
-                          <Badge variant={relation.status === 'ignored_by_target' ? 'outline' : 'secondary'}>{relation.status}</Badge>
+                          <Badge variant={relation.status === 'ignored_by_target' ? 'outline' : 'secondary'}>
+                            {getSharedRelationReciprocalStatus(relation, pendingSharedRelations) === 'ignored_by_target'
+                              ? 'Respins de expert'
+                              : 'Lipsă confirmare reciprocă'}
+                          </Badge>
                         </div>
                       </div>
                     ))}
@@ -368,7 +397,7 @@ function groupPendingSharedDeliverables(items: PendingSharedDeliverable[]) {
   const groupByLabel = new Map<string, PendingSharedDeliverable[]>();
 
   items.forEach((item) => {
-    const label = getSharedDeliverableWorkingGroup(item);
+    const label = getSharedCollaborationLabel(item);
     const existingItems = groupByLabel.get(label);
     if (existingItems) {
       existingItems.push(item);
@@ -381,6 +410,12 @@ function groupPendingSharedDeliverables(items: PendingSharedDeliverable[]) {
   });
 
   return groups;
+}
+
+function getSharedCollaborationLabel({ relation, sourceExpert, targetExpert, document }: PendingSharedDeliverable) {
+  const source = sourceExpert?.name || relation.sourceExpertName || relation.sourceExpertId;
+  const target = targetExpert?.name || relation.targetExpertId;
+  return `${source} → ${target} / ${getSharedDeliverableWorkingGroup({ relation, document })}`;
 }
 
 function getSharedDeliverableWorkingGroup({ relation, document }: PendingSharedDeliverable) {

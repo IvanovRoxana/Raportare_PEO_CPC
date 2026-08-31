@@ -28,6 +28,10 @@ import type { Neconformitate } from '@/lib/types';
 interface NeconformitatiTabProps {
   data: Neconformitate[];
   onDataChange: (data: Neconformitate[]) => void;
+  onCreate?: (item: Omit<Neconformitate, 'id' | 'createdAt'>) => Promise<Neconformitate | null | void>;
+  onUpdate?: (id: string, updates: Partial<Omit<Neconformitate, 'id' | 'createdAt'>>) => Promise<Neconformitate | null | void>;
+  onResolve?: (id: string, resolution: string) => Promise<void>;
+  onDelete?: (id: string) => Promise<void>;
 }
 
 const TYPES = [
@@ -44,9 +48,10 @@ const SEVERITIES = [
   { value: 'high', label: 'Ridicată', color: 'bg-red-100 text-red-800' },
 ];
 
-export function NeconformitatiTab({ data, onDataChange }: NeconformitatiTabProps) {
+export function NeconformitatiTab({ data, onDataChange, onCreate, onUpdate, onResolve, onDelete }: NeconformitatiTabProps) {
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [savingId, setSavingId] = useState<string | null>(null);
   const [formData, setFormData] = useState<Partial<Neconformitate>>({
     type: 'pontaj',
     severity: 'medium',
@@ -70,32 +75,50 @@ export function NeconformitatiTab({ data, onDataChange }: NeconformitatiTabProps
     setEditingId(null);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!formData.description) return;
+    setSavingId(editingId || 'new');
 
-    if (editingId) {
-      // Update existing
-      const updated = data.map((item) =>
-        item.id === editingId ? { ...item, ...formData } : item
-      );
-      onDataChange(updated);
-    } else {
-      // Add new
-      const newItem: Neconformitate = {
-        id: generateId(),
-        type: formData.type as Neconformitate['type'],
-        severity: formData.severity as Neconformitate['severity'],
-        description: formData.description || '',
-        affectedDate: formData.affectedDate,
-        affectedExpert: formData.affectedExpert,
-        resolved: false,
-        createdAt: new Date().toISOString(),
-      };
-      onDataChange([...data, newItem]);
+    try {
+      if (editingId) {
+        const updates = {
+          type: formData.type as Neconformitate['type'],
+          severity: formData.severity as Neconformitate['severity'],
+          description: formData.description || '',
+          affectedDate: formData.affectedDate,
+          affectedExpertId: formData.affectedExpertId,
+          affectedExpert: formData.affectedExpert,
+          resolved: formData.resolved ?? false,
+          resolution: formData.resolution,
+        };
+        const persisted = await onUpdate?.(editingId, updates);
+        const updated = data.map((item) =>
+          item.id === editingId ? { ...item, ...updates, ...(persisted || {}) } : item
+        );
+        onDataChange(updated);
+      } else {
+        const newItem: Neconformitate = {
+          id: generateId(),
+          type: formData.type as Neconformitate['type'],
+          severity: formData.severity as Neconformitate['severity'],
+          description: formData.description || '',
+          affectedDate: formData.affectedDate,
+          affectedExpertId: formData.affectedExpertId,
+          affectedExpert: formData.affectedExpert,
+          resolved: false,
+          createdAt: new Date().toISOString(),
+        };
+        const persisted = await onCreate?.(newItem);
+        onDataChange([...(persisted ? [persisted] : [newItem]), ...data]);
+      }
+
+      resetForm();
+      setIsAddOpen(false);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Neconformitatea nu a putut fi salvată.');
+    } finally {
+      setSavingId(null);
     }
-
-    resetForm();
-    setIsAddOpen(false);
   };
 
   const handleEdit = (item: Neconformitate) => {
@@ -104,15 +127,31 @@ export function NeconformitatiTab({ data, onDataChange }: NeconformitatiTabProps
     setIsAddOpen(true);
   };
 
-  const handleResolve = (id: string, resolution: string) => {
-    const updated = data.map((item) =>
-      item.id === id ? { ...item, resolved: true, resolution } : item
-    );
-    onDataChange(updated);
+  const handleResolve = async (id: string, resolution: string) => {
+    setSavingId(id);
+    try {
+      await onResolve?.(id, resolution);
+      const updated = data.map((item) =>
+        item.id === id ? { ...item, resolved: true, resolution, resolvedAt: new Date().toISOString() } : item
+      );
+      onDataChange(updated);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Neconformitatea nu a putut fi rezolvată.');
+    } finally {
+      setSavingId(null);
+    }
   };
 
-  const handleDelete = (id: string) => {
-    onDataChange(data.filter((item) => item.id !== id));
+  const handleDelete = async (id: string) => {
+    setSavingId(id);
+    try {
+      await onDelete?.(id);
+      onDataChange(data.filter((item) => item.id !== id));
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Neconformitatea nu a putut fi ștearsă.');
+    } finally {
+      setSavingId(null);
+    }
   };
 
   const unresolvedCount = data.filter((item) => !item.resolved).length;
@@ -223,7 +262,7 @@ export function NeconformitatiTab({ data, onDataChange }: NeconformitatiTabProps
                     />
                   </div>
 
-                  <Button onClick={handleSave} className="w-full" disabled={!formData.description}>
+                  <Button onClick={handleSave} className="w-full" disabled={!formData.description || savingId !== null}>
                     {editingId ? 'Salvează modificările' : 'Adaugă'}
                   </Button>
                 </div>
@@ -277,6 +316,7 @@ export function NeconformitatiTab({ data, onDataChange }: NeconformitatiTabProps
                           variant="ghost"
                           size="icon"
                           onClick={() => handleEdit(item)}
+                          disabled={savingId !== null}
                         >
                           <Edit2 className="h-4 w-4" />
                         </Button>
@@ -284,6 +324,7 @@ export function NeconformitatiTab({ data, onDataChange }: NeconformitatiTabProps
                           variant="ghost"
                           size="icon"
                           className="text-green-600"
+                          disabled={savingId !== null}
                           onClick={() => {
                             const resolution = prompt('Introduceți rezoluția:');
                             if (resolution) handleResolve(item.id, resolution);
@@ -297,6 +338,7 @@ export function NeconformitatiTab({ data, onDataChange }: NeconformitatiTabProps
                       variant="ghost"
                       size="icon"
                       className="text-destructive"
+                      disabled={savingId !== null}
                       onClick={() => handleDelete(item.id)}
                     >
                       <X className="h-4 w-4" />

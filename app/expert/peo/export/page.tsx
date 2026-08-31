@@ -30,6 +30,7 @@ import {
 } from '@/hooks/use-backend-data';
 import { getWorkingDaysListInMonth } from '@/lib/working-hours';
 import { buildFinancialReportingSummary, normalizeFinancialPersonName } from '@/lib/financial-reporting';
+import { isReportOpenForCorrection } from '@/lib/report-correction-flow';
 
 function readMonthParam(value: string | null, fallback: number) {
   const parsed = Number(value);
@@ -288,6 +289,8 @@ function ExportRaContent() {
   const isApproved = currentStatus === 'approved';
   const isSent = currentStatus === 'sent';
   const isInReview = currentStatus === 'in_review';
+  const isClarifications = currentStatus === 'clarifications';
+  const isCorrectionOpen = isReportOpenForCorrection(reportStatus);
   const approvedExportBlockedReason = isSent || isInReview
     ? 'Exportul RA si Pontaj PEO este disponibil dupa aprobarea lunii de catre PM.'
     : 'Trimite luna catre PM si asteapta aprobarea pentru a exporta RA si Pontaj PEO.';
@@ -306,6 +309,8 @@ function ExportRaContent() {
       ? 'In verificare PM'
       : isSent
         ? 'Luna trimisa catre PM'
+        : isClarifications && isCorrectionOpen
+          ? 'Retrimite dupa corectii'
         : 'Trimite luna catre PM';
   const submitButtonTitle = activities.length === 0
     ? 'Adauga cel putin o activitate inainte de trimitere.'
@@ -317,6 +322,8 @@ function ExportRaContent() {
         ? 'Raportarea este deja in verificare la PM.'
         : isSent
           ? 'Luna a fost deja trimisa catre PM.'
+          : isClarifications && isCorrectionOpen
+            ? 'PM a redeschis raportarea pentru corectii. Retrimite dupa actualizare.'
           : undefined;
   const handleSubmitMonth = async () => {
     if (!selectedExpertId || isApproved || isSent || isInReview || activities.length === 0 || blockedActivities.length > 0) return;

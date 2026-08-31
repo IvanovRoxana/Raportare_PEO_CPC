@@ -101,6 +101,7 @@ import {
 import { filterPendingSharedDeliverablesNotCoveredByActivity, filterSharedRelationsForMonths } from '@/lib/document-sharing';
 import { buildExpertDeliverableRows } from '@/lib/expert-deliverables';
 import { isCurrentOrPreviousMonth } from '@/lib/pm-clarifications';
+import { isReportOpenForCorrection } from '@/lib/report-correction-flow';
 import { isReportingWorkBlocksEnabledClient } from '@/lib/feature-flags';
 import { buildActivitySaveWorkBlockInput } from '@/lib/activity-report/activity-save-work-block';
 import { cn } from '@/lib/utils';
@@ -2123,6 +2124,7 @@ function ExpertDashboardContent() {
   const isSent = currentStatus === 'sent';
   const isInReview = currentStatus === 'in_review';
   const isClarifications = currentStatus === 'clarifications';
+  const isCorrectionOpen = isReportOpenForCorrection(reportStatus);
   const clarificationHref = `/expert/clarificari?month=${currentMonth}&year=${currentYear}`;
   const statusMeta = statusLabels[currentStatus as ReportStatus['status']] || statusLabels.draft;
   const statusDescription = isApproved
@@ -2132,7 +2134,9 @@ function ExpertDashboardContent() {
       : isSent
         ? 'Luna a fost trimisă către PM și așteaptă verificarea.'
         : isClarifications
-          ? 'PM a solicitat clarificări. Deschide panoul de clarificări pentru detalii.'
+          ? isCorrectionOpen
+            ? 'PM a redeschis raportarea pentru corecții. Verifică observațiile, corectează și retrimite luna către PM.'
+            : 'PM a solicitat clarificări. Deschide panoul de clarificări pentru detalii.'
         : 'Completează pontajul și trimite luna către PM când pachetul este pregătit.';
   const submitButtonIcon = isApproved
     ? <Lock className="h-4 w-4" />
@@ -2148,7 +2152,7 @@ function ExpertDashboardContent() {
       : isSent
         ? 'Luna trimisă către PM'
         : isClarifications
-          ? 'Vezi clarificări PM'
+          ? isCorrectionOpen ? 'Retrimite după corecții' : 'Vezi clarificări PM'
         : 'Trimite luna către PM';
   const submitReadiness = useMemo(() => {
     if (!submissionDataReady) {
@@ -2388,7 +2392,7 @@ function ExpertDashboardContent() {
       : isSent
         ? 'Luna a fost deja trimisă către PM.'
         : isClarifications
-          ? 'Deschide panoul de clarificări solicitate de PM.'
+          ? isCorrectionOpen ? 'Corectează observațiile PM și retrimite luna.' : 'Deschide panoul de clarificări solicitate de PM.'
         : !submissionDataReady
           ? SUBMISSION_DATA_LOADING_MESSAGE
         : submitReadiness.disabledReason || undefined;
@@ -3523,7 +3527,7 @@ function ExpertDashboardContent() {
                 </div>
               </div>
               <span className="block" title={submitButtonTitle}>
-                {isClarifications ? (
+                {isClarifications && !isCorrectionOpen ? (
                   <Button asChild className="w-full md:w-auto">
                     <Link href={clarificationHref}>
                       {submitButtonIcon}
@@ -3535,7 +3539,7 @@ function ExpertDashboardContent() {
                     type="button"
                     className="w-full md:w-auto"
                     onClick={handleSubmitMonth}
-                    disabled={isApproved || isSent || isInReview || isClarificationScopedAccess}
+                    disabled={isApproved || isSent || isInReview || isClarificationScopedAccess || !submissionDataReady}
                   >
                     {submitButtonIcon}
                     {submitButtonLabel}
@@ -3665,7 +3669,7 @@ function ExpertDashboardContent() {
                       </p>
                     )}
                     <span className="mt-3 block" title={submitButtonTitle}>
-                      {isClarifications ? (
+                      {isClarifications && !isCorrectionOpen ? (
                         <Button asChild className="w-full">
                           <Link href={clarificationHref}>
                             {submitButtonIcon}

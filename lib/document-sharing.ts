@@ -86,6 +86,34 @@ function getSharedRelationSourceActivityId(relation: Pick<SharedDeliverable, 'do
     : undefined);
 }
 
+export function getSharedRelationReciprocalStatus(
+  relation: Pick<SharedDeliverable, 'sourceExpertId' | 'targetExpertId' | 'sourceActivityId' | 'documentId' | 'status'>,
+  allRelations: Array<Pick<SharedDeliverable, 'sourceExpertId' | 'targetExpertId' | 'sourceActivityId' | 'documentId' | 'status'>>,
+) {
+  if (relation.status === 'registered') return 'reciprocated' as const;
+  if (relation.status === 'removed' || relation.status === 'ignored_by_admin' || relation.status === 'confirmed_not_relevant') return 'closed' as const;
+  if (relation.status === 'ignored_by_target') return 'ignored_by_target' as const;
+  const sourceActivityId = getSharedRelationSourceActivityId(relation);
+  const reverse = allRelations.find((candidate) => {
+    if (candidate.sourceExpertId !== relation.targetExpertId || candidate.targetExpertId !== relation.sourceExpertId) return false;
+    if (sourceActivityId) {
+      return getSharedRelationSourceActivityId(candidate) === sourceActivityId || candidate.status === 'registered';
+    }
+    return candidate.documentId === relation.documentId || candidate.status === 'registered';
+  });
+
+  if (reverse?.status === 'registered') return 'reciprocated' as const;
+  return 'pending_confirmation' as const;
+}
+
+export function isSharedRelationPendingPmReciprocity(
+  relation: Pick<SharedDeliverable, 'sourceExpertId' | 'targetExpertId' | 'sourceActivityId' | 'documentId' | 'status'>,
+  allRelations: Array<Pick<SharedDeliverable, 'sourceExpertId' | 'targetExpertId' | 'sourceActivityId' | 'documentId' | 'status'>>,
+) {
+  const status = getSharedRelationReciprocalStatus(relation, allRelations);
+  return status === 'pending_confirmation' || status === 'ignored_by_target';
+}
+
 export function getPendingSharedActivitySourceIdsForExpert(args: {
   expertId: string;
   sharedDeliverables: SharedDeliverable[];

@@ -755,6 +755,12 @@ export function useNeconformitateMutations() {
     return created;
   };
 
+  const update = async (id: string, verificationId: string | undefined, updates: Partial<Omit<Neconformitate, 'id' | 'createdAt'>>) => {
+    const updated = await neconformitatiService.update(id, updates);
+    if (verificationId) mutate(`neconformitati-${verificationId}`);
+    return updated;
+  };
+
   const resolve = async (id: string, verificationId: string, resolution: string) => {
     await neconformitatiService.resolve(id, resolution);
     mutate(`neconformitati-${verificationId}`);
@@ -765,7 +771,7 @@ export function useNeconformitateMutations() {
     mutate(`neconformitati-${verificationId}`);
   };
 
-  return { create, resolve, remove };
+  return { create, update, resolve, remove };
 }
 
 // ============================================

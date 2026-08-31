@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import {
   AlertTriangle,
   CalendarDays,
@@ -26,7 +26,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { Progress } from '@/components/ui/progress';
 import {
   Select,
   SelectContent,
@@ -35,13 +34,9 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { getMonthName } from '@/lib/app-utils';
-import { isActivePmUnlockRequest } from '@/lib/pm-unlock-status';
-import {
-  formatReportingPeriodLabel,
-  reportingPeriodIncludesMonth,
-  resolveDefaultReportingPeriod,
-  resolveReportingPeriods,
-} from '@/lib/reporting-periods';
+import { buildPmClarificationRealertItems } from '@/lib/pm-clarification-realerts';
+import { buildPmReportGroups } from '@/lib/pm-report-groups';
+import { buildPmSubactivityReportGroups } from '@/lib/pm-subactivities-report';
 import type {
   Activity,
   DashboardComplianceRow,
@@ -56,6 +51,9 @@ import type {
   SharedDeliverable,
 } from '@/lib/types';
 import type { PmSubmittedReportRow } from '@/components/pm/pm-submitted-reports-panel';
+import { DeliverablesView } from './pm-deliverables-view';
+import { KpiView } from './pm-kpi-view';
+import { TimesheetView } from './pm-timesheet-view';
 
 type BadgeVariant = 'default' | 'secondary' | 'destructive' | 'outline';
 type StatusMeta = { label: string; variant: BadgeVariant };
@@ -68,7 +66,7 @@ type PendingSharedDeliverable = {
   targetExpert?: Expert;
 };
 
-type PmWorkspaceProps = {
+export type PmWorkspaceProps = {
   experts: Expert[];
   dashboardRows: DashboardComplianceRow[];
   reportStatusByExpertId: Map<string, ReportStatus>;
@@ -107,6 +105,7 @@ type PmWorkspaceProps = {
   resolvedPmUnlockRequests: DocumentMetadata[];
   eventDocumentIssues: Activity[];
   isExportingOpisTotal: boolean;
+  exportingPontajExpertId?: string | null;
   onOpenDossier: (expert: Expert, options?: { activityId?: string; documentId?: string; issueType?: string }) => void;
   onOpenDossierById: (expertId: string, options?: { activityId?: string; documentId?: string; issueType?: string }) => void;
   onApproveMonthAccessRequest: (request: MonthAccessRequest) => void | Promise<void>;
@@ -116,6 +115,7 @@ type PmWorkspaceProps = {
   onRealertClarification: (thread: PmClarificationThread) => void | Promise<void>;
   onApprovePmUnlock: (document: DocumentMetadata) => void | Promise<void>;
   onDownloadTotalOpisXls: () => void;
+  onDownloadExpertPontaj: (expert: Expert) => void | Promise<void>;
   fallbackCatalog?: ActivityCatalog[];
   onEligibilityGovernanceAudit?: (input: {
     actionType: string;
@@ -137,14 +137,6 @@ const views: Array<{ id: WorkspaceView; label: string; badge?: (props: PmWorkspa
   { id: 'nonconformities', label: 'Neconformități', badge: (props) => props.pmSummary.problemCount },
   { id: 'actions', label: 'Acțiuni PM' },
 ];
-
-function pct(value: number) {
-  return Math.max(0, Math.min(100, Math.round(value || 0)));
-}
-
-function isoDate(year: number, month: number, day: number) {
-  return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-}
 
 function statusClass(status: ReportStatus['status']) {
   if (status === 'approved') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
@@ -191,233 +183,6 @@ function PmTopBar({
         })}
       </nav>
     </header>
-  );
-}
-
-function KpiView(props: PmWorkspaceProps) {
-  const reportingPeriods = useMemo(() => resolveReportingPeriods(props.reportingPeriods), [props.reportingPeriods]);
-  const defaultReportingPeriod = useMemo(
-    () => resolveDefaultReportingPeriod(reportingPeriods, props.selectedMonth, props.selectedYear),
-    [props.selectedMonth, props.selectedYear, reportingPeriods]
-  );
-  const [selectedReport, setSelectedReport] = useState(defaultReportingPeriod?.id ?? '');
-  useEffect(() => {
-    if (!selectedReport && defaultReportingPeriod) {
-      setSelectedReport(defaultReportingPeriod.id);
-    }
-  }, [defaultReportingPeriod, selectedReport]);
-  const [isReportOpen, setIsReportOpen] = useState(false);
-  const activeReportingPeriod = reportingPeriods.find((period) => period.id === selectedReport)
-    ?? defaultReportingPeriod
-    ?? reportingPeriods[0]
-    ?? null;
-  const reportRows = props.dashboardRows;
-  const onTime = reportRows.filter((row) => row.utilizationPercent >= 100 && !(props.reportStatusByExpertId.get(row.expertId)?.status === 'clarifications')).length;
-  const verified = props.pmSummary.statusCounts.in_review + props.pmSummary.statusCounts.approved;
-  const late = reportRows.filter((row) => row.missingActivityDays.length > 0 || row.remainingHours > 0).length;
-  const approved = props.pmSummary.statusCounts.approved;
-  const completed = reportRows.filter((row) => row.remainingHours === 0).length;
-  const actionNeeded = props.pmSummary.problemCount;
-
-  const cards = [
-    ['Raportare la zi', onTime, 'din experți', 'bg-[#1f3f75] text-white border-[#1f3f75]'],
-    ['Verificate PM', verified, `din ${props.pmSummary.statusCounts.sent} trimise`, 'bg-white text-slate-950 border-slate-200'],
-    ['Cu întârzieri', late, 'raportări neîncheiate', 'bg-red-50 text-red-700 border-red-200'],
-    ['Aprobate PM', approved, `${props.pmSummary.statusCounts.sent} trimise, în așteptare`, 'bg-white text-blue-700 border-slate-200'],
-    ['Finalizate', completed, 'normă completă', 'bg-white text-emerald-700 border-slate-200'],
-    ['Necesită acțiune', actionNeeded, 'neconformități', 'bg-amber-50 text-amber-700 border-amber-200'],
-  ];
-  const handleReportChange = (periodId: string) => {
-    setSelectedReport(periodId);
-    const period = reportingPeriods.find((item) => item.id === periodId);
-    if (!period) return;
-    if (!reportingPeriodIncludesMonth(period, props.selectedMonth, props.selectedYear)) {
-      props.onYearChange(period.endYear);
-      props.onMonthChange(period.endMonth);
-    }
-  };
-
-  return (
-    <div className="space-y-4">
-      <div className="rounded-lg border bg-white p-4 shadow-sm">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            <span className="text-slate-600">Raport de progres:</span>
-            <Select value={activeReportingPeriod?.id ?? selectedReport} onValueChange={handleReportChange}>
-              <SelectTrigger className="h-9 w-[17rem] bg-white"><SelectValue placeholder="RP 12 - Mai 2026 / Iulie 2026" /></SelectTrigger>
-              <SelectContent>
-                {reportingPeriods.map((period) => (
-                  <SelectItem key={period.id} value={period.id}>{formatReportingPeriodLabel(period)}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <span className="text-slate-600">Luna:</span>
-            <Select value={props.selectedMonth.toString()} onValueChange={(value) => props.onMonthChange(Number(value))}>
-              <SelectTrigger className="h-9 w-[9rem] bg-white"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {props.months.map((month) => <SelectItem key={month.value} value={String(month.value)}>{month.label}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <span className="text-slate-400">23 zile lucrătoare</span>
-          </div>
-          <Button size="sm" className="bg-[#1f3f75]" onClick={() => setIsReportOpen(true)}>
-            <FileText className="h-4 w-4" />
-            Situație raportare
-          </Button>
-        </div>
-      </div>
-      <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
-        {cards.map(([label, value, helper, className]) => (
-          <div key={label} className={`rounded-lg border p-4 shadow-sm ${className}`}>
-            <div className="text-3xl font-bold">{value}</div>
-            <div className="mt-2 text-xs font-bold uppercase">{label}</div>
-            <div className="mt-1 text-[11px] opacity-80">{helper}</div>
-          </div>
-        ))}
-      </div>
-      <section className="overflow-hidden rounded-lg border bg-white shadow-sm">
-        <div className="border-b p-4">
-          <h2 className="font-semibold">Status raportare - {getMonthName(props.selectedMonth)} {props.selectedYear}</h2>
-          <p className="text-xs text-slate-500">PEO 302141 - date conectate din activități, norme și statusuri lunare.</p>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[920px] text-xs">
-            <thead className="bg-slate-50 text-left uppercase text-slate-500">
-              <tr>
-                <th className="px-4 py-3">Nr.</th><th>Expert</th><th>Funcție</th><th>Normă/zi</th><th>Normă calculată</th><th>Ore pontate</th><th>Progres</th><th>Livrabile</th><th>Raport</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {props.dashboardRows.map((row, index) => {
-                const expert = props.experts.find((item) => item.id === row.expertId);
-                const status = props.reportStatusByExpertId.get(row.expertId)?.status || 'draft';
-                return (
-                  <tr key={row.expertId} className={status === 'approved' ? 'bg-emerald-50/40' : status === 'clarifications' ? 'bg-amber-50/40' : undefined}>
-                    <td className="px-4 py-3 text-slate-500">{index + 1}</td>
-                    <td className="py-3">
-                      <div className="flex items-center gap-2">{expert ? <MiniAvatar expert={expert} /> : null}<span className="font-semibold">{row.expertName}</span></div>
-                    </td>
-                    <td className="text-slate-600">{row.role || '-'}</td>
-                    <td><Badge variant="outline">{row.normType === 'fixed' ? 'fix' : `${Math.round((row.monthlyNorm || 0) / 23)}h/zi`}</Badge></td>
-                    <td className="font-semibold">{row.monthlyNorm}h</td>
-                    <td className="font-semibold text-blue-700">{row.totalHours}h</td>
-                    <td><div className="flex items-center gap-2"><Progress value={pct(row.utilizationPercent)} className="h-1.5 w-20" /><span>{row.utilizationPercent}%</span></div></td>
-                    <td><Badge variant="outline">{row.missingDeliverableActivityCount > 0 ? `${row.missingDeliverableActivityCount} lipsă` : 'Trimise'}</Badge></td>
-                    <td><Badge variant="outline" className={statusClass(status)}>{props.statusLabels[status]?.label || status}</Badge></td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </section>
-      <ReportSituationDialog open={isReportOpen} onOpenChange={setIsReportOpen} props={props} />
-    </div>
-  );
-}
-
-function ReportSituationDialog({
-  open,
-  onOpenChange,
-  props,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  props: PmWorkspaceProps;
-}) {
-  const proactive = props.submittedReportRows.filter((row) => row.status.status === 'approved' || row.status.status === 'sent');
-  const actionRows = props.dashboardRows.filter((row) => row.remainingHours > 0 || row.missingDeliverableActivityCount > 0 || row.hasDailyLimitIssue || row.hasMonthlyNormIssue);
-  const finished = props.submittedReportRows.filter((row) => row.status.status === 'approved');
-  const inProgress = props.submittedReportRows.filter((row) => row.status.status === 'sent' || row.status.status === 'in_review');
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl overflow-hidden p-0">
-        <DialogHeader className="bg-[#1f3f75] px-5 py-4 text-white">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <DialogTitle>Situație raportare - {getMonthName(props.selectedMonth)} {props.selectedYear}</DialogTitle>
-              <p className="mt-1 text-xs text-blue-100">PEO 302141 - Confederația Patronală CONCORDIA - 23 zile lucrătoare</p>
-            </div>
-            <div className="flex gap-2">
-              <Button size="sm" variant="secondary" onClick={() => window.print()}>
-                <FileText className="h-4 w-4" />
-                Print
-              </Button>
-              <Button size="icon" variant="ghost" className="text-white hover:bg-white/10 hover:text-white" onClick={() => onOpenChange(false)}>
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-        </DialogHeader>
-        <div className="space-y-4 bg-white p-5">
-          <div className="grid gap-3 md:grid-cols-4">
-            {[
-              ['Experți implicați', props.experts.length, 'raportează livrabile', 'bg-[#1f3f75] text-white'],
-              ['Finalizate complet', finished.length, 'raport + livrabile OK', 'bg-emerald-50 text-emerald-700'],
-              ['În curs / proactivi', inProgress.length, 'au trimis raportarea', 'bg-blue-50 text-blue-700'],
-              ['În urmă', actionRows.length, 'necesită acțiune', 'bg-amber-50 text-amber-700'],
-            ].map(([label, value, helper, className]) => (
-              <div key={label} className={`rounded-lg border p-4 text-center ${className}`}>
-                <div className="text-3xl font-bold">{value}</div>
-                <div className="mt-2 text-xs font-bold uppercase">{label}</div>
-                <div className="mt-1 text-[11px] opacity-80">{helper}</div>
-              </div>
-            ))}
-          </div>
-          <ReportDialogTable title="Proactivi - au trimis raportarea" rows={proactive} tone="emerald" props={props} />
-          <section className="overflow-hidden rounded-lg border border-amber-200">
-            <div className="flex justify-between bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
-              <span>În curs / necesită acțiune</span>
-              <Badge variant="outline" className="border-amber-300 bg-white text-amber-700">{actionRows.length} experți</Badge>
-            </div>
-            <div className="divide-y">
-              {actionRows.length === 0 ? (
-                <div className="p-4 text-sm text-slate-500">Nu există experți în urmă.</div>
-              ) : (
-                actionRows.map((row) => {
-                  const expert = props.experts.find((item) => item.id === row.expertId);
-                  const status = props.reportStatusByExpertId.get(row.expertId)?.status || 'draft';
-                  return (
-                    <div key={row.expertId} className="grid gap-3 px-4 py-3 text-xs md:grid-cols-[1.3fr_1fr_1fr_1fr]">
-                      <div className="flex items-center gap-2">{expert ? <MiniAvatar expert={expert} /> : null}<span className="font-semibold">{row.expertName}</span></div>
-                      <div><Progress value={pct(row.utilizationPercent)} className="h-1.5" /><span className="mt-1 block text-slate-500">{row.totalHours}h/{row.monthlyNorm}h</span></div>
-                      <Badge variant="outline" className={statusClass(status)}>{props.statusLabels[status]?.label || status}</Badge>
-                      <span className="font-semibold text-amber-700">În curs</span>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </section>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function ReportDialogTable({ title, rows, tone, props }: { title: string; rows: PmSubmittedReportRow[]; tone: 'emerald'; props: PmWorkspaceProps }) {
-  return (
-    <section className="overflow-hidden rounded-lg border border-emerald-200">
-      <div className="flex justify-between bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
-        <span>{title}</span>
-        <Badge variant="outline" className="border-emerald-300 bg-white text-emerald-700">{rows.length} experți</Badge>
-      </div>
-      <div className="divide-y">
-        {rows.length === 0 ? (
-          <div className="p-4 text-sm text-slate-500">Nu există raportări trimise.</div>
-        ) : (
-          rows.map((row) => (
-            <div key={row.status.id || row.expert.id} className="grid gap-3 px-4 py-3 text-xs md:grid-cols-[1.3fr_1fr_1fr_1fr]">
-              <div className="flex items-center gap-2"><MiniAvatar expert={row.expert} /><span className="font-semibold">{row.expert.name}</span></div>
-              <div><Progress value={pct(row.utilizationPercent)} className="h-1.5" /><span className="mt-1 block text-slate-500">{row.utilizationPercent}% · {row.totalHours}h</span></div>
-              <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">Toate trimise</Badge>
-              <span className="font-semibold text-emerald-700">{row.status.status === 'approved' ? 'Finalizat' : props.statusLabels[row.status.status]?.label}</span>
-            </div>
-          ))
-        )}
-      </div>
-    </section>
   );
 }
 
@@ -531,205 +296,14 @@ function AccessExpertRow({ expert, action, helper }: { expert: Expert; action: R
   );
 }
 
-type TimesheetViewProps = PmWorkspaceProps & {
-  onOpenEligibilityRules: (document: DocumentMetadata) => void;
-};
-
-function TimesheetView(props: TimesheetViewProps) {
-  const [selectedExpertId, setSelectedExpertId] = useState(props.experts[0]?.id || '');
-  const selectedExpert = props.experts.find((expert) => expert.id === selectedExpertId) || props.experts[0];
-  const selectedRow = props.dashboardRows.find((row) => row.expertId === selectedExpert?.id);
-  const selectedActivities = props.activities.filter((activity) => activity.expertId === selectedExpert?.id);
-  const selectedActivityIds = new Set(selectedActivities.map((activity) => activity.id));
-  const isDocumentInSelectedMonth = (document: DocumentMetadata) => {
-    if (document.uploadedByExpertId !== selectedExpert?.id) return false;
-    if (document.sourceActivityId && selectedActivityIds.has(document.sourceActivityId)) return true;
-    const uploadedAt = document.uploadDate ? new Date(document.uploadDate) : null;
-    return Boolean(uploadedAt && uploadedAt.getMonth() === props.selectedMonth && uploadedAt.getFullYear() === props.selectedYear);
-  };
-  const selectedActiveBlockedDocuments = props.pmUnlockRequests.filter(isDocumentInSelectedMonth);
-  const selectedAutoResolvedDocuments = props.resolvedPmUnlockRequests.filter(isDocumentInSelectedMonth);
-  const activeBlockedByActivityId = new Map<string, DocumentMetadata[]>();
-  selectedActiveBlockedDocuments.forEach((document) => {
-    if (!document.sourceActivityId) return;
-    activeBlockedByActivityId.set(document.sourceActivityId, [...(activeBlockedByActivityId.get(document.sourceActivityId) || []), document]);
-  });
-  const isActivityBlockedByEligibility = (activity: Activity) => {
-    if (activeBlockedByActivityId.has(activity.id)) return true;
-    return (activity.deliverables || []).some((deliverable) => isActivePmUnlockRequest(deliverable.eligibilityCheck));
-  };
-  const activitiesByDay = new Map<string, Activity[]>();
-  selectedActivities.forEach((activity) => activitiesByDay.set(activity.date, [...(activitiesByDay.get(activity.date) || []), activity]));
-  const days = new Date(props.selectedYear, props.selectedMonth + 1, 0).getDate();
-  const leading = (new Date(props.selectedYear, props.selectedMonth, 1).getDay() + 6) % 7;
-
-  return (
-    <div className="space-y-4">
-      <section className="rounded-lg border bg-white p-4 shadow-sm">
-        <h2 className="font-semibold">Calendar ore - {getMonthName(props.selectedMonth)} {props.selectedYear}</h2>
-        <div className="mt-3 flex flex-wrap gap-2">
-          {props.experts.map((expert) => {
-            const row = props.dashboardRows.find((item) => item.expertId === expert.id);
-            const active = expert.id === selectedExpert?.id;
-            return (
-              <button key={expert.id} type="button" onClick={() => setSelectedExpertId(expert.id)} className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-left text-xs ${active ? 'border-[#1f3f75] bg-blue-50' : 'bg-white hover:bg-slate-50'}`}>
-                <MiniAvatar expert={expert} />
-                <span><span className="block font-semibold">{expert.name.split(' ')[0]}</span><span className="text-slate-500">{row?.totalHours || 0}h - {pct(row?.utilizationPercent || 0)}%</span></span>
-              </button>
-            );
-          })}
-        </div>
-      </section>
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
-        <section className="overflow-hidden rounded-lg border bg-white shadow-sm">
-          <div className="border-b p-4">
-            <div className="flex items-center gap-3">{selectedExpert ? <MiniAvatar expert={selectedExpert} /> : null}<h3 className="font-semibold">{selectedExpert?.name || 'Expert'}</h3><span className="text-xs text-slate-500">{selectedExpert?.role}</span></div>
-          </div>
-          <div className="grid grid-cols-7 border-b bg-slate-50 text-xs font-semibold text-slate-500">
-            {['Luni', 'Marți', 'Miercuri', 'Joi', 'Vineri', 'Sâmbătă', 'Duminică'].map((day) => <div key={day} className="border-r p-2 last:border-r-0">{day}</div>)}
-          </div>
-          <div className="grid grid-cols-7">
-            {Array.from({ length: leading }).map((_, index) => <div key={`empty-${index}`} className="min-h-[5.5rem] border-b border-r bg-slate-50/50" />)}
-            {Array.from({ length: days }).map((_, index) => {
-              const day = index + 1;
-              const date = isoDate(props.selectedYear, props.selectedMonth, day);
-              const dayActivities = activitiesByDay.get(date) || [];
-              const hours = dayActivities.reduce((sum, activity) => sum + (activity.hours || 0), 0);
-              return (
-                <div key={date} className="min-h-[5.5rem] border-b border-r p-2 text-xs">
-                  <div className="flex justify-between"><span className="font-medium">{day}</span><span className={hours > 0 ? 'font-semibold text-blue-700' : 'text-slate-300'}>{hours || '-'}/{Math.round((selectedRow?.monthlyNorm || 0) / 23)}h</span></div>
-                  {dayActivities.slice(0, 2).map((activity) => {
-                    const blocked = isActivityBlockedByEligibility(activity);
-                    return (
-                      <div
-                        key={activity.id}
-                        className={`mt-1 truncate rounded px-1.5 py-1 text-[10px] ${
-                          blocked
-                            ? 'border border-amber-300 bg-amber-50 text-amber-900'
-                            : 'bg-blue-50 text-blue-800'
-                        }`}
-                        title={blocked ? 'Activitate afectată de livrabil neeligibil cu deblocare PM solicitată' : undefined}
-                      >
-                        {activity.title || activity.activityType}
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            })}
-          </div>
-          <div className="flex items-center justify-between p-4">
-            <div><span className="text-2xl font-bold text-[#1f3f75]">{selectedRow?.totalHours || 0}h</span><span className="ml-2 text-sm text-slate-500">/ {selectedRow?.monthlyNorm || 0}h normă</span></div>
-            <Button className="bg-[#1f3f75]"><Download className="h-4 w-4" />Descarcă pontaj PEO</Button>
-          </div>
-        </section>
-        <PmUnlockTimesheetPanel
-          activeDocuments={selectedActiveBlockedDocuments}
-          resolvedDocuments={selectedAutoResolvedDocuments}
-          activities={selectedActivities}
-          props={props}
-        />
-      </div>
-    </div>
-  );
-}
-
-function PmUnlockTimesheetPanel({
-  activeDocuments,
-  resolvedDocuments,
-  activities,
-  props,
-}: {
-  activeDocuments: DocumentMetadata[];
-  resolvedDocuments: DocumentMetadata[];
-  activities: Activity[];
-  props: TimesheetViewProps;
-}) {
-  const activityById = new Map(activities.map((activity) => [activity.id, activity]));
-  const openDocument = (document: DocumentMetadata, issueType = 'pm_unlock_requests') => {
-    props.onOpenDossierById(document.uploadedByExpertId, {
-      activityId: document.sourceActivityId,
-      documentId: document.id,
-      issueType,
-    });
-  };
-
-  return (
-    <aside className="space-y-4">
-      <section className="rounded-lg border border-amber-200 bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b border-amber-100 px-4 py-3">
-          <div>
-            <h3 className="text-sm font-semibold text-amber-900">Livrabile blocate</h3>
-            <p className="text-xs text-amber-700">Afectează pontajul până la decizia PM.</p>
-          </div>
-          <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-700">{activeDocuments.length}</Badge>
-        </div>
-        <div className="divide-y">
-          {activeDocuments.length === 0 ? (
-            <div className="p-4 text-sm text-slate-500">Nu există blocaje active pentru expertul selectat.</div>
-          ) : activeDocuments.map((document) => {
-            const activity = document.sourceActivityId ? activityById.get(document.sourceActivityId) : undefined;
-            return (
-              <div key={document.id} className="space-y-3 p-4">
-                <div>
-                  <div className="font-semibold text-[#1f3f75]">{document.declaredTitle || document.originalFileName}</div>
-                  <div className="mt-1 text-xs text-slate-500">{activity?.title || activity?.activityType || document.eligibilityCheck?.checkedActivityName || 'Activitate neidentificată'}</div>
-                  <div className="mt-2 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-800">{document.eligibilityCheck?.summary || 'Livrabil neeligibil cu deblocare PM solicitată.'}</div>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button size="sm" variant="outline" onClick={() => openDocument(document)}><FileText className="h-4 w-4" />Deschide livrabil</Button>
-                  <Button size="sm" variant="outline" onClick={() => openDocument(document, 'eligibility_manual_review')}>Verifică manual</Button>
-                  <Button size="sm" onClick={() => props.onApprovePmUnlock(document)}><Check className="h-4 w-4" />Deblochează PM</Button>
-                  <Button size="sm" variant="outline" onClick={() => props.onOpenEligibilityRules(document)}>Actualizează reguli</Button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </section>
-      <section className="rounded-lg border bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b px-4 py-3">
-          <div>
-            <h3 className="text-sm font-semibold text-emerald-800">Rezolvate prin corectare expert</h3>
-            <p className="text-xs text-slate-500">Tracking păstrat, fără impact de blocaj PM.</p>
-          </div>
-          <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">{resolvedDocuments.length}</Badge>
-        </div>
-        <div className="divide-y">
-          {resolvedDocuments.length === 0 ? (
-            <div className="p-4 text-sm text-slate-500">Nu există corectări auto-rezolvate pentru expertul selectat.</div>
-          ) : resolvedDocuments.map((document) => (
-            <div key={document.id} className="space-y-3 p-4">
-              <div>
-                <div className="font-semibold text-[#1f3f75]">{document.declaredTitle || document.originalFileName}</div>
-                <div className="mt-1 text-xs text-slate-500">
-                  Inițial: {document.eligibilityCheck?.pmUnlockOriginalStatus || 'neeligibil'} · Acum: {document.eligibilityCheck?.status || 'eligibil'}
-                </div>
-                <div className="mt-2 rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs text-emerald-800">{document.eligibilityCheck?.summary || 'Livrabilul a devenit eligibil după corectarea expertului.'}</div>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button size="sm" variant="outline" onClick={() => openDocument(document)}><FileText className="h-4 w-4" />Deschide livrabil</Button>
-                <Button size="sm" variant="outline" onClick={() => openDocument(document, 'eligibility_ai_review')}>Vezi verificarea AI</Button>
-                <Button size="sm" variant="outline" onClick={() => props.onOpenEligibilityRules(document)}>Actualizează reguli</Button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-    </aside>
-  );
-}
-
 function ReportsView(props: PmWorkspaceProps) {
-  const clean = props.submittedReportRows.filter((row) => row.status.status === 'approved' && row.issuesCount === 0);
-  const waiting = props.submittedReportRows.filter((row) => row.status.status === 'sent' || row.status.status === 'in_review');
-  const clarifications = props.submittedReportRows.filter((row) => row.status.status === 'clarifications');
+  const groups = buildPmReportGroups(props.submittedReportRows);
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_18rem]">
       <div className="space-y-4">
-        <ReportGroup title="Verificate - fără neconformități" tone="emerald" rows={clean} props={props} />
-        <ReportGroup title="Trimise - în așteptarea verificării PM" tone="blue" rows={waiting} props={props} />
-        <ReportGroup title="Verificate - cu clarificări deschise" tone="amber" rows={clarifications} props={props} />
+        {groups.map((group) => (
+          <ReportGroup key={group.id} title={group.title} tone={group.tone} rows={group.rows} props={props} />
+        ))}
       </div>
       <aside className="space-y-4">
         <SideCard title="Activitate recentă" items={props.submittedReportRows.slice(0, 5).map((row) => `${row.expert.name} - ${props.statusLabels[row.status.status]?.label || row.status.status}`)} />
@@ -757,32 +331,6 @@ function ReportGroup({ title, tone, rows, props }: { title: string; tone: 'emera
         ))}
       </div>
     </section>
-  );
-}
-
-function DeliverablesView(props: PmWorkspaceProps) {
-  const [filter, setFilter] = useState('all');
-  const filtered = props.documents.filter((document) => {
-    if (filter === 'all') return true;
-    if (filter === 'approved') return document.titleMatch === true || document.titleCheckStatus === 'matched';
-    if (filter === 'clarifications') return document.titleMatch === false || document.titleCheckStatus === 'mismatch';
-    if (filter === 'draft') return !document.titleCheckStatus && !document.titleMatch;
-    return true;
-  });
-  const grouped = props.experts.map((expert) => ({ expert, docs: filtered.filter((doc) => doc.uploadedByExpertId === expert.id) })).filter((group) => group.docs.length > 0);
-  return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex gap-2">{[['all', 'Toate'], ['approved', 'Aprobat'], ['sent', 'Trimis'], ['clarifications', 'Clarificări'], ['draft', 'Draft']].map(([id, label]) => <Button key={id} size="sm" variant={filter === id ? 'default' : 'outline'} onClick={() => setFilter(id)}>{label}</Button>)}</div>
-        <div className="flex items-center gap-3 text-xs text-slate-500"><span>{filtered.length} livrabile</span><Button size="sm" onClick={props.onDownloadTotalOpisXls} disabled={props.isExportingOpisTotal}><Download className="h-4 w-4" />OPIS total XLS</Button></div>
-      </div>
-      {grouped.length === 0 ? <EmptyState text="Nu există livrabile pentru filtrul selectat." /> : grouped.map(({ expert, docs }) => (
-        <section key={expert.id} className="overflow-hidden rounded-lg border bg-white shadow-sm">
-          <div className="flex items-center justify-between bg-slate-50 px-4 py-3"><div className="flex items-center gap-3"><MiniAvatar expert={expert} /><div className="font-semibold">{expert.name}</div><span className="text-xs text-slate-500">{expert.role}</span></div><Badge variant="secondary">{docs.length} livrabile</Badge></div>
-          <table className="w-full text-xs"><tbody className="divide-y">{docs.map((doc) => <tr key={doc.id}><td className="px-4 py-3 font-semibold">{doc.declaredTitle || doc.extractedTitle || doc.originalFileName}</td><td>{doc.deliverableType || 'Document'}</td><td>{doc.uploadDate?.slice(0, 10) || '-'}</td><td><Badge variant="outline" className={doc.titleMatch === false ? statusClass('clarifications') : statusClass('sent')}>{doc.titleMatch === false ? 'Clarificări' : doc.titleCheckStatus || 'Trimis'}</Badge></td><td><Button size="sm" variant="outline" onClick={() => props.onOpenDossierById(doc.uploadedByExpertId, { documentId: doc.id })}><FileText className="h-4 w-4" />Deschide livrabil</Button></td></tr>)}</tbody></table>
-        </section>
-      ))}
-    </div>
   );
 }
 
@@ -931,13 +479,11 @@ function ActionsView(props: ActionsViewProps) {
   const [activeAction, setActiveAction] = useState<'opis' | 'subactivities' | 'annex12' | 'eligibility'>(
     props.eligibilityRulesFocusDocument ? 'eligibility' : 'opis',
   );
-  const subactivityGroups = Array.from(
-    props.activities.reduce((groups, activity) => {
-      const key = activity.saCode || activity.activityType || 'Fără SA';
-      groups.set(key, [...(groups.get(key) || []), activity]);
-      return groups;
-    }, new Map<string, Activity[]>()).entries(),
-  ).sort(([a], [b]) => a.localeCompare(b));
+  const subactivityGroups = buildPmSubactivityReportGroups({
+    activities: props.activities,
+    experts: props.experts,
+    catalog: props.fallbackCatalog || [],
+  });
 
   return (
     <div className="space-y-4">
@@ -963,10 +509,10 @@ function ActionsView(props: ActionsViewProps) {
       {activeAction === 'subactivities' ? (
         <section className="grid gap-4 md:grid-cols-[12rem_1fr]">
           <div className="space-y-2">
-            {subactivityGroups.map(([code, activities]) => (
-              <div key={code} className="rounded-lg border bg-white p-4 shadow-sm">
-                <div className="text-sm font-bold text-[#1f3f75]">{code}</div>
-                <div className="mt-1 text-xs text-slate-500">{activities.length} intrări</div>
+            {subactivityGroups.map((group) => (
+              <div key={group.saCode} className="rounded-lg border bg-white p-4 shadow-sm">
+                <div className="text-sm font-bold text-[#1f3f75]">{group.saCode}</div>
+                <div className="mt-1 text-xs text-slate-500">{group.rows.length} intrări · {group.totalHours}h</div>
               </div>
             ))}
             <Button className="w-full bg-[#1f3f75]" disabled><Download className="h-4 w-4" />Word SA</Button>
@@ -980,24 +526,31 @@ function ActionsView(props: ActionsViewProps) {
               {subactivityGroups.length === 0 ? (
                 <div className="p-4 text-sm text-slate-500">Nu există activități pentru luna selectată.</div>
               ) : (
-                subactivityGroups.flatMap(([code, activities]) => (
-                  activities.slice(0, 4).map((activity) => {
-                    const expert = props.experts.find((item) => item.id === activity.expertId);
+                subactivityGroups.flatMap((group) => (
+                  group.rows.slice(0, 6).map((row) => {
+                    const expert = props.experts.find((item) => item.id === row.expertId);
                     return (
-                      <div key={activity.id} className="p-4">
+                      <div key={row.id} className="p-4">
                         <div className="flex items-center justify-between gap-3">
                           <div className="flex items-center gap-3">
                             {expert ? <MiniAvatar expert={expert} /> : null}
                             <div>
-                              <div className="text-sm font-semibold">{expert?.name || activity.expertName || 'Expert'}</div>
-                              <div className="text-xs text-slate-500">{getMonthName(props.selectedMonth)} {props.selectedYear} · {code}</div>
+                              <div className="text-sm font-semibold">{row.expertName}</div>
+                              <div className="text-xs text-slate-500">{row.activityDate} · {group.saCode} · {row.hours}h · {row.deliverableCount} livrabile</div>
                             </div>
                           </div>
                           <Button size="sm" variant="outline" disabled><ClipboardList className="h-4 w-4" />Copy-paste în RA</Button>
                         </div>
+                        <div className="mt-3 text-sm font-semibold text-slate-800">{row.catalogActivityName || row.activityTitle}</div>
+                        {row.catalogDescription ? (
+                          <p className="mt-1 text-xs text-slate-500">{row.catalogDescription}</p>
+                        ) : null}
                         <p className="mt-3 rounded-md border bg-slate-50 p-3 text-xs italic leading-5 text-slate-700">
-                          {activity.description || activity.title || 'Descrierea activității nu este disponibilă.'}
+                          {row.reportedText || 'Descrierea activității nu este disponibilă.'}
                         </p>
+                        {row.expectedDeliverables ? (
+                          <div className="mt-2 text-xs text-slate-500">Livrabile așteptate: {row.expectedDeliverables}</div>
+                        ) : null}
                       </div>
                     );
                   })
@@ -1151,19 +704,18 @@ function ClarificationRealertCard({
   experts: Expert[];
   onRealertClarification: (thread: PmClarificationThread) => void | Promise<void>;
 }) {
-  const openThreads = threads.filter((thread) => thread.status !== 'resolved');
+  const realertItems = buildPmClarificationRealertItems({ threads, experts });
 
   return (
     <section className="rounded-lg border bg-white p-4 shadow-sm">
       <div className="mb-3 flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold">Clarificări recente</h3>
-        <Badge variant="outline">{openThreads.length} deschise</Badge>
+        <Badge variant="outline">{realertItems.length} deschise</Badge>
       </div>
       <div className="space-y-3">
-        {openThreads.length === 0 ? (
+        {realertItems.length === 0 ? (
           <p className="text-xs text-slate-500">Nu există clarificări deschise.</p>
-        ) : openThreads.map((thread) => {
-          const expert = experts.find((item) => item.id === thread.expertId);
+        ) : realertItems.map(({ thread, expert, statusLabel }) => {
           return (
             <div key={thread.id} className="rounded-md border p-3 text-xs text-slate-600">
               <div className="flex items-start justify-between gap-2">
@@ -1171,7 +723,7 @@ function ClarificationRealertCard({
                   <p className="font-semibold text-slate-900">{expert?.name || thread.expertId}</p>
                   <p className="mt-1 line-clamp-3">{thread.pmMessage}</p>
                 </div>
-                <Badge variant="outline">{thread.status === 'answered' ? 'Răspuns' : 'Cerută'}</Badge>
+                <Badge variant="outline">{statusLabel}</Badge>
               </div>
               {thread.lastRealertedAt ? (
                 <p className="mt-2 text-[11px] text-amber-700">

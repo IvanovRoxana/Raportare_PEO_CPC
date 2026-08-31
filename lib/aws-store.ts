@@ -3288,6 +3288,31 @@ export const neconformitatiService = {
     return mapNeconformitate(result.data);
   },
 
+  async update(id: string, updates: Partial<Omit<Neconformitate, 'id' | 'createdAt'>>): Promise<Neconformitate | null> {
+    const client = getAwsDataClient() as any;
+    const existing = await client.models.Neconformitate.get({ id });
+    assertNoErrors(existing, 'AWS get neconformitate');
+    if (!existing.data) return null;
+    if (existing.data.verificationId) {
+      await assertCanAccessVerification(client, existing.data.verificationId);
+    } else {
+      await assertCanAccessExpert(client, existing.data.affectedExpertId);
+    }
+
+    const result = await client.models.Neconformitate.update({
+      id,
+      type: updates.type,
+      severity: updates.severity,
+      description: updates.description,
+      affectedDate: updates.affectedDate,
+      affectedExpertId: updates.affectedExpertId,
+      resolved: updates.resolved,
+      resolution: updates.resolution,
+    });
+    assertNoErrors(result, 'AWS update neconformitate');
+    return result.data ? mapNeconformitate(result.data) : null;
+  },
+
   async resolve(id: string, resolution: string): Promise<void> {
     const client = getAwsDataClient() as any;
     const existing = await client.models.Neconformitate.get({ id });

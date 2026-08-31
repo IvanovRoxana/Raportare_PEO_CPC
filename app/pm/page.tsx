@@ -90,7 +90,9 @@ import {
   filterSharedDeliverablesForScope,
   resolveDataAccessScope,
 } from '@/lib/access-control';
+import { isSharedRelationPendingPmReciprocity } from '@/lib/document-sharing';
 import {
+  getEventDateConflictActivities,
   getEventDocumentationStatus,
   isActivityEventForDocumentation,
 } from '@/lib/event-documentation';
@@ -100,7 +102,10 @@ import {
   PM_CLARIFICATION_REALERT_AUDIT_ACTION,
 } from '@/lib/pm-clarifications';
 import { buildPmClarificationThreads } from '@/lib/pm-clarification-flow';
+import { buildReportCorrectionStatusUpdate } from '@/lib/report-correction-flow';
+import { isPmDeliverableInMonth } from '@/lib/pm-deliverable-status';
 import { buildOpisXlsxBlob, buildOpisXlsxFilename } from '@/lib/opis-xls-export';
+import { buildPontajExportPayload } from '@/lib/pontaj-export-payload';
 import { isActivePmUnlockRequest, isAutoResolvedPmUnlockRequest } from '@/lib/pm-unlock-status';
 import {
   buildPmApprovedDeliverableNotification,
@@ -162,6 +167,31 @@ function triggerDownload(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
+function getFilenameFromContentDisposition(disposition: string, fallbackName: string) {
+  const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/);
+  if (utf8Match?.[1]) return decodeURIComponent(utf8Match[1]);
+  const asciiMatch = disposition.match(/filename="?([^";]+)"?/);
+  return asciiMatch?.[1] || fallbackName;
+}
+
+function financialHourlyRateStorageKey(month: number, year: number) {
+  return `financial-peo-hourly-rates-${year}-${String(month + 1).padStart(2, '0')}`;
+}
+
+function getStoredFinancialHourlyRate(expert: Expert, month: number, year: number) {
+  if (typeof window === 'undefined') return undefined;
+  try {
+    const storedRates = window.localStorage.getItem(financialHourlyRateStorageKey(month, year));
+    if (!storedRates) return undefined;
+    const parsed = JSON.parse(storedRates) as Record<string, number | string | undefined>;
+    const value = parsed[expert.id] ?? parsed[expert.name];
+    const numeric = typeof value === 'string' ? Number(value.replace(',', '.')) : Number(value);
+    return Number.isFinite(numeric) && numeric > 0 ? numeric : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export default function PMDashboard() {
   const router = useRouter();
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
@@ -174,6 +204,7 @@ export default function PMDashboard() {
   const [reviewFocus, setReviewFocus] = useState<{ activityId?: string; documentId?: string; issueType?: string } | null>(null);
   const [activeAlertFilter, setActiveAlertFilter] = useState<'title_mismatch' | 'pm_unlock_requests' | 'shared_deliverables' | 'event_documents' | 'all'>('all');
   const [isExportingOpisTotal, setIsExportingOpisTotal] = useState(false);
+  const [exportingPontajExpertId, setExportingPontajExpertId] = useState<string | null>(null);
   const [localDocumentClarificationThreads, setLocalDocumentClarificationThreads] = useState<PmClarificationThread[]>([]);
   const [pmExceptionOpen, setPmExceptionOpen] = useState(false);
   const [pmExceptionType, setPmExceptionType] = useState<'CO' | 'CM' | 'Altele'>('CO');
@@ -217,7 +248,7 @@ export default function PMDashboard() {
   );
   const { neconformitati, isLoading: neconformitatiLoading } = useNeconformitati(verification?.id || null);
   const { neconformitati: reviewNeconformitati } = useNeconformitati(reviewVerification?.id || null);
-  const { create: createNeconformitate, resolve: resolveNeconformitate, remove: removeNeconformitate } = useNeconformitateMutations();
+  const { create: createNeconformitate, update: updateNeconformitate, resolve: resolveNeconformitate, remove: removeNeconformitate } = useNeconformitateMutations();
   const { notes, isLoading: notesLoading } = useNotes(verification?.id || null);
   const { create: createNote, update: updateNote, remove: removeNote } = useNoteMutations();
   const { create: createActivity, update: updateActivity } = useActivityMutations();
@@ -292,8 +323,9 @@ export default function PMDashboard() {
     [allAuditLogs, dataAccessScope]
   );
   const documents = useMemo(
-    () => filterDocumentsForScope(allDocuments, dataAccessScope),
-    [allDocuments, dataAccessScope]
+    () => filterDocumentsForScope(allDocuments, dataAccessScope)
+      .filter((documentMeta) => isPmDeliverableInMonth(documentMeta, selectedMonth, selectedYear)),
+    [allDocuments, dataAccessScope, selectedMonth, selectedYear]
   );
   const sharedDeliverables = useMemo(
     () => filterSharedDeliverablesForScope(allSharedDeliverables, dataAccessScope),
@@ -434,17 +466,25 @@ export default function PMDashboard() {
   const setMonthlyStatus = async (status: ReportStatus['status'], pmNotes?: string) => {
     if (!selectedExpertId || !canManagePmReview) return;
 
-    await updateReportStatus({
-      expertId: selectedExpertId,
-      year: selectedYear,
-      month: selectedMonth,
-      status,
-      sentDate: reportStatus?.sentDate,
-      approvalDate: status === 'approved' ? new Date().toISOString() : reportStatus?.approvalDate,
-      expertAccessApproved: reportStatus?.expertAccessApproved ?? false,
-      expertAccessApprovedAt: reportStatus?.expertAccessApprovedAt,
-      pmNotes,
-    });
+    await updateReportStatus(status === 'clarifications'
+      ? buildReportCorrectionStatusUpdate({
+          currentStatus: reportStatus,
+          expertId: selectedExpertId,
+          year: selectedYear,
+          month: selectedMonth,
+          note: pmNotes || 'Clarificari solicitate de PM.',
+        })
+      : {
+          expertId: selectedExpertId,
+          year: selectedYear,
+          month: selectedMonth,
+          status,
+          sentDate: reportStatus?.sentDate,
+          approvalDate: status === 'approved' ? new Date().toISOString() : reportStatus?.approvalDate,
+          expertAccessApproved: reportStatus?.expertAccessApproved ?? false,
+          expertAccessApprovedAt: reportStatus?.expertAccessApprovedAt,
+          pmNotes,
+        });
 
     if (status === 'approved') {
       await notifyByEmail(buildPmApprovedMonthNotification({
@@ -627,8 +667,27 @@ export default function PMDashboard() {
     const note = window.prompt('Ce clarificări solicitați expertului?');
     if (note === null) return;
     const pmNote = note.trim() || 'Clarificări solicitate de PM.';
+    const wasApproved = reportStatus?.status === 'approved';
     await setMonthlyStatus('clarifications', pmNote);
     await recordClarificationAudit({ expert: selectedExpert, note: pmNote });
+    if (wasApproved) {
+      await createAuditLog({
+        actionType: 'pm_report_reopened_for_correction',
+        actorId: currentUser?.id || currentUser?.email || 'pm',
+        actorName: currentUser?.displayName || currentUser?.email || 'PM',
+        actorRole: currentUser?.roles?.join(',') || 'pm',
+        affectedExpertId: selectedExpert.id,
+        affectedExpertName: selectedExpert.name,
+        projectCode: selectedExpert.projectCode,
+        month: selectedMonth,
+        year: selectedYear,
+        fieldName: 'reportStatus.status',
+        oldValue: 'approved',
+        newValue: 'clarifications',
+        justification: pmNote,
+        source: 'manual',
+      });
+    }
     await notifyByEmail(buildPmRequestedClarificationNotification({
       expert: selectedExpert,
       month: selectedMonth,
@@ -647,17 +706,25 @@ export default function PMDashboard() {
     if (!reviewExpertId || !canManagePmReview) return;
     const currentStatus = reviewReportStatus || monthlyReportStatuses.find((item) => item.expertId === reviewExpertId);
 
-    await updateReviewReportStatus({
-      expertId: reviewExpertId,
-      year: selectedYear,
-      month: selectedMonth,
-      status,
-      sentDate: currentStatus?.sentDate,
-      approvalDate: status === 'approved' ? new Date().toISOString() : currentStatus?.approvalDate,
-      expertAccessApproved: currentStatus?.expertAccessApproved ?? false,
-      expertAccessApprovedAt: currentStatus?.expertAccessApprovedAt,
-      pmNotes,
-    });
+    await updateReviewReportStatus(status === 'clarifications'
+      ? buildReportCorrectionStatusUpdate({
+          currentStatus,
+          expertId: reviewExpertId,
+          year: selectedYear,
+          month: selectedMonth,
+          note: pmNotes || 'Clarificari solicitate de PM.',
+        })
+      : {
+          expertId: reviewExpertId,
+          year: selectedYear,
+          month: selectedMonth,
+          status,
+          sentDate: currentStatus?.sentDate,
+          approvalDate: status === 'approved' ? new Date().toISOString() : currentStatus?.approvalDate,
+          expertAccessApproved: currentStatus?.expertAccessApproved ?? false,
+          expertAccessApprovedAt: currentStatus?.expertAccessApprovedAt,
+          pmNotes,
+        });
 
     if (status === 'approved' && reviewExpert) {
       await notifyByEmail(buildPmApprovedMonthNotification({
@@ -672,9 +739,28 @@ export default function PMDashboard() {
     const note = window.prompt('Ce clarificari soliciti expertului pentru aceasta raportare?');
     if (note === null) return;
     const pmNote = note.trim() || 'Clarificari solicitate de PM.';
+    const wasApproved = activeReviewReportStatus?.status === 'approved';
     await setReviewMonthlyStatus('clarifications', pmNote);
     if (reviewExpert) {
       await recordClarificationAudit({ expert: reviewExpert, note: pmNote });
+      if (wasApproved) {
+        await createAuditLog({
+          actionType: 'pm_report_reopened_for_correction',
+          actorId: currentUser?.id || currentUser?.email || 'pm',
+          actorName: currentUser?.displayName || currentUser?.email || 'PM',
+          actorRole: currentUser?.roles?.join(',') || 'pm',
+          affectedExpertId: reviewExpert.id,
+          affectedExpertName: reviewExpert.name,
+          projectCode: reviewExpert.projectCode,
+          month: selectedMonth,
+          year: selectedYear,
+          fieldName: 'reportStatus.status',
+          oldValue: 'approved',
+          newValue: 'clarifications',
+          justification: pmNote,
+          source: 'manual',
+        });
+      }
       await notifyByEmail(buildPmRequestedClarificationNotification({
         expert: reviewExpert,
         month: selectedMonth,
@@ -740,18 +826,17 @@ export default function PMDashboard() {
     const pmNote = note.trim() || `Clarificari solicitate pentru documentul ${documentMeta.originalFileName}.`;
     const expert = visibleExperts.find((item) => item.id === documentMeta.uploadedByExpertId);
     const currentStatus = monthlyReportStatuses.find((item) => item.expertId === documentMeta.uploadedByExpertId);
+    const wasApproved = currentStatus?.status === 'approved';
 
     try {
       await updateReportStatus({
-        expertId: documentMeta.uploadedByExpertId,
-        year: selectedYear,
-        month: selectedMonth,
-        status: 'clarifications',
-        sentDate: currentStatus?.sentDate,
-        approvalDate: currentStatus?.approvalDate,
-        expertAccessApproved: currentStatus?.expertAccessApproved ?? false,
-        expertAccessApprovedAt: currentStatus?.expertAccessApprovedAt,
-        pmNotes: pmNote,
+        ...buildReportCorrectionStatusUpdate({
+          currentStatus,
+          expertId: documentMeta.uploadedByExpertId,
+          year: selectedYear,
+          month: selectedMonth,
+          note: pmNote,
+        }),
       });
 
       const audit = await recordClarificationAudit({
@@ -763,6 +848,24 @@ export default function PMDashboard() {
         note: pmNote,
         fieldName: `document:${documentMeta.id}`,
       });
+      if (wasApproved) {
+        await createAuditLog({
+          actionType: 'pm_report_reopened_for_correction',
+          actorId: currentUser?.id || currentUser?.email || 'pm',
+          actorName: currentUser?.displayName || currentUser?.email || 'PM',
+          actorRole: currentUser?.roles?.join(',') || 'pm',
+          affectedExpertId: documentMeta.uploadedByExpertId,
+          affectedExpertName: expert?.name || documentMeta.uploadedByExpertName,
+          projectCode: expert?.projectCode || documentMeta.projectId,
+          month: selectedMonth,
+          year: selectedYear,
+          fieldName: `document:${documentMeta.id}:reportStatus.status`,
+          oldValue: 'approved',
+          newValue: 'clarifications',
+          justification: pmNote,
+          source: 'manual',
+        });
+      }
 
       setLocalDocumentClarificationThreads((current) => [
         {
@@ -904,6 +1007,43 @@ export default function PMDashboard() {
     }
   };
 
+  const resolveNeconformitateExpertId = (item: Partial<Neconformitate>) => {
+    if (item.affectedExpertId) return item.affectedExpertId;
+    const expertName = item.affectedExpert?.trim().toLowerCase();
+    if (!expertName) return selectedExpertId || selectedExpert.id;
+    return visibleExperts.find((expert) => expert.name.toLowerCase() === expertName || expert.id === item.affectedExpert)?.id
+      || selectedExpertId
+      || selectedExpert.id;
+  };
+
+  const createPmNeconformitate = async (item: Omit<Neconformitate, 'id' | 'createdAt'>) => {
+    const created = await createNeconformitate({
+      ...item,
+      verificationId: verification?.id,
+      affectedExpertId: resolveNeconformitateExpertId(item),
+    });
+    return created;
+  };
+
+  const updatePmNeconformitate = async (id: string, updates: Partial<Omit<Neconformitate, 'id' | 'createdAt'>>) => {
+    const current = localNeconformitati.find((item) => item.id === id);
+    const updated = await updateNeconformitate(id, current?.verificationId || verification?.id, {
+      ...updates,
+      affectedExpertId: resolveNeconformitateExpertId({ ...current, ...updates }),
+    });
+    return updated;
+  };
+
+  const resolvePmNeconformitate = async (id: string, resolution: string) => {
+    const current = localNeconformitati.find((item) => item.id === id);
+    await resolveNeconformitate(id, current?.verificationId || verification?.id || '', resolution);
+  };
+
+  const deletePmNeconformitate = async (id: string) => {
+    const current = localNeconformitati.find((item) => item.id === id);
+    await removeNeconformitate(id, current?.verificationId || verification?.id || '');
+  };
+
   // Handle neconformitati changes
   const handleNeconformitatiChange = async (newData: Neconformitate[]) => {
     setLocalNeconformitati(newData);
@@ -966,7 +1106,7 @@ export default function PMDashboard() {
   }, [clarificationThreadsByExpertId, localDocumentClarificationThreads, selectedMonth, selectedYear]);
   const pendingSharedDeliverables = useMemo(() => {
     return sharedDeliverables
-      .filter((relation) => relation.status === 'pending_registration' || relation.status === 'ignored_by_target')
+      .filter((relation) => isSharedRelationPendingPmReciprocity(relation, sharedDeliverables))
       .map((relation) => {
         const sourceActivityId = relation.sourceActivityId || relation.documentId.replace(/^activity:/, '');
         return {
@@ -1096,11 +1236,15 @@ export default function PMDashboard() {
       });
   }, [dashboardRowByExpertId, monthActivities, monthlyReportStatuses, visibleExperts]);
   const eventDocumentIssues = useMemo(() => {
-    return monthActivities.filter((activity) => {
+    const missingDocumentation = monthActivities.filter((activity) => {
       if (!isActivityEventForDocumentation(activity, activityCatalog)) return false;
       const deliverables = activity.deliverables || [];
       return !getEventDocumentationStatus(deliverables).complete;
     });
+    const dateConflicts = getEventDateConflictActivities(monthActivities, activityCatalog);
+    return Array.from(new Map(
+      [...missingDocumentation, ...dateConflicts].map((activity) => [activity.id, activity]),
+    ).values());
   }, [activityCatalog, monthActivities]);
   const titleIssues = useMemo(
     () => documents.filter((document) => document.titleMatch === false || document.titleCheckStatus === 'mismatch'),
@@ -1216,6 +1360,41 @@ export default function PMDashboard() {
     }
   };
 
+  const handleDownloadExpertPontaj = async (expert: Expert) => {
+    setExportingPontajExpertId(expert.id);
+    try {
+      const expertActivities = monthActivities.filter((activity) => activity.expertId === expert.id);
+      const expertConcurrentProjects = concurrentProjects.filter((project) => project.expertId === expert.id);
+      const expertProjectIds = new Set(expertConcurrentProjects.map((project) => project.id));
+      const expertConcurrentEntries = concurrentTimesheetEntries.filter(
+        (entry) => entry.expertId === expert.id || expertProjectIds.has(entry.concurrentProjectId),
+      );
+      const response = await fetch('/api/export/pontaj', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(buildPontajExportPayload({
+          kind: 'peo',
+          expert: { ...expert, hourlyRate: getStoredFinancialHourlyRate(expert, selectedMonth, selectedYear) },
+          activities: expertActivities,
+          concurrentProjects: expertConcurrentProjects,
+          concurrentTimesheetEntries: expertConcurrentEntries,
+          month: selectedMonth,
+          year: selectedYear,
+        })),
+      });
+      if (!response.ok) throw new Error(`Exportul pontajului a eșuat. Status HTTP: ${response.status}`);
+      const fallbackName = `Pontaj_PEO_${expert.name}_${getMonthName(selectedMonth)}_${selectedYear}.xlsx`;
+      triggerDownload(
+        await response.blob(),
+        getFilenameFromContentDisposition(response.headers.get('Content-Disposition') || '', fallbackName),
+      );
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Exportul pontajului a eșuat.');
+    } finally {
+      setExportingPontajExpertId(null);
+    }
+  };
+
   const months = Array.from({ length: 12 }, (_, i) => ({
     value: i,
     label: getMonthName(i),
@@ -1311,6 +1490,7 @@ export default function PMDashboard() {
         resolvedPmUnlockRequests={resolvedPmUnlockRequests}
         eventDocumentIssues={eventDocumentIssues}
         isExportingOpisTotal={isExportingOpisTotal}
+        exportingPontajExpertId={exportingPontajExpertId}
         onOpenDossier={openReviewReport}
         onOpenDossierById={openReviewReportById}
         onApproveMonthAccessRequest={approveMonthAccessRequest}
@@ -1320,6 +1500,7 @@ export default function PMDashboard() {
         onRealertClarification={realertClarification}
         onApprovePmUnlock={approvePmUnlockRequest}
         onDownloadTotalOpisXls={handleDownloadTotalOpisXls}
+        onDownloadExpertPontaj={handleDownloadExpertPontaj}
         fallbackCatalog={fallbackActivityCatalog as ActivityCatalog[]}
         onEligibilityGovernanceAudit={recordEligibilityGovernanceAudit}
       />
@@ -1787,7 +1968,14 @@ export default function PMDashboard() {
           )}
 
           <TabsContent value="neconformitati">
-            <NeconformitatiTab data={localNeconformitati} onDataChange={handleNeconformitatiChange} />
+            <NeconformitatiTab
+              data={localNeconformitati}
+              onDataChange={handleNeconformitatiChange}
+              onCreate={createPmNeconformitate}
+              onUpdate={updatePmNeconformitate}
+              onResolve={resolvePmNeconformitate}
+              onDelete={deletePmNeconformitate}
+            />
           </TabsContent>
 
           <TabsContent value="note">

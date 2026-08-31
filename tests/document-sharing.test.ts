@@ -12,8 +12,10 @@ import {
   filterPendingSharedDeliverablesNotCoveredByActivity,
   filterSharedRelationsForMonths,
   findDuplicateCandidates,
+  getSharedRelationReciprocalStatus,
   hashFirstPageText,
   isDeliverableIncludedInExpertExport,
+  isSharedRelationPendingPmReciprocity,
   markSharedDeliverableRegistered,
   sha256Hex,
 } from '../lib/document-sharing.ts';
@@ -513,4 +515,65 @@ test('returneaza avertizarea la expertul initial cand activitatea comuna este ig
 
   assert.equal(returnedAlerts.length, 1);
   assert.match(returnedAlerts[0].message, /Expert Doi/);
+});
+
+test('PM vede doar colaborarile fara confirmare reciproca', () => {
+  const relations = [
+    {
+      id: 'pending',
+      documentId: 'activity:a1',
+      sourceActivityId: 'a1',
+      sourceExpertId: 'expert-1',
+      targetExpertId: 'expert-2',
+      status: 'pending_registration' as const,
+    },
+    {
+      id: 'registered',
+      documentId: 'activity:a2',
+      sourceActivityId: 'a2',
+      sourceExpertId: 'expert-1',
+      targetExpertId: 'expert-2',
+      status: 'registered' as const,
+    },
+    {
+      id: 'ignored',
+      documentId: 'activity:a3',
+      sourceActivityId: 'a3',
+      sourceExpertId: 'expert-1',
+      targetExpertId: 'expert-2',
+      status: 'ignored_by_target' as const,
+    },
+  ];
+
+  assert.equal(getSharedRelationReciprocalStatus(relations[0], relations), 'pending_confirmation');
+  assert.equal(getSharedRelationReciprocalStatus(relations[1], relations), 'reciprocated');
+  assert.equal(getSharedRelationReciprocalStatus(relations[2], relations), 'ignored_by_target');
+  assert.deepEqual(
+    relations.filter((relation) => isSharedRelationPendingPmReciprocity(relation, relations)).map((relation) => relation.id),
+    ['pending', 'ignored'],
+  );
+});
+
+test('PM exclude relatia pendinte daca exista confirmare inversa inregistrata', () => {
+  const relations = [
+    {
+      id: 'source-to-target',
+      documentId: 'activity:a1',
+      sourceActivityId: 'a1',
+      sourceExpertId: 'expert-1',
+      targetExpertId: 'expert-2',
+      status: 'pending_registration' as const,
+    },
+    {
+      id: 'target-to-source',
+      documentId: 'activity:a1-copy',
+      sourceActivityId: 'a1',
+      sourceExpertId: 'expert-2',
+      targetExpertId: 'expert-1',
+      status: 'registered' as const,
+    },
+  ];
+
+  assert.equal(getSharedRelationReciprocalStatus(relations[0], relations), 'reciprocated');
+  assert.equal(isSharedRelationPendingPmReciprocity(relations[0], relations), false);
 });

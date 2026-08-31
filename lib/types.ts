@@ -223,6 +223,7 @@ export type AuditActionType =
   | 'pm_hours_generated'
   | 'pm_hours_regenerated'
   | 'pm_clarification_realerted'
+  | 'pm_report_reopened_for_correction'
   | 'expert_deactivated'
   | 'expert_reactivated'
   | 'expert_role_updated'
