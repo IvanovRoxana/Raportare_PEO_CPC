@@ -570,6 +570,8 @@ test('formularul trimite toate livrabilele incarcate din grupul activitatii la e
 test('poarta de text pentru eligibilitate verifica toate livrabilele grupului activitatii', () => {
   assert.match(deliverableItemSource, /function getEligibilityDeliverables\(deliverable: DeliverableSlot, relatedDeliverables\?: DeliverableSlot\[\]\)/);
   assert.match(deliverableItemSource, /eligibilityDeliverables\.some\(\(item\) => hasEnoughExtractedTextForEligibility\(item, expertCategory\)\)/);
+  assert.match(deliverableItemSource, /function canAttemptTextExtractionFromStoredFile/);
+  assert.match(deliverableItemSource, /eligibilityDeliverables\.some\(canAttemptTextExtractionFromStoredFile\)/);
   assert.match(deliverableItemSource, /const eligibilityDeliverables = getEligibilityDeliverables\(deliverable, relatedDeliverables\)/);
   assert.match(deliverableItemSource, /Textul extras din livrabilele incarcate pentru grupul activitatii/);
   assert.match(deliverableItemSource, /function isTextInsufficientEligibilityCheck/);
@@ -577,6 +579,17 @@ test('poarta de text pentru eligibilitate verifica toate livrabilele grupului ac
   assert.match(eligibilityRouteSource, /const hasSufficientExtractedEvidence = eligibilityDocuments\.some/);
   assert.match(eligibilityRouteSource, /hasSufficientDeliverableEvidenceForEligibility\(\{/);
   assert.doesNotMatch(eligibilityRouteSource, /if \(trimmedExtractedText\.length < 80\)/);
+});
+
+test('verificarea eligibilitatii reciteste fisierul cand textul lipseste din slot', () => {
+  assert.match(deliverableItemSource, /async function getDeliverableFileForTextExtraction/);
+  assert.match(deliverableItemSource, /getSecureDocumentUrl\(\{/);
+  assert.match(deliverableItemSource, /async function extractDeliverableTextForEligibility/);
+  assert.match(deliverableItemSource, /const extractionPatch = await extractDeliverableTextForEligibility\(deliverable, expertCategory\)/);
+  assert.match(deliverableItemSource, /const eligibilityDeliverable = extractionPatch \? \{ \.\.\.deliverable, \.\.\.extractionPatch \} : deliverable/);
+  assert.match(deliverableItemSource, /getEligibilityDeliverables\(deliverable, relatedDeliverables\)\.map\(async \(item\) =>/);
+  assert.match(deliverableItemSource, /buildEligibilityDocumentPayload\(eligibilityDeliverable, selectedActivityId \|\| subActivity, true\)/);
+  assert.match(deliverableItemSource, /buildEligibilityDocumentPayload\(item, activityGroupId, item\.id === deliverable\.id\)/);
 });
 
 test('rezultatul eligibilitatii pastreaza metadatele livrabilelor analizate', () => {

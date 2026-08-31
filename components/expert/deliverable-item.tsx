@@ -13,6 +13,7 @@ import { hasSufficientDeliverableEvidenceForEligibility } from '@/lib/deliverabl
 import { mergeEligibilityCheckWithPmUnlockTracking } from '@/lib/pm-unlock-status';
 import { applyAutomaticTitleSuggestion, formatTitleFromFilename, shouldUseAiTitleSuggestion, suggestTitleFromFirstPage, validateDeclaredTitleInDocumentText } from '@/lib/title-suggestion';
 import { getDocumentAuditTitle, hashFirstPageText, normalizeDocumentTextForFingerprint, sha256Hex, type DuplicateIssueType } from '@/lib/document-sharing';
+import { getSecureDocumentUrl } from '@/lib/document-retrieval';
 import type { ActivityCatalog } from '@/lib/types';
 
 export interface DeliverableDuplicateInfo {
@@ -83,9 +84,26 @@ function getEligibilityDeliverables(deliverable: DeliverableSlot, relatedDeliver
   ).filter((item) => item.uploaded && !item.isPhoto);
 }
 
+function canAttemptTextExtractionFromStoredFile(deliverable: DeliverableSlot) {
+  if (!deliverable.fileData && !deliverable.s3Key) return false;
+
+  const fileName = (deliverable.filename || deliverable.name || '').toLowerCase();
+  const fileType = deliverable.fileType || '';
+  return isImageFile(fileName)
+    || fileType.startsWith('image/')
+    || fileName.endsWith('.pdf')
+    || fileType === 'application/pdf'
+    || fileName.endsWith('.docx')
+    || fileName.endsWith('.xlsx')
+    || fileName.endsWith('.xls')
+    || fileName.endsWith('.html')
+    || fileName.endsWith('.htm');
+}
+
 function getTextExtractionGateReason(deliverable: DeliverableSlot, relatedDeliverables?: DeliverableSlot[], expertCategory?: string) {
   const eligibilityDeliverables = getEligibilityDeliverables(deliverable, relatedDeliverables);
   if (eligibilityDeliverables.some((item) => hasEnoughExtractedTextForEligibility(item, expertCategory))) return null;
+  if (eligibilityDeliverables.some(canAttemptTextExtractionFromStoredFile)) return null;
   if (eligibilityDeliverables.length > 1) {
     return 'Textul extras din livrabilele incarcate pentru grupul activitatii este prea scurt pentru verificarea AI. Reincarca documentele ca PDF/DOCX cu text selectabil sau exporta-le cu OCR.';
   }
@@ -103,6 +121,100 @@ function getTextExtractionGateReason(deliverable: DeliverableSlot, relatedDelive
     return 'Nu exista text extras suficient din prezentare. Exporta prezentarea in PDF pentru verificare AI.';
   }
   return 'Nu exista text extras suficient din livrabil. Reincarca documentul ca PDF/DOCX cu text selectabil sau cu imagini clare pentru OCR.';
+}
+
+function blobFromDataUrl(dataUrl: string, fallbackType: string) {
+  const [header, data] = dataUrl.split(',');
+  const contentType = header.match(/data:(.*?);base64/)?.[1] || fallbackType || 'application/octet-stream';
+  const binary = atob(data);
+  const bytes = new Uint8Array(binary.length);
+
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+
+  return new Blob([bytes], { type: contentType });
+}
+
+async function getDeliverableFileForTextExtraction(deliverable: DeliverableSlot) {
+  const fileName = deliverable.filename || deliverable.name || `livrabil-${deliverable.id}`;
+  const fileType = deliverable.fileType || 'application/octet-stream';
+
+  if (deliverable.fileData) {
+    return new File([blobFromDataUrl(deliverable.fileData, fileType)], fileName, { type: fileType });
+  }
+
+  if (!deliverable.s3Key) return null;
+
+  const secureDocument = await getSecureDocumentUrl({
+    s3Key: deliverable.s3Key,
+    originalFileName: fileName,
+  });
+  const response = await fetch(secureDocument.url);
+  if (!response.ok) {
+    throw new Error(`Nu am putut descarca livrabilul pentru citire (${response.status}).`);
+  }
+
+  return new File([await response.blob()], fileName, { type: fileType });
+}
+
+async function extractDeliverableTextForEligibility(deliverable: DeliverableSlot, expertCategory?: string): Promise<Partial<DeliverableSlot> | null> {
+  if (hasEnoughExtractedTextForEligibility(deliverable, expertCategory)) return null;
+
+  const file = await getDeliverableFileForTextExtraction(deliverable);
+  if (!file) return null;
+
+  const fileName = file.name || deliverable.filename || deliverable.name || '';
+  const lowerFileName = fileName.toLowerCase();
+  const isPhoto = isImageFile(fileName) || file.type.startsWith('image/');
+  const isPdf = lowerFileName.endsWith('.pdf') || file.type === 'application/pdf';
+  const isWordDocument = lowerFileName.endsWith('.docx') || lowerFileName.endsWith('.doc');
+  const isSpreadsheet = lowerFileName.endsWith('.xlsx') || lowerFileName.endsWith('.xls');
+  const isHtml = lowerFileName.endsWith('.html') || lowerFileName.endsWith('.htm');
+
+  let docText: string | null = null;
+  let firstPageText: string | null = null;
+  let textExtractionSource: DeliverableSlot['textExtractionSource'];
+
+  if (isPhoto) {
+    const ocrResult = await extractImageTextWithSource(file);
+    firstPageText = ocrResult.text;
+    docText = ocrResult.text;
+    textExtractionSource = ocrResult.source;
+  } else if (isWordDocument) {
+    firstPageText = await extractDocxFirstPageText(file);
+    const docxResult = await extractDocxTextWithSource(file);
+    docText = docxResult.text || firstPageText;
+    textExtractionSource = docxResult.source || (firstPageText ? 'native' : undefined);
+  } else if (isPdf) {
+    const pdfResult = await extractPdfFirstPageTextWithSource(file);
+    const fullPdfResult = await extractPdfTextWithSource(file);
+    firstPageText = pdfResult.text || fullPdfResult.text?.slice(0, 5000) || null;
+    docText = fullPdfResult.text || firstPageText;
+    textExtractionSource = fullPdfResult.source || pdfResult.source;
+  } else if (isSpreadsheet) {
+    const spreadsheetResult = await extractXlsxTextWithSource(file);
+    firstPageText = spreadsheetResult.text?.slice(0, 5000) || null;
+    docText = spreadsheetResult.text;
+    textExtractionSource = spreadsheetResult.source;
+  } else if (isHtml) {
+    const htmlResult = await extractHtmlTextWithSource(file);
+    firstPageText = htmlResult.text?.slice(0, 5000) || null;
+    docText = htmlResult.text;
+    textExtractionSource = htmlResult.source;
+  }
+
+  const readableText = firstPageText || docText;
+  if (!readableText) return null;
+
+  return {
+    docText,
+    firstPageText,
+    textExtractionSource,
+    firstPageTextHash: await hashFirstPageText(readableText),
+    contentFingerprint: normalizeDocumentTextForFingerprint(readableText).slice(0, 500),
+    duplicateStatus: 'fingerprinted',
+  };
 }
 
 function buildEligibilityDocumentPayload(deliverable: DeliverableSlot, activityGroupId: string, isPrimary: boolean) {
@@ -569,20 +681,25 @@ export function DeliverableItem({
       },
     });
     try {
-      const extractedText = (deliverable.docText || deliverable.firstPageText || '').slice(0, 12000);
+      const extractionPatch = await extractDeliverableTextForEligibility(deliverable, expertCategory);
+      const eligibilityDeliverable = extractionPatch ? { ...deliverable, ...extractionPatch } : deliverable;
+      if (extractionPatch) {
+        onUpdate(extractionPatch);
+      }
+      const extractedText = (eligibilityDeliverable.docText || eligibilityDeliverable.firstPageText || '').slice(0, 12000);
       const response = await fetch('/api/ai/check-deliverable-eligibility', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           documentTitle: getDocumentAuditTitle({
-            ...deliverable,
-            fileName: deliverable.filename || deliverable.name,
-            originalFileName: deliverable.filename || deliverable.name,
+            ...eligibilityDeliverable,
+            fileName: eligibilityDeliverable.filename || eligibilityDeliverable.name,
+            originalFileName: eligibilityDeliverable.filename || eligibilityDeliverable.name,
           }),
-          fileName: deliverable.filename || deliverable.name,
+          fileName: eligibilityDeliverable.filename || eligibilityDeliverable.name,
           extractedText,
           deliverables: [
-            buildEligibilityDocumentPayload(deliverable, selectedActivityId || subActivity, true),
+            buildEligibilityDocumentPayload(eligibilityDeliverable, selectedActivityId || subActivity, true),
           ],
           primaryDeliverableId: deliverable.id,
           activityGroupId: selectedActivityId || subActivity,
@@ -594,7 +711,7 @@ export function DeliverableItem({
           selectedActivityId: selectedActivityId || subActivity,
           currentSaCode: subActivity,
           selectedActivityName: activityTitle,
-          deliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
+          deliverableType: eligibilityDeliverable.type || eligibilityDeliverable.deliverableType || eligibilityDeliverable.slotType,
           activityCatalogCandidates,
           deliverableOptions: typeOptions,
           catalogDescription,
@@ -614,7 +731,7 @@ export function DeliverableItem({
           catalogSource,
           ruleVersionId,
           expertName,
-          textScope: deliverable.docText && deliverable.docText !== deliverable.firstPageText
+          textScope: eligibilityDeliverable.docText && eligibilityDeliverable.docText !== eligibilityDeliverable.firstPageText
             ? 'Text extras disponibil din document'
             : 'Prima pagină / începutul documentului',
         }),
@@ -1445,9 +1562,19 @@ export function DeliverableEligibilityControl({
       },
     });
     try {
-      const extractedText = (deliverable.docText || deliverable.firstPageText || '').slice(0, 12000);
       const activityGroupId = selectedActivityId || subActivity;
-      const eligibilityDeliverables = getEligibilityDeliverables(deliverable, relatedDeliverables);
+      const eligibilityDeliverables = await Promise.all(
+        getEligibilityDeliverables(deliverable, relatedDeliverables).map(async (item) => {
+          const extractionPatch = await extractDeliverableTextForEligibility(item, expertCategory);
+          const nextItem = extractionPatch ? { ...item, ...extractionPatch } : item;
+          if (item.id === deliverable.id && extractionPatch) {
+            onUpdate(extractionPatch);
+          }
+          return nextItem;
+        }),
+      );
+      const primaryEligibilityDeliverable = eligibilityDeliverables.find((item) => item.id === deliverable.id) || deliverable;
+      const extractedText = (primaryEligibilityDeliverable.docText || primaryEligibilityDeliverable.firstPageText || '').slice(0, 12000);
       const response = await fetch('/api/ai/check-deliverable-eligibility', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1463,16 +1590,16 @@ export function DeliverableEligibilityControl({
           workingGroupActivities,
           collaborators,
           documentTitle: getDocumentAuditTitle({
-            ...deliverable,
-            fileName: deliverable.filename || deliverable.name,
-            originalFileName: deliverable.filename || deliverable.name,
+            ...primaryEligibilityDeliverable,
+            fileName: primaryEligibilityDeliverable.filename || primaryEligibilityDeliverable.name,
+            originalFileName: primaryEligibilityDeliverable.filename || primaryEligibilityDeliverable.name,
           }),
-          fileName: deliverable.filename || deliverable.name,
+          fileName: primaryEligibilityDeliverable.filename || primaryEligibilityDeliverable.name,
           extractedText,
           selectedActivityId: selectedActivityId || subActivity,
           currentSaCode: subActivity,
           selectedActivityName: activityTitle,
-          deliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
+          deliverableType: primaryEligibilityDeliverable.type || primaryEligibilityDeliverable.deliverableType || primaryEligibilityDeliverable.slotType,
           activityCatalogCandidates,
           deliverableOptions: typeOptions,
           catalogDescription,
@@ -1492,7 +1619,7 @@ export function DeliverableEligibilityControl({
           catalogSource,
           ruleVersionId,
           expertName,
-          textScope: deliverable.docText && deliverable.docText !== deliverable.firstPageText
+          textScope: primaryEligibilityDeliverable.docText && primaryEligibilityDeliverable.docText !== primaryEligibilityDeliverable.firstPageText
             ? 'Text extras disponibil din document'
             : 'Prima pagina / inceputul documentului',
         }),
