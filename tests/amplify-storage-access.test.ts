@@ -16,6 +16,7 @@ test('project storage uses one non-overlapping access path', () => {
   assert.match(storageResource, /"projects\/\*"/);
   assert.match(storageResource, /"projects\/\{project_id\}\/documents\/\*"/);
   assert.doesNotMatch(storageResource, /"projects\/\{entity_id\}\//);
+  assert.doesNotMatch(storageResource, /"documents\/\*"/);
 });
 
 test('project storage retains existing authenticated and admin permissions', () => {
@@ -36,4 +37,11 @@ test('client uploads refresh authenticated storage credentials before PutObject'
     assert.match(source, /uploadAuthenticatedData/);
     assert.doesNotMatch(source, /import \{ uploadData \} from 'aws-amplify\/storage'/, filePath);
   }
+});
+
+test('expert deliverable uploads use identity-scoped storage paths', () => {
+  const activityFormSource = readFileSync('components/expert/activity-form.tsx', 'utf8');
+  assert.match(activityFormSource, /getAuthenticatedStorageIdentityId/);
+  assert.match(activityFormSource, /buildIdentityDocumentS3Key/);
+  assert.doesNotMatch(activityFormSource, /buildDocumentS3Key/);
 });

@@ -76,6 +76,17 @@ export function buildDocumentS3Key(args: {
   return `projects/${projectId}/documents/${documentId}/${fileName}`;
 }
 
+export function buildIdentityDocumentS3Key(args: {
+  identityId: string;
+  documentId: string;
+  originalFileName: string;
+}) {
+  const identityId = args.identityId.replace(/[^a-zA-Z0-9._:-]/g, '_');
+  const documentId = args.documentId.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const fileName = args.originalFileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+  return `deliverables/${identityId}/documents/${documentId}/${fileName}`;
+}
+
 export function isActivitySuggestionRelation(relation: Pick<SharedDeliverable, 'documentId'>) {
   return relation.documentId.startsWith('activity:');
 }

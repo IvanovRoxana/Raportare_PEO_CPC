@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   buildDocumentS3Key,
+  buildIdentityDocumentS3Key,
   getDocumentAuditTitle,
   buildIgnoredSharedActivityAlerts,
   buildPendingSharedActivityAlerts,
@@ -28,6 +29,17 @@ test('genereaza cheia S3 centralizata pentru document', () => {
       originalFileName: 'Raport final.pdf',
     }),
     'projects/302151/documents/doc_123/Raport_final.pdf',
+  );
+});
+
+test('genereaza cheia S3 pentru livrabile sub identitatea autentificata', () => {
+  assert.equal(
+    buildIdentityDocumentS3Key({
+      identityId: 'eu-north-1:abc/unsafe value',
+      documentId: 'doc 123',
+      originalFileName: 'Raport final.pdf',
+    }),
+    'deliverables/eu-north-1:abc_unsafe_value/documents/doc_123/Raport_final.pdf',
   );
 });
 

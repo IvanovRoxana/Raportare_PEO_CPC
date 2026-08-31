@@ -51,7 +51,7 @@ import type { Activity, Deliverable, DocumentMetadata, GrupTintaEntry, Expert, A
 import fallbackActivityCatalog from '@/data/import/activity-catalog.json';
 import { isGtExpertCategory, normalizePeoCategory } from '@/lib/peo-category';
 import { filterActivityCatalogForFormTab, getActiveGdprActivityCatalog, isActivityCatalogItemAvailableForForm, isEventActivityCatalogItem, normalizeActivityCatalogSaCode, resolveActivityDeliverableOptions, resolveExpertActivityCatalog } from '@/lib/activity-catalog-merge';
-import { buildDocumentS3Key, findDuplicateCandidates, getDocumentAuditTitle, hashFirstPageText, normalizeDocumentTextForFingerprint, sha256Hex } from '@/lib/document-sharing';
+import { buildIdentityDocumentS3Key, findDuplicateCandidates, getDocumentAuditTitle, hashFirstPageText, normalizeDocumentTextForFingerprint, sha256Hex } from '@/lib/document-sharing';
 import { getSecureDocumentUrl } from '@/lib/document-retrieval';
 import { extractDocxFirstPageText, extractDocxTextWithSource, extractHtmlTextWithSource, extractImageTextWithSource, extractPdfFirstPageTextWithSource, extractPdfTextWithSource, extractXlsxTextWithSource, isImageFile } from '@/lib/document-utils';
 import { applyAutomaticTitleSuggestion, formatTitleFromFilename, shouldUseAiTitleSuggestion, suggestTitleFromFirstPage, validateDeclaredTitleInDocumentText } from '@/lib/title-suggestion';
@@ -66,7 +66,7 @@ import { getActivityEditGroupId, isSameEditableActivity } from '@/lib/activity-e
 import { isComCommunicationMultiGroupActivity } from '@/lib/activity-multigroup-rules';
 import { hasSufficientDeliverableEvidenceForEligibility } from '@/lib/deliverable-eligibility';
 import { createActivityPeriodGroupId } from '@/lib/submit-readiness';
-import { uploadAuthenticatedData } from '@/lib/authenticated-storage';
+import { getAuthenticatedStorageIdentityId, uploadAuthenticatedData } from '@/lib/authenticated-storage';
 import {
   MAX_PONTAJ_HOURS,
   getAvailablePontajHourOptions,
@@ -1568,10 +1568,11 @@ export function ActivityForm({
     const fileHash = await sha256Hex(await blob.arrayBuffer());
     const firstPageTextHash = await hashFirstPageText(deliverable.firstPageText || deliverable.docText);
     const contentFingerprint = normalizeDocumentTextForFingerprint(deliverable.firstPageText || deliverable.docText).slice(0, 500);
+    const storageIdentityId = await getAuthenticatedStorageIdentityId();
     const projectId = expert?.projectCode || '302141';
     const projectName = expert?.projectTitle || 'Consolidarea capacitatii Concordia pentru dialog social';
-    let s3Key = buildDocumentS3Key({
-      projectId,
+    let s3Key = buildIdentityDocumentS3Key({
+      identityId: storageIdentityId,
       documentId,
       originalFileName: safeName,
     });
@@ -1589,8 +1590,8 @@ export function ActivityForm({
       if (attempt > 0) {
         await new Promise((resolve) => setTimeout(resolve, attempt * 750));
         documentId = `doc_${deliverable.id}_${Date.now()}_${attempt}`;
-        s3Key = buildDocumentS3Key({
-          projectId,
+        s3Key = buildIdentityDocumentS3Key({
+          identityId: storageIdentityId,
           documentId,
           originalFileName: safeName,
         });
