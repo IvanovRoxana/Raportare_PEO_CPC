@@ -40,13 +40,42 @@ describe('buildPmReportGroups', () => {
       row('sent', 'sent', 0),
       row('in-review', 'in_review', 1),
       row('clarifications', 'clarifications', 1),
+      row('rejected', 'rejected', 0),
       row('draft', 'draft', 0),
     ]);
 
     const counts = Object.fromEntries(groups.map((group) => [group.id, group.rows.length]));
 
     assert.equal(counts.verified_clean, 1);
+    assert.equal(counts.verified_with_observations, 1);
     assert.equal(counts.waiting_review, 2);
     assert.equal(counts.open_clarifications, 1);
+    assert.equal(counts.rejected, 1);
+  });
+
+  it('afișează o singură dată fiecare raportare non-draft', () => {
+    const rows = [
+      row('approved-clean', 'approved', 0),
+      row('approved-with-issues', 'approved', 2),
+      row('sent', 'sent', 0),
+      row('in-review', 'in_review', 1),
+      row('clarifications', 'clarifications', 1),
+      row('rejected', 'rejected', 0),
+      row('draft', 'draft', 0),
+    ];
+
+    const groupedIds = buildPmReportGroups(rows)
+      .flatMap((group) => group.rows)
+      .map((groupedRow) => groupedRow.status.id)
+      .sort();
+
+    assert.deepEqual(groupedIds, [
+      'approved-clean',
+      'approved-with-issues',
+      'clarifications',
+      'in-review',
+      'rejected',
+      'sent',
+    ]);
   });
 });

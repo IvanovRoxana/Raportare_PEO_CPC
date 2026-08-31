@@ -317,8 +317,14 @@ function ReportsView(props: PmWorkspaceProps) {
   );
 }
 
-function ReportGroup({ title, tone, rows, props }: { title: string; tone: 'emerald' | 'blue' | 'amber'; rows: PmSubmittedReportRow[]; props: PmWorkspaceProps }) {
-  const toneClass = tone === 'emerald' ? 'border-emerald-200 bg-emerald-50/30' : tone === 'blue' ? 'border-blue-200 bg-blue-50/30' : 'border-amber-200 bg-amber-50/30';
+function ReportGroup({ title, tone, rows, props }: { title: string; tone: 'emerald' | 'blue' | 'amber' | 'red'; rows: PmSubmittedReportRow[]; props: PmWorkspaceProps }) {
+  const toneClass = tone === 'emerald'
+    ? 'border-emerald-200 bg-emerald-50/30'
+    : tone === 'blue'
+      ? 'border-blue-200 bg-blue-50/30'
+      : tone === 'red'
+        ? 'border-red-200 bg-red-50/30'
+        : 'border-amber-200 bg-amber-50/30';
   return (
     <section className={`overflow-hidden rounded-lg border bg-white shadow-sm ${toneClass}`}>
       <div className="flex items-center justify-between border-b px-4 py-3"><h3 className="text-sm font-semibold">{title}</h3><Badge variant="outline">{rows.length} raportări</Badge></div>
@@ -326,6 +332,12 @@ function ReportGroup({ title, tone, rows, props }: { title: string; tone: 'emera
         {rows.length === 0 ? <div className="p-4 text-sm text-slate-500">Nu există raportări în această grupă.</div> : rows.map((row) => (
           <div key={row.status.id || row.expert.id} className="flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between">
             <div className="flex items-center gap-3"><MiniAvatar expert={row.expert} /><div><div className="font-semibold">{row.expert.name}</div><div className="text-xs text-slate-500">{row.totalHours}h pontate · {row.totalDeliverables} atașate</div></div></div>
+            {row.issuesCount > 0 ? (
+              <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-800">
+                <AlertTriangle className="h-3 w-3" />
+                {row.issuesCount} observații
+              </Badge>
+            ) : null}
             <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => props.onOpenDossier(row.expert)}><FolderOpen className="h-4 w-4" />Dosar</Button><Button size="sm" onClick={() => props.onOpenDossier(row.expert)}><Check className="h-4 w-4" />Verifică</Button></div>
           </div>
         ))}

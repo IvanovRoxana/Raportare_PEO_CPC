@@ -10,14 +10,18 @@ export type PmReportGroupRow = {
 };
 
 export type PmReportGroup = {
-  id: 'verified_clean' | 'waiting_review' | 'open_clarifications';
+  id: 'verified_clean' | 'verified_with_observations' | 'waiting_review' | 'open_clarifications' | 'rejected';
   title: string;
-  tone: 'emerald' | 'blue' | 'amber';
+  tone: 'emerald' | 'blue' | 'amber' | 'red';
   rows: PmReportGroupRow[];
 };
 
 export function isPmVerifiedWithoutIssues(row: PmReportGroupRow) {
   return row.status.status === 'approved' && row.issuesCount === 0;
+}
+
+export function isPmVerifiedWithObservations(row: PmReportGroupRow) {
+  return row.status.status === 'approved' && row.issuesCount > 0;
 }
 
 export function isPmWaitingForReview(row: PmReportGroupRow) {
@@ -28,6 +32,10 @@ export function isPmOpenClarification(row: PmReportGroupRow) {
   return row.status.status === 'clarifications';
 }
 
+export function isPmRejected(row: PmReportGroupRow) {
+  return row.status.status === 'rejected';
+}
+
 export function buildPmReportGroups(rows: PmReportGroupRow[]): PmReportGroup[] {
   return [
     {
@@ -35,6 +43,12 @@ export function buildPmReportGroups(rows: PmReportGroupRow[]): PmReportGroup[] {
       title: 'Verificate - fără neconformități',
       tone: 'emerald',
       rows: rows.filter(isPmVerifiedWithoutIssues),
+    },
+    {
+      id: 'verified_with_observations',
+      title: 'Verificate - cu observații',
+      tone: 'amber',
+      rows: rows.filter(isPmVerifiedWithObservations),
     },
     {
       id: 'waiting_review',
@@ -47,6 +61,12 @@ export function buildPmReportGroups(rows: PmReportGroupRow[]): PmReportGroup[] {
       title: 'Verificate - cu clarificări deschise',
       tone: 'amber',
       rows: rows.filter(isPmOpenClarification),
+    },
+    {
+      id: 'rejected',
+      title: 'Respinse - în așteptarea retrimiterii',
+      tone: 'red',
+      rows: rows.filter(isPmRejected),
     },
   ];
 }
