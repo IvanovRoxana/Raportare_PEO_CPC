@@ -30,6 +30,7 @@ class ColleagueOverviewRouteError extends Error {
 
 const region = outputs.auth?.aws_region || 'eu-north-1';
 const userPoolId = outputs.auth?.user_pool_id;
+const appSyncApiId = outputs.data?.url ? new URL(outputs.data.url).hostname.split('.')[0] : '';
 const cognitoEndpoint = `https://cognito-idp.${region}.amazonaws.com/`;
 const dynamoEndpoint = `https://dynamodb.${region}.amazonaws.com/`;
 const dynamoHost = `dynamodb.${region}.amazonaws.com`;
@@ -187,33 +188,18 @@ function toDdbAttribute(value: string | number): DdbAttribute {
   return typeof value === 'number' ? { N: String(value) } : { S: value };
 }
 
-async function listTableNames() {
-  const names: string[] = [];
-  let ExclusiveStartTableName: string | undefined;
-
-  do {
-    const response = await callSignedDynamo<{ TableNames?: string[]; LastEvaluatedTableName?: string }>('ListTables', {
-      ...(ExclusiveStartTableName ? { ExclusiveStartTableName } : {}),
-    });
-    names.push(...(response.TableNames || []));
-    ExclusiveStartTableName = response.LastEvaluatedTableName;
-  } while (ExclusiveStartTableName);
-
-  return names;
-}
-
 async function getTableName(modelName: 'Activity' | 'Deliverable' | 'Expert') {
   const envName = process.env[`${modelName.toUpperCase()}_TABLE_NAME`];
   if (envName) return envName;
   if (tableNameCache[modelName]) return tableNameCache[modelName];
 
-  const matches = (await listTableNames()).filter((name) => name.startsWith(`${modelName}-`));
-  if (matches.length !== 1) {
+  if (!appSyncApiId) {
     throw new ColleagueOverviewRouteError(`Nu pot identifica tabelul ${modelName} pentru newsletterul colegilor.`, 503);
   }
 
-  tableNameCache[modelName] = matches[0];
-  return matches[0];
+  const tableName = `${modelName}-${appSyncApiId}-NONE`;
+  tableNameCache[modelName] = tableName;
+  return tableName;
 }
 
 async function scanTable<T>(
