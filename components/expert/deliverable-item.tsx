@@ -11,7 +11,7 @@ import { extractDocxFirstPageText, extractDocxTextWithSource, extractHtmlTextWit
 import { DELIVERABLE_ELIGIBILITY_UI_MESSAGE, isDeliverableEligibilityCheckEnabledClient } from '@/lib/feature-flags';
 import { hasSufficientDeliverableEvidenceForEligibility } from '@/lib/deliverable-eligibility';
 import { mergeEligibilityCheckWithPmUnlockTracking } from '@/lib/pm-unlock-status';
-import { applyAutomaticTitleSuggestion, formatTitleFromFilename, shouldUseAiTitleSuggestion, suggestTitleFromFirstPage, validateDeclaredTitleOnFirstPage } from '@/lib/title-suggestion';
+import { applyAutomaticTitleSuggestion, formatTitleFromFilename, shouldUseAiTitleSuggestion, suggestTitleFromFirstPage, validateDeclaredTitleInDocumentText } from '@/lib/title-suggestion';
 import { getDocumentAuditTitle, hashFirstPageText, normalizeDocumentTextForFingerprint, sha256Hex, type DuplicateIssueType } from '@/lib/document-sharing';
 import type { ActivityCatalog } from '@/lib/types';
 
@@ -430,8 +430,8 @@ export function DeliverableItem({
       });
       const validation = isPhoto || !titleSuggestionPatch.declaredTitle
         ? null
-        : validateDeclaredTitleOnFirstPage({
-            firstPageText: firstPageText || docText,
+        : validateDeclaredTitleInDocumentText({
+            documentText: firstPageText || docText,
             declaredTitle: titleSuggestionPatch.declaredTitle,
             titleSource: titleSuggestionPatch.titleSource,
           });
@@ -678,15 +678,15 @@ export function DeliverableItem({
   };
 
   const validateTitle = (title: string, source: DeliverableSlot['titleSource']) =>
-    validateDeclaredTitleOnFirstPage({
-      firstPageText: deliverable.firstPageText || deliverable.docText,
+    validateDeclaredTitleInDocumentText({
+      documentText: deliverable.firstPageText || deliverable.docText,
       declaredTitle: title,
       titleSource: source,
     });
 
   const validateTitleForConfirmation = (title: string, source: DeliverableSlot['titleSource']) =>
-    validateDeclaredTitleOnFirstPage({
-      firstPageText: deliverable.firstPageText || deliverable.docText,
+    validateDeclaredTitleInDocumentText({
+      documentText: deliverable.firstPageText || deliverable.docText,
       declaredTitle: title,
       titleSource: source,
       allowManualConfirmationWithoutExtractedText: true,

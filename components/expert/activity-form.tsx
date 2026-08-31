@@ -54,7 +54,7 @@ import { filterActivityCatalogForFormTab, getActiveGdprActivityCatalog, isActivi
 import { buildDocumentS3Key, findDuplicateCandidates, getDocumentAuditTitle, hashFirstPageText, normalizeDocumentTextForFingerprint, sha256Hex } from '@/lib/document-sharing';
 import { getSecureDocumentUrl } from '@/lib/document-retrieval';
 import { extractDocxFirstPageText, extractDocxTextWithSource, extractHtmlTextWithSource, extractImageTextWithSource, extractPdfFirstPageTextWithSource, extractPdfTextWithSource, extractXlsxTextWithSource, isImageFile } from '@/lib/document-utils';
-import { applyAutomaticTitleSuggestion, formatTitleFromFilename, shouldUseAiTitleSuggestion, suggestTitleFromFirstPage, validateDeclaredTitleOnFirstPage } from '@/lib/title-suggestion';
+import { applyAutomaticTitleSuggestion, formatTitleFromFilename, shouldUseAiTitleSuggestion, suggestTitleFromFirstPage, validateDeclaredTitleInDocumentText } from '@/lib/title-suggestion';
 import {
   areActivitiesCompatibleForDeliverableGroup,
   findActivityOwningDeliverableSignature,
@@ -475,8 +475,8 @@ async function extractDeliverableTextForActivityAutofill(deliverable: Deliverabl
   });
   const titleValidation = isPhoto || !automaticTitle.declaredTitle
     ? null
-    : validateDeclaredTitleOnFirstPage({
-      firstPageText: firstPageText || docText,
+    : validateDeclaredTitleInDocumentText({
+      documentText: firstPageText || docText,
       declaredTitle: automaticTitle.declaredTitle,
       titleSource: automaticTitle.titleSource,
     });

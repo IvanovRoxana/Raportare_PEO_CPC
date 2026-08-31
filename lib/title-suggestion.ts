@@ -300,8 +300,8 @@ export function detectSuggestedTitleFromText(text?: string | null) {
   return suggestTitleFromFirstPage(text).suggestedTitle;
 }
 
-export function titleExistsInFirstPage(firstPageText: string | null | undefined, declaredTitle: string | null | undefined) {
-  const documentNorm = normalizeTitleForMatch(firstPageText || '');
+export function titleExistsInDocumentText(documentText: string | null | undefined, declaredTitle: string | null | undefined) {
+  const documentNorm = normalizeTitleForMatch(documentText || '');
   const titleNorm = normalizeTitleForMatch(declaredTitle || '');
   if (!documentNorm || !titleNorm) return false;
 
@@ -314,8 +314,8 @@ export function titleExistsInFirstPage(firstPageText: string | null | undefined,
   return matchedWords >= Math.ceil(words.length * 0.8);
 }
 
-export function validateDeclaredTitleOnFirstPage(args: {
-  firstPageText?: string | null;
+export function validateDeclaredTitleInDocumentText(args: {
+  documentText?: string | null;
   declaredTitle?: string | null;
   titleSource?: TitleSource | string;
   allowManualConfirmationWithoutExtractedText?: boolean;
@@ -328,7 +328,7 @@ export function validateDeclaredTitleOnFirstPage(args: {
     };
   }
 
-  if (!args.firstPageText) {
+  if (!args.documentText) {
     if (args.allowManualConfirmationWithoutExtractedText && normalizeSpaces(args.declaredTitle || '')) {
       return {
         titleMatch: true,
@@ -344,7 +344,7 @@ export function validateDeclaredTitleOnFirstPage(args: {
     };
   }
 
-  const matched = titleExistsInFirstPage(args.firstPageText, args.declaredTitle);
+  const matched = titleExistsInDocumentText(args.documentText, args.declaredTitle);
   return {
     titleMatch: matched,
     titleCheckStatus: matched ? 'matched' : 'mismatch',

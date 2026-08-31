@@ -5,8 +5,8 @@ import {
   detectSuggestedTitleFromText,
   firstLinesLookAdministrative,
   shouldUseAiTitleSuggestion,
-  titleExistsInFirstPage,
-  validateDeclaredTitleOnFirstPage,
+  titleExistsInDocumentText,
+  validateDeclaredTitleInDocumentText,
 } from '../lib/title-suggestion.ts';
 
 test('PDF upload text extracts the first relevant title and skips generic headers', () => {
@@ -69,10 +69,10 @@ test('does not overwrite an existing declaredTitle', () => {
 
 test('accepts suggested title and validates when it exists in the document text', () => {
   const documentText = 'Ghid de lucru pentru experti\nCapitolul 1';
-  assert.equal(titleExistsInFirstPage(documentText, 'Ghid de lucru pentru experti'), true);
+  assert.equal(titleExistsInDocumentText(documentText, 'Ghid de lucru pentru experti'), true);
 
-  assert.deepEqual(validateDeclaredTitleOnFirstPage({
-    firstPageText: documentText,
+  assert.deepEqual(validateDeclaredTitleInDocumentText({
+    documentText,
     declaredTitle: 'Ghid de lucru pentru experti',
     titleSource: 'auto_detected',
   }), {
@@ -83,8 +83,8 @@ test('accepts suggested title and validates when it exists in the document text'
 });
 
 test('blocks validation when edited title is not present in the document text', () => {
-  const result = validateDeclaredTitleOnFirstPage({
-    firstPageText: 'Raport privind activitatile de informare',
+  const result = validateDeclaredTitleInDocumentText({
+    documentText: 'Raport privind activitatile de informare',
     declaredTitle: 'Alt titlu ales de expert',
     titleSource: 'edited_by_expert',
   });
@@ -143,8 +143,8 @@ test('keeps high-confidence non-administrative suggestions local', () => {
 });
 
 test('keeps source admin_override matched for administrator exception', () => {
-  assert.deepEqual(validateDeclaredTitleOnFirstPage({
-    firstPageText: null,
+  assert.deepEqual(validateDeclaredTitleInDocumentText({
+    documentText: null,
     declaredTitle: 'Titlu administrativ',
     titleSource: 'admin_override',
   }), {

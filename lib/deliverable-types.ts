@@ -1,7 +1,7 @@
 'use client';
 
 import type { TitleCheckStatus, TitleSource, TitleSuggestionConfidence } from './title-suggestion.ts';
-import { titleExistsInFirstPage } from './title-suggestion.ts';
+import { titleExistsInDocumentText } from './title-suggestion.ts';
 
 // All deliverable types available in the system
 export const ALL_DELIVERABLE_TYPES = [
@@ -96,7 +96,7 @@ export function extractEventDate(text: string): string | null {
 
 // Helper to check if title is contained in document
 export function titleContains(docTitle: string, declaredTitle: string): boolean {
-  return titleExistsInFirstPage(docTitle, declaredTitle);
+  return titleExistsInDocumentText(docTitle, declaredTitle);
 }
 
 // Deliverable slot types for structured organization
