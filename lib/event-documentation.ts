@@ -1,4 +1,7 @@
-import { isEventActivityCatalogItem } from './activity-catalog-merge.ts';
+import {
+  isEventActivityCatalogItem,
+  requiresSameDayForSharedEventActivity,
+} from './activity-catalog-merge.ts';
 import type { Activity, ActivityCatalog } from './types.ts';
 
 export interface EventDocumentationDeliverable {
@@ -71,6 +74,18 @@ export function isActivityEventForDocumentation(
   return isLegacyEventActivity(activity.activityType || activity.title || '');
 }
 
+export function requiresSameDayForSharedActivity(
+  activity: Pick<Activity, 'catalogActivityId' | 'activityType' | 'title'>,
+  catalog: ActivityCatalog[],
+) {
+  if (activity.catalogActivityId) {
+    const catalogItem = catalog.find((item) => item.id === activity.catalogActivityId);
+    return catalogItem ? requiresSameDayForSharedEventActivity(catalogItem) : false;
+  }
+
+  return isLegacyEventActivity(activity.activityType || activity.title || '');
+}
+
 function normalizeEventTitleKey(value: string) {
   return value
     .normalize('NFD')
@@ -101,7 +116,7 @@ export function groupEventActivitiesWithDateConflicts(
   const groups = new Map<string, EventDateConflictGroup>();
 
   activities
-    .filter((activity) => isActivityEventForDocumentation(activity, catalog))
+    .filter((activity) => requiresSameDayForSharedActivity(activity, catalog))
     .forEach((activity) => {
       const title = getEventTitleCandidate(activity);
       const key = normalizeEventTitleKey(title);

@@ -6,6 +6,7 @@ import {
   isEventActivityCatalogItem,
   mergeActivityCatalogs,
   normalizeActivityCatalogSaCode,
+  requiresSameDayForSharedEventActivity,
   resolveActivityDeliverableOptions,
   resolveExpertActivityCatalog,
   sortActivityCatalog,
@@ -293,6 +294,29 @@ test('categoria de eveniment este recunoscuta indiferent de diacritice', () => {
     isEventActivityCatalogItem({
       serviceCategory: 'Reprezentare si participare la evenimente',
     } as ActivityCatalog),
+    true,
+  );
+});
+
+test('regula de aceeasi zi pentru livrabile comune poate fi suprascrisa in catalog', () => {
+  assert.equal(
+    requiresSameDayForSharedEventActivity({
+      serviceCategory: 'Reprezentare si participare la evenimente',
+    }),
+    true,
+  );
+  assert.equal(
+    requiresSameDayForSharedEventActivity({
+      serviceCategory: 'Reprezentare si participare la evenimente',
+      requiresSameDayForSharedDeliverable: false,
+    }),
+    false,
+  );
+  assert.equal(
+    requiresSameDayForSharedEventActivity({
+      serviceCategory: 'Elaborare materiale',
+      requiresSameDayForSharedDeliverable: true,
+    }),
     true,
   );
 });

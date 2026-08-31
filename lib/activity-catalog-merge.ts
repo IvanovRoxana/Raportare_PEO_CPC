@@ -23,6 +23,12 @@ export function isEventActivityCatalogItem(item: Pick<ActivityCatalog, 'serviceC
   return normalizeActivityCatalogLabel(item.serviceCategory) === normalizeActivityCatalogLabel(EVENT_ACTIVITY_SERVICE_CATEGORY);
 }
 
+export function requiresSameDayForSharedEventActivity(
+  item: Pick<ActivityCatalog, 'serviceCategory' | 'requiresSameDayForSharedDeliverable'>,
+) {
+  return item.requiresSameDayForSharedDeliverable ?? isEventActivityCatalogItem(item);
+}
+
 export function isActiveActivityCatalogItem(item: Pick<ActivityCatalog, 'isActive'>) {
   return item.isActive !== false;
 }

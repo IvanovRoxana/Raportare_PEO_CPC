@@ -8,7 +8,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { useActivityCatalog, useActivityCatalogMutations } from '@/hooks/use-backend-data';
 import type { ActivityCatalog } from '@/lib/types';
-import { activityCatalogMergeKey, mergeActivityCatalogs } from '@/lib/activity-catalog-merge';
+import {
+  activityCatalogMergeKey,
+  mergeActivityCatalogs,
+  requiresSameDayForSharedEventActivity,
+} from '@/lib/activity-catalog-merge';
 import {
   buildActivityCatalogImportPlan,
   exportActivityCatalogCsv,
@@ -93,6 +97,9 @@ function draftFromActivity(activity?: ActivityCatalog | null): ActivityCatalogDr
     activityNumber: activity?.activityNumber ?? 0,
     activityName: activity?.activityName ?? '',
     isActive: activity?.isActive ?? true,
+    requiresSameDayForSharedDeliverable: activity
+      ? requiresSameDayForSharedEventActivity(activity)
+      : false,
     description: activity?.description ?? '',
     objectives: activity?.objectives ?? '',
     serviceComponent: activity?.serviceComponent ?? '',
@@ -114,6 +121,7 @@ function normalizeDraft(draft: ActivityCatalogDraft): ActivityCatalogDraft {
     serviceCategory: draft.serviceCategory.trim(),
     activityNumber: Number.isFinite(Number(draft.activityNumber)) ? Number(draft.activityNumber) : 0,
     activityName: draft.activityName.trim(),
+    requiresSameDayForSharedDeliverable: Boolean(draft.requiresSameDayForSharedDeliverable),
     description: draft.description?.trim(),
     objectives: draft.objectives?.trim(),
     serviceComponent: draft.serviceComponent?.trim(),
@@ -1007,6 +1015,23 @@ export function ActivityCatalogGovernancePanel({
                     />
                   )}
                 </div>
+
+                <label className="flex items-start gap-3 rounded-md border bg-slate-50 p-3 text-sm md:col-span-2">
+                  <input
+                    type="checkbox"
+                    className="mt-1 h-4 w-4 rounded border-slate-300"
+                    checked={Boolean(draft.requiresSameDayForSharedDeliverable)}
+                    onChange={(event) => updateDraft('requiresSameDayForSharedDeliverable', event.target.checked)}
+                  />
+                  <span>
+                    <span className="block font-semibold text-slate-900">
+                      Livrabil comun cu data obligatoriu identica
+                    </span>
+                    <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                      Bifeaza pentru sedinte, evenimente si webinarii unde expertii trebuie sa ponteze aceeasi data. Debifeaza pentru livrabile elaborate colaborativ in zile diferite.
+                    </span>
+                  </span>
+                </label>
 
                 {draft.category.trim().toLowerCase() === 'gdpr' && (
                   <div className="space-y-2">

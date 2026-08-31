@@ -836,6 +836,7 @@ export interface ActivityCatalog {
   activityNumber: number;
   activityName: string;
   isActive?: boolean;
+  requiresSameDayForSharedDeliverable?: boolean;
   description?: string;
   objectives?: string;
   serviceComponent?: string;

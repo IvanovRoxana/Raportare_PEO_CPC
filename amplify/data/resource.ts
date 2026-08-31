@@ -753,6 +753,7 @@ const schema = a.schema({
       activityNumber: a.integer(),
       activityName: a.string().required(),
       isActive: a.boolean().default(true),
+      requiresSameDayForSharedDeliverable: a.boolean(),
       description: a.string(),
       objectives: a.string(),
       serviceComponent: a.string(),

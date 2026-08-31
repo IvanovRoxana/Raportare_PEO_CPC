@@ -5,6 +5,7 @@ import {
   getEventDateConflictActivities,
   groupEventActivitiesWithDateConflicts,
   isActivityEventForDocumentation,
+  requiresSameDayForSharedActivity,
 } from '../lib/event-documentation.ts';
 import type { Activity, ActivityCatalog } from '../lib/types.ts';
 
@@ -24,6 +25,15 @@ const catalog = [
     activityNumber: 2,
     serviceCategory: 'Reprezentare si participare la evenimente',
     activityName: 'Participare la eveniment',
+  },
+  {
+    id: 'collaborative-event-material',
+    category: 'ap',
+    saCode: 'SA3.4',
+    activityNumber: 3,
+    serviceCategory: 'Reprezentare si participare la evenimente',
+    activityName: 'Elaborare materiale suport eveniment',
+    requiresSameDayForSharedDeliverable: false,
   },
 ] as ActivityCatalog[];
 
@@ -46,6 +56,25 @@ test('PM classifies the event service category as event participation', () => {
       title: 'Participare la eveniment',
     }, catalog),
     true,
+  );
+});
+
+test('PM allows the catalog to exempt collaborative event deliverables from same-day alerts', () => {
+  assert.equal(
+    isActivityEventForDocumentation({
+      catalogActivityId: 'collaborative-event-material',
+      activityType: 'Elaborare materiale suport eveniment',
+      title: 'Materiale suport Conferinta Nationala',
+    }, catalog),
+    true,
+  );
+  assert.equal(
+    requiresSameDayForSharedActivity({
+      catalogActivityId: 'collaborative-event-material',
+      activityType: 'Elaborare materiale suport eveniment',
+      title: 'Materiale suport Conferinta Nationala',
+    }, catalog),
+    false,
   );
 });
 
@@ -94,6 +123,32 @@ test('PM detects the same event reported on different days', () => {
   assert.equal(groups.length, 1);
   assert.deepEqual(groups[0].dates, ['2026-08-10', '2026-08-11']);
   assert.deepEqual(getEventDateConflictActivities(activities, catalog).map((activity) => activity.id), ['a1', 'a2', 'a3']);
+});
+
+test('PM ignores same collaborative deliverable reported on different days when catalog allows it', () => {
+  const activities = [
+    {
+      id: 'a1',
+      expertId: 'e1',
+      date: '2026-08-10',
+      hours: 2,
+      catalogActivityId: 'collaborative-event-material',
+      activityType: 'Elaborare materiale suport eveniment',
+      title: 'Materiale suport Conferinta Nationala a Angajatorilor',
+    },
+    {
+      id: 'a2',
+      expertId: 'e2',
+      date: '2026-08-11',
+      hours: 2,
+      catalogActivityId: 'collaborative-event-material',
+      activityType: 'Elaborare materiale suport eveniment',
+      title: 'Materiale suport Conferința Națională a Angajatorilor',
+    },
+  ] as Activity[];
+
+  assert.equal(groupEventActivitiesWithDateConflicts(activities, catalog).length, 0);
+  assert.deepEqual(getEventDateConflictActivities(activities, catalog), []);
 });
 
 test('PM ignores different events on different days', () => {
