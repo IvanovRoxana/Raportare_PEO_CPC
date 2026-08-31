@@ -102,7 +102,7 @@ import {
   PM_CLARIFICATION_REALERT_AUDIT_ACTION,
 } from '@/lib/pm-clarifications';
 import { buildPmClarificationThreads } from '@/lib/pm-clarification-flow';
-import { buildReportCorrectionStatusUpdate } from '@/lib/report-correction-flow';
+import { buildReportCorrectionStatusUpdate, buildReportReopenStatusUpdate } from '@/lib/report-correction-flow';
 import { isPmDeliverableInMonth } from '@/lib/pm-deliverable-status';
 import { buildOpisXlsxBlob, buildOpisXlsxFilename } from '@/lib/opis-xls-export';
 import { buildPontajExportPayload } from '@/lib/pontaj-export-payload';
@@ -474,6 +474,14 @@ export default function PMDashboard() {
           month: selectedMonth,
           note: pmNotes || 'Clarificari solicitate de PM.',
         })
+      : status === 'in_review' && reportStatus?.status === 'approved'
+        ? buildReportReopenStatusUpdate({
+            currentStatus: reportStatus,
+            expertId: selectedExpertId,
+            year: selectedYear,
+            month: selectedMonth,
+            note: pmNotes,
+          })
       : {
           expertId: selectedExpertId,
           year: selectedYear,
@@ -714,6 +722,14 @@ export default function PMDashboard() {
           month: selectedMonth,
           note: pmNotes || 'Clarificari solicitate de PM.',
         })
+      : status === 'in_review' && currentStatus?.status === 'approved'
+        ? buildReportReopenStatusUpdate({
+            currentStatus,
+            expertId: reviewExpertId,
+            year: selectedYear,
+            month: selectedMonth,
+            note: pmNotes,
+          })
       : {
           expertId: reviewExpertId,
           year: selectedYear,

@@ -1070,7 +1070,7 @@ export function DosarExpertModal({
                     disabled={reviewAction !== null || reportStatus.status === 'in_review'}
                   >
                     {reviewAction === 'in_review' ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
-                    In verificare
+                    {reportStatus.status === 'approved' ? 'Redeschide raportarea' : 'In verificare'}
                   </Button>
                   <Button
                     variant="outline"
