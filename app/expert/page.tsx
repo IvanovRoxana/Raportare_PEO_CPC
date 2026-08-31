@@ -680,6 +680,15 @@ export default function ExpertHomeDashboard() {
     [concurrentTimesheetEntries, currentExpert, selectedMonthHasAccess]
   );
   const peoHref = `/expert/peo?month=${currentMonth}&year=${currentYear}`;
+  const workTabs = useMemo(
+    () =>
+      WORK_TABS.map((tab) =>
+        tab.label === 'Activități Colegi'
+          ? { ...tab, href: `${peoHref}&tab=colegi` }
+          : tab,
+      ),
+    [peoHref],
+  );
 
   const projects = useMemo<ProjectItem[]>(
     () => [
@@ -1368,7 +1377,7 @@ export default function ExpertHomeDashboard() {
         </section>
 
         <section className="grid gap-3 rounded-[1.5rem] border bg-card p-3 md:grid-cols-4">
-          {WORK_TABS.map((tab) => {
+          {workTabs.map((tab) => {
             const Icon = tab.icon;
             const content = (
               <>
