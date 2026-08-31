@@ -180,11 +180,60 @@ function getFileExtension(fileName?: string) {
   return match?.[1] || '';
 }
 
+function isDocxPreviewFile(fileName?: string, mimeType?: string) {
+  const extension = getFileExtension(fileName);
+  return extension === 'docx' || mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+}
+
 function canEmbedPreview(fileName?: string, mimeType?: string) {
   const extension = getFileExtension(fileName);
   return mimeType?.includes('pdf')
     || mimeType?.startsWith('image/')
     || ['pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'txt'].includes(extension);
+}
+
+function buildDocxPreviewHtml(bodyHtml: string) {
+  return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body {
+        margin: 0;
+        background: #f8fafc;
+        color: #0f172a;
+        font-family: Calibri, Arial, sans-serif;
+        font-size: 14px;
+        line-height: 1.55;
+      }
+      .page {
+        box-sizing: border-box;
+        max-width: 900px;
+        min-height: calc(100vh - 32px);
+        margin: 16px auto;
+        padding: 48px 56px;
+        background: #fff;
+        box-shadow: 0 10px 30px rgba(15, 23, 42, 0.12);
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      td, th {
+        border: 1px solid #cbd5e1;
+        padding: 6px 8px;
+        vertical-align: top;
+      }
+      img {
+        max-width: 100%;
+        height: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">${bodyHtml || '<p>Documentul nu conține text convertibil pentru preview.</p>'}</main>
+  </body>
+</html>`;
 }
 
 function GdprPmSummary({ activity }: { activity: Activity }) {
@@ -269,6 +318,8 @@ export function DosarExpertModal({
   const [documentActionId, setDocumentActionId] = useState<string | null>(null);
   const [documentError, setDocumentError] = useState<string | null>(null);
   const [inlinePreview, setInlinePreview] = useState<{ url: string; fileName: string; objectUrl?: string } | null>(null);
+  const [docxPreviewHtml, setDocxPreviewHtml] = useState<string | null>(null);
+  const [docxPreviewError, setDocxPreviewError] = useState<string | null>(null);
   const [inlinePreviewLoading, setInlinePreviewLoading] = useState(false);
   const [locallyApprovedActivityIds, setLocallyApprovedActivityIds] = useState<Set<string>>(new Set());
   const [selectedEligibilityCategories, setSelectedEligibilityCategories] = useState<string[]>([]);
@@ -280,7 +331,7 @@ export function DosarExpertModal({
   const [eligibilityAssignmentMessage, setEligibilityAssignmentMessage] = useState<string | null>(null);
   const { catalog: backendActivityCatalog } = useActivityCatalog();
   const { update: updateActivity } = useActivityMutations();
-  const { updateEligibilityCheck: updateDocumentEligibilityCheck } = useDocumentMutations();
+  const { update: updateDocument } = useDocumentMutations();
   const {
     bundles: persistedRaWorkBlockBundles,
     isLoading: isLoadingRaWorkBlockBundles,
@@ -697,7 +748,14 @@ export function DosarExpertModal({
             : deliverable
         )),
       });
-      await updateDocumentEligibilityCheck(focusedDocument.id, nextCheck);
+      await updateDocument(focusedDocument.id, {
+        sourceActivityId: focusedSourceActivity.id,
+        activityDate: focusedSourceActivity.date || focusedDocument.activityDate,
+        saCode: selectedEligibilityCatalogActivity.saCode,
+        deliverableType: checkedDeliverableType,
+        stadiu: focusedDeliverable?.stadiu || focusedDocument.stadiu,
+        eligibilityCheck: nextCheck,
+      });
       setEligibilityAssignmentMessage('Reincadrarea a fost salvata in activitatea sursa si in metadatele documentului.');
     } catch (error) {
       setEligibilityAssignmentMessage(error instanceof Error ? error.message : 'Reincadrarea nu a putut fi salvata.');
@@ -714,20 +772,30 @@ export function DosarExpertModal({
     setInlinePreviewLoading(true);
     setDocumentError(null);
     setInlinePreview(null);
+    setDocxPreviewHtml(null);
+    setDocxPreviewError(null);
 
     resolveFocusedDocumentUrl()
       .then(async (result) => {
         if (cancelled) return;
         if (result.shouldRevoke) {
           objectUrl = result.url;
-          setInlinePreview({ url: result.url, fileName: result.fileName, objectUrl: result.url });
-          return;
         }
         const response = await fetch(result.url);
         if (!response.ok) throw new Error('Fisierul nu a putut fi preluat pentru previzualizare.');
         const blob = await response.blob();
-        objectUrl = URL.createObjectURL(blob);
-        if (!cancelled) setInlinePreview({ url: objectUrl, fileName: result.fileName, objectUrl });
+        if (!objectUrl) objectUrl = URL.createObjectURL(blob);
+        if (cancelled) return;
+        setInlinePreview({ url: objectUrl, fileName: result.fileName, objectUrl });
+        if (isDocxPreviewFile(result.fileName, blob.type)) {
+          try {
+            const mammoth = await import('mammoth');
+            const converted = await mammoth.convertToHtml({ arrayBuffer: await blob.arrayBuffer() });
+            if (!cancelled) setDocxPreviewHtml(buildDocxPreviewHtml(converted.value));
+          } catch {
+            if (!cancelled) setDocxPreviewError('Preview-ul DOCX nu a putut fi randat. Poți deschide fișierul în tab nou.');
+          }
+        }
       })
       .catch((error) => {
         if (!cancelled) setDocumentError(error instanceof Error ? error.message : 'Fisierul nu a putut fi previzualizat.');
@@ -1321,9 +1389,23 @@ export function DosarExpertModal({
                   </div>
                 ) : inlinePreview && shouldEmbedFocusedPreview ? (
                   <iframe title="Preview livrabil" src={inlinePreview.url} className="h-full w-full border-0 bg-white" />
+                ) : docxPreviewHtml ? (
+                  <iframe
+                    title="Preview DOCX livrabil"
+                    srcDoc={docxPreviewHtml}
+                    sandbox=""
+                    className="h-full w-full border-0 bg-slate-100"
+                  />
                 ) : focusedPreviewText ? (
                   <ScrollArea className="h-full bg-white">
-                    <pre className="whitespace-pre-wrap p-4 text-xs leading-5 text-slate-700">{focusedPreviewText}</pre>
+                    <div className="space-y-3 p-4">
+                      {docxPreviewError ? (
+                        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                          {docxPreviewError}
+                        </div>
+                      ) : null}
+                      <pre className="whitespace-pre-wrap text-xs leading-5 text-slate-700">{focusedPreviewText}</pre>
+                    </div>
                   </ScrollArea>
                 ) : inlinePreview ? (
                   <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center text-sm text-slate-500">

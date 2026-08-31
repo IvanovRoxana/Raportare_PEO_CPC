@@ -291,9 +291,8 @@ export function shouldUseAiTitleSuggestion(args: {
   text?: string | null;
   suggestion?: TitleSuggestionResult | null;
 }) {
-  const suggestion = args.suggestion || suggestTitleFromFirstPage(args.text);
   if (!args.text || String(args.text).trim().length < 20) return false;
-  return suggestion.confidence !== 'high' || firstLinesLookAdministrative(args.text);
+  return true;
 }
 
 export function detectSuggestedTitleFromText(text?: string | null) {
@@ -357,9 +356,11 @@ export function validateDeclaredTitleInDocumentText(args: {
 export function applyAutomaticTitleSuggestion(args: {
   currentDeclaredTitle?: string | null;
   suggestedTitle?: string | null;
+  confidence?: TitleSuggestionConfidence | string | null;
 }) {
   const declaredTitle = normalizeSpaces(args.currentDeclaredTitle || '');
   const suggestedTitle = normalizeSpaces(args.suggestedTitle || '');
+  const canAutoFill = args.confidence === 'high';
 
   if (!suggestedTitle) {
     return {
@@ -369,7 +370,7 @@ export function applyAutomaticTitleSuggestion(args: {
     };
   }
 
-  if (!declaredTitle) {
+  if (!declaredTitle && canAutoFill) {
     return {
       declaredTitle: suggestedTitle,
       titleSource: 'auto_detected' as TitleSource,
@@ -379,7 +380,7 @@ export function applyAutomaticTitleSuggestion(args: {
 
   return {
     declaredTitle,
-    titleSource: 'manual' as TitleSource,
+    titleSource: declaredTitle ? ('manual' as TitleSource) : undefined,
     autoFilled: false,
   };
 }

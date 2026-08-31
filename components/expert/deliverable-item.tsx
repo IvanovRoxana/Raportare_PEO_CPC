@@ -427,6 +427,7 @@ export function DeliverableItem({
       const titleSuggestionPatch = applyAutomaticTitleSuggestion({
         currentDeclaredTitle,
         suggestedTitle: docTitle,
+        confidence: titleSuggestion.confidence,
       });
       const validation = isPhoto || !titleSuggestionPatch.declaredTitle
         ? null

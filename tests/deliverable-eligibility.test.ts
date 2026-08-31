@@ -42,6 +42,9 @@ const activityFormSource = readFileSync(new URL('../components/expert/activity-f
 const peoPageSource = readFileSync(new URL('../app/expert/peo/page.tsx', import.meta.url), 'utf8');
 const eligibilityRouteSource = readFileSync(new URL('../app/api/ai/check-deliverable-eligibility/route.ts', import.meta.url), 'utf8');
 const deliverableTypesSource = readFileSync(new URL('../lib/deliverable-types.ts', import.meta.url), 'utf8');
+const pmDossierModalSource = readFileSync(new URL('../components/pm/dosar-expert-modal.tsx', import.meta.url), 'utf8');
+const backendDataHooksSource = readFileSync(new URL('../hooks/use-backend-data.ts', import.meta.url), 'utf8');
+const awsStoreSource = readFileSync(new URL('../lib/aws-store.ts', import.meta.url), 'utf8');
 const amplifyDataResourceSource = readFileSync(new URL('../amplify/data/resource.ts', import.meta.url), 'utf8');
 
 test('UI tolereaza suggestedSettings persistat fara lista changes', () => {
@@ -485,6 +488,69 @@ test('nu pastreaza riscul de titlu cand titlul documentului este confirmat', () 
   assert.deepEqual(result.recommendations, []);
   assert.equal(result.checks[0].status, 'pass');
   assert.match(result.checks[0].explanation, /Titlul documentului este confirmat/);
+});
+
+test('nu ascunde riscul de titlu al livrabilului principal cand doar un livrabil secundar are titlu confirmat', () => {
+  const result = protectVerifiedDocumentTitleEligibility({
+    documents: [
+      {
+        id: 'principal',
+        documentTitle: 'Raport fara titlu confirmat',
+        declaredTitle: 'Raport fara titlu confirmat',
+        titleCheckStatus: 'mismatch',
+        fileName: 'principal.pdf',
+        extractedText: 'Continut fara titlul declarat.',
+        isPrimary: true,
+      },
+      {
+        id: 'secundar',
+        documentTitle: 'Anexa confirmata',
+        declaredTitle: 'Anexa confirmata',
+        titleCheckStatus: 'matched',
+        fileName: 'anexa.pdf',
+        extractedText: 'Anexa confirmata.',
+        isPrimary: false,
+      },
+    ],
+    result: {
+      status: 'eligibil_cu_observatii',
+      score: 82,
+      summary: 'Documentul principal are titlu neconfirmat.',
+      checks: [
+        { criterion: 'Titlu document', status: 'warning', explanation: 'Titlu suspect sau lipsa pe livrabilul principal.' },
+      ],
+      missingElements: ['Titlu clar identificat in documentul principal.'],
+      recommendations: ['Clarifica titlul documentului principal.'],
+      riskFlags: ['Titlu suspect sau lipsa'],
+      suggestedSettings: null,
+    },
+  });
+
+  assert.deepEqual(result.riskFlags, ['Titlu suspect sau lipsa']);
+  assert.deepEqual(result.missingElements, ['Titlu clar identificat in documentul principal.']);
+  assert.deepEqual(result.recommendations, ['Clarifica titlul documentului principal.']);
+  assert.equal(result.checks[0].status, 'warning');
+});
+
+test('reincadrarea PM sincronizeaza si metadatele documentului, nu doar eligibilityCheck', () => {
+  assert.match(pmDossierModalSource, /const \{ update: updateDocument \} = useDocumentMutations\(\)/);
+  assert.match(pmDossierModalSource, /await updateDocument\(focusedDocument\.id, \{/);
+  assert.match(pmDossierModalSource, /sourceActivityId: focusedSourceActivity\.id/);
+  assert.match(pmDossierModalSource, /saCode: selectedEligibilityCatalogActivity\.saCode/);
+  assert.match(pmDossierModalSource, /deliverableType: checkedDeliverableType/);
+  assert.match(pmDossierModalSource, /eligibilityCheck: nextCheck/);
+  assert.match(backendDataHooksSource, /const update = async \(\s*id: string,\s*updates: Partial<Pick<[\s\S]*DocumentMetadata[\s\S]*sourceActivityId[\s\S]*deliverableType[\s\S]*eligibilityCheck/);
+  assert.match(awsStoreSource, /async update\(id: string, updates: Partial<Pick<[\s\S]*sourceActivityId[\s\S]*deliverableType[\s\S]*eligibilityCheck/);
+  assert.match(awsStoreSource, /assertNoErrors\(result, 'AWS update document metadata'\)/);
+});
+
+test('dosarul PM randeaza preview DOCX ca HTML cand fisierul poate fi preluat', () => {
+  assert.match(pmDossierModalSource, /function isDocxPreviewFile/);
+  assert.match(pmDossierModalSource, /const mammoth = await import\('mammoth'\)/);
+  assert.match(pmDossierModalSource, /mammoth\.convertToHtml\(\{ arrayBuffer: await blob\.arrayBuffer\(\) \}\)/);
+  assert.match(pmDossierModalSource, /setDocxPreviewHtml\(buildDocxPreviewHtml\(converted\.value\)\)/);
+  assert.match(pmDossierModalSource, /srcDoc=\{docxPreviewHtml\}/);
+  assert.match(pmDossierModalSource, /sandbox=""/);
 });
 
 test('formularul trimite toate livrabilele incarcate din grupul activitatii la eligibilitate', () => {

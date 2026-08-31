@@ -44,6 +44,7 @@ test('auto fills declaredTitle when it is empty', () => {
     applyAutomaticTitleSuggestion({
       currentDeclaredTitle: '',
       suggestedTitle: 'Ghid de lucru pentru experti',
+      confidence: 'high',
     }),
     {
       declaredTitle: 'Ghid de lucru pentru experti',
@@ -53,11 +54,27 @@ test('auto fills declaredTitle when it is empty', () => {
   );
 });
 
+test('keeps uncertain title suggestions as suggestions without auto filling declaredTitle', () => {
+  assert.deepEqual(
+    applyAutomaticTitleSuggestion({
+      currentDeclaredTitle: '',
+      suggestedTitle: 'Locatie: Microsoft Teams',
+      confidence: 'medium',
+    }),
+    {
+      declaredTitle: '',
+      titleSource: undefined,
+      autoFilled: false,
+    },
+  );
+});
+
 test('does not overwrite an existing declaredTitle', () => {
   assert.deepEqual(
     applyAutomaticTitleSuggestion({
       currentDeclaredTitle: 'Titlu introdus manual',
       suggestedTitle: 'Titlu detectat automat',
+      confidence: 'high',
     }),
     {
       declaredTitle: 'Titlu introdus manual',
@@ -124,7 +141,7 @@ test('routes uncertain or administrative title suggestions to AI', () => {
   }), true);
 });
 
-test('keeps high-confidence non-administrative suggestions local', () => {
+test('routes any usable extracted text to AI, even when the local suggestion is high confidence', () => {
   const text = [
     'Metodologie pentru recrutarea grupului tinta',
     'Versiunea finala',
@@ -139,7 +156,7 @@ test('keeps high-confidence non-administrative suggestions local', () => {
       confidence: 'high',
       alternatives: [],
     },
-  }), false);
+  }), true);
 });
 
 test('keeps source admin_override matched for administrator exception', () => {

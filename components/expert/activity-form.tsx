@@ -472,6 +472,7 @@ async function extractDeliverableTextForActivityAutofill(deliverable: Deliverabl
   const automaticTitle = applyAutomaticTitleSuggestion({
     currentDeclaredTitle: deliverable.declaredTitle,
     suggestedTitle: docTitle,
+    confidence: titleSuggestion.confidence,
   });
   const titleValidation = isPhoto || !automaticTitle.declaredTitle
     ? null

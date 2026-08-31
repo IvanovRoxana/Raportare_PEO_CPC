@@ -433,6 +433,18 @@ export function useDocuments() {
 }
 
 export function useDocumentMutations() {
+  const update = async (
+    id: string,
+    updates: Partial<Pick<
+      DocumentMetadata,
+      'sourceActivityId' | 'activityDate' | 'saCode' | 'deliverableType' | 'stadiu' | 'eligibilityCheck'
+    >>,
+  ) => {
+    const updated = await documentsService.update(id, updates);
+    mutate('documents');
+    return updated;
+  };
+
   const updateEligibilityCheck = async (
     id: string,
     eligibilityCheck: DocumentMetadata['eligibilityCheck'],
@@ -442,7 +454,7 @@ export function useDocumentMutations() {
     return updated;
   };
 
-  return { updateEligibilityCheck };
+  return { update, updateEligibilityCheck };
 }
 
 export function useIndexedDeliverableCandidates(expertId: string | null, reportingMonth: number, reportingYear: number) {

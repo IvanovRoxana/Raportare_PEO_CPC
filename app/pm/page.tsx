@@ -198,6 +198,10 @@ export default function PMDashboard() {
   );
   const hasExtendedExpertAccess = dataAccessScope.canAccessAllExperts;
   const canManagePmReview = hasExtendedExpertAccess;
+  const canApprovePmUnlockForDocument = (document: DocumentMetadata) => (
+    dataAccessScope.canUsePmDashboard
+    && canAccessExpertId(dataAccessScope, document.uploadedByExpertId)
+  );
   const { 
     verification, 
     isLoading: verificationLoading,
@@ -498,7 +502,7 @@ export default function PMDashboard() {
   };
 
   const approvePmUnlockRequest = async (document: DocumentMetadata) => {
-    if (!canManagePmReview || !document.eligibilityCheck) return;
+    if (!canApprovePmUnlockForDocument(document) || !document.eligibilityCheck) return;
 
     const reviewerName = currentUser?.displayName || currentUser?.email || 'PM';
     const previousCheck = document.eligibilityCheck;

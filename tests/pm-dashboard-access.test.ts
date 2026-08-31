@@ -237,6 +237,11 @@ test('summary PM calculeaza statusuri, alerte titlu, livrabile comune si cross a
 });
 
 test('aprobarea manuala PM marcheaza livrabilul eligibil si sincronizeaza copia din activitate', () => {
+  assert.match(pmDashboardSource, /const canApprovePmUnlockForDocument = \(document: DocumentMetadata\) => \(/);
+  assert.match(pmDashboardSource, /dataAccessScope\.canUsePmDashboard/);
+  assert.match(pmDashboardSource, /canAccessExpertId\(dataAccessScope, document\.uploadedByExpertId\)/);
+  assert.match(pmDashboardSource, /if \(!canApprovePmUnlockForDocument\(document\) \|\| !document\.eligibilityCheck\) return/);
+  assert.doesNotMatch(pmDashboardSource, /const approvePmUnlockRequest = async \(document: DocumentMetadata\) => \{\s*if \(!canManagePmReview/);
   assert.match(pmDashboardSource, /status:\s*'eligibil'/);
   assert.match(pmDashboardSource, /aiStatus:\s*'eligible'/);
   assert.match(pmDashboardSource, /const activityWithMatchingDeliverable = monthActivities\.find/);

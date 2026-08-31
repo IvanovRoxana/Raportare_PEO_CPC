@@ -396,6 +396,10 @@ function isVerifiedDocumentTitle(document: Pick<EligibilityDocument, 'declaredTi
   return hasTitle && (titleStatus === 'matched' || titleStatus === 'admin_overridden');
 }
 
+function getPrimaryEligibilityDocument(documents: EligibilityDocument[]) {
+  return documents.find((document) => document.isPrimary) ?? (documents.length === 1 ? documents[0] : null);
+}
+
 function textMentionsTitleGap(value: unknown) {
   const normalized = normalizeEligibilityText(value);
   if (!normalized.includes('titlu')) return false;
@@ -420,7 +424,8 @@ export function protectVerifiedDocumentTitleEligibility(input: {
   result: z.infer<typeof deliverableEligibilitySchema>;
   documents: EligibilityDocument[];
 }) {
-  if (!input.documents.some(isVerifiedDocumentTitle)) return input.result;
+  const primaryDocument = getPrimaryEligibilityDocument(input.documents);
+  if (!primaryDocument || !isVerifiedDocumentTitle(primaryDocument)) return input.result;
 
   const riskFlags = input.result.riskFlags.filter((item) => !textMentionsTitleGap(item));
   const missingElements = input.result.missingElements.filter((item) => !textMentionsTitleGap(item));

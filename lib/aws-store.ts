@@ -2436,6 +2436,27 @@ export const documentsService = {
     return filterDocumentsForScope(data.map(mapDocument), scope);
   },
 
+  async update(id: string, updates: Partial<Pick<
+    DocumentMetadata,
+    'sourceActivityId' | 'activityDate' | 'saCode' | 'deliverableType' | 'stadiu' | 'eligibilityCheck'
+  >>): Promise<DocumentMetadata | null> {
+    const client = getAwsDataClient() as any;
+    if (!client.models.Document) return null;
+    const result = await client.models.Document.update({
+      id,
+      sourceActivityId: updates.sourceActivityId,
+      activityDate: updates.activityDate,
+      saCode: updates.saCode,
+      deliverableType: updates.deliverableType,
+      stadiu: updates.stadiu,
+      eligibilityCheck: updates.eligibilityCheck === undefined
+        ? undefined
+        : serializeAwsJsonField(updates.eligibilityCheck),
+    });
+    assertNoErrors(result, 'AWS update document metadata');
+    return result.data ? mapDocument(result.data) : null;
+  },
+
   async updateEligibilityCheck(id: string, eligibilityCheck: DeliverableEligibilityCheck | null): Promise<DocumentMetadata | null> {
     const client = getAwsDataClient() as any;
     if (!client.models.Document) return null;
