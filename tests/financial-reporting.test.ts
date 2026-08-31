@@ -284,6 +284,50 @@ test('orele CPC lucrate se calculeaza din norma CIM minus PEO, GOODWORKS si CO m
   assert.equal(summary.rows[0].totalMonth, 168);
 });
 
+test('pentru angajatii fara PEO concediul financiar intra integral la Concordia', () => {
+  const nonPeoExpert: Expert = {
+    id: 'expert-non-peo',
+    name: 'Expert Non PEO',
+    role: 'Responsabil administrativ',
+    jobDescriptionText: 'Responsabil administrativ',
+    norma: 8,
+    oreZi: 8,
+  };
+  const leaveEntries: LeaveEntry[] = [{
+    id: 'leave-non-peo',
+    expertId: nonPeoExpert.id,
+    date: '2026-08-04',
+    month: 7,
+    year: 2026,
+    type: 'CO',
+    totalHours: 8,
+    peoHours: 6,
+    cpcHours: 2,
+    source: 'FINANCIAL',
+    status: 'VALIDATED',
+    lockedForExpert: true,
+  }];
+
+  const summary = buildFinancialReportingSummary({
+    experts: [nonPeoExpert],
+    activities: [],
+    concurrentProjects: [],
+    concurrentEntries: [],
+    leaveEntries,
+    month: 7,
+    year: 2026,
+    referencePeople: [],
+  });
+
+  assert.equal(summary.rows[0].peoWorked, 0);
+  assert.equal(summary.rows[0].peoLeave, 0);
+  assert.equal(summary.rows[0].medicalLeave, 0);
+  assert.equal(summary.rows[0].concordiaLeave, 8);
+  assert.equal(summary.rows[0].concordiaWorked, 160);
+  assert.equal(summary.rows[0].totalLeave, 8);
+  assert.equal(summary.rows[0].totalMonth, 168);
+});
+
 test('centralizatorul prefera functiile corectate in aplicatie fata de Excelul de referinta', () => {
   const summary = buildFinancialReportingSummary({
     experts: [{

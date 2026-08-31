@@ -118,6 +118,22 @@ function referencePosition(value: string | undefined) {
   return trimmed && trimmed !== '-' ? trimmed : undefined;
 }
 
+function hasPeoReportingScope(
+  expert: Expert | undefined,
+  reference: FinancialReferencePerson | undefined,
+  activities: Activity[],
+) {
+  const workbookPeoNorm = reference?.peoNorm ? parseWorkbookNorm(reference.peoNorm) : null;
+  return Boolean(
+    expert?.positionInProject
+    || expert?.projectMonthlyNorm
+    || expert?.manualMonthlyNorm
+    || activities.length > 0
+    || referencePosition(reference?.peoPosition)
+    || ((workbookPeoNorm?.value ?? 0) > 0),
+  );
+}
+
 function addConflict(
   target: FinancialConflict[],
   code: FinancialConflictCode,
@@ -263,6 +279,7 @@ export function buildFinancialReportingSummary(input: {
       ?? '-';
     const leaveDates = new Set<string>();
     const coLeaveDates = new Set<string>();
+    const isPeoExpert = hasPeoReportingScope(expert, reference, activities);
     let peoWorked = 0;
     let peoLeave = 0;
     let medicalLeave = 0;
@@ -301,15 +318,19 @@ export function buildFinancialReportingSummary(input: {
 
     for (const leave of leaves) {
       if (leave.status === 'REJECTED') continue;
-      if (leave.type === 'CM') {
+      const totalHours = Number(leave.totalHours) || 0;
+      if (!isPeoExpert) {
+        concordiaLeave += totalHours;
+      } else if (leave.type === 'CM') {
         medicalLeave += Number(leave.peoHours) || 0;
+        concordiaLeave += Number(leave.cpcHours) || 0;
       } else {
         peoLeave += Number(leave.peoHours) || 0;
+        concordiaLeave += Number(leave.cpcHours) || 0;
       }
-      concordiaLeave += Number(leave.cpcHours) || 0;
       leaveDates.add(leave.date);
       if (leave.type === 'CO') coLeaveDates.add(leave.date);
-      dailyTotals.set(leave.date, (dailyTotals.get(leave.date) ?? 0) + (Number(leave.totalHours) || 0));
+      dailyTotals.set(leave.date, (dailyTotals.get(leave.date) ?? 0) + totalHours);
     }
 
     const effectiveNormContracts = expert

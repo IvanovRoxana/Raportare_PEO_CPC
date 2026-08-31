@@ -810,32 +810,33 @@ export function ActivityForm({
   const improveGdprDescriptionWithAI = gdprActivity.improveDescription;
   const generateGdprDeliverable = gdprActivity.generateDeliverable;
   
+  const collaborationSeed = initialActivity || prefillActivity;
   const initialCollaborators = useMemo(() => {
-    if (!initialActivity) return EMPTY_INITIAL_COLLABORATORS;
+    if (!collaborationSeed) return EMPTY_INITIAL_COLLABORATORS;
 
-    const ids = new Set<string>(initialActivity?.takenByExperts || []);
-    initialActivity?.deliverables?.forEach((deliverable) => {
+    const ids = new Set<string>(collaborationSeed.takenByExperts || []);
+    collaborationSeed.deliverables?.forEach((deliverable) => {
       deliverable.sharedWithExpertIds?.forEach((id) => ids.add(id));
     });
     ids.delete(expertId);
     if (ids.size === 0) return EMPTY_INITIAL_COLLABORATORS;
 
     return Array.from(ids);
-  }, [initialActivity, expertId]);
+  }, [collaborationSeed, expertId]);
 
   // Common activity / collaboration
   const [activityCommon, setActivityCommon] = useState(
-    () => initialActivity?.shareStatus === 'shared' || initialCollaborators.length > 0
+    () => collaborationSeed?.shareStatus === 'shared' || initialCollaborators.length > 0
   );
   const [collaborators, setCollaborators] = useState<string[]>(() => initialCollaborators);
 
   useEffect(() => {
-    const nextActivityCommon = initialActivity?.shareStatus === 'shared' || initialCollaborators.length > 0;
+    const nextActivityCommon = collaborationSeed?.shareStatus === 'shared' || initialCollaborators.length > 0;
     setActivityCommon((current) => current === nextActivityCommon ? current : nextActivityCommon);
     setCollaborators((current) => (
       areStringArraysEqual(current, initialCollaborators) ? current : initialCollaborators
     ));
-  }, [initialActivity?.id, initialActivity?.shareStatus, initialCollaborators]);
+  }, [collaborationSeed?.shareStatus, initialCollaborators]);
   
   // Event specific fields
   const [eventDuration, setEventDuration] = useState<string>(

@@ -1315,6 +1315,7 @@ function ExpertDashboardContent() {
     return {
       relation,
       document,
+      sourceExpertId: relation.sourceExpertId || sourceActivity?.expertId || document?.uploadedByExpertId,
       sourceExpertName: relation.sourceExpertName
         || document?.uploadedByExpertName
         || sourceActivity?.expertName
@@ -2707,6 +2708,19 @@ function ExpertDashboardContent() {
     }
 
     const prefillHours = sourceActivity.hours > 0 ? sourceActivity.hours.toString() : getDefaultHours();
+    const sourceCollaborators = Array.from(new Set([
+      sourceActivity.expertId,
+      ...(sourceActivity.takenByExperts ?? []),
+      ...(sourceActivity.deliverables?.flatMap((deliverable) => deliverable.sharedWithExpertIds ?? []) ?? []),
+    ].filter((id): id is string => Boolean(id && id !== selectedExpertId))));
+    const sharedDeliverables = sourceActivity.deliverables?.map((deliverable) => ({
+      ...deliverable,
+      isCommonDeliverable: true,
+      sharedWithExpertIds: Array.from(new Set([
+        ...(deliverable.sharedWithExpertIds ?? []),
+        ...sourceCollaborators,
+      ])),
+    }));
     setSaveError('Verifica activitatea propusa de coleg, ajusteaza daca este nevoie, apoi salveaza pentru a inchide atentionarea.');
     setSharedActivityPrefill({
       date: sourceActivity.date,
@@ -2716,10 +2730,12 @@ function ExpertDashboardContent() {
       catalogActivityId: sourceActivity.catalogActivityId,
       title: sourceActivity.title,
       description: sourceActivity.description,
-      deliverables: sourceActivity.deliverables,
+      deliverables: sharedDeliverables,
       location: sourceActivity.location,
       dayType: sourceActivity.dayType,
       projectCode: sourceActivity.projectCode,
+      shareStatus: 'shared',
+      takenByExperts: sourceCollaborators,
       gdprTemplateCode: sourceActivity.gdprTemplateCode,
       gdprMetaJson: sourceActivity.gdprMetaJson,
       gdprGeneratedText: sourceActivity.gdprGeneratedText,
@@ -2783,6 +2799,10 @@ function ExpertDashboardContent() {
     const suggestedHours = pendingSharedDeliverableContext.hours && pendingSharedDeliverableContext.hours > 0
       ? pendingSharedDeliverableContext.hours.toString()
       : getDefaultHours();
+    const sourceCollaborators = pendingSharedDeliverableContext.sourceExpertId
+      && pendingSharedDeliverableContext.sourceExpertId !== selectedExpertId
+      ? [pendingSharedDeliverableContext.sourceExpertId]
+      : [];
 
     setSaveError('Completeaza activitatea pentru livrabilul comun, apoi salveaza pentru a inchide atentionarea.');
     if (pendingSharedDeliverableContext.theme || pendingSharedDeliverableContext.saCode) {
@@ -2796,6 +2816,8 @@ function ExpertDashboardContent() {
         dayType: pendingSharedDeliverableContext.dayType,
         saCode: pendingSharedDeliverableContext.saCode,
         projectCode: pendingSharedDeliverableContext.projectId,
+        shareStatus: 'shared',
+        takenByExperts: sourceCollaborators,
       });
     }
     syncSelectedDates([suggestedDate], { [suggestedDate]: suggestedHours });
