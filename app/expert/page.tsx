@@ -53,7 +53,7 @@ type ProjectItem = {
 };
 
 const WORK_TABS = [
-  { label: 'Indexare livrabile', href: '/expert/livrabile-indexare', icon: SearchIcon, active: false },
+  { label: 'Indexare livrabile', href: '/expert/livrabile-indexare', icon: SearchIcon, active: false, disabled: true },
   { label: 'Grupuri de lucru', href: '/grupuri-lucru', icon: Users, active: false },
   { label: 'Activități Colegi', href: '/expert/peo?tab=colegi', icon: BriefcaseBusiness, active: false },
   { label: 'EU Affairs', href: '#', icon: Globe2, active: false },
@@ -1391,6 +1391,7 @@ export default function ExpertHomeDashboard() {
         <section className="grid gap-3 rounded-[1.5rem] border bg-card p-3 md:grid-cols-4">
           {workTabs.map((tab) => {
             const Icon = tab.icon;
+            const isDisabled = tab.disabled;
             const content = (
               <>
                 <span className="flex items-center gap-2">
@@ -1400,6 +1401,20 @@ export default function ExpertHomeDashboard() {
                 {tab.active && <ArrowRight className="h-4 w-4" />}
               </>
             );
+
+            if (isDisabled) {
+              return (
+                <Button
+                  key={tab.label}
+                  variant="outline"
+                  className="h-12 justify-start rounded-md border-slate-200 bg-slate-100 text-slate-400 hover:bg-slate-100 hover:text-slate-400"
+                  disabled
+                  title="Modul in lucru"
+                >
+                  {content}
+                </Button>
+              );
+            }
 
             if (tab.active || tab.href !== '#') {
               return (

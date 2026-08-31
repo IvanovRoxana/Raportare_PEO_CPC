@@ -2,7 +2,7 @@
 
 import { Suspense, useState, useEffect, useMemo, useRef, useCallback, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, ArrowRight, CalendarDays, CheckCircle, ChevronLeft, ChevronRight, ClipboardList, FileText, Loader2, Plus, RotateCcw, Send, Lock, AlertTriangle, Upload, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CheckCircle, ChevronLeft, ChevronRight, ClipboardList, FileText, Loader2, Plus, RotateCcw, Send, Lock, AlertTriangle, X } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { DashboardShell, expertNavItems } from '@/components/layout/dashboard-shell';
@@ -3288,10 +3288,6 @@ function ExpertDashboardContent() {
         }
         quickTabs={[
           { label: 'Activități', href: '#activitati', icon: ClipboardList, active: activeTab === 'activitati' },
-          { label: 'Activități colegi', href: '#colegi', icon: ClipboardList, active: activeTab === 'colegi' },
-          { label: 'Calendar', href: '#calendar', icon: CalendarDays, active: activeTab === 'calendar' },
-          { label: 'Outlook', href: '#outlook', icon: CalendarDays, active: activeTab === 'outlook' },
-          { label: 'Livrabile', href: '#livrabile', icon: Upload },
           { label: 'Rapoarte', href: exportRaHref, icon: FileText },
         ]}
       >

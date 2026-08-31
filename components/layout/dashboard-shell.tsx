@@ -33,6 +33,7 @@ export type DashboardNavItem = {
   icon: LucideIcon;
   active?: boolean;
   badge?: string;
+  disabled?: boolean;
 };
 
 export type DashboardQuickTab = {
@@ -40,6 +41,7 @@ export type DashboardQuickTab = {
   href: string;
   icon?: LucideIcon;
   active?: boolean;
+  disabled?: boolean;
 };
 
 export const dashboardNavItems: DashboardNavItem[] = [
@@ -47,7 +49,7 @@ export const dashboardNavItems: DashboardNavItem[] = [
   { label: 'Pontaj lunar', href: '/expert', icon: CalendarDays },
   { label: 'Activitatile mele', href: '/expert/peo', icon: FileText },
   { label: 'Livrabile', href: '/expert/peo#livrabile', icon: Upload },
-  { label: 'Indexare livrabile', href: '/expert/livrabile-indexare', icon: SearchIcon },
+  { label: 'Indexare livrabile', href: '/expert/livrabile-indexare', icon: SearchIcon, disabled: true },
   { label: 'Rapoarte', href: '/expert/peo#rapoarte', icon: FileText },
   { label: 'Verificari PM', href: '/pm', icon: SearchIcon },
   { label: 'Grup Tinta', href: '/gt', icon: UsersRound },
@@ -62,7 +64,7 @@ export const expertNavItems: DashboardNavItem[] = [
   { label: 'Pontaj lunar', href: '/expert', icon: CalendarDays },
   { label: 'Activitatile mele', href: '/expert/peo', icon: FileText },
   { label: 'Livrabile', href: '/expert/peo#livrabile', icon: Upload },
-  { label: 'Indexare livrabile', href: '/expert/livrabile-indexare', icon: SearchIcon },
+  { label: 'Indexare livrabile', href: '/expert/livrabile-indexare', icon: SearchIcon, disabled: true },
   { label: 'Rapoarte', href: '/expert/peo#rapoarte', icon: FileText },
   { label: 'Grup Tinta', href: '/gt', icon: UsersRound },
   { label: 'Profil', href: '/expert/profil', icon: User },
@@ -73,7 +75,7 @@ export const pmNavItems: DashboardNavItem[] = [
   { label: 'Pontaj lunar', href: '/pm#pm-tabs', icon: CalendarDays },
   { label: 'Rapoarte', href: '/pm#pm-tabs', icon: FileText },
   { label: 'Livrabile', href: '/pm#pm-tabs', icon: Upload },
-  { label: 'Indexare livrabile', href: '/expert/livrabile-indexare', icon: SearchIcon },
+  { label: 'Indexare livrabile', href: '/expert/livrabile-indexare', icon: SearchIcon, disabled: true },
   { label: 'Verificari PM', href: '/pm', icon: SearchIcon },
   { label: 'Grup Tinta', href: '/gt', icon: UsersRound },
   { label: 'Achizitii', href: '/achizitii', icon: ClipboardList },
@@ -86,7 +88,7 @@ export const adminNavItems: DashboardNavItem[] = [
   { label: 'Pontaj lunar', href: '/expert', icon: CalendarDays },
   { label: 'Rapoarte', href: '/expert/peo#rapoarte', icon: FileText },
   { label: 'Livrabile', href: '/expert/peo#livrabile', icon: Upload },
-  { label: 'Indexare livrabile', href: '/expert/livrabile-indexare', icon: SearchIcon },
+  { label: 'Indexare livrabile', href: '/expert/livrabile-indexare', icon: SearchIcon, disabled: true },
   { label: 'Grup Tinta', href: '/gt', icon: UsersRound },
   { label: 'Achizitii', href: '/achizitii', icon: ClipboardList },
   { label: 'Experti', href: '/pm#situatie-lunara', icon: Users },
@@ -102,7 +104,7 @@ export const financialNavItems: DashboardNavItem[] = [
   { label: 'Activitatile mele', href: '/expert/peo', icon: FileText },
   { label: 'Rapoarte', href: '/expert/peo#rapoarte', icon: FileText },
   { label: 'Livrabile', href: '/expert/peo#livrabile', icon: Upload },
-  { label: 'Indexare livrabile', href: '/expert/livrabile-indexare', icon: SearchIcon },
+  { label: 'Indexare livrabile', href: '/expert/livrabile-indexare', icon: SearchIcon, disabled: true },
   { label: 'Experti', href: '/pm#situatie-lunara', icon: Users },
   { label: 'Administrare', href: '/admin', icon: Settings },
 ];
@@ -203,6 +205,21 @@ export function DashboardShell({
             <div className="mt-5 flex gap-2 overflow-x-auto pb-1">
               {quickTabs.map((tab) => {
                 const Icon = tab.icon;
+
+                if (tab.disabled) {
+                  return (
+                    <span
+                      key={tab.label}
+                      aria-disabled="true"
+                      title="Modul in lucru"
+                      className="inline-flex shrink-0 cursor-not-allowed items-center gap-2 rounded-2xl border border-slate-200 bg-slate-100 px-4 py-2 text-sm font-medium text-slate-400"
+                    >
+                      {Icon ? <Icon className="h-4 w-4" /> : null}
+                      {tab.label}
+                    </span>
+                  );
+                }
+
                 return (
                   <Link
                     key={tab.label}

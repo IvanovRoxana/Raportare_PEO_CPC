@@ -32,6 +32,7 @@ type HeaderNavItem = {
   href: string;
   icon: LucideIcon;
   roles?: AppRole[];
+  disabled?: boolean;
   active: (pathname: string) => boolean;
 };
 
@@ -54,7 +55,8 @@ const headerNavItems: HeaderNavItem[] = [
     href: '/expert/livrabile-indexare',
     icon: SearchIcon,
     roles: ['expert', 'pm', 'admin'],
-    active: (pathname) => pathname === '/expert/livrabile-indexare',
+    disabled: true,
+    active: () => false,
   },
   {
     label: 'Verificari PM',
@@ -158,7 +160,22 @@ export function AppHeader() {
           >
             {visibleNavItems.map((item) => {
               const Icon = item.icon;
-              const isActive = item.active(pathname);
+              const isActive = !item.disabled && item.active(pathname);
+
+              if (item.disabled) {
+                return (
+                  <Button
+                    key={item.label}
+                    variant="ghost"
+                    disabled
+                    title="Modul in lucru"
+                    className="h-10 shrink-0 rounded-md px-3 text-sm font-semibold text-slate-400"
+                  >
+                    <Icon className="h-4 w-4" />
+                    {item.label}
+                  </Button>
+                );
+              }
 
               return (
                 <Button
@@ -194,10 +211,20 @@ export function AppHeader() {
               <DropdownMenuContent align="end" className="w-56">
                 {visibleNavItems.map((item) => {
                   const Icon = item.icon;
+                  const isActive = !item.disabled && item.active(pathname);
+
+                  if (item.disabled) {
+                    return (
+                      <DropdownMenuItem key={item.label} disabled className="text-slate-400">
+                        <Icon className="mr-2 h-4 w-4" />
+                        {item.label}
+                      </DropdownMenuItem>
+                    );
+                  }
 
                   return (
                     <DropdownMenuItem key={item.label} asChild>
-                      <Link href={item.href} className={cn(item.active(pathname) && 'bg-secondary text-primary')}>
+                      <Link href={item.href} className={cn(isActive && 'bg-secondary text-primary')}>
                         <Icon className="mr-2 h-4 w-4" />
                         {item.label}
                       </Link>
