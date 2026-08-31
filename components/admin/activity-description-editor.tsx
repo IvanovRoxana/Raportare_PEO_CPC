@@ -25,6 +25,8 @@ const ALL = 'all';
 const ACTIVE = 'active';
 const INACTIVE = 'inactive';
 const FALLBACK_CATEGORIES = ['ap', 'com', 'gdpr', 'gt', 'pm'];
+const CUSTOM_SERVICE_CATEGORY = '__custom_service_category__';
+const EMPTY_SERVICE_CATEGORY = '__empty_service_category__';
 
 type ActivityCatalogDraft = Omit<ActivityCatalog, 'id' | 'createdAt'>;
 type CatalogEditorView = 'catalog' | 'deliverables';
@@ -150,6 +152,7 @@ export function ActivityCatalogGovernancePanel({
   const [isImporting, setIsImporting] = useState(false);
   const [editorView, setEditorView] = useState<CatalogEditorView>('catalog');
   const [deliverableDrafts, setDeliverableDrafts] = useState<Record<string, string>>({});
+  const [useCustomServiceCategory, setUseCustomServiceCategory] = useState(false);
 
   const persistedCatalogKeys = useMemo(() => {
     return new Set([...backendCatalog, ...localCatalog].map(activityCatalogMergeKey));
@@ -176,6 +179,31 @@ export function ActivityCatalogGovernancePanel({
       ),
     ).sort();
   }, [catalog, categoryFilter]);
+
+  const serviceCategoryOptions = useMemo(() => {
+    const draftCategory = draft.category.trim().toLowerCase();
+    const draftSaCode = draft.saCode.trim().toUpperCase();
+    return Array.from(
+      new Set(
+        catalog
+          .filter((item) => item.category.trim().toLowerCase() === draftCategory)
+          .filter((item) => item.saCode.trim().toUpperCase() === draftSaCode)
+          .map((item) => item.serviceCategory?.trim())
+          .filter((value): value is string => Boolean(value)),
+      ),
+    ).sort((left, right) => left.localeCompare(right));
+  }, [catalog, draft.category, draft.saCode]);
+
+  const draftServiceCategory = draft.serviceCategory.trim();
+  const serviceCategoryInOptions = draftServiceCategory
+    ? serviceCategoryOptions.includes(draftServiceCategory)
+    : false;
+  const showCustomServiceCategoryInput = useCustomServiceCategory
+    || serviceCategoryOptions.length === 0
+    || (Boolean(draftServiceCategory) && !serviceCategoryInOptions);
+  const serviceCategorySelectValue = showCustomServiceCategoryInput
+    ? CUSTOM_SERVICE_CATEGORY
+    : draftServiceCategory || EMPTY_SERVICE_CATEGORY;
 
   const filteredCatalog = useMemo(() => {
     return catalog.filter((item) => {
@@ -236,6 +264,7 @@ export function ActivityCatalogGovernancePanel({
     if (isCreating) return;
     setDraft(draftFromActivity(selectedActivity));
     setSaveMessage(null);
+    setUseCustomServiceCategory(false);
   }, [isCreating, selectedActivity?.id, selectedActivity]);
 
   const getNextActivityNumber = (category: string, saCode: string) => {
@@ -946,12 +975,37 @@ export function ActivityCatalogGovernancePanel({
                   <label htmlFor="catalog-service-category" className="text-sm font-semibold text-slate-900">
                     Categorie serviciu
                   </label>
-                  <Input
-                    id="catalog-service-category"
-                    value={draft.serviceCategory}
-                    onChange={(event) => updateDraft('serviceCategory', event.target.value)}
-                    placeholder="Optional"
-                  />
+                  <Select
+                    value={serviceCategorySelectValue}
+                    onValueChange={(value) => {
+                      if (value === CUSTOM_SERVICE_CATEGORY) {
+                        setUseCustomServiceCategory(true);
+                        return;
+                      }
+                      setUseCustomServiceCategory(false);
+                      updateDraft('serviceCategory', value === EMPTY_SERVICE_CATEGORY ? '' : value);
+                    }}
+                  >
+                    <SelectTrigger id="catalog-service-category">
+                      <SelectValue placeholder="Alege categoria serviciului" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={EMPTY_SERVICE_CATEGORY}>Fara categorie serviciu</SelectItem>
+                      {serviceCategoryOptions.map((serviceCategory) => (
+                        <SelectItem key={serviceCategory} value={serviceCategory}>
+                          {serviceCategory}
+                        </SelectItem>
+                      ))}
+                      <SelectItem value={CUSTOM_SERVICE_CATEGORY}>Serviciu nou / editare manuala</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {showCustomServiceCategoryInput && (
+                    <Input
+                      value={draft.serviceCategory}
+                      onChange={(event) => updateDraft('serviceCategory', event.target.value)}
+                      placeholder="Categorie serviciu noua"
+                    />
+                  )}
                 </div>
 
                 {draft.category.trim().toLowerCase() === 'gdpr' && (
