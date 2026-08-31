@@ -181,8 +181,21 @@ function clearSharedRelationQueryParams() {
 
   const url = new URL(window.location.href);
   url.searchParams.delete('sharedActivityRelationId');
+  url.searchParams.delete('sharedActivityRelationIds');
+  url.searchParams.delete('sharedActivityDates');
   url.searchParams.delete('sharedDeliverableRelationId');
   window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+}
+
+function parseCommaSeparatedQueryList(value: string | null) {
+  return (value || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function areStringListsEqual(first: string[], second: string[]) {
+  return first.length === second.length && first.every((value, index) => value === second[index]);
 }
 
 function clearHashIfCurrent(hash: string) {
@@ -883,6 +896,8 @@ function ExpertDashboardContent() {
   const [activitySaveNotice, setActivitySaveNotice] = useState<string | null>(null);
   const [workBlockSaveNotice, setWorkBlockSaveNotice] = useState<string | null>(null);
   const [pendingSharedActivityRelationId, setPendingSharedActivityRelationId] = useState<string | null>(null);
+  const [pendingSharedActivityRelationIds, setPendingSharedActivityRelationIds] = useState<string[]>([]);
+  const [pendingSharedActivityDates, setPendingSharedActivityDates] = useState<string[]>([]);
   const [pendingSharedDeliverableRelationId, setPendingSharedDeliverableRelationId] = useState<string | null>(null);
   const [sharedActivityPrefill, setSharedActivityPrefill] = useState<Partial<Activity> | null>(null);
   const [selectedReadinessKey, setSelectedReadinessKey] = useState<SubmitReadinessKey | null>(null);
@@ -1732,16 +1747,26 @@ function ExpertDashboardContent() {
         savedActivitiesForWorkBlock = savedActivities;
 
         const activityTargetId = savedActivities[0]?.id;
+        const activityRelationIdsToRegister = pendingSharedActivityRelationIds.length > 0
+          ? pendingSharedActivityRelationIds
+          : pendingSharedActivityRelationId
+            ? [pendingSharedActivityRelationId]
+            : [];
+        const activityByDate = new Map(savedActivities.map((activity) => [activity.date, activity]));
         const deliverableTargetId = pendingSharedActivityRelationId
           ? activityTargetId
           : savedActivities[savedActivities.length - 1]?.id || activityTargetId;
         const deliverableRelationIdsToRegister = [...new Set([
           ...(sharedActivityRegistrationContext?.relatedDeliverableRelations.map((relation) => relation.id) ?? []),
           ...(pendingSharedDeliverableRelationId ? [pendingSharedDeliverableRelationId] : []),
-        ])].filter((relationId) => relationId !== pendingSharedActivityRelationId);
+        ])].filter((relationId) => !activityRelationIdsToRegister.includes(relationId));
 
-        if (pendingSharedActivityRelationId && activityTargetId) {
-          await registerForActivity(pendingSharedActivityRelationId, activityTargetId);
+        for (const [index, relationId] of activityRelationIdsToRegister.entries()) {
+          const relationDate = pendingSharedActivityDates[index];
+          const targetActivityId = (relationDate ? activityByDate.get(relationDate)?.id : undefined) || activityTargetId;
+          if (targetActivityId) {
+            await registerForActivity(relationId, targetActivityId);
+          }
         }
 
         if (deliverableTargetId) {
@@ -1750,7 +1775,7 @@ function ExpertDashboardContent() {
           }
         }
 
-        if (pendingSharedActivityRelationId || deliverableRelationIdsToRegister.length > 0) {
+        if (activityRelationIdsToRegister.length > 0 || deliverableRelationIdsToRegister.length > 0) {
           await refreshSharedDeliverables();
           resetSharedRegistrationFlow();
         }
@@ -2479,6 +2504,8 @@ function ExpertDashboardContent() {
 
   const resetSharedRegistrationFlow = () => {
     setPendingSharedActivityRelationId(null);
+    setPendingSharedActivityRelationIds([]);
+    setPendingSharedActivityDates([]);
     setPendingSharedDeliverableRelationId(null);
     setSharedActivityPrefill(null);
     setActivityResolutionHint(null);
@@ -2518,6 +2545,8 @@ function ExpertDashboardContent() {
       setSharedActivityIntent(intent);
       setPendingSharedDeliverableRelationId(null);
       setPendingSharedActivityRelationId(relation.id);
+      setPendingSharedActivityRelationIds([relation.id]);
+      setPendingSharedActivityDates(sourceActivity.date ? [sourceActivity.date] : []);
       setShowForm(false);
       setEditingActivity(null);
       setSharedActivityPrefill(null);
@@ -2640,6 +2669,8 @@ function ExpertDashboardContent() {
       setActivityResolutionHint(null);
       setPendingSharedDeliverableRelationId(null);
       setPendingSharedActivityRelationId(issue.action.relationId);
+      setPendingSharedActivityRelationIds([issue.action.relationId]);
+      setPendingSharedActivityDates([]);
       setActiveTab('activitati');
       return;
     }
@@ -2648,6 +2679,8 @@ function ExpertDashboardContent() {
       setShowForm(false);
       setActivityResolutionHint(null);
       setPendingSharedActivityRelationId(null);
+      setPendingSharedActivityRelationIds([]);
+      setPendingSharedActivityDates([]);
       setPendingSharedDeliverableRelationId(issue.action.relationId);
       setActiveTab('activitati');
       return;
@@ -2665,15 +2698,28 @@ function ExpertDashboardContent() {
 
     const params = new URLSearchParams(window.location.search);
     const activityRelationId = params.get('sharedActivityRelationId');
+    const activityRelationIds = parseCommaSeparatedQueryList(params.get('sharedActivityRelationIds'));
+    const activityDates = parseCommaSeparatedQueryList(params.get('sharedActivityDates'));
     const deliverableRelationId = params.get('sharedDeliverableRelationId');
 
     if (activityRelationId && pendingSharedActivityRelationId !== activityRelationId) {
       setPendingSharedActivityRelationId(activityRelationId);
     }
+    const nextActivityRelationIds = activityRelationIds.length > 0
+      ? activityRelationIds
+      : activityRelationId
+        ? [activityRelationId]
+        : [];
+    if (!areStringListsEqual(pendingSharedActivityRelationIds, nextActivityRelationIds)) {
+      setPendingSharedActivityRelationIds(nextActivityRelationIds);
+    }
+    if (!areStringListsEqual(pendingSharedActivityDates, activityDates)) {
+      setPendingSharedActivityDates(activityDates);
+    }
     if (deliverableRelationId && pendingSharedDeliverableRelationId !== deliverableRelationId) {
       setPendingSharedDeliverableRelationId(deliverableRelationId);
     }
-  }, [pendingSharedActivityRelationId, pendingSharedDeliverableRelationId]);
+  }, [pendingSharedActivityDates, pendingSharedActivityRelationId, pendingSharedActivityRelationIds, pendingSharedDeliverableRelationId]);
 
   useEffect(() => {
     if (!pendingSharedActivityRelationId || showForm || !selectedExpertId || sharedActivityRegistrationLoading || sharedActivityIntent === 'associate') return;
@@ -2684,8 +2730,15 @@ function ExpertDashboardContent() {
       return;
     }
 
-    if (sourceActivity.date) {
-      const [targetYear, targetMonth] = sourceActivity.date.split('-').map(Number);
+    const sharedActivitySelectedDates = pendingSharedActivityDates.length > 0
+      ? pendingSharedActivityDates
+      : sourceActivity.date
+        ? [sourceActivity.date]
+        : [];
+    const sourceDateForMonth = sharedActivitySelectedDates[0] || sourceActivity.date;
+
+    if (sourceDateForMonth) {
+      const [targetYear, targetMonth] = sourceDateForMonth.split('-').map(Number);
       const normalizedTargetMonth = targetMonth - 1;
       if (
         Number.isInteger(targetYear)
@@ -2744,7 +2797,10 @@ function ExpertDashboardContent() {
       eventDurationHours: sourceActivity.eventDurationHours,
       eventExtendedDescription: sourceActivity.eventExtendedDescription,
     });
-    syncSelectedDates([sourceActivity.date], { [sourceActivity.date]: prefillHours });
+    syncSelectedDates(
+      sharedActivitySelectedDates,
+      Object.fromEntries(sharedActivitySelectedDates.map((date) => [date, prefillHours])),
+    );
     setEditingActivity(null);
     setActivityResolutionHint(null);
     setShowForm(true);
@@ -2754,6 +2810,7 @@ function ExpertDashboardContent() {
     monthlyBlocking.isBlocked,
     monthlyBlocking.reason,
     pendingSharedActivityRelationId,
+    pendingSharedActivityDates,
     selectedExpertId,
     sharedActivityIntent,
     sharedActivityRegistrationContext,
@@ -3040,7 +3097,7 @@ function ExpertDashboardContent() {
   const formKey = editingActivity
     ? `edit-${editingActivity.id}-${activityResolutionHint?.id || 'manual'}`
     : sharedActivityPrefill
-      ? `prefill-${pendingSharedActivityRelationId || pendingSharedDeliverableRelationId || draftSessionId}`
+      ? `prefill-${pendingSharedActivityRelationIds.join('|') || pendingSharedActivityRelationId || pendingSharedDeliverableRelationId || draftSessionId}`
       : `new-${draftSessionId}-${activityResolutionHint?.id || 'manual'}`;
   const activityFormElement = (
     <ActivityForm
