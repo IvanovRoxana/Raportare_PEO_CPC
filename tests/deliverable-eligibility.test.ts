@@ -572,6 +572,11 @@ test('poarta de text pentru eligibilitate verifica toate livrabilele grupului ac
   assert.match(deliverableItemSource, /eligibilityDeliverables\.some\(\(item\) => hasEnoughExtractedTextForEligibility\(item, expertCategory\)\)/);
   assert.match(deliverableItemSource, /const eligibilityDeliverables = getEligibilityDeliverables\(deliverable, relatedDeliverables\)/);
   assert.match(deliverableItemSource, /Textul extras din livrabilele incarcate pentru grupul activitatii/);
+  assert.match(deliverableItemSource, /function isTextInsufficientEligibilityCheck/);
+  assert.match(deliverableItemSource, /visibleEligibilityCheck && !isTextInsufficientEligibilityCheck\(visibleEligibilityCheck\)/);
+  assert.match(eligibilityRouteSource, /const hasSufficientExtractedEvidence = eligibilityDocuments\.some/);
+  assert.match(eligibilityRouteSource, /hasSufficientDeliverableEvidenceForEligibility\(\{/);
+  assert.doesNotMatch(eligibilityRouteSource, /if \(trimmedExtractedText\.length < 80\)/);
 });
 
 test('rezultatul eligibilitatii pastreaza metadatele livrabilelor analizate', () => {

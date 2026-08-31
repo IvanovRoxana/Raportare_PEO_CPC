@@ -136,6 +136,31 @@ function normalizeEligibilityContextValue(value?: string | null) {
   return String(value ?? '').trim().toLowerCase();
 }
 
+function normalizeEligibilityResultText(value: unknown) {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+}
+
+function isTextInsufficientEligibilityCheck(check: DeliverableSlot['eligibilityCheck'] | undefined | null) {
+  if (!check || check.status !== 'neconcludent') return false;
+
+  const checkText = normalizeEligibilityResultText([
+    check.summary,
+    ...(check.checks || []).map((item) => `${item.criterion} ${item.explanation}`),
+    ...(check.missingElements || []),
+    ...(check.recommendations || []),
+    ...(check.riskFlags || []),
+  ].filter(Boolean).join(' '));
+
+  return checkText.includes('text') && (
+    checkText.includes('insuficient')
+    || checkText.includes('prea scurt')
+    || checkText.includes('nu a putut citi')
+  );
+}
+
 function isEligibilityCheckObsoleteForCurrentActivity(
   check: DeliverableSlot['eligibilityCheck'] | undefined | null,
   context: {
@@ -297,7 +322,7 @@ export function DeliverableItem({
     selectedActivityId,
     deliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
   }) ? null : deliverable.eligibilityCheck;
-  const hasReusableEligibilityCheck = Boolean(visibleEligibilityCheck);
+  const hasReusableEligibilityCheck = Boolean(visibleEligibilityCheck && !isTextInsufficientEligibilityCheck(visibleEligibilityCheck));
   const metadataLocked = Boolean(deliverable.lockedExistingMetadata);
 
   const readFileAsDataUrl = (file: File) =>
@@ -1378,7 +1403,7 @@ export function DeliverableEligibilityControl({
     selectedActivityId,
     deliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
   }) ? null : deliverable.eligibilityCheck;
-  const hasReusableEligibilityCheck = Boolean(visibleEligibilityCheck);
+  const hasReusableEligibilityCheck = Boolean(visibleEligibilityCheck && !isTextInsufficientEligibilityCheck(visibleEligibilityCheck));
 
   if (!deliverable.uploaded || deliverable.isPhoto) return null;
 
