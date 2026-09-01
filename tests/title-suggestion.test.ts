@@ -6,6 +6,7 @@ import {
   firstLinesLookAdministrative,
   shouldUseAiTitleSuggestion,
   isLikelyFilenameDerivedTitle,
+  resolveDocumentTitleSuggestion,
   titleExistsInDocumentText,
   validateDeclaredTitleInDocumentText,
 } from '../lib/title-suggestion.ts';
@@ -178,6 +179,48 @@ test('prefers document title over short filename fragments', () => {
     detectSuggestedTitleFromText(firstPage),
     'Document de pozitie privind reorganizarea MEDAT si impactul legislativ',
   );
+});
+
+test('keeps local first-page title when AI returns null', () => {
+  const localSuggestion = {
+    suggestedTitle: 'Document de pozitie privind reorganizarea MEDAT si impactul legislativ',
+    confidence: 'high' as const,
+    alternatives: [],
+    reason: 'Candidat local.',
+  };
+
+  const resolved = resolveDocumentTitleSuggestion({
+    localSuggestion,
+    aiSuggestion: {
+      suggestedTitle: null,
+      confidence: 'low',
+      alternatives: [],
+      reason: 'AI nu a identificat titlu clar.',
+    },
+    documentText: 'Document de pozitie privind reorganizarea MEDAT si impactul legislativ\nAugust 2026',
+  });
+
+  assert.equal(resolved.suggestedTitle, localSuggestion.suggestedTitle);
+  assert.equal(resolved.confidence, 'high');
+});
+
+test('uses AI title when it is explicitly present in the first page', () => {
+  const resolved = resolveDocumentTitleSuggestion({
+    localSuggestion: {
+      suggestedTitle: 'Document de pozitie',
+      confidence: 'medium',
+      alternatives: [],
+    },
+    aiSuggestion: {
+      suggestedTitle: 'Document de pozitie privind reorganizarea MEDAT',
+      confidence: 'high',
+      alternatives: [],
+    },
+    documentText: 'Document de pozitie privind reorganizarea MEDAT\nAugust 2026',
+  });
+
+  assert.equal(resolved.suggestedTitle, 'Document de pozitie privind reorganizarea MEDAT');
+  assert.equal(resolved.confidence, 'high');
 });
 
 test('ignores very short lines, page numbers, dates and generic labels', () => {

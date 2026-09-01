@@ -314,6 +314,35 @@ export function detectSuggestedTitleFromText(text?: string | null) {
   return suggestTitleFromFirstPage(text).suggestedTitle;
 }
 
+export function resolveDocumentTitleSuggestion(args: {
+  localSuggestion: TitleSuggestionResult;
+  aiSuggestion?: TitleSuggestionResult | null;
+  documentText?: string | null;
+}): TitleSuggestionResult {
+  const aiTitle = normalizeSpaces(args.aiSuggestion?.suggestedTitle || '');
+  if (aiTitle && titleExistsInDocumentText(args.documentText, aiTitle)) {
+    return {
+      suggestedTitle: aiTitle,
+      confidence: args.aiSuggestion?.confidence || 'medium',
+      alternatives: args.aiSuggestion?.alternatives || [],
+      reason: args.aiSuggestion?.reason,
+    };
+  }
+
+  const localTitle = normalizeSpaces(args.localSuggestion.suggestedTitle || '');
+  if (localTitle && titleExistsInDocumentText(args.documentText, localTitle)) {
+    return {
+      ...args.localSuggestion,
+      suggestedTitle: localTitle,
+      reason: args.aiSuggestion?.suggestedTitle === null
+        ? 'AI nu a confirmat un titlu, dar sugestia locala apare explicit in prima pagina.'
+        : args.localSuggestion.reason,
+    };
+  }
+
+  return args.aiSuggestion || args.localSuggestion;
+}
+
 export function titleExistsInDocumentText(documentText: string | null | undefined, declaredTitle: string | null | undefined) {
   const documentNorm = normalizeTitleForMatch(documentText || '');
   const titleNorm = normalizeTitleForMatch(declaredTitle || '');

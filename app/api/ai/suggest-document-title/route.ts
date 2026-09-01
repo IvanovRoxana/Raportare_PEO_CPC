@@ -2,7 +2,7 @@ import { Output } from 'ai';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { governedGenerateText, aiErrorResponse, assertAllowedAiRequest } from '@/lib/ai-governance';
-import { suggestTitleFromFirstPage } from '@/lib/title-suggestion';
+import { resolveDocumentTitleSuggestion, suggestTitleFromFirstPage } from '@/lib/title-suggestion';
 import { openaiModel } from '@/lib/openai';
 
 export const runtime = 'nodejs';
@@ -81,7 +81,13 @@ Returnează JSON valid cu:
       return NextResponse.json({ ...localSuggestion, auditId: result.auditId });
     }
 
-    return NextResponse.json({ ...parsed.data, auditId: result.auditId });
+    const resolved = resolveDocumentTitleSuggestion({
+      localSuggestion,
+      aiSuggestion: parsed.data,
+      documentText: firstPageText,
+    });
+
+    return NextResponse.json({ ...resolved, auditId: result.auditId });
   } catch (error) {
     console.error('Error suggesting document title:', error);
     const response = aiErrorResponse(error, 'Eroare la sugerarea titlului documentului');
