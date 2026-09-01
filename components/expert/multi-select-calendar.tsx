@@ -65,9 +65,11 @@ export function MultiSelectCalendar({
   };
   const getAvailableHoursForDate = useCallback(
     (date: string) => {
-      const existingHours = activities
-        .filter((activity) => activity.date === date)
-        .reduce((sum, activity) => sum + (Number(activity.hours) || 0), 0);
+      const dateActivities = activities.filter((activity) => activity.date === date);
+      if (dateActivities.some((activity) => activity.dayType === 'CO' || activity.dayType === 'CM' || activity.dayType === 'Altele')) {
+        return 0;
+      }
+      const existingHours = dateActivities.reduce((sum, activity) => sum + (Number(activity.hours) || 0), 0);
       return Math.max(0, cimDailyHoursLimit - existingHours);
     },
     [activities, cimDailyHoursLimit],
@@ -287,7 +289,9 @@ export function MultiSelectCalendar({
           const isSelected = selectedDates.includes(dateStr);
           const nonWorkingInfo = getNonWorkingDayInfo(date);
           const isNonWorkingDay = nonWorkingInfo.isNonWorkingDay;
-          const hasActivities = getDateActivities(date).length > 0;
+          const dateActivities = getDateActivities(date);
+          const hasActivities = dateActivities.length > 0;
+          const leaveActivity = dateActivities.find((activity) => activity.dayType === 'CO' || activity.dayType === 'CM' || activity.dayType === 'Altele');
           const totalHours = getTotalHours(date);
           const isToday = formatDate(new Date()) === dateStr;
           const selectedHour = normalizeHoursForDate(dateStr, selectedHours[dateStr]);
@@ -366,6 +370,11 @@ export function MultiSelectCalendar({
                   isCurrentMonth &&
                   !isNonWorkingDay && (
                     <div className="mt-auto space-y-0.5">
+                      {leaveActivity && (
+                        <span className="block rounded bg-blue-100 px-1.5 py-0.5 text-xs font-semibold leading-4 text-blue-700">
+                          {leaveActivity.dayType === 'Altele' ? 'Absenta' : leaveActivity.dayType}
+                        </span>
+                      )}
                       {hasActivities && (
                         <span
                           className={cn(
@@ -373,7 +382,7 @@ export function MultiSelectCalendar({
                             exceedsDailyLimit && 'text-amber-700 dark:text-amber-400',
                           )}
                         >
-                          {totalHours}h pontate
+                          {leaveActivity ? `${totalHours}h PEO` : `${totalHours}h pontate`}
                         </span>
                       )}
                       {canAddHours && (

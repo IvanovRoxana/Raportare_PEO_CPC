@@ -916,6 +916,7 @@ export default function ExpertHomeDashboard() {
         activities: peoActivities,
         concurrentProjects: activeConcurrentProjects,
         concurrentTimesheetEntries: expertConcurrentEntries,
+        leaveEntries: currentExpertLeaveEntries,
         month: currentMonth,
         year: currentYear,
       })),
