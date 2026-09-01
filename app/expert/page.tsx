@@ -60,7 +60,7 @@ const WORK_TABS = [
 ];
 
 const DAY_NAMES = ['Lu', 'Ma', 'Mi', 'Jo', 'Vi', 'Sa', 'Du'];
-const MONTH_OPTIONS = Array.from({ length: 12 }, (_, value) => ({ value, label: getMonthName(value) }));
+const MONTH_SELECTOR_OFFSETS = [-3, -2, -1, 0, 1];
 
 type SharedActivityAlertSummary = {
   projectId?: string;
@@ -589,9 +589,19 @@ export default function ExpertHomeDashboard() {
   const isBaseMonth = currentMonth === baseMonth && currentYear === baseYear;
   const selectedMonthHasAccess = isBaseMonth || currentMonthStatus?.expertAccessApproved === true;
   const selectedMonthRequestPending = currentMonthAccessRequest?.status === 'pending';
-  const selectableYears = useMemo(
-    () => Array.from(new Set([baseYear - 1, baseYear, baseYear + 1, currentYear])).sort((a, b) => b - a),
-    [baseYear, currentYear],
+  const selectableMonths = useMemo(
+    () => MONTH_SELECTOR_OFFSETS.map((offset) => {
+      const date = new Date(baseYear, baseMonth + offset, 1);
+      const month = date.getMonth();
+      const year = date.getFullYear();
+
+      return {
+        month,
+        year,
+        label: `${getMonthName(month)} ${year}`,
+      };
+    }),
+    [baseMonth, baseYear],
   );
   const { sharedDeliverables, mutate: refreshSharedDeliverables } = useSharedDeliverables();
   const { ignore: ignoreSharedSuggestion } = useSharedDeliverableMutations();
@@ -994,13 +1004,11 @@ export default function ExpertHomeDashboard() {
             <SelectValue placeholder="Luna" />
           </SelectTrigger>
           <SelectContent>
-            {selectableYears.flatMap((year) =>
-              MONTH_OPTIONS.map((month) => (
-                <SelectItem key={`${month.value}-${year}`} value={`${month.value}-${year}`}>
-                  {month.label} {year}
-                </SelectItem>
-              ))
-            )}
+            {selectableMonths.map((month) => (
+              <SelectItem key={`${month.month}-${month.year}`} value={`${month.month}-${month.year}`}>
+                {month.label}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
         {!selectedMonthHasAccess && (
