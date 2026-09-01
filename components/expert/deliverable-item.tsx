@@ -560,7 +560,7 @@ export function DeliverableItem({
 
   const buildFilePatch = async (file: File, currentDeclaredTitle: string): Promise<Partial<DeliverableSlot> | null> => {
     const raw = file.name.replace(/\.[^.]+$/, '');
-    const isPhoto = isImageFile(file.name);
+    const isPhoto = isImageFile(file.name) || file.type.startsWith('image/');
     const lowerFileName = file.name.toLowerCase();
     const isPdf = lowerFileName.endsWith('.pdf');
     const isWordDocument = lowerFileName.endsWith('.docx') || lowerFileName.endsWith('.doc');
@@ -582,12 +582,14 @@ export function DeliverableItem({
     setExtractingText(true);
     try {
       if (isPhoto) {
-        const ocrResult = await extractImageTextWithSource(file);
-        firstPageText = ocrResult.text;
-        docText = ocrResult.text;
-        textExtractionSource = ocrResult.source;
-        titleSuggestion = suggestTitleFromFirstPage(firstPageText);
-        docTitle = titleSuggestion.suggestedTitle;
+        textExtractionSource = undefined;
+        docTitle = formatTitleFromFilename(file.name) || null;
+        titleSuggestion = {
+          suggestedTitle: docTitle,
+          confidence: 'low',
+          alternatives: [],
+          reason: 'Fotografie atasata ca dovada de eveniment; uploadul nu asteapta extragere OCR.',
+        };
       } else if (isWordDocument) {
         firstPageText = await extractDocxFirstPageText(file);
         titleSuggestion = suggestTitleFromFirstPage(firstPageText);

@@ -105,6 +105,17 @@ test('livrabilele pending upload pastreaza diagnosticul si il afiseaza in formul
   assert.match(deliverableItemSource, /deliverable\.uploadError \|\| 'Fisierul nu a fost confirmat in S3/);
 });
 
+test('fotografiile atasate in formular nu asteapta OCR pentru a fi marcate ca uploadate', () => {
+  const buildFilePatchStart = deliverableItemSource.indexOf('const buildFilePatch = async');
+  const handleFileStart = deliverableItemSource.indexOf('const handleFile = async', buildFilePatchStart);
+  const buildFilePatchSource = deliverableItemSource.slice(buildFilePatchStart, handleFileStart);
+
+  assert.match(buildFilePatchSource, /const isPhoto = isImageFile\(file\.name\) \|\| file\.type\.startsWith\('image\/'\)/);
+  assert.match(buildFilePatchSource, /if \(isPhoto\) \{\s*textExtractionSource = undefined;/);
+  assert.doesNotMatch(buildFilePatchSource, /if \(isPhoto\) \{\s*const ocrResult = await extractImageTextWithSource\(file\)/);
+  assert.match(buildFilePatchSource, /Fotografie atasata ca dovada de eveniment; uploadul nu asteapta extragere OCR\./);
+});
+
 test('accepta sugestii de activitate si tip livrabil cand exista in listele permise', () => {
   const suggestion = validateEligibilitySuggestedSettings({
     suggestedSettings: {

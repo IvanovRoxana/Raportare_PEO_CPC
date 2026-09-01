@@ -106,6 +106,20 @@ test('activity agent response schema accepts the structured output contract', ()
     },
     confidence: 'high',
     requiresPmReview: false,
+    formReview: {
+      status: 'ready',
+      summary: 'Formularul are date suficiente pentru salvare dupa revizuirea expertului.',
+      steps: [
+        {
+          id: 'type',
+          label: 'Tip activitate',
+          status: 'ok',
+          message: 'Activitatea este incadrata corect.',
+          actions: [],
+        },
+      ],
+      recommendedActions: [],
+    },
     checks: {
       jobDescriptionAligned: true,
       saPurposeFound: true,
@@ -141,6 +155,65 @@ test('activity agent response schema accepts the structured output contract', ()
   assert.equal(parsed.targetGroupImpact.type, 'direct');
   assert.equal(parsed.explainableScores[0].score, 0.92);
   assert.match(parsed.deliverableInterpretation.summary, /monitorizare legislativa/);
+  assert.equal(parsed.formReview?.status, 'ready');
+});
+
+test('activity agent schema accepts controlled fallback form review without blocking legacy fields', () => {
+  const parsed = activityAgentResponseSchema.parse({
+    description: 'Am realizat activitati de monitorizare legislativa regionala si am formulat informatii relevante pentru proiect.',
+    usedFacts: ['monitorizare legislativa regionala'],
+    shortSummary: 'Am realizat activitati de monitorizare legislativa regionala pentru proiect.',
+    proposedSaCode: 'SA3.2',
+    proposedActivityName: 'Monitorizare legislativa regionala si informare membri',
+    deliverableSummary: 'Raport de monitorizare legislativa regionala',
+    deliverableInterpretation: {
+      summary: 'Livrabilul indica monitorizare legislativa.',
+      workPerformed: [],
+      keyFacts: [],
+      documentSignals: [],
+      unsupportedGaps: ['Analiza completa nu a fost finalizata.'],
+    },
+    resultSummary: 'Rezultat formulat prudent pe baza datelor disponibile; necesita verificare PM.',
+    beneficiaries: [],
+    targetGroupImpact: {
+      type: 'unclear',
+      justification: 'Impactul asupra grupului tinta nu a putut fi confirmat complet.',
+    },
+    evidenceUsed: [],
+    explainableScores: [],
+    warnings: ['Agentul PEO nu a finalizat analiza completa.'],
+    confidence: 'low',
+    requiresPmReview: true,
+    formReview: {
+      status: 'needs_review',
+      summary: 'Formularul poate continua, dar recomandarile agentului cer verificare PM.',
+      steps: [
+        {
+          id: 'review',
+          label: 'Review',
+          status: 'needs_review',
+          message: 'Agentul recomanda verificare PM inainte de aplicare/salvare.',
+          actions: ['Pastreaza auditul PM la indemana pentru verificare.'],
+        },
+      ],
+      recommendedActions: ['Trimite activitatea spre verificare PM daca avertizarile raman valabile.'],
+    },
+    checks: {
+      jobDescriptionAligned: null,
+      saPurposeFound: null,
+      subactivityAligned: null,
+      deliverableSupported: true,
+      hoursPlausible: null,
+      targetGroupImpactSupported: null,
+    },
+  });
+
+  assert.equal(parsed.confidence, 'low');
+  assert.equal(parsed.requiresPmReview, true);
+  assert.equal(parsed.formReview?.status, 'needs_review');
+  assert.ok(parsed.formReview?.steps.some((step) => step.id === 'review' && step.status === 'needs_review'));
+  assert.ok(parsed.description.length >= 20);
+  assert.ok(parsed.shortSummary.length >= 20);
 });
 
 test('activity agent generation schema accepts only final description, warnings and used facts', () => {

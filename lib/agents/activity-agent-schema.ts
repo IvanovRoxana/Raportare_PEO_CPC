@@ -81,6 +81,21 @@ export const activityAgentExplainableScoreSchema = z.object({
   evidence: z.array(z.string()).default([]),
 });
 
+export const activityAgentFormReviewStepSchema = z.object({
+  id: z.enum(['type', 'time', 'deliverables', 'description', 'collaboration', 'review']),
+  label: z.string(),
+  status: z.enum(['ok', 'attention', 'missing', 'needs_review']),
+  message: z.string(),
+  actions: z.array(z.string()).default([]),
+});
+
+export const activityAgentFormReviewSchema = z.object({
+  status: z.enum(['ready', 'needs_input', 'needs_review']),
+  summary: z.string(),
+  steps: z.array(activityAgentFormReviewStepSchema),
+  recommendedActions: z.array(z.string()).default([]),
+});
+
 export const activityAgentGenerationSchema = z.object({
   description: z.string().min(80),
   warnings: z.array(z.string()).default([]),
@@ -137,6 +152,7 @@ export const activityAgentResponseSchema = z.object({
   }).optional(),
   confidence: z.enum(['high', 'medium', 'low']),
   requiresPmReview: z.boolean(),
+  formReview: activityAgentFormReviewSchema.optional(),
   checks: z.object({
     jobDescriptionAligned: z.boolean().nullable(),
     saPurposeFound: z.boolean().nullable().optional(),
@@ -157,3 +173,4 @@ export type ActivityAgentFactSheet = z.infer<typeof activityAgentFactSheetSchema
 export type ActivityAgentValidation = z.infer<typeof activityAgentValidationSchema>;
 export type ActivityAgentDeliverable = z.infer<typeof activityAgentDeliverableSchema>;
 export type ActivityAgentCatalogCandidate = z.infer<typeof activityAgentCatalogCandidateSchema>;
+export type ActivityAgentFormReview = z.infer<typeof activityAgentFormReviewSchema>;

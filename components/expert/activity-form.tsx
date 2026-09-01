@@ -214,6 +214,26 @@ function getAutofillRagLabel(suggestion: ActivityAutofillSuggestion) {
   return 'RAG: fara potriviri';
 }
 
+function getAgentFormReviewStatusLabel(status: string) {
+  if (status === 'ready') return 'formular pregatit';
+  if (status === 'needs_input') return 'date de completat';
+  return 'verificare PM';
+}
+
+function getAgentFormReviewStepClass(status: string) {
+  if (status === 'ok') return 'border-emerald-200 bg-white text-slate-800';
+  if (status === 'missing') return 'border-amber-300 bg-amber-50 text-amber-950';
+  if (status === 'needs_review') return 'border-orange-300 bg-orange-50 text-orange-950';
+  return 'border-slate-200 bg-slate-50 text-slate-800';
+}
+
+function getAgentFormReviewStepStatusLabel(status: string) {
+  if (status === 'ok') return 'ok';
+  if (status === 'missing') return 'lipsa';
+  if (status === 'needs_review') return 'PM';
+  return 'atentie';
+}
+
 function formatAutofillRagSource(source: NonNullable<ActivityAutofillSuggestion['rag']>['sources'][number]) {
   return [
     source.sourceType,
@@ -3651,9 +3671,9 @@ export function ActivityForm({
               <div className="mt-3 rounded-md border border-slate-200 bg-white p-3">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <div className="text-sm font-medium text-slate-900">Descriere asistata AI</div>
+                    <div className="text-sm font-medium text-slate-900">Asistent activitate</div>
                     <div className="text-xs text-slate-600">
-                      Pentru o descriere asistata corecta, verifica si completeaza descrierea de mai sus cu data, obiectivul SA, activitatea realizata efectiv, livrabilele incarcate si contributia ta specifica.
+                      Verifica formularul si pregateste o descriere asistata, fara aplicare automata sau salvare.
                     </div>
                   </div>
                   <Button
@@ -3673,7 +3693,7 @@ export function ActivityForm({
                     ) : (
                       <Sparkles className="h-4 w-4 mr-2" />
                     )}
-                    {isPreparingActivityAutofill ? 'Citire livrabil...' : 'Optimizare descriere'}
+                    {isPreparingActivityAutofill ? 'Citire livrabil...' : 'Asistent activitate'}
                   </Button>
                 </div>
 
@@ -3692,8 +3712,13 @@ export function ActivityForm({
                 {activityAutofillSuggestion && (
                   <div className="mt-3 space-y-3 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-950">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="font-medium">Descriere pregatita pentru revizuire</div>
+                      <div className="font-medium">Sugestie agent pentru revizuire</div>
                       <div className="flex flex-wrap gap-1.5">
+                        {activityAutofillSuggestion.agent?.formReview && (
+                          <Badge variant="outline" className="border-emerald-300 bg-white text-[10px] text-emerald-800">
+                            {getAgentFormReviewStatusLabel(activityAutofillSuggestion.agent.formReview.status)}
+                          </Badge>
+                        )}
                         <Badge variant="outline" className="border-emerald-300 bg-white text-[10px] text-emerald-800">
                           {getAutofillConfidenceLabel(activityAutofillSuggestion.confidence)}
                         </Badge>
@@ -3702,6 +3727,54 @@ export function ActivityForm({
                         </Badge>
                       </div>
                     </div>
+                    {activityAutofillSuggestion.agent?.formReview && (
+                      <div className="rounded border border-emerald-200 bg-white p-2 text-xs text-slate-800">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div>
+                            <div className="font-medium text-emerald-800">Review formular</div>
+                            <div className="mt-1 text-slate-700">{activityAutofillSuggestion.agent.formReview.summary}</div>
+                          </div>
+                          {activityAutofillSuggestion.agent.requiresPmReview && (
+                            <Badge variant="outline" className="border-amber-300 bg-amber-50 text-[10px] text-amber-800">
+                              PM
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="mt-2 grid gap-2 md:grid-cols-2">
+                          {activityAutofillSuggestion.agent.formReview.steps.map((step) => (
+                            <div
+                              key={`activity-agent-form-review-${step.id}`}
+                              className={`rounded border p-2 ${getAgentFormReviewStepClass(step.status)}`}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="font-medium">{step.label}</span>
+                                <span className="text-[10px] font-semibold uppercase tracking-wide">
+                                  {getAgentFormReviewStepStatusLabel(step.status)}
+                                </span>
+                              </div>
+                              <div className="mt-1 text-slate-700">{step.message}</div>
+                              {step.actions.length > 0 && (
+                                <ul className="mt-1 list-disc space-y-1 pl-4 text-slate-600">
+                                  {step.actions.slice(0, 2).map((action, index) => (
+                                    <li key={`activity-agent-form-review-action-${step.id}-${index}`}>{action}</li>
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                        {activityAutofillSuggestion.agent.formReview.recommendedActions.length > 0 && (
+                          <div className="mt-2 border-t border-emerald-100 pt-2">
+                            <div className="font-medium text-emerald-800">Actiuni recomandate</div>
+                            <ul className="mt-1 list-disc space-y-1 pl-4 text-slate-700">
+                              {activityAutofillSuggestion.agent.formReview.recommendedActions.slice(0, 4).map((action, index) => (
+                                <li key={`activity-agent-form-review-recommended-${index}`}>{action}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <div>
                       <div className="text-xs font-medium text-emerald-800">Descriere propusa</div>
                       <div className="mt-1 whitespace-pre-wrap rounded border border-emerald-200 bg-white p-2 text-xs text-slate-800">

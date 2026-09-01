@@ -5,6 +5,7 @@ import type { RagAuthContext } from '../rag/types.ts';
 import { buildActivityAgentPrompt, buildActivityAgentSystemPrompt } from './activity-agent-prompt.ts';
 import {
   activityAgentGenerationSchema,
+  type ActivityAgentFormReview,
   type ActivityAgentGeneration,
   type ActivityAgentRequest,
   type ActivityAgentResponse,
@@ -580,6 +581,107 @@ function buildActivityAgentAuditRequest(
   };
 }
 
+function buildFormReview(input: {
+  request: ActivityAgentRequest;
+  checks: ActivityAgentResponse['checks'];
+  warnings: string[];
+  confidence: ActivityAgentResponse['confidence'];
+  requiresPmReview: boolean;
+}): ActivityAgentFormReview {
+  const { request, checks, warnings, confidence, requiresPmReview } = input;
+  const hasDescription = Boolean(request.currentDescription?.trim());
+  const hasGeneratedDescription = confidence !== 'low' || warnings.length === 0;
+  const hasCollaborators = Boolean(request.collaborationContext?.collaborators.length);
+  const recommendedActions = uniqueMessages([
+    ...(checks.subactivityAligned === false ? ['Verifica incadrarea SA inainte de salvare.'] : []),
+    ...(checks.hoursPlausible === false ? ['Corecteaza orele sau datele selectate.'] : []),
+    ...(checks.deliverableSupported === false || checks.deliverableSupported === null
+      ? ['Completeaza sau verifica livrabilele atasate.']
+      : []),
+    ...warnings.slice(0, 4),
+    ...(requiresPmReview ? ['Trimite activitatea spre verificare PM daca avertizarile raman valabile.'] : []),
+  ]).slice(0, 6);
+  const status = recommendedActions.some((action) => (
+    action.includes('Completeaza') || action.includes('Corecteaza')
+  ))
+    ? 'needs_input'
+    : requiresPmReview
+      ? 'needs_review'
+      : 'ready';
+
+  return {
+    status,
+    summary: status === 'ready'
+      ? 'Formularul are date suficiente pentru aplicarea sugestiei si salvare dupa revizuirea expertului.'
+      : status === 'needs_input'
+        ? 'Formularul are campuri sau verificari care trebuie completate inainte de salvare.'
+        : 'Formularul poate continua, dar recomandarile agentului cer verificare PM.',
+    recommendedActions,
+    steps: [
+      {
+        id: 'type',
+        label: 'Tip activitate',
+        status: checks.subactivityAligned === false ? 'needs_review' : request.activityName ? 'ok' : 'missing',
+        message: request.activityName
+          ? `Activitate selectata: ${request.saCode ? `${request.saCode} - ` : ''}${request.activityName}.`
+          : 'Nu exista activitate selectata pentru incadrare.',
+        actions: checks.subactivityAligned === false ? ['Verifica daca SA-ul selectat corespunde livrabilului.'] : [],
+      },
+      {
+        id: 'time',
+        label: 'Timp',
+        status: checks.hoursPlausible === false ? 'attention' : request.hours ? 'ok' : 'missing',
+        message: request.hours
+          ? `Pontaj transmis catre agent: ${request.hours} ore.`
+          : 'Orele nu sunt disponibile in contextul agentului.',
+        actions: checks.hoursPlausible === false ? ['Revizuieste orele si datele selectate.'] : [],
+      },
+      {
+        id: 'deliverables',
+        label: 'Livrabile',
+        status: checks.deliverableSupported ? 'ok' : request.deliverables.length > 0 ? 'attention' : 'missing',
+        message: request.deliverables.length > 0
+          ? `${request.deliverables.length} livrabil(e) transmise catre agent.`
+          : 'Nu exista livrabile in contextul agentului.',
+        actions: checks.deliverableSupported ? [] : ['Incarca livrabilul sau confirma introducerea manuala.'],
+      },
+      {
+        id: 'description',
+        label: 'Descriere',
+        status: hasGeneratedDescription ? 'ok' : hasDescription ? 'attention' : 'missing',
+        message: hasGeneratedDescription
+          ? 'Agentul a pregatit o descriere pentru revizuire.'
+          : hasDescription
+            ? 'Exista descriere curenta, dar agentul recomanda revizuire.'
+            : 'Descrierea activitatii lipseste.',
+        actions: hasGeneratedDescription ? ['Revizuieste si aplica descrierea propusa.'] : ['Completeaza descrierea manual.'],
+      },
+      {
+        id: 'collaboration',
+        label: 'Colaborare',
+        status: request.collaborationContext?.isCommonActivity && !hasCollaborators ? 'attention' : 'ok',
+        message: request.collaborationContext?.isCommonActivity
+          ? hasCollaborators
+            ? `${request.collaborationContext.collaborators.length} colaborator(i) inclusi in context.`
+            : 'Activitate comuna fara colaboratori transmisi catre agent.'
+          : 'Activitate individuala.',
+        actions: request.collaborationContext?.isCommonActivity && !hasCollaborators
+          ? ['Adauga colaboratorii relevanti sau debifeaza activitatea comuna.']
+          : [],
+      },
+      {
+        id: 'review',
+        label: 'Review',
+        status: requiresPmReview ? 'needs_review' : 'ok',
+        message: requiresPmReview
+          ? 'Agentul recomanda verificare PM inainte de aplicare/salvare.'
+          : 'Nu sunt semnale de verificare PM obligatorie din partea agentului.',
+        actions: requiresPmReview ? ['Pastreaza auditul PM la indemana pentru verificare.'] : [],
+      },
+    ],
+  };
+}
+
 export function buildControlledFallbackActivityAgentResponse(
   request: ActivityAgentRequest,
   warnings: string[],
@@ -613,6 +715,19 @@ export function buildControlledFallbackActivityAgentResponse(
       ...descriptionQuality.warnings,
       'Fallback prudent returnat fara blocarea raportarii.',
     ]),
+  };
+  const responseWarnings = uniqueMessages([
+    ...warnings,
+    ...descriptionQuality.warnings,
+    'Descriere formulata prudent pe baza datelor disponibile; incadrarea necesita verificare interna.',
+  ]);
+  const checks: ActivityAgentResponse['checks'] = {
+    jobDescriptionAligned: null,
+    saPurposeFound: null,
+    subactivityAligned: null,
+    deliverableSupported: request.deliverables.length > 0 ? true : null,
+    hoursPlausible: null,
+    targetGroupImpactSupported: null,
   };
 
   return {
@@ -678,11 +793,7 @@ export function buildControlledFallbackActivityAgentResponse(
         evidence: request.deliverables.map((deliverable) => deliverable.documentTitle).filter(Boolean).slice(0, 3),
       },
     ],
-    warnings: uniqueMessages([
-      ...warnings,
-      ...descriptionQuality.warnings,
-      'Descriere formulata prudent pe baza datelor disponibile; incadrarea necesita verificare interna.',
-    ]),
+    warnings: responseWarnings,
     expertInstructionAudit: {
       found: Boolean(request.expertReportingInstructions?.trim()),
       active: Boolean(request.expertReportingInstructions?.trim()),
@@ -691,14 +802,14 @@ export function buildControlledFallbackActivityAgentResponse(
     },
     confidence: 'low',
     requiresPmReview: true,
-    checks: {
-      jobDescriptionAligned: null,
-      saPurposeFound: null,
-      subactivityAligned: null,
-      deliverableSupported: request.deliverables.length > 0 ? true : null,
-      hoursPlausible: null,
-      targetGroupImpactSupported: null,
-    },
+    formReview: buildFormReview({
+      request,
+      checks,
+      warnings: responseWarnings,
+      confidence: 'low',
+      requiresPmReview: true,
+    }),
+    checks,
     factSheet: fallbackFactSheet,
     validation,
   };
@@ -749,6 +860,23 @@ export async function runActivityAgent(
   ]);
   const interpretation = fallbackDeliverableInterpretation(request);
   const evidenceUsed = buildEvidenceUsed(request, generated);
+  const confidence: ActivityAgentResponse['confidence'] = context.classification.confidence >= 0.75 && descriptionQuality.score >= 0.75 && warnings.length === 0
+    ? 'high'
+    : context.classification.confidence >= 0.55 && descriptionQuality.score >= 0.55
+      ? 'medium'
+      : 'low';
+  const requiresPmReview = warnings.length > 0
+    || !validation.canUseDescription
+    || context.classification.confidence < 0.55
+    || descriptionQuality.score < 0.55;
+  const checks: ActivityAgentResponse['checks'] = {
+    jobDescriptionAligned: null,
+    saPurposeFound: context.saPurpose.found,
+    subactivityAligned: context.classification.confidence >= 0.55,
+    deliverableSupported: request.deliverables.length > 0 && request.deliverables.some((deliverable) => deliverable.extractedText?.trim()),
+    hoursPlausible: context.hours.valid,
+    targetGroupImpactSupported: context.targetGroupImpact.impactType !== 'unclear',
+  };
 
   return {
     description,
@@ -785,20 +913,16 @@ export async function runActivityAgent(
     },
     auditId: result.auditId,
     explainableScores: mergeExplainableScores([], buildDeterministicExplainableScores(request, context, changedSelectedActivity, description)),
-    confidence: context.classification.confidence >= 0.75 && descriptionQuality.score >= 0.75 && warnings.length === 0
-      ? 'high'
-      : context.classification.confidence >= 0.55 && descriptionQuality.score >= 0.55
-        ? 'medium'
-        : 'low',
-    requiresPmReview: warnings.length > 0 || !validation.canUseDescription || context.classification.confidence < 0.55 || descriptionQuality.score < 0.55,
-    checks: {
-      jobDescriptionAligned: null,
-      saPurposeFound: context.saPurpose.found,
-      subactivityAligned: context.classification.confidence >= 0.55,
-      deliverableSupported: request.deliverables.length > 0 && request.deliverables.some((deliverable) => deliverable.extractedText?.trim()),
-      hoursPlausible: context.hours.valid,
-      targetGroupImpactSupported: context.targetGroupImpact.impactType !== 'unclear',
-    },
+    confidence,
+    requiresPmReview,
+    formReview: buildFormReview({
+      request,
+      checks,
+      warnings,
+      confidence,
+      requiresPmReview,
+    }),
+    checks,
     factSheet: context.factSheet,
     validation,
   } satisfies ActivityAgentResponse;
