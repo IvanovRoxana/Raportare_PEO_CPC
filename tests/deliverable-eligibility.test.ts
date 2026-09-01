@@ -98,6 +98,19 @@ test('verificarea eligibilitatii livrabilului ramane consultativa la salvarea ac
   assert.match(activityFormSource, /Verificarea eligibilitatii este consultativa si nu blocheaza salvarea/);
 });
 
+test('explicatia pentru ore suplimentare la eveniment ramane vizibila dupa completare', () => {
+  assert.match(
+    activityFormSource,
+    /const shouldShowExtendedEventDescription = isEvent && eventDur > 0 && totalHours > eventDur;/,
+  );
+  assert.match(
+    activityFormSource,
+    /const needsExtendedDesc = shouldShowExtendedEventDescription && \(eventExtendedDesc \|\| ''\)\.trim\(\)\.length < 20;/,
+  );
+  assert.match(activityFormSource, /\{shouldShowExtendedEventDescription && \(/g);
+  assert.doesNotMatch(activityFormSource, /\{needsExtendedDesc && \(\s*<div className="mt-2">\s*<Label className="text-xs text-amber-700">Activitati conexe evenimentului - obligatoriu<\/Label>/);
+});
+
 test('livrabilele pending upload pastreaza diagnosticul si il afiseaza in formular', () => {
   assert.match(amplifyDataResourceSource, /uploadError: a\.string\(\)/);
   assert.match(deliverableItemSource, /const hasPendingUpload = deliverable\.duplicateStatus === 'pending_upload' \|\| Boolean\(deliverable\.uploadError\)/);

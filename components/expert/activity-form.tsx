@@ -1397,7 +1397,8 @@ export function ActivityForm({
     sum + Number(normalizePontajHoursValue(normalizedSelectedHours[date], getDefaultHoursForDate(date)))
   ), 0);
   const eventDur = parseFloat(eventDuration) || 0;
-  const needsExtendedDesc = isEvent && eventDur > 0 && totalHours > eventDur && (eventExtendedDesc || '').trim().length < 20;
+  const shouldShowExtendedEventDescription = isEvent && eventDur > 0 && totalHours > eventDur;
+  const needsExtendedDesc = shouldShowExtendedEventDescription && (eventExtendedDesc || '').trim().length < 20;
   const usesMonthlyComDeliverable = !isEvent && isComCommunicationMultiGroupActivity({
     activityType: effectiveActivityTitle,
     title: effectiveActivityTitle,
@@ -3095,7 +3096,7 @@ export function ActivityForm({
                       </span>
                     )}
                   </div>
-                  {needsExtendedDesc && (
+                  {shouldShowExtendedEventDescription && (
                     <div className="mt-2">
                       <Label className="text-xs text-amber-700">Activitati conexe evenimentului - obligatoriu</Label>
                       <div className="text-xs text-amber-600 mb-2">
@@ -4010,7 +4011,7 @@ export function ActivityForm({
                     </span>
                   )}
                 </div>
-                {needsExtendedDesc && (
+                {shouldShowExtendedEventDescription && (
                   <div className="mt-2">
                     <Label className="text-xs text-amber-700">Activitati conexe evenimentului - obligatoriu</Label>
                     <div className="text-xs text-amber-600 mb-2">
