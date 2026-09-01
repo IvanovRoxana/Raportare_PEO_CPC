@@ -591,10 +591,16 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
       };
       const next = { ...previous, [field]: value };
       if (field === 'peoNorm' || field === 'peoDays') {
-        next.peoHours = formatNumericCell(numericCell(next.peoNorm) * numericCell(next.peoDays));
+        const nextPeoNorm = numericCell(next.peoNorm);
+        if (nextPeoNorm > 0) {
+          next.peoHours = formatNumericCell(nextPeoNorm * numericCell(next.peoDays));
+        }
       }
       if (field === 'cpcNorm' || field === 'cpcDays') {
-        next.cpcHours = formatNumericCell(numericCell(next.cpcNorm) * numericCell(next.cpcDays));
+        const nextCpcNorm = numericCell(next.cpcNorm);
+        if (nextCpcNorm > 0) {
+          next.cpcHours = formatNumericCell(nextCpcNorm * numericCell(next.cpcDays));
+        }
       }
       return { ...current, [key]: next };
     });

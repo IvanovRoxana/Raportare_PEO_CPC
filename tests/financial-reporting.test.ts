@@ -69,6 +69,19 @@ test('salvarea din grila CO financiar valideaza direct randurile salvate', () =>
   assert.doesNotMatch(saveGridSource, /status:\s*'DRAFT'/);
 });
 
+test('grila CO financiar nu sterge orele manuale cand norma CPC este zero', () => {
+  const source = readFileSync('components/financial/financial-reporting-dashboard.tsx', 'utf8');
+  const updateDraftStart = source.indexOf('const updateLeaveGridDraft = ');
+  const updateDraftEnd = source.indexOf('const updateLeaveGridPeriod = ');
+  const updateDraftSource = source.slice(updateDraftStart, updateDraftEnd);
+
+  assert.notEqual(updateDraftStart, -1);
+  assert.notEqual(updateDraftEnd, -1);
+  assert.match(updateDraftSource, /const nextCpcNorm = numericCell\(next\.cpcNorm\);/);
+  assert.match(updateDraftSource, /if \(nextCpcNorm > 0\) \{/);
+  assert.doesNotMatch(updateDraftSource, /next\.cpcHours = formatNumericCell\(numericCell\(next\.cpcNorm\) \* numericCell\(next\.cpcDays\)\)/);
+});
+
 test('grila CO financiar foloseste perioada ca selectie PEO si pastreaza zilele CIM pentru CPC', () => {
   const allocations = buildFinancialLeaveGridAllocations({
     existingLeaveDates: [
