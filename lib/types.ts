@@ -318,6 +318,54 @@ export interface NotificationLog {
 
 export type NotificationLogCreateInput = Omit<NotificationLog, 'id' | 'createdAt' | 'updatedAt'>;
 
+export type PmReviewCaseSubjectType =
+  | 'activity'
+  | 'deliverable'
+  | 'monthly_report'
+  | 'shared_deliverable'
+  | 'month_access'
+  | 'other'
+  | string;
+
+export type PmReviewCaseStatus = 'open' | 'waiting_expert' | 'answered' | 'resolved' | 'dismissed' | string;
+
+export type PmReviewCasePriority = 'low' | 'medium' | 'high' | 'blocking' | string;
+
+export interface PmReviewCase {
+  id: string;
+  expertId: string;
+  expertName?: string;
+  projectCode?: string;
+  month: number;
+  year: number;
+  subjectType: PmReviewCaseSubjectType;
+  subjectId?: string;
+  sourceActivityId?: string;
+  documentId?: string;
+  subjectLabel?: string;
+  title: string;
+  description: string;
+  priority: PmReviewCasePriority;
+  status: PmReviewCaseStatus;
+  pmOwnerId?: string;
+  pmOwnerName?: string;
+  expertResponse?: string;
+  notificationRequested?: boolean;
+  notificationSentAt?: string;
+  notificationSentBy?: string;
+  lastNotificationAt?: string;
+  notificationCount?: number;
+  resolvedBy?: string;
+  resolvedAt?: string;
+  resolution?: string;
+  createdBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type PmReviewCaseCreateInput = Omit<PmReviewCase, 'id' | 'createdAt' | 'updatedAt'>;
+export type PmReviewCaseUpdateInput = Partial<Omit<PmReviewCase, 'id' | 'createdAt' | 'updatedAt'>>;
+
 export interface DashboardComplianceRow {
   expertId: string;
   expertName: string;

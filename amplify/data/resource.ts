@@ -1003,6 +1003,44 @@ const schema = a.schema({
       allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
     ]),
 
+  PmReviewCase: a
+    .model({
+      expertId: a.id().required(),
+      expertName: a.string(),
+      projectCode: a.string(),
+      year: a.integer().required(),
+      month: a.integer().required(),
+      subjectType: a.string().required(),
+      subjectId: a.string(),
+      sourceActivityId: a.id(),
+      documentId: a.id(),
+      subjectLabel: a.string(),
+      title: a.string().required(),
+      description: a.string().required(),
+      priority: a.string().default("medium"),
+      status: a.string().default("open"),
+      pmOwnerId: a.id(),
+      pmOwnerName: a.string(),
+      expertResponse: a.string(),
+      notificationRequested: a.boolean().default(false),
+      notificationSentAt: a.datetime(),
+      notificationSentBy: a.string(),
+      lastNotificationAt: a.datetime(),
+      notificationCount: a.integer().default(0),
+      resolvedBy: a.string(),
+      resolvedAt: a.datetime(),
+      resolution: a.string(),
+      createdBy: a.string(),
+    })
+    .secondaryIndexes((index) => [
+      index("expertId").sortKeys(["year", "month"]),
+      index("status").sortKeys(["year", "month"]),
+    ])
+    .authorization((allow) => [
+      allow.groups(["expert"]).to(["read", "update"]),
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
   VerificationNote: a
     .model({
       verificationId: a.id(),

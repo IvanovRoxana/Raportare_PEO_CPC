@@ -6,6 +6,7 @@ import { buildMissingActivityEmailDrafts, buildWeeklyPmStatusEmailDraft } from '
 import {
   buildExpertSubmittedMonthNotifications,
   buildPmApprovedMonthNotification,
+  buildPmReviewCaseNotification,
   buildPmRequestedClarificationNotification,
   getPmNotificationRecipients,
 } from '../lib/pm-email-notifications.ts';
@@ -158,4 +159,35 @@ test('actiunile PM construiesc notificari catre expert', () => {
   assert.equal(clarification[0].recipientEmail, 'expert@test.ro');
   assert.match(clarification[0].body, /Te rog completeaza justificarea/);
   assert.equal(approval[0].kind, 'pm_month_approved');
+});
+
+test('notificarea pentru caz PM este explicita si include contextul cazului', () => {
+  const expert = { ...pmExpert, id: 'expert-1', role: 'Expert', email: 'expert@test.ro' };
+  const drafts = buildPmReviewCaseNotification({
+    expert,
+    reviewCase: {
+      id: 'case-1',
+      expertId: expert.id,
+      expertName: expert.name,
+      projectCode: '302141',
+      month: 7,
+      year: 2026,
+      subjectType: 'deliverable',
+      subjectId: 'doc-1',
+      documentId: 'doc-1',
+      subjectLabel: 'Livrabil AI neeligibil',
+      title: 'Verificare livrabil',
+      description: 'Te rugam sa clarifici eligibilitatea livrabilului.',
+      priority: 'blocking',
+      status: 'waiting_expert',
+    },
+    note: 'Verifica observatia AI.',
+  });
+
+  assert.equal(drafts.length, 1);
+  assert.equal(drafts[0].kind, 'pm_review_case_notification');
+  assert.equal(drafts[0].recipientEmail, 'expert@test.ro');
+  assert.match(drafts[0].body, /Livrabil AI neeligibil/);
+  assert.equal(drafts[0].metadata?.caseId, 'case-1');
+  assert.equal(drafts[0].metadata?.priority, 'blocking');
 });

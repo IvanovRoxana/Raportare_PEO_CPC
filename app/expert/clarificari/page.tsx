@@ -3,18 +3,19 @@
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { AlertTriangle, ArrowLeft, ArrowRight, CalendarDays, ClipboardList, Loader2 } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ArrowRight, CalendarDays, ClipboardList, Loader2, MessageSquare } from 'lucide-react';
 import { AdminViewAsBanner } from '@/components/admin/admin-view-as-banner';
 import { DashboardShell, expertNavItems } from '@/components/layout/dashboard-shell';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { UserMenu } from '@/components/user-menu';
-import { useActivitiesByMonth, useExperts, useReportStatus } from '@/hooks/use-backend-data';
+import { useActivitiesByMonth, useExperts, usePmReviewCasesForExpert, usePmReviewCaseMutations, useReportStatus } from '@/hooks/use-backend-data';
 import { getSignedInUser } from '@/lib/aws/auth';
 import { getMonthName } from '@/lib/backend-store';
 import { buildClarificationEditHref, getActivitiesWithPmClarifications } from '@/lib/pm-clarifications';
-import type { Activity } from '@/lib/types';
+import { PM_REVIEW_CASE_PRIORITY_LABELS, PM_REVIEW_CASE_SUBJECT_LABELS, isPmReviewCaseVisibleForExpert } from '@/lib/pm-review-cases';
+import type { Activity, PmReviewCase } from '@/lib/types';
 
 function readMonthParam(value: string | null, fallback: number) {
   const parsed = Number(value);
@@ -83,6 +84,49 @@ function ActivityClarificationCard({ activity, month, year }: { activity: Activi
   );
 }
 
+function PmReviewCaseCard({
+  reviewCase,
+  onAnswer,
+}: {
+  reviewCase: PmReviewCase;
+  onAnswer: (reviewCase: PmReviewCase) => Promise<void>;
+}) {
+  return (
+    <Card className="rounded-lg border-amber-200">
+      <CardContent className="space-y-4 p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="outline">{PM_REVIEW_CASE_SUBJECT_LABELS[reviewCase.subjectType] || reviewCase.subjectType}</Badge>
+              <Badge variant={reviewCase.priority === 'blocking' ? 'destructive' : 'secondary'}>
+                {PM_REVIEW_CASE_PRIORITY_LABELS[reviewCase.priority] || reviewCase.priority}
+              </Badge>
+              {reviewCase.subjectLabel ? <Badge variant="outline">{reviewCase.subjectLabel}</Badge> : null}
+            </div>
+            <h2 className="text-lg font-semibold text-slate-950">{reviewCase.title}</h2>
+            <p className="text-sm leading-6 text-muted-foreground">{reviewCase.description}</p>
+          </div>
+          <Button type="button" onClick={() => onAnswer(reviewCase)}>
+            <MessageSquare className="h-4 w-4" />
+            Raspunde
+          </Button>
+        </div>
+        {reviewCase.expertResponse ? (
+          <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">
+            <p className="font-semibold">Raspunsul tau</p>
+            <p className="mt-1 leading-6">{reviewCase.expertResponse}</p>
+          </div>
+        ) : null}
+        {reviewCase.createdAt ? (
+          <p className="text-xs text-muted-foreground">
+            Creat: {new Date(reviewCase.createdAt).toLocaleString('ro-RO')}
+          </p>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
 function ExpertClarificationsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -105,6 +149,8 @@ function ExpertClarificationsContent() {
     }) ?? null;
   }, [experts, signedInEmail, signedInUserId]);
   const { status: reportStatus, isLoading: reportStatusLoading } = useReportStatus(currentExpert?.id ?? null, month, year);
+  const { cases: pmReviewCases, isLoading: pmReviewCasesLoading } = usePmReviewCasesForExpert(currentExpert?.id ?? null, month, year);
+  const { update: updatePmReviewCase } = usePmReviewCaseMutations();
   const expertActivities = useMemo(
     () => currentExpert ? monthActivities.filter((activity) => activity.expertId === currentExpert.id) : [],
     [currentExpert, monthActivities],
@@ -113,6 +159,23 @@ function ExpertClarificationsContent() {
     () => getActivitiesWithPmClarifications(expertActivities),
     [expertActivities],
   );
+  const visiblePmReviewCases = useMemo(
+    () => pmReviewCases.filter(isPmReviewCaseVisibleForExpert),
+    [pmReviewCases],
+  );
+
+  const answerPmReviewCase = async (reviewCase: PmReviewCase) => {
+    const answer = window.prompt('Raspuns pentru PM:', reviewCase.expertResponse || '');
+    if (answer === null) return;
+    try {
+      await updatePmReviewCase(reviewCase, {
+        status: 'answered',
+        expertResponse: answer.trim() || 'Expertul a raspuns cazului PM.',
+      });
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Raspunsul nu a putut fi salvat.');
+    }
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -205,13 +268,32 @@ function ExpertClarificationsContent() {
             <div className="flex items-center justify-center rounded-lg border bg-card py-10">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
-          ) : clarificationActivities.length > 0 ? (
+          ) : null}
+
+          {pmReviewCasesLoading ? (
+            <div className="flex items-center justify-center rounded-lg border bg-card py-8">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : visiblePmReviewCases.length > 0 ? (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <MessageSquare className="h-4 w-4 text-primary" />
+                <h2 className="font-semibold">Cazuri PM</h2>
+                <Badge variant="outline">{visiblePmReviewCases.length}</Badge>
+              </div>
+              {visiblePmReviewCases.map((reviewCase) => (
+                <PmReviewCaseCard key={reviewCase.id} reviewCase={reviewCase} onAnswer={answerPmReviewCase} />
+              ))}
+            </div>
+          ) : null}
+
+          {!activitiesLoading && !reportStatusLoading && clarificationActivities.length > 0 ? (
             <div className="space-y-3">
               {clarificationActivities.map((activity) => (
                 <ActivityClarificationCard key={activity.id} activity={activity} month={month} year={year} />
               ))}
             </div>
-          ) : (
+          ) : !activitiesLoading && !reportStatusLoading && visiblePmReviewCases.length === 0 ? (
             <Card className="rounded-lg">
               <CardContent className="flex flex-col items-center gap-3 p-8 text-center">
                 <AlertTriangle className="h-8 w-8 text-muted-foreground" />
@@ -226,7 +308,7 @@ function ExpertClarificationsContent() {
                 </Button>
               </CardContent>
             </Card>
-          )}
+          ) : null}
         </div>
       </DashboardShell>
     </>

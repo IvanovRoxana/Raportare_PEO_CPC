@@ -7,6 +7,7 @@ import {
   activitiesService,
   verificationsService,
   neconformitatiService,
+  pmReviewCasesService,
   notesService,
   settingsService,
   isBackendAvailable,
@@ -51,7 +52,7 @@ import {
   sharedDeliverablesService,
   reportingWorkBlocksService,
 } from '@/lib/backend-store';
-import type { Activity, Expert, ExpertNormContract, FinancialPersonLink, LeaveEntry, VerificationData, Neconformitate, VerificationNote, AppSettings, ActivityCatalog, AiEligibilityRuleset, AiEligibilityRuleVersion, WorkingGroup, ConcurrentProject, ConcurrentProjectTimesheetEntry, ReportStatus, MonthAccessRequest, GrupTintaEntry, BusinessHubEntityDirectoryEntry, AuditLog, ActivityAutofillAudit, AdminInterventionRequest, HistoricalImportBatch, HistoricalTimesheetDayEntry, IndexedDeliverableCandidate, MonthlyActivityItem, MonthlyExpertReport, UploadedReportingFile, DocumentMetadata, SharedDeliverable, NotificationLogCreateInput, ReportingPeriodCreateInput, ReportingPeriodUpdateInput } from '@/lib/types';
+import type { Activity, Expert, ExpertNormContract, FinancialPersonLink, LeaveEntry, VerificationData, Neconformitate, PmReviewCase, PmReviewCaseCreateInput, PmReviewCaseUpdateInput, VerificationNote, AppSettings, ActivityCatalog, AiEligibilityRuleset, AiEligibilityRuleVersion, WorkingGroup, ConcurrentProject, ConcurrentProjectTimesheetEntry, ReportStatus, MonthAccessRequest, GrupTintaEntry, BusinessHubEntityDirectoryEntry, AuditLog, ActivityAutofillAudit, AdminInterventionRequest, HistoricalImportBatch, HistoricalTimesheetDayEntry, IndexedDeliverableCandidate, MonthlyActivityItem, MonthlyExpertReport, UploadedReportingFile, DocumentMetadata, SharedDeliverable, NotificationLogCreateInput, ReportingPeriodCreateInput, ReportingPeriodUpdateInput } from '@/lib/types';
 import { getContractedProcurementProjects, type ProcurementChecklist, type ProcurementContract, type ProcurementDeliverable, type ProcurementDocument, type ProcurementEvaluation, type ProcurementInvoice, type ProcurementLaunch, type ProcurementOffer, type ProcurementProject, type ProcurementReception, type ProcurementStatusHistory, type ProcurementSupplier } from '@/lib/procurement';
 import {
   buildDeterministicWorkBlockConsolidation,
@@ -772,6 +773,62 @@ export function useNeconformitateMutations() {
   };
 
   return { create, update, resolve, remove };
+}
+
+// ============================================
+// PM REVIEW CASES HOOKS
+// ============================================
+function refreshPmReviewCaseCaches(reviewCase: Pick<PmReviewCase, 'expertId' | 'month' | 'year'>) {
+  mutate(`pm-review-cases-${reviewCase.year}-${reviewCase.month}`);
+  mutate(`pm-review-cases-expert-${reviewCase.expertId}-${reviewCase.year}-${reviewCase.month}`);
+  mutate(`report-status-${reviewCase.expertId}-${reviewCase.month}-${reviewCase.year}`);
+  mutate(`report-status-month-${reviewCase.month}-${reviewCase.year}`);
+}
+
+export function usePmReviewCasesByMonth(month: number, year: number) {
+  const key = `pm-review-cases-${year}-${month}`;
+  const { data, error, isLoading } = useSWR(
+    isBackendAvailable() ? key : null,
+    safeFetcher(() => pmReviewCasesService.getByMonth(month, year))
+  );
+
+  return {
+    cases: stableList(data),
+    isLoading,
+    error,
+    mutate: () => mutate(key),
+  };
+}
+
+export function usePmReviewCasesForExpert(expertId: string | null, month: number, year: number) {
+  const key = expertId ? `pm-review-cases-expert-${expertId}-${year}-${month}` : null;
+  const { data, error, isLoading } = useSWR(
+    key && isBackendAvailable() ? key : null,
+    safeFetcher(() => pmReviewCasesService.getByExpertAndMonth(expertId!, month, year))
+  );
+
+  return {
+    cases: stableList(data),
+    isLoading,
+    error,
+    mutate: () => key && mutate(key),
+  };
+}
+
+export function usePmReviewCaseMutations() {
+  const create = async (input: PmReviewCaseCreateInput) => {
+    const created = await pmReviewCasesService.create(input);
+    refreshPmReviewCaseCaches(created);
+    return created;
+  };
+
+  const update = async (reviewCase: PmReviewCase, updates: PmReviewCaseUpdateInput) => {
+    const updated = await pmReviewCasesService.update(reviewCase.id, updates);
+    refreshPmReviewCaseCaches(updated || reviewCase);
+    return updated;
+  };
+
+  return { create, update };
 }
 
 // ============================================

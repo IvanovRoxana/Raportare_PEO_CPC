@@ -65,6 +65,9 @@ import type {
   PersistedReportingWorkBlock,
   PersistedWorkBlockActivityLink,
   PersistedWorkBlockDeliverableLink,
+  PmReviewCase,
+  PmReviewCaseCreateInput,
+  PmReviewCaseUpdateInput,
   ReportingPeriod,
   ReportingPeriodCreateInput,
   ReportingPeriodUpdateInput,
@@ -592,6 +595,40 @@ function mapNotificationLog(item: any): NotificationLog {
     metadata: item.metadata ?? null,
     sentAt: item.sentAt ?? undefined,
     errorMessage: item.errorMessage ?? undefined,
+    createdAt: item.createdAt ?? undefined,
+    updatedAt: item.updatedAt ?? undefined,
+  };
+}
+
+function mapPmReviewCase(item: any): PmReviewCase {
+  return {
+    id: item.id,
+    expertId: item.expertId,
+    expertName: item.expertName ?? undefined,
+    projectCode: item.projectCode ?? undefined,
+    month: Number(item.month),
+    year: Number(item.year),
+    subjectType: item.subjectType ?? 'other',
+    subjectId: item.subjectId ?? undefined,
+    sourceActivityId: item.sourceActivityId ?? undefined,
+    documentId: item.documentId ?? undefined,
+    subjectLabel: item.subjectLabel ?? undefined,
+    title: item.title,
+    description: item.description,
+    priority: item.priority ?? 'medium',
+    status: item.status ?? 'open',
+    pmOwnerId: item.pmOwnerId ?? undefined,
+    pmOwnerName: item.pmOwnerName ?? undefined,
+    expertResponse: item.expertResponse ?? undefined,
+    notificationRequested: item.notificationRequested ?? false,
+    notificationSentAt: item.notificationSentAt ?? undefined,
+    notificationSentBy: item.notificationSentBy ?? undefined,
+    lastNotificationAt: item.lastNotificationAt ?? undefined,
+    notificationCount: item.notificationCount ?? 0,
+    resolvedBy: item.resolvedBy ?? undefined,
+    resolvedAt: item.resolvedAt ?? undefined,
+    resolution: item.resolution ?? undefined,
+    createdBy: item.createdBy ?? undefined,
     createdAt: item.createdAt ?? undefined,
     updatedAt: item.updatedAt ?? undefined,
   };
@@ -3364,6 +3401,131 @@ function mapNeconformitate(item: any): Neconformitate {
     createdAt: item.createdAt,
   };
 }
+
+export const pmReviewCasesService = {
+  async getByMonth(month: number, year: number): Promise<PmReviewCase[]> {
+    const client = getAwsDataClient() as any;
+    const model = client.models.PmReviewCase;
+    if (!model) return [];
+
+    const scope = await getCurrentDataAccessScope(client);
+    if (!scope.canUsePmDashboard && !scope.canAccessAllExperts && !scope.currentExpertId) return [];
+
+    const filter: Record<string, unknown> = {
+      month: { eq: month },
+      year: { eq: year },
+    };
+    if (!scope.canUsePmDashboard && !scope.canAccessAllExperts && scope.currentExpertId) {
+      filter.expertId = { eq: scope.currentExpertId };
+    }
+
+    const data = await listModel<any>(model, filter);
+    return data.map(mapPmReviewCase).sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+  },
+
+  async getByExpertAndMonth(expertId: string, month: number, year: number): Promise<PmReviewCase[]> {
+    const client = getAwsDataClient() as any;
+    const model = client.models.PmReviewCase;
+    if (!model) return [];
+
+    await assertCanAccessExpert(client, expertId);
+    const data = await listModel<any>(model, {
+      expertId: { eq: expertId },
+      month: { eq: month },
+      year: { eq: year },
+    });
+    return data.map(mapPmReviewCase).sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+  },
+
+  async create(input: PmReviewCaseCreateInput): Promise<PmReviewCase> {
+    const client = getAwsDataClient() as any;
+    const model = client.models.PmReviewCase;
+    if (!model) {
+      throw new Error('Registrul Cazuri PM nu este disponibil inca in backend. Fluxul legacy ramane disponibil.');
+    }
+
+    await assertCanAccessExpert(client, input.expertId);
+    const result = await model.create(omitUndefinedFields({
+      expertId: input.expertId,
+      expertName: input.expertName,
+      projectCode: input.projectCode,
+      month: input.month,
+      year: input.year,
+      subjectType: input.subjectType,
+      subjectId: input.subjectId,
+      sourceActivityId: input.sourceActivityId,
+      documentId: input.documentId,
+      subjectLabel: input.subjectLabel,
+      title: input.title,
+      description: input.description,
+      priority: input.priority || 'medium',
+      status: input.status || 'open',
+      pmOwnerId: input.pmOwnerId,
+      pmOwnerName: input.pmOwnerName,
+      expertResponse: input.expertResponse,
+      notificationRequested: input.notificationRequested ?? false,
+      notificationSentAt: input.notificationSentAt,
+      notificationSentBy: input.notificationSentBy,
+      lastNotificationAt: input.lastNotificationAt,
+      notificationCount: input.notificationCount ?? 0,
+      resolvedBy: input.resolvedBy,
+      resolvedAt: input.resolvedAt,
+      resolution: input.resolution,
+      createdBy: input.createdBy,
+    }));
+    assertNoErrors(result, 'AWS create PM review case');
+    return mapPmReviewCase(result.data);
+  },
+
+  async update(id: string, updates: PmReviewCaseUpdateInput): Promise<PmReviewCase | null> {
+    const client = getAwsDataClient() as any;
+    const model = client.models.PmReviewCase;
+    if (!model) {
+      throw new Error('Registrul Cazuri PM nu este disponibil inca in backend. Fluxul legacy ramane disponibil.');
+    }
+
+    const existing = await model.get({ id });
+    assertNoErrors(existing, 'AWS get PM review case');
+    if (!existing.data) return null;
+
+    await assertCanAccessExpert(client, existing.data.expertId);
+    if (updates.expertId && updates.expertId !== existing.data.expertId) {
+      await assertCanAccessExpert(client, updates.expertId);
+    }
+
+    const result = await model.update(omitUndefinedFields({
+      id,
+      expertId: updates.expertId,
+      expertName: updates.expertName,
+      projectCode: updates.projectCode,
+      month: updates.month,
+      year: updates.year,
+      subjectType: updates.subjectType,
+      subjectId: updates.subjectId,
+      sourceActivityId: updates.sourceActivityId,
+      documentId: updates.documentId,
+      subjectLabel: updates.subjectLabel,
+      title: updates.title,
+      description: updates.description,
+      priority: updates.priority,
+      status: updates.status,
+      pmOwnerId: updates.pmOwnerId,
+      pmOwnerName: updates.pmOwnerName,
+      expertResponse: updates.expertResponse,
+      notificationRequested: updates.notificationRequested,
+      notificationSentAt: updates.notificationSentAt,
+      notificationSentBy: updates.notificationSentBy,
+      lastNotificationAt: updates.lastNotificationAt,
+      notificationCount: updates.notificationCount,
+      resolvedBy: updates.resolvedBy,
+      resolvedAt: updates.resolvedAt,
+      resolution: updates.resolution,
+      createdBy: updates.createdBy,
+    }));
+    assertNoErrors(result, 'AWS update PM review case');
+    return result.data ? mapPmReviewCase(result.data) : null;
+  },
+};
 
 export const notesService = {
   async getByVerification(verificationId: string): Promise<VerificationNote[]> {

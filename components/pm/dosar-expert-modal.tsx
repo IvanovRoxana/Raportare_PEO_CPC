@@ -49,6 +49,7 @@ import type {
   VerificationData,
   PmClarificationThread,
   ActivityCatalog,
+  PmReviewCaseCreateInput,
 } from '@/lib/types';
 import fallbackActivityCatalog from '@/data/import/activity-catalog.json';
 import { mergeActivityCatalogs } from '@/lib/activity-catalog-merge';
@@ -83,6 +84,7 @@ interface DosarExpertModalProps {
   onApproveMonth?: () => Promise<void> | void;
   onApproveActivity?: (activities: Activity[]) => Promise<void> | void;
   onRequestActivityClarification?: (activities: Activity[]) => Promise<void> | void;
+  onCreatePmReviewCase?: (input: PmReviewCaseCreateInput) => Promise<unknown> | void;
   onApprovePmUnlock?: (document: DocumentMetadata) => Promise<void> | void;
   clarificationThreads?: PmClarificationThread[];
   initialFocus?: { activityId?: string; documentId?: string; issueType?: string };
@@ -299,6 +301,7 @@ export function DosarExpertModal({
   onApproveMonth,
   onApproveActivity,
   onRequestActivityClarification,
+  onCreatePmReviewCase,
   onApprovePmUnlock,
   clarificationThreads = [],
   initialFocus,
@@ -1010,6 +1013,43 @@ export function DosarExpertModal({
     }
   };
 
+  const createActivityPmReviewCase = async (group: DossierActivityGroup) => {
+    if (!expert || !onCreatePmReviewCase) return;
+    const title = window.prompt('Titlul cazului PM:', `${group.saCode} - ${group.title}`);
+    if (title === null) return;
+    const description = window.prompt('Descriere / ce trebuie verificat:', group.description || group.title);
+    if (description === null) return;
+    const priorityInput = window.prompt('Prioritate: low, medium, high sau blocking', 'medium');
+    if (priorityInput === null) return;
+    const priority = ['low', 'medium', 'high', 'blocking'].includes(priorityInput.trim())
+      ? priorityInput.trim()
+      : 'medium';
+
+    setActivityActionId(`case-${group.key}`);
+    setDocumentError(null);
+    try {
+      await onCreatePmReviewCase({
+        expertId: expert.id,
+        expertName: expert.name,
+        projectCode,
+        month,
+        year,
+        subjectType: 'activity',
+        subjectId: group.representative.id,
+        sourceActivityId: group.representative.id,
+        subjectLabel: `${group.saCode} · ${group.title}`,
+        title: title.trim() || `${group.saCode} - ${group.title}`,
+        description: description.trim() || 'Caz PM creat punctual din dosarul expertului.',
+        priority,
+        status: 'open',
+      });
+    } catch (error) {
+      setDocumentError(error instanceof Error ? error.message : 'Cazul PM nu a putut fi creat.');
+    } finally {
+      setActivityActionId(null);
+    }
+  };
+
   if (!expert) return null;
 
   return (
@@ -1516,6 +1556,7 @@ export function DosarExpertModal({
                               const hasClarification = !isApproved && group.activities.some((activity) => Boolean(activity.pmNotes));
                               const approveActionId = `approve-${group.key}`;
                               const clarificationActionId = `clarification-${group.key}`;
+                              const caseActionId = `case-${group.key}`;
 
                               return (
                                 <div id={`dossier-activity-${group.representative.id}`} key={group.key} className="rounded-lg border border-slate-200 bg-white p-3 text-xs shadow-sm">
@@ -1620,6 +1661,18 @@ export function DosarExpertModal({
                                       >
                                         {activityActionId === clarificationActionId ? <Loader2 className="h-3 w-3 animate-spin" /> : <MessageSquare className="h-3 w-3" />}
                                         Cere clarificari
+                                      </Button>
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        className="h-7 px-2 text-[10px]"
+                                        onClick={() => createActivityPmReviewCase(group)}
+                                        disabled={!onCreatePmReviewCase || activityActionId !== null}
+                                        title="Creeaza un caz PM punctual pentru aceasta activitate"
+                                      >
+                                        {activityActionId === caseActionId ? <Loader2 className="h-3 w-3 animate-spin" /> : <AlertTriangle className="h-3 w-3" />}
+                                        Caz PM
                                       </Button>
                                     </div>
                                   )}

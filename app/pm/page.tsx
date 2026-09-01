@@ -49,6 +49,8 @@ import {
   useVerification,
   useNeconformitati,
   useNeconformitateMutations,
+  usePmReviewCasesByMonth,
+  usePmReviewCaseMutations,
   useNotes,
   useNoteMutations,
   useActivityMutations,
@@ -111,8 +113,16 @@ import {
   buildPmApprovedDeliverableNotification,
   buildPmApprovedMonthNotification,
   buildPmOpenedMonthAccessNotification,
+  buildPmReviewCaseNotification,
   buildPmRequestedClarificationNotification,
 } from '@/lib/pm-email-notifications';
+import {
+  isBlockingPmReviewCase,
+  isPmReviewCaseActive,
+  mapLegacyNeconformitateToReviewCaseListItem,
+  mapPmReviewCaseToListItem,
+  type PmReviewCaseListItem,
+} from '@/lib/pm-review-cases';
 import type {
   PontajRow,
   RaportRow,
@@ -126,6 +136,8 @@ import type {
   DocumentMetadata,
   MonthAccessRequest,
   PmClarificationThread,
+  PmReviewCase,
+  PmReviewCaseCreateInput,
   ActivityCatalog,
 } from '@/lib/types';
 import { UserMenu } from '@/components/user-menu';
@@ -141,6 +153,7 @@ import { PmSubmittedReportsPanel, type PmSubmittedReportRow } from '@/components
 import { AiRagAuditTab } from '@/components/pm/ai-rag-audit-tab';
 import { PmWorkspace } from '@/components/pm/workspace/pm-workspace';
 import { EligibilityGovernancePanel } from '@/components/pm/eligibility-governance-panel';
+import { PmReviewCasesPanel } from '@/components/pm/pm-review-cases-panel';
 import fallbackActivityCatalog from '@/data/import/activity-catalog.json';
 
 const EMPTY_PONTAJ_ROWS: PontajRow[] = [];
@@ -249,6 +262,8 @@ export default function PMDashboard() {
   const { neconformitati, isLoading: neconformitatiLoading } = useNeconformitati(verification?.id || null);
   const { neconformitati: reviewNeconformitati } = useNeconformitati(reviewVerification?.id || null);
   const { create: createNeconformitate, update: updateNeconformitate, resolve: resolveNeconformitate, remove: removeNeconformitate } = useNeconformitateMutations();
+  const { cases: pmReviewCases } = usePmReviewCasesByMonth(selectedMonth, selectedYear);
+  const { create: createPmReviewCase, update: updatePmReviewCase } = usePmReviewCaseMutations();
   const { notes, isLoading: notesLoading } = useNotes(verification?.id || null);
   const { create: createNote, update: updateNote, remove: removeNote } = useNoteMutations();
   const { create: createActivity, update: updateActivity } = useActivityMutations();
@@ -415,6 +430,32 @@ export default function PMDashboard() {
     () => monthActivities.filter((activity) => activity.expertId === selectedExpertId && activity.pmNotes?.trim()),
     [monthActivities, selectedExpertId],
   );
+  const pmReviewCaseListItems = useMemo(
+    () => pmReviewCases.map(mapPmReviewCaseToListItem),
+    [pmReviewCases],
+  );
+  const legacyReviewCaseListItems = useMemo(
+    () => localNeconformitati.map((item) => {
+      const expert = visibleExperts.find((candidate) => candidate.id === item.affectedExpertId);
+      return mapLegacyNeconformitateToReviewCaseListItem({
+        item,
+        fallbackMonth: selectedMonth,
+        fallbackYear: selectedYear,
+        fallbackExpertName: expert?.name,
+        projectCode: expert?.projectCode || selectedExpert.projectCode,
+      });
+    }),
+    [localNeconformitati, selectedExpert.projectCode, selectedMonth, selectedYear, visibleExperts],
+  );
+  const blockingPmReviewCasesByExpertId = useMemo(() => {
+    const result = new Map<string, PmReviewCase[]>();
+    pmReviewCases.filter(isBlockingPmReviewCase).forEach((reviewCase) => {
+      const items = result.get(reviewCase.expertId) || [];
+      items.push(reviewCase);
+      result.set(reviewCase.expertId, items);
+    });
+    return result;
+  }, [pmReviewCases]);
   const recordClarificationAudit = async ({
     expert,
     note,
@@ -450,6 +491,67 @@ export default function PMDashboard() {
       return null;
     }
   };
+  const handleCreatePmReviewCase = async (input: PmReviewCaseCreateInput) => {
+    if (!canManagePmReview) return null;
+    return createPmReviewCase({
+      ...input,
+      pmOwnerId: input.pmOwnerId || currentUser?.id || currentUser?.email || 'pm',
+      pmOwnerName: input.pmOwnerName || currentUser?.displayName || currentUser?.email || 'PM',
+      createdBy: input.createdBy || currentUser?.id || currentUser?.email || 'pm',
+    });
+  };
+  const handleNotifyPmReviewCase = async (reviewCase: PmReviewCase) => {
+    if (!canManagePmReview) return;
+    const expert = visibleExperts.find((item) => item.id === reviewCase.expertId);
+    if (!expert) {
+      window.alert('Nu am gasit expertul pentru acest caz PM.');
+      return;
+    }
+    const note = window.prompt('Mesaj optional pentru expert:');
+    if (note === null) return;
+    try {
+      await notifyByEmail(buildPmReviewCaseNotification({
+        expert,
+        reviewCase,
+        note: note.trim() || undefined,
+      }));
+      const now = new Date().toISOString();
+      await updatePmReviewCase(reviewCase, {
+        status: 'waiting_expert',
+        notificationRequested: true,
+        notificationSentAt: now,
+        notificationSentBy: currentUser?.displayName || currentUser?.email || 'PM',
+        lastNotificationAt: now,
+        notificationCount: (reviewCase.notificationCount || 0) + 1,
+      });
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Cazul PM nu a putut fi notificat.');
+    }
+  };
+  const handleResolvePmReviewCase = async (reviewCase: PmReviewCase) => {
+    if (!canManagePmReview) return;
+    const resolution = window.prompt('Rezolutie caz PM:');
+    if (resolution === null) return;
+    try {
+      await updatePmReviewCase(reviewCase, {
+        status: 'resolved',
+        resolution: resolution.trim() || 'Rezolvat de PM.',
+        resolvedAt: new Date().toISOString(),
+        resolvedBy: currentUser?.displayName || currentUser?.email || 'PM',
+      });
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Cazul PM nu a putut fi rezolvat.');
+    }
+  };
+  const handleOpenPmReviewCase = (reviewCase: PmReviewCaseListItem) => {
+    const expert = visibleExperts.find((item) => item.id === reviewCase.expertId);
+    if (!expert) return;
+    openReviewReport(expert, {
+      activityId: reviewCase.sourceActivityId,
+      documentId: reviewCase.documentId,
+      issueType: reviewCase.subjectType,
+    });
+  };
 
   const statusLabels: Record<ReportStatus['status'], { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
     draft: { label: 'Draft', variant: 'secondary' },
@@ -465,6 +567,13 @@ export default function PMDashboard() {
 
   const setMonthlyStatus = async (status: ReportStatus['status'], pmNotes?: string) => {
     if (!selectedExpertId || !canManagePmReview) return;
+    if (status === 'approved') {
+      const blockingCases = blockingPmReviewCasesByExpertId.get(selectedExpertId) || [];
+      if (blockingCases.length > 0) {
+        window.alert(`Aprobarea lunii este blocata de ${blockingCases.length} caz PM blocant activ. Rezolva sau inchide cazul inainte de aprobare.`);
+        return;
+      }
+    }
 
     await updateReportStatus(status === 'clarifications'
       ? buildReportCorrectionStatusUpdate({
@@ -712,6 +821,13 @@ export default function PMDashboard() {
 
   const setReviewMonthlyStatus = async (status: ReportStatus['status'], pmNotes?: string) => {
     if (!reviewExpertId || !canManagePmReview) return;
+    if (status === 'approved') {
+      const blockingCases = blockingPmReviewCasesByExpertId.get(reviewExpertId) || [];
+      if (blockingCases.length > 0) {
+        window.alert(`Aprobarea lunii este blocata de ${blockingCases.length} caz PM blocant activ. Rezolva sau inchide cazul inainte de aprobare.`);
+        return;
+      }
+    }
     const currentStatus = reviewReportStatus || monthlyReportStatuses.find((item) => item.expertId === reviewExpertId);
 
     await updateReviewReportStatus(status === 'clarifications'
@@ -1294,12 +1410,13 @@ export default function PMDashboard() {
     titleIssues.forEach((documentMeta) => bump(documentMeta.uploadedByExpertId));
     pmUnlockRequests.forEach((documentMeta) => bump(documentMeta.uploadedByExpertId));
     eventDocumentIssues.forEach((activity) => bump(activity.expertId));
+    pmReviewCases.filter(isPmReviewCaseActive).forEach((reviewCase) => bump(reviewCase.expertId));
     clarificationThreadsByExpertId.forEach((threads, expertId) => {
       bump(expertId, threads.filter((thread) => thread.status !== 'resolved').length);
     });
 
     return result;
-  }, [clarificationThreadsByExpertId, dashboardRows, eventDocumentIssues, localNeconformitati, pmUnlockRequests, titleIssues]);
+  }, [clarificationThreadsByExpertId, dashboardRows, eventDocumentIssues, pmReviewCases, pmUnlockRequests, titleIssues]);
   const reviewExpertActivities = useMemo(
     () => (reviewExpertId ? monthActivities.filter((activity) => activity.expertId === reviewExpertId) : []),
     [monthActivities, reviewExpertId]
@@ -1983,7 +2100,14 @@ export default function PMDashboard() {
             </TabsContent>
           )}
 
-          <TabsContent value="neconformitati">
+          <TabsContent value="neconformitati" className="space-y-6">
+            <PmReviewCasesPanel
+              cases={pmReviewCaseListItems}
+              legacyCases={legacyReviewCaseListItems}
+              onOpenCase={handleOpenPmReviewCase}
+              onNotifyCase={handleNotifyPmReviewCase}
+              onResolveCase={handleResolvePmReviewCase}
+            />
             <NeconformitatiTab
               data={localNeconformitati}
               onDataChange={handleNeconformitatiChange}
@@ -2018,6 +2142,7 @@ export default function PMDashboard() {
         onApproveMonth={() => setReviewMonthlyStatus('approved', activeReviewReportStatus?.pmNotes)}
         onApproveActivity={approveReviewActivities}
         onRequestActivityClarification={requestReviewActivityClarification}
+        onCreatePmReviewCase={handleCreatePmReviewCase}
         onApprovePmUnlock={approvePmUnlockRequest}
         clarificationThreads={reviewExpert ? clarificationThreadsByExpertId.get(reviewExpert.id) || [] : []}
         initialFocus={reviewFocus || undefined}

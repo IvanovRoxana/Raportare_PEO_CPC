@@ -1,5 +1,6 @@
 import { getMonthName } from './app-utils.ts';
-import type { DocumentMetadata, Expert, NotificationLogCreateInput } from './types.ts';
+import { PM_REVIEW_CASE_PRIORITY_LABELS, PM_REVIEW_CASE_SUBJECT_LABELS } from './pm-review-cases.ts';
+import type { DocumentMetadata, Expert, NotificationLogCreateInput, PmReviewCase } from './types.ts';
 
 type NotificationMeta = Record<string, string | number | boolean | null | undefined>;
 
@@ -201,6 +202,47 @@ export function buildPmApprovedDeliverableNotification(args: {
       documentTitle: title,
       month: args.month,
       year: args.year,
+    },
+  })];
+}
+
+export function buildPmReviewCaseNotification(args: {
+  expert: Expert;
+  reviewCase: PmReviewCase;
+  note?: string;
+}) {
+  if (!args.expert.email) return [];
+  const period = monthLabel(args.reviewCase.month, args.reviewCase.year);
+  const subjectTypeLabel = PM_REVIEW_CASE_SUBJECT_LABELS[args.reviewCase.subjectType] || args.reviewCase.subjectType;
+  const priorityLabel = PM_REVIEW_CASE_PRIORITY_LABELS[args.reviewCase.priority] || args.reviewCase.priority;
+  return [notification({
+    kind: 'pm_review_case_notification',
+    recipientEmail: args.expert.email,
+    subject: `[PEO] Caz PM: ${args.reviewCase.title}`,
+    body: [
+      `PM a transmis un caz pentru ${period}.`,
+      '',
+      `Tip: ${subjectTypeLabel}`,
+      `Prioritate: ${priorityLabel}`,
+      args.reviewCase.subjectLabel ? `Element: ${args.reviewCase.subjectLabel}` : '',
+      '',
+      args.reviewCase.description,
+      args.note ? '' : undefined,
+      args.note,
+      '',
+      `Deschide clarificarile: ${appUrl(`/expert/clarificari?month=${args.reviewCase.month}&year=${args.reviewCase.year}`)}`,
+    ].filter((line): line is string => line !== undefined),
+    metadata: {
+      caseId: args.reviewCase.id,
+      expertId: args.expert.id,
+      expertName: args.expert.name,
+      month: args.reviewCase.month,
+      year: args.reviewCase.year,
+      projectCode: args.reviewCase.projectCode,
+      subjectType: args.reviewCase.subjectType,
+      subjectId: args.reviewCase.subjectId,
+      priority: args.reviewCase.priority,
+      status: args.reviewCase.status,
     },
   })];
 }

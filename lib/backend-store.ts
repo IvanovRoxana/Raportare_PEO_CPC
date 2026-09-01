@@ -10,6 +10,7 @@ export const expertsService = awsStore.expertsService;
 export const activitiesService = awsStore.activitiesService;
 export const verificationsService = awsStore.verificationsService;
 export const neconformitatiService = awsStore.neconformitatiService;
+export const pmReviewCasesService = awsStore.pmReviewCasesService;
 export const notesService = awsStore.notesService;
 export const settingsService = awsStore.settingsService;
 export const activityCatalogService = awsStore.activityCatalogService;
