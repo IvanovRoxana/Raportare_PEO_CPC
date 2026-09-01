@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, Check, FileText, Image, Loader2, Sparkles, Upload, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -421,6 +421,7 @@ export function DeliverableItem({
   const [aiLoading, setAiLoading] = useState(false);
   const [extractingText, setExtractingText] = useState(false);
   const [isEditingConfirmedTitle, setIsEditingConfirmedTitle] = useState(false);
+  const hydratedTitleSuggestionRef = useRef<string | null>(null);
   const eligibilityCheckEnabled = isDeliverableEligibilityCheckEnabledClient();
   const visibleEligibilityCheck = isEligibilityCheckObsoleteForCurrentActivity(deliverable.eligibilityCheck, {
     subActivity,
@@ -438,6 +439,124 @@ export function DeliverableItem({
       reader.onerror = () => reject(reader.error);
       reader.readAsDataURL(file);
     });
+
+  useEffect(() => {
+    if (!deliverable.uploaded || deliverable.isPhoto || deliverable.suggestedTitle) return;
+
+    const titleText = deliverable.firstPageText || deliverable.docText;
+    if (!titleText || titleText.trim().length < 20) return;
+
+    const fileName = deliverable.filename || deliverable.name || '';
+    const hydrationKey = [
+      deliverable.id,
+      deliverable.firstPageTextHash,
+      fileName,
+      deliverable.declaredTitle,
+      deliverable.titleSource,
+    ].join('|');
+    if (hydratedTitleSuggestionRef.current === hydrationKey) return;
+    hydratedTitleSuggestionRef.current = hydrationKey;
+
+    let cancelled = false;
+    const applyHydratedSuggestion = async () => {
+      let titleSuggestion = suggestTitleFromFirstPage(titleText);
+
+      if (shouldUseAiTitleSuggestion({ text: titleText, suggestion: titleSuggestion })) {
+        try {
+          const response = await fetch('/api/ai/suggest-document-title', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              fileName,
+              firstPageText: titleText,
+              selectedActivityId: selectedActivityId || subActivity,
+              selectedDeliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
+              projectCode,
+              expertName,
+            }),
+          });
+          if (response.ok) {
+            const aiSuggestion = await response.json();
+            titleSuggestion = {
+              suggestedTitle: typeof aiSuggestion.suggestedTitle === 'string' && aiSuggestion.suggestedTitle.trim()
+                ? aiSuggestion.suggestedTitle.trim()
+                : null,
+              confidence: ['high', 'medium', 'low'].includes(aiSuggestion.confidence)
+                ? aiSuggestion.confidence
+                : titleSuggestion.confidence,
+              alternatives: Array.isArray(aiSuggestion.alternatives)
+                ? aiSuggestion.alternatives.filter((item: unknown): item is string => typeof item === 'string')
+                : titleSuggestion.alternatives,
+              reason: typeof aiSuggestion.reason === 'string' && aiSuggestion.reason.trim()
+                ? aiSuggestion.reason.trim()
+                : titleSuggestion.reason,
+            };
+          }
+        } catch (error) {
+          console.warn('AI title suggestion unavailable during hydration:', error);
+        }
+      }
+
+      const suggestedTitle = titleSuggestion.suggestedTitle;
+      if (cancelled || !suggestedTitle) return;
+
+      const titleSuggestionPatch = applyAutomaticTitleSuggestion({
+        currentDeclaredTitle: deliverable.declaredTitle,
+        currentTitleSource: deliverable.titleSource,
+        suggestedTitle,
+        confidence: titleSuggestion.confidence,
+        documentText: titleText,
+        fileName,
+      });
+      const validation = titleSuggestionPatch.declaredTitle
+        ? validateDeclaredTitleInDocumentText({
+            documentText: titleText,
+            declaredTitle: titleSuggestionPatch.declaredTitle,
+            titleSource: titleSuggestionPatch.titleSource,
+          })
+        : null;
+
+      onUpdate({
+        docTitle: suggestedTitle,
+        suggestedTitle,
+        titleSuggestionConfidence: titleSuggestion.confidence,
+        titleSuggestionAlternatives: titleSuggestion.alternatives,
+        titleSuggestionReason: titleSuggestion.reason,
+        declaredTitle: titleSuggestionPatch.declaredTitle,
+        titleSource: titleSuggestionPatch.titleSource,
+        titleMatch: validation?.titleMatch ?? null,
+        titleCheckStatus: validation?.titleCheckStatus,
+        titleCheckMessage: validation?.titleCheckMessage,
+        titleConfirmed: titleSuggestionPatch.autoFilled ? false : deliverable.titleConfirmed,
+      });
+    };
+
+    void applyHydratedSuggestion();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    deliverable.declaredTitle,
+    deliverable.deliverableType,
+    deliverable.docText,
+    deliverable.filename,
+    deliverable.firstPageText,
+    deliverable.firstPageTextHash,
+    deliverable.id,
+    deliverable.isPhoto,
+    deliverable.name,
+    deliverable.slotType,
+    deliverable.suggestedTitle,
+    deliverable.titleConfirmed,
+    deliverable.titleSource,
+    deliverable.type,
+    expertName,
+    onUpdate,
+    projectCode,
+    selectedActivityId,
+    subActivity,
+  ]);
 
   const buildFilePatch = async (file: File, currentDeclaredTitle: string): Promise<Partial<DeliverableSlot> | null> => {
     const raw = file.name.replace(/\.[^.]+$/, '');
