@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { buildFinancialLeaveGridAllocations, getPeoLeaveDates } from '../lib/financial-leave-grid.ts';
+import { applyFinancialReferenceNorms } from '../lib/financial-norm-contracts.ts';
 import { buildFinancialReportingSummary } from '../lib/financial-reporting.ts';
 import type { Activity, ConcurrentProject, ConcurrentProjectTimesheetEntry, Expert, ExpertNormContract, LeaveEntry } from '../lib/types.ts';
 
@@ -197,6 +198,55 @@ test('randul financiar expune normele din Excel cand nu exista contract activ', 
 
   assert.equal(summary.rows[0].peoNorm, '6 h/zi');
   assert.equal(summary.rows[0].cimNorm, '8 h/zi');
+});
+
+test('normele financiare din Excel raman active de la o luna la alta', () => {
+  const contracts = applyFinancialReferenceNorms(
+    expert,
+    [],
+    7,
+    2026,
+    [
+      { name: 'Roxana Ivanov', peoNorm: '6 h/zi', cimNorm: '8 h/zi' },
+    ],
+  );
+
+  assert.equal(contracts.length, 1);
+  assert.equal(contracts[0].id, `financial-reference:${expert.id}`);
+  assert.equal(contracts[0].validFrom, '2026-07-01');
+  assert.equal(contracts[0].validTo, undefined);
+  assert.equal(contracts[0].peoNormValue, 6);
+  assert.equal(contracts[0].cimNormValue, 8);
+});
+
+test('contractele salvate in aplicatie au prioritate peste reperul Excel', () => {
+  const appContract: ExpertNormContract = {
+    id: 'manual-contract',
+    expertId: expert.id,
+    validFrom: '2026-07-01',
+    peoNormUnit: 'HOURS_PER_DAY',
+    peoNormValue: 4,
+    peoDailyCap: 4,
+    cimNormUnit: 'HOURS_PER_DAY',
+    cimNormValue: 8,
+    cimDailyCap: 8,
+    leaveHoursPerDay: 8,
+    status: 'ACTIVE',
+    justification: 'Actualizare din aplicatie',
+    createdBy: 'financial-session',
+  };
+
+  const contracts = applyFinancialReferenceNorms(
+    expert,
+    [appContract],
+    7,
+    2026,
+    [
+      { name: 'Roxana Ivanov', peoNorm: '6 h/zi', cimNorm: '8 h/zi' },
+    ],
+  );
+
+  assert.deepEqual(contracts, [appContract]);
 });
 
 test('norma financiara corecteaza contractul persistent gresit care ar limita CIM la PEO', () => {

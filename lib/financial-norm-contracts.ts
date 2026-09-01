@@ -1,5 +1,6 @@
 import referenceSeed from '../data/staging/seed.json' with { type: 'json' };
 import { normalizeFinancialPersonKey } from './financial-person-matching.ts';
+import { getEffectiveNormContract } from './time-capacity.ts';
 import type { Expert, ExpertNormContract, NormUnit } from './types.ts';
 
 function parseNormLabel(value?: string) {
@@ -27,9 +28,13 @@ function monthStart(month: number, year: number) {
   return `${year}-${String(month + 1).padStart(2, '0')}-01`;
 }
 
-function monthEnd(month: number, year: number) {
-  const lastDay = new Date(year, month + 1, 0).getDate();
-  return `${year}-${String(month + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+function referenceBaselineStart() {
+  return monthStart(referenceSeed.month, referenceSeed.year);
+}
+
+function isAppEditedContract(contract: ExpertNormContract) {
+  return !contract.id.startsWith('financial-reference:')
+    && (Boolean(contract.createdBy) || Boolean(contract.updatedBy));
 }
 
 export function applyFinancialReferenceNorms(
@@ -45,12 +50,18 @@ export function applyFinancialReferenceNorms(
   if (!reference || !peoNorm || !cimNorm || !expert.id) return contracts ?? [];
 
   const start = monthStart(month, year);
-  const end = monthEnd(month, year);
+  const existingContracts = contracts ?? [];
+  const appEditedContract = getEffectiveNormContract(
+    existingContracts.filter(isAppEditedContract),
+    expert.id,
+    start,
+  );
+  if (appEditedContract) return existingContracts;
+
   const financialContract: ExpertNormContract = {
-    id: `financial-reference:${expert.id}:${year}-${String(month + 1).padStart(2, '0')}`,
+    id: `financial-reference:${expert.id}`,
     expertId: expert.id,
-    validFrom: start,
-    validTo: end,
+    validFrom: referenceBaselineStart(),
     peoNormUnit: peoNorm.unit,
     peoNormValue: peoNorm.value,
     peoDailyCap: peoNorm.unit === 'HOURS_PER_DAY' ? peoNorm.value : 0,
@@ -62,10 +73,9 @@ export function applyFinancialReferenceNorms(
     justification: 'Norme preluate din tabelul Financiar',
   };
 
-  const monthContracts = (contracts ?? []).filter((contract) => (
+  const financialContracts = existingContracts.filter((contract) => (
     contract.expertId !== expert.id
-    || contract.validTo && contract.validTo < start
-    || contract.validFrom > end
+    || isAppEditedContract(contract)
   ));
-  return [...monthContracts, financialContract];
+  return [...financialContracts, financialContract];
 }
