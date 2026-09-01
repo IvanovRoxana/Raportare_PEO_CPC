@@ -87,6 +87,31 @@ export const activityAgentGenerationSchema = z.object({
   usedFacts: z.array(z.string()).default([]),
 });
 
+export const activityAgentFactSheetSchema = z.object({
+  dateRows: z.array(z.object({
+    date: z.string(),
+    hours: z.union([z.number(), z.string()]).optional(),
+    deliverables: z.array(z.string()).default([]),
+  })).default([]),
+  factualEvidence: z.array(z.string()).default([]),
+  taxonomyContext: z.array(z.string()).default([]),
+  demonstratedActions: z.array(z.string()).default([]),
+  taxonomyOnlyActions: z.array(z.string()).default([]),
+  unsupportedRiskyActions: z.array(z.string()).default([]),
+  deliverableNames: z.array(z.string()).default([]),
+});
+
+export const activityAgentValidationSchema = z.object({
+  hoursOk: z.boolean().nullable(),
+  datesOk: z.boolean().nullable(),
+  saOk: z.boolean().nullable(),
+  deliverablesOk: z.boolean().nullable(),
+  unsupportedClaims: z.array(z.string()).default([]),
+  administrativeIssues: z.array(z.string()).default([]),
+  canUseDescription: z.boolean(),
+  warnings: z.array(z.string()).default([]),
+});
+
 export const activityAgentResponseSchema = z.object({
   description: z.string().min(20),
   usedFacts: z.array(z.string()).default([]),
@@ -121,10 +146,14 @@ export const activityAgentResponseSchema = z.object({
     targetGroupImpactSupported: z.boolean().nullable(),
   }),
   auditId: z.string().optional(),
+  factSheet: activityAgentFactSheetSchema.optional(),
+  validation: activityAgentValidationSchema.optional(),
 });
 
 export type ActivityAgentRequest = z.infer<typeof activityAgentRequestSchema>;
 export type ActivityAgentResponse = z.infer<typeof activityAgentResponseSchema>;
 export type ActivityAgentGeneration = z.infer<typeof activityAgentGenerationSchema>;
+export type ActivityAgentFactSheet = z.infer<typeof activityAgentFactSheetSchema>;
+export type ActivityAgentValidation = z.infer<typeof activityAgentValidationSchema>;
 export type ActivityAgentDeliverable = z.infer<typeof activityAgentDeliverableSchema>;
 export type ActivityAgentCatalogCandidate = z.infer<typeof activityAgentCatalogCandidateSchema>;

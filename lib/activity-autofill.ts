@@ -541,6 +541,8 @@ Reguli obligatorii pentru fiecare camp:
 - Subactivitatea si activitatea sunt deja selectate de utilizator si sunt obligatorii. Nu le schimba si nu returna campuri pentru ele.
 - Contextul RAG intern ajuta doar la redactarea descrierii si la stilul raportarilor aprobate similare.
 - Scopul oficial al SA stabileste incadrarea activitatii. Foloseste-l explicit pentru legatura cu subactivitatea, dar nu il transforma in munca pretins realizata de expert.
+- Catalogul activitatii, scopul SA, fisa postului si "Servicii oferite membrilor PA" sunt taxonomie/context de incadrare, nu dovezi ca o actiune s-a intamplat efectiv.
+- Nu transforma actiuni posibile din taxonomie in fapte despre expert; consultarea membrilor, transmiterea catre autoritati, participarea la intalniri, validarea, obtinerea acordului, integrarea observatiilor si formularea amendamentelor se mentioneaza numai daca apar in descrierea curenta sau in livrabile.
 - Daca activitatea este marcata comuna, mentioneaza natural ca am colaborat cu persoanele din collaborationContext.collaborators, excluzand expertul curent. Pastreaza descrierea la persoana I singular si separa clar contributia mea de faptul colaborarii.
 - Daca activitatea nu este marcata comuna, nu mentiona colaboratori, chiar daca livrabilul pare similar sau apare in alte contexte.
 - Nu inventa impartirea rolurilor intre colaboratori; foloseste rolul/pozitia doar ca identificare daca este furnizat explicit.

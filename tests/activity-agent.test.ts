@@ -9,12 +9,13 @@ import {
 import { buildActivityAgentPrompt } from '../lib/agents/activity-agent-prompt.ts';
 import {
   evaluateTargetGroupImpactValue,
+  buildActivityFactSheetValue,
   getExpertAiInstructionsValue,
   inspectDeliverablesValue,
   validateActivityHoursValue,
   validateSubactivityClassificationValue,
 } from '../lib/agents/activity-agent-tools.ts';
-import { hasForbiddenDescriptionContent } from '../lib/agents/activity-agent-quality.ts';
+import { evaluateDescriptionEvidenceSupport, hasForbiddenDescriptionContent } from '../lib/agents/activity-agent-quality.ts';
 
 const baseRequest: ActivityAgentRequest = {
   expertId: 'expert-1',
@@ -113,6 +114,25 @@ test('activity agent response schema accepts the structured output contract', ()
       hoursPlausible: true,
       targetGroupImpactSupported: true,
     },
+    factSheet: {
+      dateRows: [{ date: '2026-07-24', hours: 6, deliverables: ['Raport de monitorizare legislativa regionala'] }],
+      factualEvidence: ['Text livrabil: Analiza si monitorizare legislativa regionala pentru informarea membrilor CPC.'],
+      taxonomyContext: ['Activitate selectata: Monitorizare legislativa regionala si informare membri'],
+      demonstratedActions: ['analiza', 'monitorizare', 'informare'],
+      taxonomyOnlyActions: [],
+      unsupportedRiskyActions: [],
+      deliverableNames: ['Raport de monitorizare legislativa regionala'],
+    },
+    validation: {
+      hoursOk: true,
+      datesOk: true,
+      saOk: true,
+      deliverablesOk: true,
+      unsupportedClaims: [],
+      administrativeIssues: [],
+      canUseDescription: true,
+      warnings: [],
+    },
     auditId: 'audit-1',
   });
 
@@ -143,6 +163,8 @@ test('activity agent prompt requests Anexa 10 final JSON contract', () => {
   assert.match(prompt, /"usedFacts"/);
   assert.match(prompt, /Nu mentiona formularul/);
   assert.match(prompt, /În data de \[data\]/);
+  assert.match(prompt, /Fisa factuala interna/);
+  assert.match(prompt, /taxonomie\/context de incadrare/);
 });
 
 test('getExpertAiInstructions returns inactive preference context when instructions are missing', () => {
@@ -206,6 +228,89 @@ test('inspectDeliverables extracts actions and warns on empty extracted text', (
   assert.ok(result.detectedActions.includes('monitorizare'));
   assert.ok(result.detectedTopics.includes('raport'));
   assert.ok(result.warnings.some((warning) => warning.includes('text extras')));
+});
+
+test('fact sheet separates factual evidence from taxonomy-only actions', () => {
+  const request: ActivityAgentRequest = {
+    ...baseRequest,
+    currentDescription: '',
+    deliverables: [{
+      documentTitle: 'Analiza OECD',
+      extractedText: 'Analiza comparativa a documentelor OECD si sinteza observatiilor relevante.',
+    }],
+    catalogCandidates: [{
+      id: 'tax',
+      saCode: 'SA3.4',
+      activityName: 'Elaborare document de pozitie',
+      serviceComponent: 'Consultare membri, formulare amendamente si transmitere catre autoritati.',
+    }],
+  };
+  const deliverableInspection = inspectDeliverablesValue(request.deliverables);
+
+  const factSheet = buildActivityFactSheetValue({ request, deliverableInspection });
+
+  assert.ok(factSheet.demonstratedActions.includes('analiza'));
+  assert.ok(factSheet.demonstratedActions.includes('sinteza'));
+  assert.ok(factSheet.taxonomyOnlyActions.includes('consultare'));
+  assert.ok(factSheet.taxonomyOnlyActions.includes('transmitere'));
+});
+
+test('evidence support rejects taxonomy-only claims but allows factual claims', () => {
+  const request: ActivityAgentRequest = {
+    ...baseRequest,
+    currentDescription: '',
+    deliverables: [{
+      documentTitle: 'Analiza OECD',
+      extractedText: 'Analiza comparativa a documentelor OECD si sinteza observatiilor relevante.',
+    }],
+    catalogCandidates: [{
+      id: 'tax',
+      saCode: 'SA3.4',
+      activityName: 'Elaborare document de pozitie',
+      serviceComponent: 'Consultare membri si transmitere catre autoritati.',
+    }],
+  };
+  const factSheet = buildActivityFactSheetValue({
+    request,
+    deliverableInspection: inspectDeliverablesValue(request.deliverables),
+  });
+
+  const unsupported = evaluateDescriptionEvidenceSupport(
+    'În data de 24 iulie 2026, am consultat membrii si am transmis documentul catre autoritati.',
+    request,
+    factSheet,
+  );
+  const supported = evaluateDescriptionEvidenceSupport(
+    'În data de 24 iulie 2026, am analizat comparativ documentele OECD si am sintetizat observatiile relevante.',
+    request,
+    factSheet,
+  );
+
+  assert.ok(unsupported.unsupportedRiskyClaims.some((claim) => claim.includes('consultarea membrilor')));
+  assert.ok(unsupported.unsupportedRiskyClaims.some((claim) => claim.includes('transmiterea catre autoritati')));
+  assert.deepEqual(supported.unsupportedRiskyClaims, []);
+});
+
+test('evidence support allows risky actions when deliverable explicitly supports them', () => {
+  const request: ActivityAgentRequest = {
+    ...baseRequest,
+    deliverables: [{
+      documentTitle: 'Dovada transmitere',
+      extractedText: 'Documentul consemneaza transmiterea punctului de vedere catre autoritati si participarea la consultarea publica.',
+    }],
+  };
+  const factSheet = buildActivityFactSheetValue({
+    request,
+    deliverableInspection: inspectDeliverablesValue(request.deliverables),
+  });
+
+  const result = evaluateDescriptionEvidenceSupport(
+    'În data de 24 iulie 2026, am transmis punctul de vedere catre autoritati si am participat la consultarea publica.',
+    request,
+    factSheet,
+  );
+
+  assert.deepEqual(result.unsupportedRiskyClaims, []);
 });
 
 test('validateActivityHours flags implausible pontaj hours deterministically', () => {

@@ -1,4 +1,4 @@
-import type { ActivityAgentRequest } from './activity-agent-schema.ts';
+import type { ActivityAgentFactSheet, ActivityAgentRequest } from './activity-agent-schema.ts';
 
 export function uniqueMessages(messages: string[]) {
   return Array.from(new Set(messages.map((message) => message.trim()).filter(Boolean)));
@@ -138,16 +138,33 @@ function extractNotableTerms(value: unknown) {
   ));
 }
 
-function buildEvidenceCorpus(request: ActivityAgentRequest) {
+function buildFactualEvidenceCorpus(request: ActivityAgentRequest, factSheet?: ActivityAgentFactSheet) {
   return normalizePolicyText([
     request.currentDescription,
     request.saCode,
     request.activityName,
     request.title,
-    request.category,
     request.projectCode,
-    request.expertRole,
     request.selectedDates?.join(' '),
+    request.date,
+    request.hours,
+    ...(factSheet?.factualEvidence ?? []),
+    ...(factSheet?.demonstratedActions ?? []),
+    ...(factSheet?.deliverableNames ?? []),
+    ...request.deliverables.map((deliverable) => [
+      deliverable.documentTitle,
+      deliverable.deliverableType,
+      deliverable.extractedText,
+      deliverable.eligibilitySummary,
+    ].join(' ')),
+  ].filter(Boolean).join(' '));
+}
+
+function buildTaxonomyCorpus(request: ActivityAgentRequest, factSheet?: ActivityAgentFactSheet) {
+  return normalizePolicyText([
+    request.category,
+    request.expertRole,
+    ...(factSheet?.taxonomyContext ?? []),
     ...request.catalogCandidates.map((candidate) => [
       candidate.saCode,
       candidate.activityName,
@@ -159,23 +176,43 @@ function buildEvidenceCorpus(request: ActivityAgentRequest) {
       candidate.deliverables,
       candidate.indicators,
     ].join(' ')),
-    ...request.deliverables.map((deliverable) => [
-      deliverable.documentTitle,
-      deliverable.deliverableType,
-      deliverable.extractedText,
-      deliverable.eligibilitySummary,
-    ].join(' ')),
   ].filter(Boolean).join(' '));
 }
 
-export function evaluateDescriptionEvidenceSupport(description: string, request: ActivityAgentRequest) {
-  const evidenceCorpus = buildEvidenceCorpus(request);
+function detectUnsupportedRiskyClaims(description: string, factualCorpus: string) {
+  const normalized = normalizePolicyText(description);
+  const riskyClaims: Array<[string, RegExp, RegExp]> = [
+    ['consultarea membrilor', /\bam\s+consultat\b|\bconsultarea\s+membrilor\b|\bam\s+colectat\s+(?:puncte|observatii).*membr/i, /\bconsult|puncte de vedere|observatii.*membr/],
+    ['transmiterea catre autoritati', /\bam\s+transmis\b|\btransmiterea\s+catre\s+autorit/i, /\btransmis|transmitere|autoritat/],
+    ['participarea la intalniri', /\bam\s+participat\b|\bparticiparea\s+la\b/i, /\bparticip|intalnire|sedinta|eveniment|consultare publica/],
+    ['validarea sau obtinerea acordului', /\bam\s+validat\b|\bam\s+obtinut\s+acord|\bvalidarea\b/i, /\bvalid|acord/],
+    ['integrarea observatiilor', /\bam\s+integrat\s+observatii|\bintegrarea\s+observatiilor\b/i, /\bintegrat|observatii/],
+    ['formularea amendamentelor', /\bam\s+formulat\s+amendamente|\bformularea\s+amendamentelor\b/i, /\bamendament/],
+  ];
+
+  return riskyClaims
+    .filter(([, claimPattern, supportPattern]) => claimPattern.test(normalized) && !supportPattern.test(factualCorpus))
+    .map(([label]) => label);
+}
+
+export function evaluateDescriptionEvidenceSupport(description: string, request: ActivityAgentRequest, factSheet?: ActivityAgentFactSheet) {
+  const evidenceCorpus = buildFactualEvidenceCorpus(request, factSheet);
+  const taxonomyCorpus = buildTaxonomyCorpus(request, factSheet);
   const descriptionTerms = extractNotableTerms(description);
   const unsupportedTerms = descriptionTerms
     .filter((term) => !evidenceCorpus.includes(term))
     .slice(0, 16);
+  const taxonomyOnlyTerms = unsupportedTerms
+    .filter((term) => taxonomyCorpus.includes(term))
+    .slice(0, 16);
   const unsupportedNumbers = Array.from(new Set(extractNumericFacts(description)))
     .filter((value) => !new Set(extractNumericFacts(evidenceCorpus)).has(value));
+  const unsupportedRiskyClaims = uniqueMessages([
+    ...detectUnsupportedRiskyClaims(description, evidenceCorpus),
+    ...(factSheet?.unsupportedRiskyActions ?? [])
+      .filter((action) => normalizePolicyText(description).includes(action))
+      .map((action) => `actiune doar taxonomica: ${action}`),
+  ]);
   const unsupportedRatio = descriptionTerms.length > 0
     ? unsupportedTerms.length / descriptionTerms.length
     : 0;
@@ -183,26 +220,37 @@ export function evaluateDescriptionEvidenceSupport(description: string, request:
   const score = clampScore(
     (hasDeliverableText ? 0.95 : 0.55)
     - Math.min(0.55, unsupportedRatio * 1.4)
-    - Math.min(0.35, unsupportedNumbers.length * 0.18),
+    - Math.min(0.35, unsupportedNumbers.length * 0.18)
+    - Math.min(0.45, unsupportedRiskyClaims.length * 0.22),
   );
   const warnings = [
     unsupportedTerms.length >= 5
       ? `Descrierea contine termeni/teme care nu apar in livrabil sau context: ${unsupportedTerms.slice(0, 8).join(', ')}.`
       : '',
+    taxonomyOnlyTerms.length > 0
+      ? `Descrierea foloseste termeni sustinuti doar de taxonomie, nu de dovezi factuale: ${taxonomyOnlyTerms.slice(0, 8).join(', ')}.`
+      : '',
     unsupportedNumbers.length > 0
       ? `Descrierea contine cifre care nu apar in livrabil sau context: ${unsupportedNumbers.join(', ')}.`
+      : '',
+    unsupportedRiskyClaims.length > 0
+      ? `Descrierea contine afirmatii de actiune nesustinute factual: ${unsupportedRiskyClaims.join(', ')}.`
       : '',
   ].filter(Boolean);
 
   return {
     score,
     unsupportedTerms,
+    taxonomyOnlyTerms,
     unsupportedNumbers,
+    unsupportedRiskyClaims,
     warnings,
     evidence: [
       `Termeni verificati: ${descriptionTerms.length}`,
       unsupportedTerms.length > 0 ? `Termeni nesustinuti: ${unsupportedTerms.slice(0, 6).join(', ')}` : 'Termeni nesustinuti: 0',
+      taxonomyOnlyTerms.length > 0 ? `Termeni doar taxonomie: ${taxonomyOnlyTerms.slice(0, 6).join(', ')}` : 'Termeni doar taxonomie: 0',
       unsupportedNumbers.length > 0 ? `Cifre nesustinute: ${unsupportedNumbers.join(', ')}` : 'Cifre nesustinute: 0',
+      unsupportedRiskyClaims.length > 0 ? `Afirmatii riscante nesustinute: ${unsupportedRiskyClaims.join(', ')}` : 'Afirmatii riscante nesustinute: 0',
     ],
   };
 }
@@ -282,10 +330,10 @@ export function classifyDeliverableKind(request: ActivityAgentRequest) {
   };
 }
 
-export function evaluateFinalActivityDescription(description: string, request: ActivityAgentRequest) {
+export function evaluateFinalActivityDescription(description: string, request: ActivityAgentRequest, factSheet?: ActivityAgentFactSheet) {
   const normalized = normalizePolicyText(description);
   const wordCount = countWords(description);
-  const evidenceSupport = evaluateDescriptionEvidenceSupport(description, request);
+  const evidenceSupport = evaluateDescriptionEvidenceSupport(description, request, factSheet);
   const hasSelectedDates = Boolean(request.selectedDates?.length || request.date);
   const startsWithDate = /^in (data|zilele) de\b/.test(normalized);
   const hasFirstPerson = hasFirstPersonSingularDescription(description);

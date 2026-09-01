@@ -12,6 +12,8 @@ import {
 import {
   createActivityAgentToolContext,
   createActivityAgentTools,
+  buildActivityFactSheetValue,
+  inspectDeliverablesValue,
 } from './activity-agent-tools.ts';
 import {
   clampScore,
@@ -309,13 +311,14 @@ function fallbackDescription(request: ActivityAgentRequest) {
   ].filter(Boolean).join(' '), request);
 }
 
-function selectDisplaySafeDescription(generatedDescription: string, request: ActivityAgentRequest) {
-  const generatedQuality = evaluateFinalActivityDescription(generatedDescription, request);
+function selectDisplaySafeDescription(generatedDescription: string, request: ActivityAgentRequest, factSheet?: Awaited<ReturnType<typeof createActivityAgentToolContext>>['factSheet']) {
+  const generatedQuality = evaluateFinalActivityDescription(generatedDescription, request, factSheet);
   const shouldUseFallback = generatedQuality.evidenceSupport.score < 0.55
     || !hasFirstPersonSingularDescription(generatedDescription)
     || hasRawDeliverableLeak(generatedDescription)
     || hasRepeatedSentenceContent(generatedDescription)
     || generatedQuality.evidenceSupport.unsupportedNumbers.length > 0
+    || generatedQuality.evidenceSupport.unsupportedRiskyClaims.length > 0
     || generatedQuality.evidenceSupport.unsupportedTerms.length >= 8;
   if (!shouldUseFallback) {
     return {
@@ -327,9 +330,10 @@ function selectDisplaySafeDescription(generatedDescription: string, request: Act
   }
 
   const fallback = fallbackDescription(request);
-  const fallbackQuality = evaluateFinalActivityDescription(fallback, request);
+  const fallbackQuality = evaluateFinalActivityDescription(fallback, request, factSheet);
   const hasEvidenceGroundingIssue = generatedQuality.evidenceSupport.score < 0.55
     || generatedQuality.evidenceSupport.unsupportedNumbers.length > 0
+    || generatedQuality.evidenceSupport.unsupportedRiskyClaims.length > 0
     || generatedQuality.evidenceSupport.unsupportedTerms.length >= 8;
   return {
     description: fallback,
@@ -345,6 +349,40 @@ function selectDisplaySafeDescription(generatedDescription: string, request: Act
       ...fallbackQuality.warnings,
     ]),
     replaced: true,
+  };
+}
+
+function buildActivityAgentValidation(
+  description: string,
+  request: ActivityAgentRequest,
+  context: Awaited<ReturnType<typeof createActivityAgentToolContext>>,
+  replacedDescription: boolean,
+) {
+  const quality = evaluateFinalActivityDescription(description, request, context.factSheet);
+  const unsupportedClaims = uniqueMessages([
+    ...quality.evidenceSupport.unsupportedRiskyClaims,
+    ...quality.evidenceSupport.unsupportedNumbers.map((value) => `cifra nesustinuta: ${value}`),
+  ]);
+  const administrativeIssues = uniqueMessages([
+    context.hours.valid ? '' : [...context.hours.errors, ...context.hours.warnings].join(' '),
+    context.classification.confidence >= 0.55 ? '' : context.classification.justification,
+    context.saPurpose.found ? '' : context.saPurpose.warnings.join(' '),
+  ]);
+
+  return {
+    hoursOk: context.hours.valid,
+    datesOk: (request.selectedDates?.length ?? 0) > 0 || Boolean(request.date),
+    saOk: context.classification.confidence >= 0.55,
+    deliverablesOk: request.deliverables.length === 0
+      ? null
+      : request.deliverables.some((deliverable) => deliverable.extractedText?.trim()),
+    unsupportedClaims,
+    administrativeIssues,
+    canUseDescription: unsupportedClaims.length === 0 && !replacedDescription && quality.score >= 0.55,
+    warnings: uniqueMessages([
+      ...quality.warnings,
+      replacedDescription ? 'Descrierea initiala a fost inlocuita cu fallback prudent; raportarea nu este blocata.' : '',
+    ]),
   };
 }
 
@@ -364,7 +402,7 @@ function buildDeterministicExplainableScores(
   const ragChunks = context.approvedReports.chunks.length;
   const deliverableKind = classifyDeliverableKind(request);
   const descriptionQuality = finalDescription
-    ? evaluateFinalActivityDescription(finalDescription, request)
+    ? evaluateFinalActivityDescription(finalDescription, request, context.factSheet)
     : null;
   const targetImpactScore = context.targetGroupImpact.impactType === 'direct'
     ? 0.9
@@ -552,8 +590,30 @@ export function buildControlledFallbackActivityAgentResponse(
     .join('; ') || 'Nu exista livrabile cu titlu disponibil.';
 
   const description = fallbackDescription(request);
-  const descriptionQuality = evaluateFinalActivityDescription(description, request);
+  const fallbackFactSheet = buildActivityFactSheetValue({
+    request,
+    deliverableInspection: inspectDeliverablesValue(request.deliverables),
+  });
+  const descriptionQuality = evaluateFinalActivityDescription(description, request, fallbackFactSheet);
   const deliverableKind = classifyDeliverableKind(request);
+  const validation = {
+    hoursOk: null,
+    datesOk: (request.selectedDates?.length ?? 0) > 0 || Boolean(request.date),
+    saOk: request.saCode ? true : null,
+    deliverablesOk: request.deliverables.length === 0
+      ? null
+      : request.deliverables.some((deliverable) => deliverable.extractedText?.trim()),
+    unsupportedClaims: uniqueMessages([
+      ...descriptionQuality.evidenceSupport.unsupportedRiskyClaims,
+      ...descriptionQuality.evidenceSupport.unsupportedNumbers.map((value) => `cifra nesustinuta: ${value}`),
+    ]),
+    administrativeIssues: [],
+    canUseDescription: false,
+    warnings: uniqueMessages([
+      ...descriptionQuality.warnings,
+      'Fallback prudent returnat fara blocarea raportarii.',
+    ]),
+  };
 
   return {
     description,
@@ -639,6 +699,8 @@ export function buildControlledFallbackActivityAgentResponse(
       hoursPlausible: null,
       targetGroupImpactSupported: null,
     },
+    factSheet: fallbackFactSheet,
+    validation,
   };
 }
 
@@ -659,16 +721,17 @@ export async function runActivityAgent(
     year: request.year,
     model: openaiModel(getActivityAgentModelName()),
     system: buildActivityAgentSystemPrompt(),
-    prompt: buildActivityAgentPrompt(request),
+    prompt: buildActivityAgentPrompt(request, context.factSheet),
     tools,
     stopWhen: stepCountIs(10),
     maxOutputTokens: 1800,
     output: Output.object({ schema: activityAgentGenerationSchema }),
   });
   const generated = activityAgentGenerationSchema.parse(result.output);
-  const safeDescription = selectDisplaySafeDescription(cleanFinalDescription(generated.description, request), request);
+  const safeDescription = selectDisplaySafeDescription(cleanFinalDescription(generated.description, request), request, context.factSheet);
   const description = safeDescription.description;
   const descriptionQuality = safeDescription.quality;
+  const validation = buildActivityAgentValidation(description, request, context, safeDescription.replaced);
   const changedSelectedActivity = false;
   const warnings = uniqueMessages([
     ...generated.warnings,
@@ -681,6 +744,8 @@ export async function runActivityAgent(
     ...context.targetGroupImpact.warnings,
     ...context.classification.warnings,
     ...context.expertAiInstructions.warnings,
+    ...validation.warnings,
+    ...validation.unsupportedClaims.map((claim) => `Afirmatie nesustinuta eliminata sau marcata pentru verificare: ${claim}`),
   ]);
   const interpretation = fallbackDeliverableInterpretation(request);
   const evidenceUsed = buildEvidenceUsed(request, generated);
@@ -725,7 +790,7 @@ export async function runActivityAgent(
       : context.classification.confidence >= 0.55 && descriptionQuality.score >= 0.55
         ? 'medium'
         : 'low',
-    requiresPmReview: warnings.length > 0 || context.classification.confidence < 0.55 || descriptionQuality.score < 0.55,
+    requiresPmReview: warnings.length > 0 || !validation.canUseDescription || context.classification.confidence < 0.55 || descriptionQuality.score < 0.55,
     checks: {
       jobDescriptionAligned: null,
       saPurposeFound: context.saPurpose.found,
@@ -734,6 +799,8 @@ export async function runActivityAgent(
       hoursPlausible: context.hours.valid,
       targetGroupImpactSupported: context.targetGroupImpact.impactType !== 'unclear',
     },
+    factSheet: context.factSheet,
+    validation,
   } satisfies ActivityAgentResponse;
 }
 

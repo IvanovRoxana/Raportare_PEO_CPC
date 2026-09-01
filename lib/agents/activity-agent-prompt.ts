@@ -1,4 +1,4 @@
-import type { ActivityAgentRequest } from './activity-agent-schema.ts';
+import type { ActivityAgentFactSheet, ActivityAgentRequest } from './activity-agent-schema.ts';
 
 export function buildActivityAgentSystemPrompt() {
   return [
@@ -20,7 +20,7 @@ export function buildActivityAgentSystemPrompt() {
   ].join('\n');
 }
 
-export function buildActivityAgentPrompt(request: ActivityAgentRequest) {
+export function buildActivityAgentPrompt(request: ActivityAgentRequest, factSheet?: ActivityAgentFactSheet) {
   return `Optimizeaza descrierea activitatii pentru Anexa 10 - Raport de activitate PEO.
 
 Ordine obligatorie:
@@ -44,6 +44,9 @@ Contract de iesire obligatoriu:
 
 Reguli pentru description:
 - Afiseaza in description exclusiv paragraful final care poate fi lipit direct in Anexa 10.
+- Foloseste fisa factuala ca sursa principala pentru fapte, date, ore, actiuni realizate si livrabile.
+- Trateaza catalogul, scopul SA, fisa postului si "Servicii oferite membrilor PA" ca taxonomie/context de incadrare, nu ca dovada ca o actiune s-a intamplat efectiv.
+- Nu transforma actiunile posibile din taxonomie in afirmatii factuale despre expert.
 - Nu descrie procesul tehnic de generare.
 - Nu mentiona formularul, activitatea selectata in formular, agent AI, OCR, RAG, surse, context disponibil, tool-uri, livrabilul citit/procesat sau validarea de catre PM.
 - Nu folosi expresii precum "am urmarit sa pastrez descrierea aliniata", "am extras textul", "am procesat documentul", "descrierea trebuie revizuita" sau "pregatit formularea pentru raportarea lunara".
@@ -55,6 +58,7 @@ Reguli pentru description:
 - Reformuleaza coerent principalele teme sustinute de date, fara copiere bruta din document.
 - Incheie cu rezultatul si relevanta activitatii pentru proiect.
 - Pastreaza strict incadrarea in subactivitatea si activitatea selectate; nu inventa intalniri, consultari, destinatari, rezultate, membri implicati sau acte normative care nu apar in date.
+- Actiuni precum consultarea membrilor, transmiterea catre autoritati, participarea la intalniri, validarea, obtinerea acordului, integrarea observatiilor si formularea amendamentelor pot fi mentionate numai daca apar in fisa factuala/factualEvidence.
 - Nu introduce teme de politici publice doar pentru ca sunt plauzibile in contextul Concordia. Exemple de teme interzise daca nu apar in date: fiscalitate, deficit bugetar, Pilonul Social UE, competitivitate europeana, reforme structurale, dialog cu autoritati, public larg, membri sau institutii neconfirmate.
 - Fiecare substantiv/concept specific din description trebuie sa fie sustinut de cel putin una dintre datele disponibile sau de usedFacts. Daca nu poti indica sursa, elimina propozitia.
 - Lungime tinta: 180-300 de cuvinte, in 1-2 paragrafe ample, stil administrativ si profesional.
@@ -73,6 +77,9 @@ Reguli de analiza:
 - Aplica instructiunile AI ale expertului numai la ton, nivel de detaliu, termeni preferati/interzisi si structura, fara sa schimbi faptele.
 - Daca instructiunile expertului contin conflicte, ignora partea conflictuala si include conflictul in warnings.
 - Cifrele din description trebuie sa existe exact in date sau context. Este interzis sa schimbi 85 in 70, 56 in 45 sau orice alta valoare numerica.
+
+Fisa factuala interna:
+${JSON.stringify(factSheet ?? null, null, 2)}
 
 Cerere:
 ${JSON.stringify(request, null, 2)}

@@ -110,6 +110,8 @@ test('promptul cere doar rescrierea descrierii activitatii', () => {
   assert.match(prompt, /Ghid de incadrare AP\/PA/);
   assert.match(prompt, /Verificarea eligibilitatii este guardrail/);
   assert.match(prompt, /eligibilityStatus "neeligibil"/);
+  assert.match(prompt, /taxonomie\/context de incadrare/);
+  assert.match(prompt, /nu dovezi ca o actiune s-a intamplat efectiv/);
 });
 
 test('fallbackul optimizeaza prudent cand livrabilul este neeligibil', () => {

@@ -7,6 +7,7 @@ import type { KnowledgeChunk } from '../types.ts';
 import type {
   ActivityAgentCatalogCandidate,
   ActivityAgentDeliverable,
+  ActivityAgentFactSheet,
   ActivityAgentRequest,
 } from './activity-agent-schema.ts';
 
@@ -182,6 +183,142 @@ export function inspectDeliverablesValue(deliverables: ActivityAgentDeliverable[
   };
 }
 
+const RISKY_FACTUAL_ACTIONS = [
+  'analiza',
+  'comparatie',
+  'sinteza',
+  'recomandari',
+  'participare',
+  'consultare',
+  'transmitere',
+  'validare',
+  'amendamente',
+  'observatii',
+  'redactare',
+  'revizuire',
+  'centralizare',
+  'pregatire',
+  'monitorizare',
+  'informare',
+  'organizare',
+];
+
+function detectActionSignals(text: string) {
+  const normalized = normalize(text);
+  const patterns: Array<[string, RegExp]> = [
+    ['analiza', /\banaliz/],
+    ['comparatie', /\bcompar/],
+    ['sinteza', /\bsintez/],
+    ['recomandari', /\brecomand/],
+    ['participare', /\bparticip/],
+    ['consultare', /\bconsult/],
+    ['transmitere', /\btransmi|transmis|transmit/],
+    ['validare', /\bvalid/],
+    ['amendamente', /\bamend/],
+    ['observatii', /\bobserv/],
+    ['redactare', /\bredact/],
+    ['revizuire', /\breviz/],
+    ['centralizare', /\bcentraliz/],
+    ['pregatire', /\bpregat/],
+    ['monitorizare', /\bmonitoriz/],
+    ['informare', /\binform/],
+    ['organizare', /\borganiz/],
+  ];
+  return unique(patterns.filter(([, pattern]) => pattern.test(normalized)).map(([action]) => action));
+}
+
+function buildFactualText(request: ActivityAgentRequest) {
+  return [
+    request.currentDescription,
+    request.selectedDates?.join(' '),
+    request.date,
+    request.hours,
+    ...request.deliverables.map((deliverable) => [
+      deliverable.documentTitle,
+      deliverable.deliverableType,
+      deliverable.eligibilitySummary,
+      deliverable.extractedText,
+    ].filter(Boolean).join(' ')),
+  ].filter(Boolean).join(' ');
+}
+
+function buildTaxonomyText(request: ActivityAgentRequest, subactivityText?: string, jobDescriptionResponsibilities: string[] = []) {
+  return [
+    request.saCode,
+    request.activityName,
+    request.title,
+    request.category,
+    request.expertRole,
+    subactivityText,
+    jobDescriptionResponsibilities.join(' '),
+    ...request.catalogCandidates.map((candidate) => [
+      candidate.saCode,
+      candidate.activityName,
+      candidate.description,
+      candidate.objectives,
+      candidate.serviceComponent,
+      candidate.beneficiaries,
+      candidate.expectedResults,
+      candidate.deliverables,
+      candidate.indicators,
+    ].filter(Boolean).join(' ')),
+  ].filter(Boolean).join(' ');
+}
+
+export function buildActivityFactSheetValue(input: {
+  request: ActivityAgentRequest;
+  deliverableInspection: ReturnType<typeof inspectDeliverablesValue>;
+  subactivityText?: string;
+  jobDescriptionResponsibilities?: string[];
+}): ActivityAgentFactSheet {
+  const { request, deliverableInspection } = input;
+  const dates = request.selectedDates?.length ? request.selectedDates : request.date ? [request.date] : [];
+  const deliverableNames = unique(request.deliverables.map((deliverable) => deliverable.documentTitle));
+  const factualText = buildFactualText(request);
+  const taxonomyText = buildTaxonomyText(request, input.subactivityText, input.jobDescriptionResponsibilities);
+  const demonstratedActions = unique([
+    ...deliverableInspection.detectedActions,
+    ...detectActionSignals(factualText),
+  ]);
+  const taxonomyActions = detectActionSignals(taxonomyText);
+  const taxonomyOnlyActions = taxonomyActions.filter((action) => !demonstratedActions.includes(action));
+
+  return {
+    dateRows: dates.map((date) => ({
+      date,
+      hours: request.hours,
+      deliverables: deliverableNames,
+    })),
+    factualEvidence: unique([
+      request.currentDescription ? `Descriere curenta: ${trimText(request.currentDescription)}` : '',
+      request.hours !== undefined && request.hours !== '' ? `Ore pontaj: ${request.hours}` : '',
+      dates.length > 0 ? `Date pontaj: ${dates.join(', ')}` : '',
+      ...request.deliverables.flatMap((deliverable) => [
+        deliverable.documentTitle ? `Livrabil: ${deliverable.documentTitle}` : '',
+        deliverable.deliverableType ? `Tip livrabil: ${deliverable.deliverableType}` : '',
+        deliverable.eligibilitySummary ? `Eligibilitate: ${trimText(deliverable.eligibilitySummary)}` : '',
+        deliverable.extractedText ? `Text livrabil: ${trimText(deliverable.extractedText)}` : '',
+      ]),
+    ]).slice(0, 16),
+    taxonomyContext: unique([
+      request.saCode ? `SA selectata: ${request.saCode}` : '',
+      request.activityName ? `Activitate selectata: ${request.activityName}` : '',
+      input.subactivityText ? `Scop SA: ${trimText(input.subactivityText)}` : '',
+      ...(input.jobDescriptionResponsibilities ?? []).map((item) => `Fisa postului: ${trimText(item)}`),
+      ...request.catalogCandidates.slice(0, 4).map((candidate) => [
+        candidate.saCode,
+        candidate.activityName,
+        candidate.description,
+        candidate.serviceComponent,
+      ].filter(Boolean).join(' - ')),
+    ]).slice(0, 12),
+    demonstratedActions,
+    taxonomyOnlyActions,
+    unsupportedRiskyActions: RISKY_FACTUAL_ACTIONS.filter((action) => taxonomyOnlyActions.includes(action)),
+    deliverableNames,
+  };
+}
+
 export function validateActivityHoursValue(request: Pick<ActivityAgentRequest, 'hours' | 'selectedDates'>) {
   const hours = request.hours === undefined || request.hours === ''
     ? undefined
@@ -300,6 +437,11 @@ export async function createActivityAgentToolContext(request: ActivityAgentReque
   const targetGroupImpact = evaluateTargetGroupImpactValue({ request, deliverableInspection, subactivityText });
   const classification = validateSubactivityClassificationValue({ request, subactivityText });
   const expertAiInstructions = getExpertAiInstructionsValue(request);
+  const factSheet = buildActivityFactSheetValue({
+    request,
+    deliverableInspection,
+    subactivityText,
+  });
 
   return {
     ragRequest,
@@ -311,6 +453,7 @@ export async function createActivityAgentToolContext(request: ActivityAgentReque
     targetGroupImpact,
     classification,
     expertAiInstructions,
+    factSheet,
   };
 }
 
