@@ -1154,6 +1154,7 @@ export function DeliverableItem({
 
         {onRemove && (
           <Button
+            type="button"
             variant="outline"
             size="sm"
             onClick={onRemove}
@@ -1169,13 +1170,14 @@ export function DeliverableItem({
           type="file"
           ref={fileRef}
           multiple
-          accept=".pdf,.doc,.docx,.html,.htm,.xlsx,.png,.jpg,.jpeg,.gif"
+          accept=".pdf,.doc,.docx,.html,.htm,.xlsx,.png,.jpg,.jpeg,.gif,.bmp,.webp,image/*"
           onChange={handleFile}
           className="hidden"
         />
 
         {!deliverable.uploaded ? (
           <Button
+            type="button"
             variant="outline"
             size="sm"
             onClick={() => fileRef.current?.click()}
@@ -1200,6 +1202,7 @@ export function DeliverableItem({
               {deliverable.filename}
             </span>
             <Button
+              type="button"
               variant="ghost"
               size="sm"
               onClick={handleRemoveFile}
@@ -1418,6 +1421,7 @@ export function DeliverableItem({
 
       {deliverable.uploaded && !deliverable.isPhoto && deliverable.declaredTitle && !effectiveTitleConfirmed && (
         <Button
+          type="button"
           variant="outline"
           size="sm"
           onClick={handleConfirmTitle}
@@ -1463,6 +1467,7 @@ export function DeliverableItem({
         <div className="space-y-2 xl:col-start-2">
           {eligibilityCheckEnabled && hasReusableEligibilityCheck ? null : eligibilityCheckEnabled && canRunEligibilityCheck ? (
             <Button
+              type="button"
               variant="outline"
               size="sm"
               onClick={handleAiCheck}
@@ -1490,6 +1495,7 @@ export function DeliverableItem({
           ) : (
             <div className="space-y-1.5">
               <Button
+                type="button"
                 variant="outline"
                 size="sm"
                 disabled
@@ -1515,6 +1521,7 @@ export function DeliverableItem({
       )}
       {showEligibilityControl && !renderInlineNotes && deliverable.uploaded && !deliverable.isPhoto && eligibilityCheckEnabled && canRunEligibilityCheck && (
         <Button
+          type="button"
           variant="outline"
           size="sm"
           onClick={handleAiCheck}
@@ -1544,6 +1551,7 @@ export function DeliverableItem({
       {showEligibilityControl && !renderInlineNotes && deliverable.uploaded && !deliverable.isPhoto && !eligibilityCheckEnabled && (
         <div className="space-y-1.5">
           <Button
+            type="button"
             variant="outline"
             size="sm"
             disabled
@@ -1858,6 +1866,7 @@ export function DeliverableEligibilityControl({
       {eligibilityCheckEnabled && hasReusableEligibilityCheck ? null : eligibilityCheckEnabled && canRunEligibilityCheck ? (
         <div className="space-y-1">
           <Button
+            type="button"
             variant="outline"
             size="sm"
             onClick={handleAiCheck}
@@ -1891,6 +1900,7 @@ export function DeliverableEligibilityControl({
       ) : (
         <div className="space-y-1.5">
           <Button
+            type="button"
             variant="outline"
             size="sm"
             disabled

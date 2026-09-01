@@ -116,6 +116,14 @@ test('fotografiile atasate in formular nu asteapta OCR pentru a fi marcate ca up
   assert.match(buildFilePatchSource, /Fotografie atasata ca dovada de eveniment; uploadul nu asteapta extragere OCR\./);
 });
 
+test('butonul de selectie fisier nu trimite formularul inainte de upload foto', () => {
+  assert.match(deliverableItemSource, /accept="\.pdf,\.doc,\.docx,\.html,\.htm,\.xlsx,\.png,\.jpg,\.jpeg,\.gif,\.bmp,\.webp,image\/\*"/);
+  assert.match(
+    deliverableItemSource,
+    /<Button\s+type="button"\s+variant="outline"\s+size="sm"\s+onClick=\{\(\) => fileRef\.current\?\.click\(\)\}/,
+  );
+});
+
 test('accepta sugestii de activitate si tip livrabil cand exista in listele permise', () => {
   const suggestion = validateEligibilitySuggestedSettings({
     suggestedSettings: {
