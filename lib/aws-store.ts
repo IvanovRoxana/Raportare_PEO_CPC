@@ -389,6 +389,7 @@ function withSupportedExpertFields(payload: Record<string, unknown>, expert: Par
     contractNumber: expert.contractNumber,
     contractType: expert.contractType,
     expertExperienceCategory: expert.expertExperienceCategory,
+    hourlyRate: expert.hourlyRate,
     jobDescriptionText: expert.jobDescriptionText,
     aiReportingInstructions: expert.aiReportingInstructions,
     beneficiary: expert.beneficiary,
@@ -2650,12 +2651,14 @@ export const sharedDeliverablesService = {
     };
   },
 
-  async ensureActivitySuggestionForTarget(sourceActivityId: string, targetExpertId: string): Promise<SharedDeliverable | null> {
+  async ensureActivitySuggestionForTarget(sourceActivityId: string, targetExpertId: string, sourceActivitySnapshot?: Activity): Promise<SharedDeliverable | null> {
     const client = getAwsDataClient() as any;
-    if (!client.models.SharedDeliverable || !client.models.Activity) return null;
+    if (!client.models.SharedDeliverable) return null;
     await assertCanAccessExpert(client, targetExpertId);
 
-    const sourceActivity = await tryGetSharedSourceActivity(client, sourceActivityId);
+    const sourceActivity = sourceActivitySnapshot?.id === sourceActivityId
+      ? sourceActivitySnapshot
+      : await tryGetSharedSourceActivity(client, sourceActivityId);
     if (!sourceActivity) {
       throw new Error('Activitatea colegului nu a fost gasita.');
     }

@@ -24,6 +24,7 @@ function requirePrivilegedRole(actorRole: string, actionType: string) {
     'pm_hours_generated',
     'pm_hours_regenerated',
     'pm_deliverable_unlock_approved',
+    'financial_hourly_rate_updated',
   ]);
 
   if (pmOrAdminActions.has(actionType) && (hasRole(actorRole, 'pm') || hasRole(actorRole, 'admin'))) {

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { aggregateLeaveAllocationsByDate, calculateLeaveAllocationForDay } from '../lib/financial-leave-allocation.ts';
 import { buildFinancialLeaveGridAllocations, getPeoLeaveDates } from '../lib/financial-leave-grid.ts';
 import { applyFinancialReferenceNorms } from '../lib/financial-norm-contracts.ts';
 import { buildFinancialReportingSummary } from '../lib/financial-reporting.ts';
@@ -62,6 +63,17 @@ test('formularul Adauga CO Financiar afiseaza titluri vizibile pentru campuri', 
   assert.match(source, />Ore CO PEO</);
   assert.match(source, />Ore CO CPC</);
   assert.match(source, />Justificare</);
+});
+
+test('rata orara este camp persistent pe Expert si mapata prin AWS store', () => {
+  const schema = readFileSync('amplify/data/resource.ts', 'utf8');
+  const types = readFileSync('lib/types.ts', 'utf8');
+  const store = readFileSync('lib/aws-store.ts', 'utf8');
+
+  assert.match(schema, /Expert:\s*a\s*\.\s*model\(\{[\s\S]*hourlyRate:\s*a\.float\(\)/);
+  assert.match(types, /export interface Expert[\s\S]*hourlyRate\?: number/);
+  assert.match(store, /hourlyRate:\s*expert\.hourlyRate/);
+  assert.match(store, /hourlyRate:\s*item\.hourlyRate \?\? undefined/);
 });
 
 test('salvarea CO financiar pastreaza CIM din coloana financiara, nu il deduce din PEO si CPC', () => {
@@ -132,6 +144,62 @@ test('perioada initiala din grila CO financiar afiseaza doar zilele cu CO PEO', 
   ];
 
   assert.deepEqual(getPeoLeaveDates(leaves), ['2026-08-17']);
+});
+
+test('RAP-50 centralizeaza interpretarea CO intr-o functie domain comuna', () => {
+  const financialReporting = readFileSync('lib/financial-reporting.ts', 'utf8');
+  const pontajExport = readFileSync('lib/pontaj-excel-export.ts', 'utf8');
+  const timeCapacity = readFileSync('lib/time-capacity.ts', 'utf8');
+
+  assert.match(financialReporting, /calculateLeaveAllocationForDay\(leave,\s*\{\s*peoScope:\s*isPeoExpert\s*\}\)/);
+  assert.match(pontajExport, /aggregateLeaveAllocationsByDate\(leaveEntries,\s*\{\s*month,\s*year,\s*exportableOnly:\s*true\s*\}\)/);
+  assert.match(timeCapacity, /calculateLeaveAllocationForDay\(leave\)/);
+});
+
+test('calculateLeaveAllocationForDay pastreaza split-ul financiar si muta non-PEO integral pe Concordia', () => {
+  const leave: LeaveEntry = {
+    id: 'leave-domain',
+    expertId: expert.id,
+    date: '2026-08-17',
+    month: 7,
+    year: 2026,
+    type: 'CO',
+    totalHours: 8,
+    peoHours: 6,
+    cpcHours: 2,
+    source: 'FINANCIAL',
+    status: 'VALIDATED',
+    lockedForExpert: true,
+    automaticSplit: false,
+  };
+
+  assert.deepEqual(calculateLeaveAllocationForDay(leave, { month: 7, year: 2026 }), {
+    date: '2026-08-17',
+    type: 'CO',
+    peoHours: 6,
+    cpcHours: 2,
+    totalHours: 8,
+    source: 'FINANCIAL',
+    status: 'VALIDATED',
+    lockedForExpert: true,
+    automaticSplit: false,
+  });
+  assert.deepEqual(calculateLeaveAllocationForDay(leave, { peoScope: false })?.peoHours, 0);
+  assert.deepEqual(calculateLeaveAllocationForDay(leave, { peoScope: false })?.cpcHours, 8);
+});
+
+test('aggregateLeaveAllocationsByDate foloseste doar CO financiar sau validat pentru export', () => {
+  const allocations = aggregateLeaveAllocationsByDate([
+    { id: 'financial', expertId: expert.id, date: '2026-08-17', month: 7, year: 2026, type: 'CO', totalHours: 8, peoHours: 6, cpcHours: 2, source: 'FINANCIAL', status: 'DRAFT', lockedForExpert: true },
+    { id: 'validated', expertId: expert.id, date: '2026-08-17', month: 7, year: 2026, type: 'CO', totalHours: 8, peoHours: 2, cpcHours: 6, source: 'EXPERT', status: 'VALIDATED', lockedForExpert: false },
+    { id: 'draft', expertId: expert.id, date: '2026-08-18', month: 7, year: 2026, type: 'CO', totalHours: 8, peoHours: 8, cpcHours: 0, source: 'EXPERT', status: 'DRAFT', lockedForExpert: false },
+  ], { month: 7, year: 2026, exportableOnly: true });
+  const allocation = allocations.get('2026-08-17');
+
+  assert.equal(allocations.has('2026-08-18'), false);
+  assert.equal(allocation?.peoHours, 8);
+  assert.equal(allocation?.cpcHours, 8);
+  assert.equal(allocation?.totalHours, 16);
 });
 
 test('modulul financiar preia CO doar din modulul CO manual', () => {

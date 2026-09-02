@@ -96,22 +96,6 @@ interface DosarExpertModalProps {
   projectTitle?: string;
 }
 
-function financialHourlyRateStorageKey(month: number, year: number) {
-  return `financial-peo-hourly-rates-${year}-${String(month + 1).padStart(2, '0')}`;
-}
-
-function getStoredFinancialHourlyRate(expert: Expert, month: number, year: number) {
-  try {
-    const storedRates = window.localStorage.getItem(financialHourlyRateStorageKey(month, year));
-    const rates = storedRates ? JSON.parse(storedRates) as Record<string, string> : {};
-    const rawValue = rates[expert.id] ?? rates[expert.name];
-    const value = Number(rawValue?.replace(',', '.'));
-    return Number.isFinite(value) && value > 0 ? value : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 type DossierDeliverable = Deliverable & {
   activityDate?: string;
   activityTitle?: string;
@@ -952,7 +936,7 @@ export function DosarExpertModal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(buildPontajExportPayload({
           kind: 'peo',
-          expert: { ...expert, hourlyRate: getStoredFinancialHourlyRate(expert, month, year) },
+          expert,
           activities,
           concurrentProjects,
           concurrentTimesheetEntries,

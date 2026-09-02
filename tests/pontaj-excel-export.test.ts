@@ -142,6 +142,21 @@ describe('export pontaj Excel', () => {
     assert.match(dossierModal, /leaveEntries,/);
   });
 
+  it('rata orara pentru export este persistata pe Expert, nu in localStorage', () => {
+    const financialDashboard = readFileSync(new URL('../components/financial/financial-reporting-dashboard.tsx', import.meta.url), 'utf8');
+    const pmPage = readFileSync(new URL('../app/pm/page.tsx', import.meta.url), 'utf8');
+    const dossierModal = readFileSync(new URL('../components/pm/dosar-expert-modal.tsx', import.meta.url), 'utf8');
+    const expertPage = readFileSync(new URL('../app/expert/page.tsx', import.meta.url), 'utf8');
+    const exportSurfaces = `${financialDashboard}\n${pmPage}\n${dossierModal}\n${expertPage}`;
+
+    assert.doesNotMatch(exportSurfaces, /financial-peo-hourly-rates|hourlyRateStorageKey|getStoredFinancialHourlyRate/);
+    assert.match(financialDashboard, /updateExpert\(expert\.id,\s*\{\s*hourlyRate:\s*nextHourlyRate\s*\}\)/);
+    assert.match(financialDashboard, /financial_hourly_rate_updated/);
+    assert.match(pmPage, /kind:\s*'peo',\s*expert,/);
+    assert.match(dossierModal, /kind:\s*'peo',\s*expert,/);
+    assert.match(expertPage, /expert:\s*currentExpert/);
+  });
+
   it('pastreaza formulele GOODWORKS4ALL si curata valorile ramase din template', async () => {
     const workbook = await generatePontajExcel({
       kind: 'consolidated',

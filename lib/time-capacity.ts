@@ -8,6 +8,7 @@ import type {
   NormUnit,
 } from './types.ts';
 import { getNonWorkingDayInfo } from './non-working-days.ts';
+import { calculateLeaveAllocationForDay } from './financial-leave-allocation.ts';
 
 export const ABSOLUTE_DAILY_HOURS_LIMIT = 8;
 
@@ -127,8 +128,9 @@ export function calculateCapacitySnapshot(input: CapacityInput): CapacitySnapsho
     add(String(entry.date), numeric(entry.hours));
   }
   for (const leave of input.leaveEntries ?? []) {
-    if (leave.status === 'REJECTED') continue;
-    add(String(leave.date), numeric(leave.totalHours), numeric(leave.peoHours), 'leave');
+    const allocation = calculateLeaveAllocationForDay(leave);
+    if (!allocation) continue;
+    add(allocation.date, allocation.totalHours, allocation.peoHours, 'leave');
   }
 
   const conflicts: CapacityConflict[] = [];

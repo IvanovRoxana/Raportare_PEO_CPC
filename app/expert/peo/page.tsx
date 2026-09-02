@@ -2538,7 +2538,7 @@ function ExpertDashboardContent() {
     setWorkBlockSaveNotice(null);
     setStartingColleagueActivityId(sourceActivity.id);
     try {
-      const relation = await ensureActivitySuggestion(sourceActivity.id, selectedExpertId);
+      const relation = await ensureActivitySuggestion(sourceActivity.id, selectedExpertId, sourceActivity);
       if (!relation?.id) {
         throw new Error('Nu am putut crea legatura de activitate comuna.');
       }

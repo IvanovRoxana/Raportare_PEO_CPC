@@ -190,24 +190,6 @@ function getFilenameFromContentDisposition(disposition: string, fallbackName: st
   return asciiMatch?.[1] || fallbackName;
 }
 
-function financialHourlyRateStorageKey(month: number, year: number) {
-  return `financial-peo-hourly-rates-${year}-${String(month + 1).padStart(2, '0')}`;
-}
-
-function getStoredFinancialHourlyRate(expert: Expert, month: number, year: number) {
-  if (typeof window === 'undefined') return undefined;
-  try {
-    const storedRates = window.localStorage.getItem(financialHourlyRateStorageKey(month, year));
-    if (!storedRates) return undefined;
-    const parsed = JSON.parse(storedRates) as Record<string, number | string | undefined>;
-    const value = parsed[expert.id] ?? parsed[expert.name];
-    const numeric = typeof value === 'string' ? Number(value.replace(',', '.')) : Number(value);
-    return Number.isFinite(numeric) && numeric > 0 ? numeric : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 export default function PMDashboard() {
   const router = useRouter();
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
@@ -1534,7 +1516,7 @@ export default function PMDashboard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(buildPontajExportPayload({
           kind: 'peo',
-          expert: { ...expert, hourlyRate: getStoredFinancialHourlyRate(expert, selectedMonth, selectedYear) },
+          expert,
           activities: expertActivities,
           concurrentProjects: expertConcurrentProjects,
           concurrentTimesheetEntries: expertConcurrentEntries,

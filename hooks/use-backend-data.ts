@@ -563,8 +563,8 @@ export function useSharedActivityRegistrationContext(relationId?: string | null)
 }
 
 export function useSharedDeliverableMutations() {
-  const ensureActivitySuggestion = async (sourceActivityId: string, targetExpertId: string): Promise<SharedDeliverable | null> => {
-    const relation = await sharedDeliverablesService.ensureActivitySuggestionForTarget(sourceActivityId, targetExpertId);
+  const ensureActivitySuggestion = async (sourceActivityId: string, targetExpertId: string, sourceActivitySnapshot?: Activity): Promise<SharedDeliverable | null> => {
+    const relation = await sharedDeliverablesService.ensureActivitySuggestionForTarget(sourceActivityId, targetExpertId, sourceActivitySnapshot);
     mutate((key: string) => typeof key === 'string' && key.startsWith('shared-deliverables'), undefined, { revalidate: true });
     return relation;
   };

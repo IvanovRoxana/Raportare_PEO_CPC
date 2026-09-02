@@ -3,6 +3,7 @@ import { normalizeFinancialPersonKey, rankFinancialPersonMatches, type Financial
 import type { Activity, ConcurrentProject, ConcurrentProjectTimesheetEntry, Expert, ExpertNormContract, FinancialPersonLink, LeaveEntry } from './types.ts';
 import { calculateCapacitySnapshot, getEffectiveNormContract, resolveNormContract } from './time-capacity.ts';
 import { applyFinancialReferenceNorms } from './financial-norm-contracts.ts';
+import { calculateLeaveAllocationForDay } from './financial-leave-allocation.ts';
 
 export type FinancialConflictCode =
   | 'missing_expert'
@@ -319,20 +320,18 @@ export function buildFinancialReportingSummary(input: {
     }
 
     for (const leave of leaves) {
-      if (leave.status === 'REJECTED') continue;
-      const totalHours = Number(leave.totalHours) || 0;
-      if (!isPeoExpert) {
-        concordiaLeave += totalHours;
-      } else if (leave.type === 'CM') {
-        medicalLeave += Number(leave.peoHours) || 0;
-        concordiaLeave += Number(leave.cpcHours) || 0;
+      const allocation = calculateLeaveAllocationForDay(leave, { peoScope: isPeoExpert });
+      if (!allocation) continue;
+      if (allocation.type === 'CM') {
+        medicalLeave += allocation.peoHours;
+        concordiaLeave += allocation.cpcHours;
       } else {
-        peoLeave += Number(leave.peoHours) || 0;
-        concordiaLeave += Number(leave.cpcHours) || 0;
+        peoLeave += allocation.peoHours;
+        concordiaLeave += allocation.cpcHours;
       }
-      leaveDates.add(leave.date);
-      if (leave.type === 'CO') coLeaveDates.add(leave.date);
-      dailyTotals.set(leave.date, (dailyTotals.get(leave.date) ?? 0) + totalHours);
+      leaveDates.add(allocation.date);
+      if (allocation.type === 'CO') coLeaveDates.add(allocation.date);
+      dailyTotals.set(allocation.date, (dailyTotals.get(allocation.date) ?? 0) + allocation.totalHours);
     }
 
     const effectiveNormContracts = expert

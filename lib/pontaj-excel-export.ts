@@ -7,6 +7,11 @@ import {
   getNonWorkingDayInfo,
   toDateKey,
 } from './non-working-days.ts';
+import {
+  aggregateLeaveAllocationsByDate,
+  sumLeaveAllocationHours,
+  type FinancialLeaveAllocation,
+} from './financial-leave-allocation.ts';
 
 export type CellInput = string | number | null | { formula: string };
 
@@ -150,13 +155,6 @@ interface PeoTimesheetRow {
   dateSerial: number;
   isWorking: boolean;
   activities: Partial<Activity>[];
-}
-
-interface LeaveAllocation {
-  type: 'CO' | 'CM';
-  peoHours: number;
-  cpcHours: number;
-  totalHours: number;
 }
 
 export async function generatePontajExcel(payload: ExportPayload): Promise<GeneratedWorkbook> {
@@ -1067,32 +1065,7 @@ function getActivitiesForPontajExport(activities: Partial<Activity>[], leaveEntr
 }
 
 function buildLeaveAllocationsByDate(leaveEntries: Partial<LeaveEntry>[] | undefined, month: number, year: number) {
-  const allocations = new Map<string, LeaveAllocation>();
-  for (const leave of leaveEntries ?? []) {
-    if (!isExportableLeaveEntry(leave, month, year)) continue;
-    const dateKey = toDateKey(leave.date!);
-    const existing = allocations.get(dateKey);
-    const type = normalizeLeaveCode(leave.type) ?? 'CO';
-    allocations.set(dateKey, {
-      type: existing?.type === 'CO' || type === 'CO' ? 'CO' : 'CM',
-      peoHours: roundNumber((existing?.peoHours ?? 0) + (Number(leave.peoHours) || 0)),
-      cpcHours: roundNumber((existing?.cpcHours ?? 0) + (Number(leave.cpcHours) || 0)),
-      totalHours: roundNumber((existing?.totalHours ?? 0) + (Number(leave.totalHours) || 0)),
-    });
-  }
-  return allocations;
-}
-
-function isExportableLeaveEntry(leave: Partial<LeaveEntry>, month: number, year: number) {
-  if (!leave.date || leave.month !== month || leave.year !== year) return false;
-  const status = String(leave.status ?? '').toUpperCase();
-  if (status === 'REJECTED') return false;
-  const source = String(leave.source ?? '').toUpperCase();
-  return source === 'FINANCIAL' || status === 'VALIDATED';
-}
-
-function sumLeaveAllocationHours(allocations: Map<string, LeaveAllocation>, field: 'peoHours' | 'cpcHours') {
-  return roundNumber([...allocations.values()].reduce((sum, leave) => sum + leave[field], 0));
+  return aggregateLeaveAllocationsByDate(leaveEntries, { month, year, exportableOnly: true }) as Map<string, FinancialLeaveAllocation>;
 }
 
 function sumNonLeaveHours(activities: Partial<Activity>[], month: number, year: number) {
@@ -1173,10 +1146,11 @@ function getExpertCimDailyHours(expert: Partial<Expert>) {
   return Number(expert.norma ?? 8) || 8;
 }
 
-function getExpertHourlyRate(expert: Partial<Expert> & { hourlyRate?: number | string }) {
-  const value = typeof expert.hourlyRate === 'string'
-    ? Number(expert.hourlyRate.replace(',', '.'))
-    : Number(expert.hourlyRate);
+function getExpertHourlyRate(expert: Partial<Expert>) {
+  const rawValue: unknown = expert.hourlyRate;
+  const value = typeof rawValue === 'string'
+    ? Number(rawValue.replace(',', '.'))
+    : Number(rawValue);
   return Number.isFinite(value) && value > 0 ? roundNumber(value) : 0;
 }
 

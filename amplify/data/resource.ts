@@ -22,6 +22,7 @@ const schema = a.schema({
       contractNumber: a.string(),
       contractType: a.string(),
       expertExperienceCategory: a.string(),
+      hourlyRate: a.float(),
       jobDescriptionText: a.string(),
       aiReportingInstructions: a.string(),
       beneficiary: a.string(),

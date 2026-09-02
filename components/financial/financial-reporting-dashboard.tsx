@@ -15,7 +15,9 @@ import {
   useActivitiesByMonth,
   useAllConcurrentProjects,
   useConcurrentProjectTimesheetByMonth,
+  useAuditLogMutations,
   useExperts,
+  useExpertMutations,
   useAllExpertNormContracts,
   useExpertNormContractMutations,
   useFinancialPersonLinkMutations,
@@ -102,8 +104,15 @@ function parseDailyHoursLabel(value: string | undefined) {
   return matched ? Number(matched[1].replace(',', '.')) : 0;
 }
 
-function hourlyRateRowKey(row: FinancialTimesheetRow) {
-  return row.expertId ?? row.name;
+function parseHourlyRate(value: string) {
+  const normalized = value.trim().replace(',', '.');
+  if (!normalized) return undefined;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+}
+
+function formatHourlyRate(value?: number) {
+  return value == null ? '' : String(value);
 }
 
 function leaveGridRowKey(row: FinancialTimesheetRow) {
@@ -329,7 +338,8 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
   const [selectedFinancialPersonKey, setSelectedFinancialPersonKey] = useState('');
   const [selectedLinkExpertId, setSelectedLinkExpertId] = useState('');
   const [savingLink, setSavingLink] = useState(false);
-  const [hourlyRates, setHourlyRates] = useState<Record<string, string>>({});
+  const [hourlyRateDrafts, setHourlyRateDrafts] = useState<Record<string, string>>({});
+  const [savingHourlyRate, setSavingHourlyRate] = useState<string | null>(null);
   const [leaveGridDrafts, setLeaveGridDrafts] = useState<Record<string, LeaveGridDraft>>({});
   const [savingLeaveRow, setSavingLeaveRow] = useState<string | null>(null);
   const [leaveForm, setLeaveForm] = useState({
@@ -349,20 +359,24 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
   const { links: financialPersonLinks, isLoading: loadingLinks } = useFinancialPersonLinks();
   const { leaveEntries, isLoading: loadingLeave, mutate: refreshLeaveEntries } = useLeaveEntries(month, year);
   const { createAutomatic, createManual, remove: removeLeaveEntry, updateStatus } = useLeaveEntryMutations(month, year);
+  const { update: updateExpert } = useExpertMutations();
   const { create: createNormContract, update: updateNormContract } = useExpertNormContractMutations();
+  const { create: createAuditLog } = useAuditLogMutations();
   const { create: createFinancialPersonLink, update: updateFinancialPersonLink } = useFinancialPersonLinkMutations();
   const enabled = mode === 'timesheets' ? isFinancialTimesheetsEnabledClient() : isFinancialLeaveEnabledClient();
   const isLoading = loadingExperts || loadingActivities || loadingProjects || loadingEntries || loadingContracts || loadingLinks || loadingLeave;
-  const hourlyRateStorageKey = `financial-peo-hourly-rates-${year}-${String(month + 1).padStart(2, '0')}`;
 
   useEffect(() => {
-    try {
-      const storedRates = window.localStorage.getItem(hourlyRateStorageKey);
-      setHourlyRates(storedRates ? JSON.parse(storedRates) as Record<string, string> : {});
-    } catch {
-      setHourlyRates({});
-    }
-  }, [hourlyRateStorageKey]);
+    setHourlyRateDrafts((current) => {
+      const next = { ...current };
+      for (const expert of experts) {
+        if (expert.id && next[expert.id] === undefined) {
+          next[expert.id] = formatHourlyRate(expert.hourlyRate);
+        }
+      }
+      return next;
+    });
+  }, [experts]);
 
   const summary = useMemo(() => buildFinancialReportingSummary({
     experts,
@@ -526,14 +540,45 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
     }
   };
 
-  const updateHourlyRate = (row: FinancialTimesheetRow, value: string) => {
-    const key = hourlyRateRowKey(row);
-    setHourlyRates((current) => {
-      const next = { ...current, [key]: value };
-      if (!value.trim()) delete next[key];
-      window.localStorage.setItem(hourlyRateStorageKey, JSON.stringify(next));
-      return next;
-    });
+  const updateHourlyRateDraft = (row: FinancialTimesheetRow, value: string) => {
+    if (!row.expertId) return;
+    setHourlyRateDrafts((current) => ({ ...current, [row.expertId!]: value }));
+  };
+
+  const saveHourlyRate = async (row: FinancialTimesheetRow) => {
+    const expert = experts.find((item) => item.id === row.expertId);
+    if (!expert?.id) return;
+    const draft = hourlyRateDrafts[expert.id] ?? '';
+    const nextHourlyRate = parseHourlyRate(draft);
+    const oldHourlyRate = expert.hourlyRate;
+    if (draft.trim() && nextHourlyRate === undefined) {
+      setVerificationMessage('Rata orara trebuie sa fie un numar pozitiv.');
+      return;
+    }
+    if ((nextHourlyRate ?? undefined) === (oldHourlyRate ?? undefined)) return;
+    setSavingHourlyRate(expert.id);
+    try {
+      await updateExpert(expert.id, { hourlyRate: nextHourlyRate });
+      await createAuditLog({
+        actionType: 'financial_hourly_rate_updated',
+        actorId: 'financial-session',
+        actorRole: 'admin',
+        affectedExpertId: expert.id,
+        affectedExpertName: expert.name,
+        projectCode: expert.projectCode ?? '302141',
+        month,
+        year,
+        fieldName: 'hourlyRate',
+        oldValue: oldHourlyRate ?? '',
+        newValue: nextHourlyRate ?? '',
+        justification: 'Actualizare rata orara PEO din modulul Financiar.',
+        source: 'manual',
+      });
+      setHourlyRateDrafts((current) => ({ ...current, [expert.id]: formatHourlyRate(nextHourlyRate) }));
+      setVerificationMessage(`Rata orara pentru ${expert.name} a fost salvata in profil.`);
+    } finally {
+      setSavingHourlyRate(null);
+    }
   };
 
   const openFinancialLinkPanel = (row: FinancialTimesheetRow) => {
@@ -849,7 +894,6 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
     try {
       const expertProjects = projects.filter((project) => project.expertId === expert.id);
       const projectIds = new Set(expertProjects.map((project) => project.id));
-      const hourlyRate = Number(hourlyRates[hourlyRateRowKey(row)]?.replace(',', '.')) || undefined;
       const peoDailyHours = parseDailyHoursLabel(row.peoNorm || row.workbookNorm) || expert.oreZi || expert.dailyHours || expert.norma;
       const cimDailyHours = parseDailyHoursLabel(row.cimNorm) || expert.norma || 8;
       const response = await fetch('/api/export/pontaj', {
@@ -857,7 +901,7 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(buildPontajExportPayload({
           kind: 'consolidated',
-          expert: { ...expert, norma: cimDailyHours, oreZi: peoDailyHours, dailyHours: peoDailyHours, normType: 'project', hourlyRate },
+          expert: { ...expert, norma: cimDailyHours, oreZi: peoDailyHours, dailyHours: peoDailyHours, normType: 'project' },
           activities: activities.filter((activity) => activity.expertId === expert.id),
           concurrentProjects: expertProjects,
           concurrentTimesheetEntries: entries.filter((entry) => projectIds.has(entry.concurrentProjectId)),
@@ -1172,10 +1216,11 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
                           className="h-7 px-1 text-center text-[10px] tabular-nums"
                           inputMode="decimal"
                           placeholder="lei/h"
-                          value={hourlyRates[hourlyRateRowKey(row)] ?? ''}
-                          disabled={!row.expertId}
-                          title={row.expertId ? `Rata orara PEO pentru ${row.name}` : 'Disponibil dupa inregistrarea expertului in aplicatie'}
-                          onChange={(event) => updateHourlyRate(row, event.target.value)}
+                          value={row.expertId ? hourlyRateDrafts[row.expertId] ?? formatHourlyRate(experts.find((expert) => expert.id === row.expertId)?.hourlyRate) : ''}
+                          disabled={!row.expertId || savingHourlyRate === row.expertId}
+                          title={savingHourlyRate === row.expertId ? 'Se salveaza rata orara...' : row.expertId ? `Rata orara PEO pentru ${row.name}` : 'Disponibil dupa inregistrarea expertului in aplicatie'}
+                          onChange={(event) => updateHourlyRateDraft(row, event.target.value)}
+                          onBlur={() => saveHourlyRate(row)}
                         />
                       </td>
                     </tr>

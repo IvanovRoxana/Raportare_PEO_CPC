@@ -30,13 +30,14 @@ class ColleagueOverviewRouteError extends Error {
 
 const region = outputs.auth?.aws_region || 'eu-north-1';
 const userPoolId = outputs.auth?.user_pool_id;
+const appSyncEndpoint = outputs.data?.url || '';
 const appSyncApiId = outputs.data?.url ? new URL(outputs.data.url).hostname.split('.')[0] : '';
 const cognitoEndpoint = `https://cognito-idp.${region}.amazonaws.com/`;
 const dynamoEndpoint = `https://dynamodb.${region}.amazonaws.com/`;
 const dynamoHost = `dynamodb.${region}.amazonaws.com`;
 const tableNameCache: Record<string, string> = {};
 const DYNAMO_ACCESS_DENIED_MESSAGE =
-  'Nu am putut citi activitatile colegilor din DynamoDB. Verifica permisiunile COGNITO_SYNC_AWS_* pentru Scan/Query pe tabelele si indexurile Activity, Expert si Deliverable.';
+  'Nu am putut citi activitatile colegilor din DynamoDB. Verifica permisiunile COGNITO_SYNC_AWS_* pentru Query pe indexurile Activity si Deliverable.';
 
 function hasAllowedOrigin(request: Request) {
   const origin = request.headers.get('origin');
@@ -182,6 +183,59 @@ async function validateAccessToken(accessToken: string) {
   return response.json() as Promise<CognitoUser>;
 }
 
+async function callAppSync<T>(accessToken: string, query: string, variables?: Record<string, unknown>) {
+  if (!appSyncEndpoint) {
+    throw new ColleagueOverviewRouteError('Endpointul AppSync nu este configurat pentru newsletterul colegilor.', 503);
+  }
+
+  const response = await fetch(appSyncEndpoint, {
+    method: 'POST',
+    headers: {
+      authorization: accessToken,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ query, variables }),
+  });
+  const body = await response.json().catch(() => null) as { data?: T; errors?: unknown } | null;
+  if (!response.ok || body?.errors) {
+    throw new ColleagueOverviewRouteError('Nu am putut citi lista de experti pentru newsletterul colegilor.', response.ok ? 503 : response.status);
+  }
+  return body?.data as T;
+}
+
+async function listExpertsWithUserToken(accessToken: string) {
+  type ListExpertsForColleagueOverviewData = {
+    listExperts?: {
+      items?: Expert[];
+      nextToken?: string | null;
+    };
+  };
+  const experts: Expert[] = [];
+  let nextToken: string | null | undefined = null;
+  const query = /* GraphQL */ `
+    query ListExpertsForColleagueOverview($nextToken: String) {
+      listExperts(limit: 1000, nextToken: $nextToken) {
+        items {
+          id
+          name
+          email
+          projectCode
+          isActive
+        }
+        nextToken
+      }
+    }
+  `;
+
+  do {
+    const data: ListExpertsForColleagueOverviewData = await callAppSync(accessToken, query, { nextToken });
+    experts.push(...(data?.listExperts?.items ?? []));
+    nextToken = data?.listExperts?.nextToken;
+  } while (nextToken);
+
+  return experts;
+}
+
 function fromDdbAttribute(attribute?: DdbAttribute): unknown {
   if (!attribute) return undefined;
   if ('S' in attribute) return attribute.S;
@@ -201,7 +255,7 @@ function toDdbAttribute(value: string | number): DdbAttribute {
   return typeof value === 'number' ? { N: String(value) } : { S: value };
 }
 
-async function getTableName(modelName: 'Activity' | 'Deliverable' | 'Expert') {
+async function getTableName(modelName: 'Activity' | 'Deliverable') {
   const envName = process.env[`${modelName.toUpperCase()}_TABLE_NAME`];
   if (envName) return envName;
   if (tableNameCache[modelName]) return tableNameCache[modelName];
@@ -215,32 +269,8 @@ async function getTableName(modelName: 'Activity' | 'Deliverable' | 'Expert') {
   return tableName;
 }
 
-async function scanTable<T>(
-  modelName: 'Activity' | 'Deliverable' | 'Expert',
-  input: Omit<Record<string, unknown>, 'TableName'> = {},
-) {
-  const TableName = await getTableName(modelName);
-  const items: T[] = [];
-  let ExclusiveStartKey: Record<string, DdbAttribute> | undefined;
-
-  do {
-    const response = await callSignedDynamo<{
-      Items?: Array<Record<string, DdbAttribute>>;
-      LastEvaluatedKey?: Record<string, DdbAttribute>;
-    }>('Scan', {
-      TableName,
-      ...input,
-      ...(ExclusiveStartKey ? { ExclusiveStartKey } : {}),
-    });
-    items.push(...(response.Items || []).map((item) => fromDdbItem(item) as T));
-    ExclusiveStartKey = response.LastEvaluatedKey;
-  } while (ExclusiveStartKey);
-
-  return items;
-}
-
 async function queryTable<T>(
-  modelName: 'Activity' | 'Deliverable' | 'Expert',
+  modelName: 'Activity' | 'Deliverable',
   input: Omit<Record<string, unknown>, 'TableName'> = {},
 ) {
   const TableName = await getTableName(modelName);
@@ -290,10 +320,7 @@ async function getCurrentCaller(request: Request) {
   const user = await validateAccessToken(token);
   const email = normalize(user.UserAttributes?.find((attribute) => attribute.Name === 'email')?.Value || String(payload.email || ''));
   const groups = normalizeGroups(payload['cognito:groups']);
-  const experts = await scanTable<Expert>('Expert', {
-    ProjectionExpression: 'id, #name, email, projectCode, isActive',
-    ExpressionAttributeNames: { '#name': 'name' },
-  });
+  const experts = await listExpertsWithUserToken(token);
   const currentExpert = experts.find((expert) => normalize(expert.email) === email || normalize(expert.id) === normalize(user.Username));
 
   if (!currentExpert && !groups.includes('pm') && !groups.includes('admin')) {
