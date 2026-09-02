@@ -7,6 +7,7 @@ import {
   buildActivityAutofillPrompt,
   activityAutofillRequestSchema,
   getActivityAutofillMissingSteps,
+  mergeActivityAgentAuditIntoAutofillSuggestion,
   validateActivityAutofillSuggestionAgainstCatalog,
   type ActivityAutofillCatalogCandidate,
 } from '../lib/activity-autofill.ts';
@@ -377,6 +378,51 @@ test('validarea accepta descrierea pentru activitatea selectata din catalog', ()
   );
 
   assert.equal(result.ok, true);
+});
+
+test('auditul agentului intareste optimizarea fara sa inlocuiasca descrierea legacy', () => {
+  const primary = {
+    description: 'Am analizat documentele de politici publice si am sintetizat recomandarile relevante pentru dialog social.',
+    shortSummary: 'Am sintetizat recomandarile relevante pentru dialog social.',
+    confidence: 'high' as const,
+    fieldInstructions: {
+      description: 'Descriere generata de fluxul de optimizare.',
+    },
+    evidence: ['Livrabilul este un raport de analiza.'],
+    warnings: [],
+    modelAuditId: 'legacy-audit',
+  };
+  const audit = {
+    description: 'Text prudent fallback al agentului, care nu trebuie aplicat peste optimizarea principala.',
+    shortSummary: 'Agentul a verificat descrierea.',
+    confidence: 'low' as const,
+    fieldInstructions: {
+      description: 'Revizuieste auditul.',
+    },
+    evidence: ['agent - analiza - fragment relevant'],
+    warnings: ['Agentul cere verificare PM.'],
+    agent: {
+      requiresPmReview: true,
+      formReview: {
+        status: 'needs_review' as const,
+        summary: 'Sunt necesare verificari suplimentare.',
+        steps: [],
+        recommendedActions: [],
+      },
+    } as never,
+  };
+
+  const merged = mergeActivityAgentAuditIntoAutofillSuggestion(primary, audit);
+
+  assert.equal(merged.description, primary.description);
+  assert.equal(merged.shortSummary, primary.shortSummary);
+  assert.equal(merged.confidence, 'medium');
+  assert.equal(merged.modelAuditId, 'legacy-audit');
+  assert.equal(merged.agent, audit.agent);
+  assert.match(merged.fieldInstructions.description, /Audit Agent PEO/);
+  assert.ok(merged.evidence.includes('Livrabilul este un raport de analiza.'));
+  assert.ok(merged.evidence.includes('agent - analiza - fragment relevant'));
+  assert.match(merged.warnings.join(' '), /verificare PM/);
 });
 
 test('validarea respinge cifre inventate fata de livrabil', () => {

@@ -727,3 +727,50 @@ export function validateActivityAutofillSuggestionAgainstCatalog(
 
   return { ok: true as const, data: parsed.data };
 }
+
+function mergeAutofillMessages(messages: string[]) {
+  return Array.from(new Set(messages.map((message) => message.trim()).filter(Boolean)));
+}
+
+function mergeAutofillConfidence(
+  primary: ActivityAutofillSuggestion['confidence'],
+  audit: ActivityAutofillSuggestion['confidence'],
+): ActivityAutofillSuggestion['confidence'] {
+  if (primary === 'high' && audit === 'low') return 'medium';
+  return primary;
+}
+
+export function mergeActivityAgentAuditIntoAutofillSuggestion(
+  primary: ActivityAutofillSuggestion,
+  agentAudit: ActivityAutofillSuggestion,
+): ActivityAutofillSuggestion {
+  const agentReviewSummary = agentAudit.agent?.formReview?.summary;
+  const agentWarnings = [
+    ...(agentAudit.warnings ?? []),
+    agentAudit.agent?.requiresPmReview
+      ? 'Agentul PEO recomanda verificare PM pentru auditul acestei descrieri.'
+      : '',
+  ];
+
+  return {
+    ...primary,
+    confidence: mergeAutofillConfidence(primary.confidence, agentAudit.confidence),
+    shortSummary: primary.shortSummary || agentAudit.shortSummary,
+    fieldInstructions: {
+      description: mergeAutofillMessages([
+        primary.fieldInstructions.description,
+        agentReviewSummary ? `Audit Agent PEO: ${agentReviewSummary}` : '',
+      ]).join(' '),
+    },
+    evidence: mergeAutofillMessages([
+      ...(primary.evidence ?? []),
+      ...(agentAudit.evidence ?? []),
+    ]).slice(0, 12),
+    warnings: mergeAutofillMessages([
+      ...(primary.warnings ?? []),
+      ...agentWarnings,
+    ]),
+    agent: agentAudit.agent,
+    agentFallback: agentAudit.agentFallback,
+  };
+}

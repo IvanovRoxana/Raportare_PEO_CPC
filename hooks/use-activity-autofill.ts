@@ -6,6 +6,7 @@ import {
   buildActivityAutofillDeliverablesPayload,
   buildFallbackActivityAutofillSuggestion,
   getActivityAutofillMissingSteps,
+  mergeActivityAgentAuditIntoAutofillSuggestion,
   type ActivityAutofillCatalogCandidate,
   type ActivityAutofillCollaborationContext,
   type ActivityAutofillSuggestion,
@@ -252,25 +253,9 @@ export function useActivityAutofill({
       });
       const legacyEndpoint = '/api/ai/suggest-activity-from-deliverables';
       const agentEndpoint = '/api/ai/activity-agent';
-      const shouldUseAgent = isActivityAgentEnabledClient();
-      let response = await postAutofill(shouldUseAgent ? agentEndpoint : legacyEndpoint);
-
+      const shouldUseAgentAudit = isActivityAgentEnabledClient();
+      const response = await postAutofill(legacyEndpoint);
       const data = await readJsonResponse(response);
-      if (
-        shouldUseAgent
-        && !response.ok
-        && typeof data === 'object'
-        && data !== null
-        && (data as { code?: unknown }).code === 'ACTIVITY_AGENT_DISABLED'
-      ) {
-        response = await postAutofill(legacyEndpoint);
-        const legacyData = await readJsonResponse(response);
-        if (!response.ok || legacyData.error) {
-          throw new Error(legacyData.error || 'Rescrierea descrierii a esuat.');
-        }
-        setSuggestion(legacyData);
-        return;
-      }
       if (!response.ok || data.error) {
         if (isServerSideAutofillFailure(response, data)) {
           const fallback = buildFallbackActivityAutofillSuggestion({
@@ -299,7 +284,47 @@ export function useActivityAutofill({
         throw new Error(data.error || 'Rescrierea descrierii a esuat.');
       }
 
-      setSuggestion(data);
+      let nextSuggestion = data as ActivityAutofillSuggestion;
+      if (shouldUseAgentAudit) {
+        try {
+          const agentResponse = await postAutofill(agentEndpoint);
+          const agentData = await readJsonResponse(agentResponse);
+          const agentDisabled = (
+            !agentResponse.ok
+            && typeof agentData === 'object'
+            && agentData !== null
+            && (agentData as { code?: unknown }).code === 'ACTIVITY_AGENT_DISABLED'
+          );
+          if (agentResponse.ok && !agentData.error) {
+            nextSuggestion = mergeActivityAgentAuditIntoAutofillSuggestion(
+              nextSuggestion,
+              agentData as ActivityAutofillSuggestion,
+            );
+          } else if (!agentDisabled) {
+            nextSuggestion = {
+              ...nextSuggestion,
+              warnings: [
+                ...nextSuggestion.warnings,
+                agentData.error
+                  ? `Auditul Agentului PEO nu a putut fi finalizat: ${agentData.error}`
+                  : 'Auditul Agentului PEO nu a putut fi finalizat.',
+              ],
+            };
+          }
+        } catch (agentError) {
+          nextSuggestion = {
+            ...nextSuggestion,
+            warnings: [
+              ...nextSuggestion.warnings,
+              agentError instanceof Error
+                ? `Auditul Agentului PEO nu a putut fi finalizat: ${agentError.message}`
+                : 'Auditul Agentului PEO nu a putut fi finalizat.',
+            ],
+          };
+        }
+      }
+
+      setSuggestion(nextSuggestion);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : 'Eroare la rescrierea descrierii.');
     } finally {
