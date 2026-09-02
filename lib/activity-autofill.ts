@@ -745,6 +745,8 @@ export function mergeActivityAgentAuditIntoAutofillSuggestion(
   agentAudit: ActivityAutofillSuggestion,
 ): ActivityAutofillSuggestion {
   const agentReviewSummary = agentAudit.agent?.formReview?.summary;
+  const canUseAgentDescription = agentAudit.agent?.validation?.canUseDescription === true;
+  const descriptionSource = canUseAgentDescription ? agentAudit : primary;
   const agentWarnings = [
     ...(agentAudit.warnings ?? []),
     agentAudit.agent?.requiresPmReview
@@ -754,11 +756,12 @@ export function mergeActivityAgentAuditIntoAutofillSuggestion(
 
   return {
     ...primary,
+    description: descriptionSource.description,
     confidence: mergeAutofillConfidence(primary.confidence, agentAudit.confidence),
-    shortSummary: primary.shortSummary || agentAudit.shortSummary,
+    shortSummary: descriptionSource.shortSummary || primary.shortSummary || agentAudit.shortSummary,
     fieldInstructions: {
       description: mergeAutofillMessages([
-        primary.fieldInstructions.description,
+        descriptionSource.fieldInstructions.description,
         agentReviewSummary ? `Audit Agent PEO: ${agentReviewSummary}` : '',
       ]).join(' '),
     },
@@ -772,5 +775,8 @@ export function mergeActivityAgentAuditIntoAutofillSuggestion(
     ]),
     agent: agentAudit.agent,
     agentFallback: agentAudit.agentFallback,
+    modelAuditId: canUseAgentDescription
+      ? agentAudit.modelAuditId || primary.modelAuditId
+      : primary.modelAuditId,
   };
 }

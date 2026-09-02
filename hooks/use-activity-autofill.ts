@@ -6,7 +6,6 @@ import {
   buildActivityAutofillDeliverablesPayload,
   buildFallbackActivityAutofillSuggestion,
   getActivityAutofillMissingSteps,
-  mergeActivityAgentAuditIntoAutofillSuggestion,
   type ActivityAutofillCatalogCandidate,
   type ActivityAutofillCollaborationContext,
   type ActivityAutofillSuggestion,
@@ -67,6 +66,24 @@ async function readJsonResponse(response: Response) {
 function isServerSideAutofillFailure(response: Response, data: unknown) {
   const code = typeof data === 'object' && data !== null ? String((data as { code?: unknown }).code ?? '') : '';
   return response.status >= 500 && code !== 'OPENAI_API_KEY_MISSING';
+}
+
+function isActivityAgentDisabled(response: Response, data: unknown) {
+  const code = typeof data === 'object' && data !== null ? String((data as { code?: unknown }).code ?? '') : '';
+  return !response.ok && code === 'ACTIVITY_AGENT_DISABLED';
+}
+
+function isTechnicalActivityAgentFailure(response: Response, data: unknown) {
+  return isActivityAgentDisabled(response, data) || isServerSideAutofillFailure(response, data);
+}
+
+function createNonFallbackAgentError(message: string) {
+  const error = new Error(message);
+  return Object.assign(error, { preventLegacyFallback: true });
+}
+
+function isNonFallbackAgentError(error: unknown) {
+  return error instanceof Error && (error as { preventLegacyFallback?: boolean }).preventLegacyFallback === true;
 }
 
 function getUnavailableMessage({
@@ -253,7 +270,37 @@ export function useActivityAutofill({
       });
       const legacyEndpoint = '/api/ai/suggest-activity-from-deliverables';
       const agentEndpoint = '/api/ai/activity-agent';
-      const shouldUseAgentAudit = isActivityAgentEnabledClient();
+      const shouldUseAgent = isActivityAgentEnabledClient();
+      let agentFailureWarning = '';
+
+      if (shouldUseAgent) {
+        try {
+          const agentResponse = await postAutofill(agentEndpoint);
+          const agentData = await readJsonResponse(agentResponse);
+          if (agentResponse.ok && !agentData.error) {
+            setSuggestion(agentData as ActivityAutofillSuggestion);
+            return;
+          }
+
+          if (!isTechnicalActivityAgentFailure(agentResponse, agentData)) {
+            throw createNonFallbackAgentError(agentData.error || 'Agentul PEO nu a putut genera descrierea.');
+          }
+
+          agentFailureWarning = isActivityAgentDisabled(agentResponse, agentData)
+            ? ''
+            : agentData.error
+              ? `Agentul PEO nu a putut genera descrierea: ${agentData.error}`
+              : 'Agentul PEO nu a putut genera descrierea.';
+        } catch (agentError) {
+          if (isNonFallbackAgentError(agentError)) {
+            throw agentError;
+          }
+          agentFailureWarning = agentError instanceof Error
+            ? `Agentul PEO nu a putut genera descrierea: ${agentError.message}`
+            : 'Agentul PEO nu a putut genera descrierea.';
+        }
+      }
+
       const response = await postAutofill(legacyEndpoint);
       const data = await readJsonResponse(response);
       if (!response.ok || data.error) {
@@ -284,47 +331,17 @@ export function useActivityAutofill({
         throw new Error(data.error || 'Rescrierea descrierii a esuat.');
       }
 
-      let nextSuggestion = data as ActivityAutofillSuggestion;
-      if (shouldUseAgentAudit) {
-        try {
-          const agentResponse = await postAutofill(agentEndpoint);
-          const agentData = await readJsonResponse(agentResponse);
-          const agentDisabled = (
-            !agentResponse.ok
-            && typeof agentData === 'object'
-            && agentData !== null
-            && (agentData as { code?: unknown }).code === 'ACTIVITY_AGENT_DISABLED'
-          );
-          if (agentResponse.ok && !agentData.error) {
-            nextSuggestion = mergeActivityAgentAuditIntoAutofillSuggestion(
-              nextSuggestion,
-              agentData as ActivityAutofillSuggestion,
-            );
-          } else if (!agentDisabled) {
-            nextSuggestion = {
-              ...nextSuggestion,
-              warnings: [
-                ...nextSuggestion.warnings,
-                agentData.error
-                  ? `Auditul Agentului PEO nu a putut fi finalizat: ${agentData.error}`
-                  : 'Auditul Agentului PEO nu a putut fi finalizat.',
-              ],
-            };
-          }
-        } catch (agentError) {
-          nextSuggestion = {
-            ...nextSuggestion,
-            warnings: [
-              ...nextSuggestion.warnings,
-              agentError instanceof Error
-                ? `Auditul Agentului PEO nu a putut fi finalizat: ${agentError.message}`
-                : 'Auditul Agentului PEO nu a putut fi finalizat.',
-            ],
-          };
-        }
-      }
+      const nextSuggestion = data as ActivityAutofillSuggestion;
 
-      setSuggestion(nextSuggestion);
+      setSuggestion(agentFailureWarning
+        ? {
+          ...nextSuggestion,
+          warnings: [
+            ...nextSuggestion.warnings,
+            `${agentFailureWarning} S-a folosit generatorul vechi ca fallback temporar.`,
+          ],
+        }
+        : nextSuggestion);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : 'Eroare la rescrierea descrierii.');
     } finally {

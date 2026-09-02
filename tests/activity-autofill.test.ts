@@ -380,7 +380,7 @@ test('validarea accepta descrierea pentru activitatea selectata din catalog', ()
   assert.equal(result.ok, true);
 });
 
-test('auditul agentului intareste optimizarea fara sa inlocuiasca descrierea legacy', () => {
+test('auditul agentului pastreaza descrierea legacy cand agentul nu o valideaza pentru aplicare', () => {
   const primary = {
     description: 'Am analizat documentele de politici publice si am sintetizat recomandarile relevante pentru dialog social.',
     shortSummary: 'Am sintetizat recomandarile relevante pentru dialog social.',
@@ -423,6 +423,46 @@ test('auditul agentului intareste optimizarea fara sa inlocuiasca descrierea leg
   assert.ok(merged.evidence.includes('Livrabilul este un raport de analiza.'));
   assert.ok(merged.evidence.includes('agent - analiza - fragment relevant'));
   assert.match(merged.warnings.join(' '), /verificare PM/);
+});
+
+test('auditul agentului inlocuieste descrierea legacy cand agentul o valideaza pentru aplicare', () => {
+  const primary = {
+    description: 'Descriere legacy care ar trebui inlocuita de agentul nou.',
+    shortSummary: 'Sumar legacy.',
+    confidence: 'medium' as const,
+    fieldInstructions: {
+      description: 'Descriere generata de fluxul vechi.',
+    },
+    evidence: ['Dovada legacy.'],
+    warnings: [],
+    modelAuditId: 'legacy-audit',
+  };
+  const audit = {
+    description: 'Am analizat documentele curente si am sintetizat concluziile relevante pentru raportarea activitatii.',
+    shortSummary: 'Am sintetizat concluziile relevante pentru raportarea activitatii.',
+    confidence: 'high' as const,
+    fieldInstructions: {
+      description: 'Descriere pregatita de Agentul PEO.',
+    },
+    evidence: ['agent - document curent - concluzii relevante'],
+    warnings: [],
+    modelAuditId: 'agent-audit',
+    agent: {
+      validation: {
+        canUseDescription: true,
+      },
+    } as never,
+  };
+
+  const merged = mergeActivityAgentAuditIntoAutofillSuggestion(primary, audit);
+
+  assert.equal(merged.description, audit.description);
+  assert.equal(merged.shortSummary, audit.shortSummary);
+  assert.equal(merged.fieldInstructions.description, audit.fieldInstructions.description);
+  assert.equal(merged.modelAuditId, 'agent-audit');
+  assert.equal(merged.agent, audit.agent);
+  assert.ok(merged.evidence.includes('Dovada legacy.'));
+  assert.ok(merged.evidence.includes('agent - document curent - concluzii relevante'));
 });
 
 test('validarea respinge cifre inventate fata de livrabil', () => {

@@ -17,6 +17,12 @@ import { getCognitoAccessTokenFromRequest } from '@/lib/rag/cognito-auth';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+function hasExtractedText<T extends { extractedText?: string }>(
+  deliverable: T,
+): deliverable is T & { extractedText: string } {
+  return Boolean(deliverable.extractedText?.trim());
+}
+
 export async function POST(req: Request) {
   try {
     assertAllowedAiRequest(req);
@@ -61,9 +67,9 @@ export async function POST(req: Request) {
         deliverables: parsed.data.deliverables
           .map((deliverable) => ({
             ...deliverable,
-            extractedText: deliverable.extractedText || deliverable.documentTitle,
+            extractedText: deliverable.extractedText,
           }))
-          .filter((deliverable) => Boolean(deliverable.extractedText)),
+          .filter(hasExtractedText),
         catalogCandidates: validationCatalogCandidates,
       };
       const validation = validateActivityAutofillSuggestionAgainstCatalog(
