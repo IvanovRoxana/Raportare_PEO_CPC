@@ -15,7 +15,8 @@ import { getSignedInUser } from '@/lib/aws/auth';
 import { getMonthName } from '@/lib/backend-store';
 import { buildClarificationEditHref, getActivitiesWithPmClarifications } from '@/lib/pm-clarifications';
 import { PM_REVIEW_CASE_PRIORITY_LABELS, PM_REVIEW_CASE_SUBJECT_LABELS, isPmReviewCaseVisibleForExpert } from '@/lib/pm-review-cases';
-import type { Activity, PmReviewCase } from '@/lib/types';
+import { isReportOpenForCorrection } from '@/lib/report-correction-flow';
+import type { Activity, PmReviewCase, ReportStatus } from '@/lib/types';
 
 function readMonthParam(value: string | null, fallback: number) {
   const parsed = Number(value);
@@ -81,6 +82,49 @@ function ActivityClarificationCard({ activity, month, year }: { activity: Activi
         ) : null}
       </CardContent>
     </Card>
+  );
+}
+
+function MonthlyClarificationPanel({
+  reportStatus,
+  month,
+  year,
+}: {
+  reportStatus?: ReportStatus | null;
+  month: number;
+  year: number;
+}) {
+  const pmNotes = reportStatus?.pmNotes?.trim();
+  if (!pmNotes) return null;
+
+  const correctionOpen = isReportOpenForCorrection(reportStatus);
+  const pontajHref = `/expert/peo?month=${month}&year=${year}`;
+
+  return (
+    <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="font-semibold">Observații lunare PM</p>
+          <p className="mt-1 leading-6">{pmNotes}</p>
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+            <Badge variant={correctionOpen ? 'default' : 'outline'}>
+              {correctionOpen ? 'Corecții deschise' : 'Acces editare închis'}
+            </Badge>
+            <span className="text-amber-800">
+              {correctionOpen
+                ? 'Corectează pontajul, apoi folosește butonul „Retrimite după corecții” din pontaj.'
+                : 'Poți consulta pontajul, dar PM trebuie să redeschidă luna pentru modificări.'}
+            </span>
+          </div>
+        </div>
+        <Button asChild variant={correctionOpen ? 'default' : 'outline'} className="shrink-0">
+          <Link href={pontajHref}>
+            <ArrowRight className="h-4 w-4" />
+            {correctionOpen ? 'Corectează în pontaj' : 'Vezi pontajul'}
+          </Link>
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -251,10 +295,7 @@ function ExpertClarificationsContent() {
             </CardHeader>
             <CardContent className="space-y-3">
               {reportStatus?.pmNotes ? (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-                  <p className="font-semibold">Observații lunare PM</p>
-                  <p className="mt-1 leading-6">{reportStatus.pmNotes}</p>
-                </div>
+                <MonthlyClarificationPanel reportStatus={reportStatus} month={month} year={year} />
               ) : (
                 <p className="text-sm text-muted-foreground">Nu exista observații lunare PM pentru luna selectată.</p>
               )}
@@ -296,11 +337,19 @@ function ExpertClarificationsContent() {
           ) : !activitiesLoading && !reportStatusLoading && visiblePmReviewCases.length === 0 ? (
             <Card className="rounded-lg">
               <CardContent className="flex flex-col items-center gap-3 p-8 text-center">
-                <AlertTriangle className="h-8 w-8 text-muted-foreground" />
+                {reportStatus?.pmNotes ? (
+                  <MessageSquare className="h-8 w-8 text-primary" />
+                ) : (
+                  <AlertTriangle className="h-8 w-8 text-muted-foreground" />
+                )}
                 <div>
-                  <h2 className="font-semibold">Nu sunt activități marcate punctual</h2>
+                  <h2 className="font-semibold">
+                    {reportStatus?.pmNotes ? 'Clarificarea este lunară' : 'Nu sunt activități marcate punctual'}
+                  </h2>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Dacă PM a transmis doar o observație lunară, revizuiește pontajul din pagina activităților.
+                    {reportStatus?.pmNotes
+                      ? 'PM nu a marcat o activitate anume. Revizuiește luna din pontaj și retrimite raportarea de acolo după corecții.'
+                      : 'Dacă PM a transmis doar o observație lunară, revizuiește pontajul din pagina activităților.'}
                   </p>
                 </div>
                 <Button asChild variant="outline">

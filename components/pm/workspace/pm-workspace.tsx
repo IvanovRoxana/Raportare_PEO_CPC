@@ -36,6 +36,11 @@ import {
 import { getMonthName } from '@/lib/app-utils';
 import { buildPmClarificationRealertItems } from '@/lib/pm-clarification-realerts';
 import { buildPmReportGroups } from '@/lib/pm-report-groups';
+import { buildPmReportSituation } from '@/lib/pm-report-situation';
+import {
+  buildPmReportSituationXlsxBlob,
+  buildPmReportSituationXlsxFilename,
+} from '@/lib/pm-report-situation-export';
 import { buildPmSubactivityReportGroups } from '@/lib/pm-subactivities-report';
 import type {
   Activity,
@@ -148,6 +153,17 @@ function statusClass(status: ReportStatus['status']) {
 
 function MiniAvatar({ expert }: { expert: Expert }) {
   return <ExpertAvatar expert={expert} className="h-7 w-7 bg-[#1f73d8] text-[10px] text-white" />;
+}
+
+function triggerDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 function PmTopBar({
@@ -488,7 +504,7 @@ type ActionsViewProps = PmWorkspaceProps & {
 };
 
 function ActionsView(props: ActionsViewProps) {
-  const [activeAction, setActiveAction] = useState<'opis' | 'subactivities' | 'annex12' | 'eligibility'>(
+  const [activeAction, setActiveAction] = useState<'opis' | 'subactivities' | 'situation' | 'annex12' | 'eligibility'>(
     props.eligibilityRulesFocusDocument ? 'eligibility' : 'opis',
   );
   const subactivityGroups = buildPmSubactivityReportGroups({
@@ -496,6 +512,24 @@ function ActionsView(props: ActionsViewProps) {
     experts: props.experts,
     catalog: props.fallbackCatalog || [],
   });
+  const reportSituation = buildPmReportSituation({
+    experts: props.experts,
+    submittedReportRows: props.submittedReportRows,
+    dashboardRows: props.dashboardRows,
+  });
+  const downloadReportSituation = () => {
+    const blob = buildPmReportSituationXlsxBlob({
+      experts: props.experts,
+      submittedReportRows: props.submittedReportRows,
+      dashboardRows: props.dashboardRows,
+      reportStatusByExpertId: props.reportStatusByExpertId,
+      statusLabels: props.statusLabels,
+      month: props.selectedMonth,
+      year: props.selectedYear,
+      projectCode: '302141',
+    });
+    triggerDownload(blob, buildPmReportSituationXlsxFilename(props.selectedMonth, props.selectedYear));
+  };
 
   return (
     <div className="space-y-4">
@@ -505,6 +539,7 @@ function ActionsView(props: ActionsViewProps) {
           <div className="flex gap-2">
             <Button onClick={() => setActiveAction('opis')} variant={activeAction === 'opis' ? 'default' : 'outline'} className={activeAction === 'opis' ? 'bg-[#1f3f75]' : undefined}>OPIS</Button>
             <Button onClick={() => setActiveAction('subactivities')} variant={activeAction === 'subactivities' ? 'default' : 'outline'} className={activeAction === 'subactivities' ? 'bg-[#1f3f75]' : undefined}>Subactivități</Button>
+            <Button onClick={() => setActiveAction('situation')} variant={activeAction === 'situation' ? 'default' : 'outline'} className={activeAction === 'situation' ? 'bg-[#1f3f75]' : undefined}>Situație raportare</Button>
             <Button onClick={() => setActiveAction('annex12')} variant={activeAction === 'annex12' ? 'default' : 'outline'} className={activeAction === 'annex12' ? 'bg-[#1f3f75]' : undefined}>Anexa 12</Button>
             <Button onClick={() => setActiveAction('eligibility')} variant={activeAction === 'eligibility' ? 'default' : 'outline'} className={activeAction === 'eligibility' ? 'bg-[#1f3f75]' : undefined}>Catalog eligibilitate</Button>
           </div>
@@ -570,6 +605,61 @@ function ActionsView(props: ActionsViewProps) {
               )}
             </div>
           </section>
+        </section>
+      ) : null}
+      {activeAction === 'situation' ? (
+        <section className="overflow-hidden rounded-lg border bg-white shadow-sm">
+          <div className="flex flex-col gap-3 border-b px-4 py-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h3 className="font-semibold">Situație raportare - {getMonthName(props.selectedMonth)} {props.selectedYear}</h3>
+              <p className="text-xs text-slate-500">Export XLSX cu sumar, statusul fiecărui expert și acțiunile PM necesare.</p>
+            </div>
+            <Button size="sm" className="bg-[#1f3f75]" onClick={downloadReportSituation}>
+              <Download className="h-4 w-4" />
+              Descarcă situație XLSX
+            </Button>
+          </div>
+          <div className="grid gap-3 border-b p-4 md:grid-cols-4">
+            {reportSituation.cards.map((card) => (
+              <div key={card.id} className="rounded-lg border bg-slate-50 p-4">
+                <div className="text-2xl font-bold text-[#1f3f75]">{card.value}</div>
+                <div className="mt-1 text-xs font-bold uppercase text-slate-700">{card.label}</div>
+                <div className="mt-1 text-[11px] text-slate-500">{card.helper}</div>
+              </div>
+            ))}
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[820px] text-xs">
+              <thead className="bg-slate-50 text-left uppercase text-slate-500">
+                <tr><th className="px-4 py-3">Expert</th><th>Status</th><th>Ore</th><th>Progres</th><th>Livrabile</th><th>Observații</th><th>Acțiune</th></tr>
+              </thead>
+              <tbody className="divide-y">
+                {props.dashboardRows.map((row) => {
+                  const expert = props.experts.find((item) => item.id === row.expertId);
+                  const submitted = props.submittedReportRows.find((item) => item.expert.id === row.expertId);
+                  const status = props.reportStatusByExpertId.get(row.expertId)?.status || submitted?.status.status || 'draft';
+                  return (
+                    <tr key={row.expertId}>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">{expert ? <MiniAvatar expert={expert} /> : null}<span className="font-semibold">{row.expertName}</span></div>
+                      </td>
+                      <td><Badge variant="outline" className={statusClass(status)}>{props.statusLabels[status]?.label || status}</Badge></td>
+                      <td className="font-semibold">{row.totalHours}h / {row.monthlyNorm}h</td>
+                      <td>{row.utilizationPercent}%</td>
+                      <td>{submitted?.totalDeliverables ?? 0} atașate · {row.missingDeliverableActivityCount} lipsă</td>
+                      <td>{submitted?.issuesCount ?? 0} deschise</td>
+                      <td>
+                        <Button size="sm" variant="outline" onClick={() => expert && props.onOpenDossier(expert)}>
+                          <FolderOpen className="h-4 w-4" />
+                          Dosar
+                        </Button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </section>
       ) : null}
       {activeAction === 'annex12' ? (

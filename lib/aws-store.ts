@@ -3304,6 +3304,12 @@ export const neconformitatiService = {
     return data.map(mapNeconformitate);
   },
 
+  async getByVerifications(verificationIds: string[]): Promise<Neconformitate[]> {
+    const uniqueIds = Array.from(new Set(verificationIds.filter(Boolean)));
+    const batches = await Promise.all(uniqueIds.map((verificationId) => this.getByVerification(verificationId)));
+    return batches.flat();
+  },
+
   async create(neconformitate: Omit<Neconformitate, 'id' | 'createdAt'>): Promise<Neconformitate> {
     const client = getAwsDataClient() as any;
     if (neconformitate.verificationId) {

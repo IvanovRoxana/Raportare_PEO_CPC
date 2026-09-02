@@ -46,8 +46,10 @@ import { NotesTab } from '@/components/pm/notes-tab';
 import { getMonthName } from '@/lib/app-utils';
 import {
   useExperts,
+  useVerifications,
   useVerification,
   useNeconformitati,
+  useNeconformitatiByVerificationIds,
   useNeconformitateMutations,
   usePmReviewCasesByMonth,
   usePmReviewCaseMutations,
@@ -259,6 +261,7 @@ export default function PMDashboard() {
     selectedMonth.toString().padStart(2, '0'),
     selectedYear.toString()
   );
+  const { verifications: allVerifications } = useVerifications();
   const { neconformitati, isLoading: neconformitatiLoading } = useNeconformitati(verification?.id || null);
   const { neconformitati: reviewNeconformitati } = useNeconformitati(reviewVerification?.id || null);
   const { create: createNeconformitate, update: updateNeconformitate, resolve: resolveNeconformitate, remove: removeNeconformitate } = useNeconformitateMutations();
@@ -321,6 +324,26 @@ export default function PMDashboard() {
     () => filterExpertsForScope(experts, dataAccessScope),
     [experts, dataAccessScope]
   );
+  const visibleExpertIds = useMemo(() => new Set(visibleExperts.map((expert) => expert.id)), [visibleExperts]);
+  const monthlyVerificationIds = useMemo(
+    () =>
+      allVerifications
+        .filter((item) =>
+          item.id
+          && visibleExpertIds.has(item.expertId)
+          && Number(item.month) === selectedMonth
+          && Number(item.year) === selectedYear
+        )
+        .map((item) => item.id!),
+    [allVerifications, selectedMonth, selectedYear, visibleExpertIds]
+  );
+  const { neconformitati: monthlyNeconformitati } = useNeconformitatiByVerificationIds(monthlyVerificationIds);
+  const workspaceNeconformitati = useMemo(() => {
+    const byId = new Map<string, Neconformitate>();
+    monthlyNeconformitati.forEach((item) => byId.set(item.id, item));
+    localNeconformitati.forEach((item) => byId.set(item.id, item));
+    return Array.from(byId.values());
+  }, [localNeconformitati, monthlyNeconformitati]);
   const monthlyReportStatuses = useMemo(
     () => filterReportStatusesForScope(allMonthlyReportStatuses, dataAccessScope),
     [allMonthlyReportStatuses, dataAccessScope]
@@ -1614,7 +1637,7 @@ export default function PMDashboard() {
         documents={documents}
         submittedReportRows={submittedReportRows}
         clarificationThreads={clarificationThreads}
-        neconformitati={localNeconformitati}
+        neconformitati={workspaceNeconformitati}
         monthAccessRequests={monthAccessRequests}
         activeMonthAccesses={activeMonthAccesses}
         staleMonthAccesses={staleMonthAccesses}

@@ -749,27 +749,48 @@ export function useNeconformitati(verificationId: string | null) {
   };
 }
 
+export function useNeconformitatiByVerificationIds(verificationIds: string[]) {
+  const uniqueIds = Array.from(new Set(verificationIds.filter(Boolean))).sort();
+  const key = uniqueIds.length > 0 ? `neconformitati-batch-${uniqueIds.join('-')}` : null;
+  const { data, error, isLoading } = useSWR(
+    key && isBackendAvailable() ? key : null,
+    safeFetcher(() => neconformitatiService.getByVerifications(uniqueIds))
+  );
+
+  return {
+    neconformitati: stableList(data),
+    isLoading,
+    error,
+    mutate: () => key && mutate(key),
+  };
+}
+
+function refreshNeconformitatiCaches(verificationId?: string) {
+  if (verificationId) mutate(`neconformitati-${verificationId}`);
+  mutate((key: string) => typeof key === 'string' && key.startsWith('neconformitati-batch-'), undefined, { revalidate: true });
+}
+
 export function useNeconformitateMutations() {
   const create = async (neconformitate: Omit<Neconformitate, 'id' | 'createdAt'>) => {
     const created = await neconformitatiService.create(neconformitate);
-    mutate(`neconformitati-${neconformitate.verificationId}`);
+    refreshNeconformitatiCaches(neconformitate.verificationId);
     return created;
   };
 
   const update = async (id: string, verificationId: string | undefined, updates: Partial<Omit<Neconformitate, 'id' | 'createdAt'>>) => {
     const updated = await neconformitatiService.update(id, updates);
-    if (verificationId) mutate(`neconformitati-${verificationId}`);
+    refreshNeconformitatiCaches(verificationId);
     return updated;
   };
 
   const resolve = async (id: string, verificationId: string, resolution: string) => {
     await neconformitatiService.resolve(id, resolution);
-    mutate(`neconformitati-${verificationId}`);
+    refreshNeconformitatiCaches(verificationId);
   };
 
   const remove = async (id: string, verificationId: string) => {
     await neconformitatiService.delete(id);
-    mutate(`neconformitati-${verificationId}`);
+    refreshNeconformitatiCaches(verificationId);
   };
 
   return { create, update, resolve, remove };
