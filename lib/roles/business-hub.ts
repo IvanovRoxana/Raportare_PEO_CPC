@@ -75,3 +75,15 @@ export function getActivityFormRoleConfig(expert?: Pick<Expert, 'category'> | nu
     },
   };
 }
+
+export function shouldShowGrupTintaActivitySection(args: {
+  expert?: Pick<Expert, 'category'> | null;
+  wizardStep: string;
+  saCode?: string | null;
+}) {
+  return (
+    args.wizardStep === 'collaboration'
+    && normalizePeoCategory(args.expert?.category) === 'gt'
+    && String(args.saCode ?? '').trim() === 'SA1.1'
+  );
+}

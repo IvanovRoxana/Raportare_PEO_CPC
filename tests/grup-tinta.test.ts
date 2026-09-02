@@ -160,6 +160,25 @@ test('indicatorii GT respecta relatiile 5SR04 <= 5SO04 si 5SR01 <= 5SO01', () =>
   assert.equal(indicators['5SR01'].valid, false);
 });
 
+test('sincronizarea jurnalului GT din activitati ramane separata de registrul central', () => {
+  const source = fs.readFileSync(path.join(process.cwd(), 'lib', 'aws-store.ts'), 'utf8');
+  const createStart = source.indexOf('...(activity.grupTinta ?? []).map');
+  const createEnd = source.indexOf('return attachActivityChildren(created.data);', createStart);
+  const updateStart = source.indexOf('if (updates.grupTinta) {');
+  const updateEnd = source.indexOf('async delete(id: string): Promise<void>', updateStart);
+  assert.notEqual(createStart, -1);
+  assert.notEqual(createEnd, -1);
+  assert.notEqual(updateStart, -1);
+  assert.notEqual(updateEnd, -1);
+
+  const createSnippet = source.slice(createStart, createEnd);
+  const updateSnippet = source.slice(updateStart, updateEnd);
+
+  assert.match(createSnippet, /client\.models\.GrupTintaEntry\.create/);
+  assert.match(updateSnippet, /client\.models\.GrupTintaEntry\.create/);
+  assert.doesNotMatch(`${createSnippet}\n${updateSnippet}`, /client\.models\.(GTEntity|GTPerson)\.(create|update|delete)/);
+});
+
 test('workbookul Date membrii CPC poate fi normalizat fara duplicate CUI in directorul canonic', { skip: !fs.existsSync(workbookPath()) }, async () => {
   const xlsxModule = await import('xlsx');
   const xlsx = xlsxModule.default ?? xlsxModule;

@@ -12,6 +12,7 @@ import {
   BUSINESS_HUB_REGISTRY_ACTIVITY_TITLE,
   getActivityFormRoleConfig,
   isBusinessHubRegistryActivity,
+  shouldShowGrupTintaActivitySection,
 } from '../lib/roles/business-hub.ts';
 import type { Activity, BusinessHubEntityDirectoryEntry } from '../lib/types.ts';
 import * as XLSX from 'xlsx';
@@ -27,6 +28,33 @@ test('role resolver enables Business Hub preset only for BH category', () => {
   assert.equal(bh.defaultActivityTitle, BUSINESS_HUB_REGISTRY_ACTIVITY_TITLE);
   assert.equal(gdpr.enabledSections.businessHubTab, false);
   assert.equal(gdpr.enabledSections.gdprAssistant, true);
+});
+
+test('activity form shows Grup Tinta only for GT recruitment and selection expert on SA1.1 collaboration', () => {
+  assert.equal(shouldShowGrupTintaActivitySection({
+    expert: { category: 'gt' },
+    wizardStep: 'collaboration',
+    saCode: 'SA1.1',
+  }), true);
+
+  for (const category of ['ap', 'com', 'bh', 'gdpr', 'cercetare', 'cr']) {
+    assert.equal(shouldShowGrupTintaActivitySection({
+      expert: { category },
+      wizardStep: 'collaboration',
+      saCode: 'SA1.1',
+    }), false, `category ${category} must not see the Grup Tinta activity section`);
+  }
+
+  assert.equal(shouldShowGrupTintaActivitySection({
+    expert: { category: 'gt' },
+    wizardStep: 'review',
+    saCode: 'SA1.1',
+  }), false);
+  assert.equal(shouldShowGrupTintaActivitySection({
+    expert: { category: 'gt' },
+    wizardStep: 'collaboration',
+    saCode: 'SA3.2',
+  }), false);
 });
 
 test('Business Hub metadata keeps the approved field set and derives contact source', () => {

@@ -49,7 +49,7 @@ import {
 import { useActivityCatalog, useBusinessHubEntityDirectory } from '@/hooks/use-backend-data';
 import type { Activity, Deliverable, DocumentMetadata, GrupTintaEntry, Expert, ActivityCatalog } from '@/lib/types';
 import fallbackActivityCatalog from '@/data/import/activity-catalog.json';
-import { isGtExpertCategory, normalizePeoCategory } from '@/lib/peo-category';
+import { normalizePeoCategory } from '@/lib/peo-category';
 import { filterActivityCatalogForFormTab, getActiveGdprActivityCatalog, isActivityCatalogItemAvailableForForm, isEventActivityCatalogItem, normalizeActivityCatalogSaCode, resolveActivityDeliverableOptions, resolveExpertActivityCatalog } from '@/lib/activity-catalog-merge';
 import { buildIdentityDocumentS3Key, findDuplicateCandidates, getDocumentAuditTitle, hashFirstPageText, normalizeDocumentTextForFingerprint, sha256Hex } from '@/lib/document-sharing';
 import { getSecureDocumentUrl } from '@/lib/document-retrieval';
@@ -109,6 +109,7 @@ import {
   BUSINESS_HUB_REGISTRY_ACTIVITY_TITLE,
   getActivityFormRoleConfig,
   isBusinessHubRegistryActivity,
+  shouldShowGrupTintaActivitySection,
 } from '@/lib/roles/business-hub';
 import {
   getBusinessHubMetaMissingFields,
@@ -578,7 +579,6 @@ export function ActivityForm({
   const roleConfig = useMemo(() => getActivityFormRoleConfig(expert), [expert]);
   const expertCategory = roleConfig.category || normalizePeoCategory(expert?.category);
   const show = roleConfig.enabledSections;
-  const isGtExpert = show.grupTinta || isGtExpertCategory(expert?.category);
   const isGdprExpert = show.gdprAssistant;
   const isBusinessHubExpert = show.businessHubTab;
   const reportMonthName = ['ianuarie', 'februarie', 'martie', 'aprilie', 'mai', 'iunie', 'iulie', 'august', 'septembrie', 'octombrie', 'noiembrie', 'decembrie'][month] || 'luna de raportare';
@@ -738,6 +738,11 @@ export function ActivityForm({
   // Legacy single hours for backward compatibility (used when saving)
   const [, setHours] = useState(normalizePontajHoursValue(activitySeed?.hours, defaultHours));
   const [saCode, setSaCode] = useState(activitySeed?.saCode || '');
+  const showGrupTintaActivitySection = shouldShowGrupTintaActivitySection({
+    expert,
+    wizardStep: currentWizardStep,
+    saCode,
+  });
   
   // Set or reset default SA code when available SA codes load after category filtering.
   useEffect(() => {
@@ -1598,20 +1603,21 @@ export function ActivityForm({
   }, [deliverables, updateDeliverable]);
 
   const addGrupTintaEntry = useCallback(() => {
+    const entryDate = selectedActivityDates[0] || `${year}-${String(month + 1).padStart(2, '0')}-01`;
     setGrupTinta((prev) => [
       ...prev,
       {
         id: generateId(),
         expertId,
-        date: selectedActivityDates[0] || new Date().toISOString().split('T')[0],
-        year: new Date().getFullYear(),
-        month: new Date().getMonth(),
+        date: entryDate,
+        year,
+        month,
         activityType: activityTitle,
         organizations: [],
         participantsCount: 0,
       },
     ]);
-  }, [activityTitle, expertId, selectedActivityDates]);
+  }, [activityTitle, expertId, month, selectedActivityDates, year]);
 
   const updateGrupTintaEntry = useCallback((id: string, field: keyof GrupTintaEntry, value: string | number | string[]) => {
     setGrupTinta((prev) => prev.map((g) => (g.id === id ? { ...g, [field]: value } : g)));
@@ -4378,7 +4384,7 @@ export function ActivityForm({
             )}
 
             {/* Grup Tinta Section (only for Expert Recrutare si Selectie GT) */}
-            {currentWizardStep === 'collaboration' && isGtExpert && saCode === 'SA1.1' && (
+            {showGrupTintaActivitySection && (
               <div className="space-y-3 bg-teal-50 rounded-lg p-4 border border-teal-200">
                 <div className="flex items-center justify-between">
                   <div className="text-sm font-medium text-teal-800">Grup Tinta</div>
