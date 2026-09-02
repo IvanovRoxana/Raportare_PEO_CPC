@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
@@ -1044,24 +1045,45 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
           <Card>
             <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-sm"><Plus className="h-4 w-4" />Adauga CO Financiar</CardTitle></CardHeader>
             <CardContent className="grid gap-3 md:grid-cols-6">
-              <select className="h-10 rounded-md border bg-background px-3 text-sm md:col-span-2" value={leaveForm.expertId} onChange={(event) => setLeaveForm((current) => ({ ...current, expertId: event.target.value }))} aria-label="Expert concediu">
-                <option value="">Alege expert</option>
-                {experts.map((expert) => <option key={expert.id} value={expert.id}>{expert.name}</option>)}
-              </select>
-              <Input type="date" value={leaveForm.date} onChange={(event) => setLeaveForm((current) => ({ ...current, date: event.target.value }))} aria-label="Data CO" />
-              <select className="h-10 rounded-md border bg-background px-3 text-sm" value={leaveForm.mode} onChange={(event) => setLeaveForm((current) => ({ ...current, mode: event.target.value as 'automatic' | 'manual' }))} aria-label="Mod repartizare CO">
-                <option value="automatic">Automat</option>
-                <option value="manual">Manual</option>
-              </select>
+              <Label className="grid gap-1 md:col-span-2">
+                <span className="text-xs text-muted-foreground">Expert</span>
+                <select className="h-10 rounded-md border bg-background px-3 text-sm" value={leaveForm.expertId} onChange={(event) => setLeaveForm((current) => ({ ...current, expertId: event.target.value }))} aria-label="Expert concediu">
+                  <option value="">Alege expert</option>
+                  {experts.map((expert) => <option key={expert.id} value={expert.id}>{expert.name}</option>)}
+                </select>
+              </Label>
+              <Label className="grid gap-1">
+                <span className="text-xs text-muted-foreground">Data CO</span>
+                <Input type="date" value={leaveForm.date} onChange={(event) => setLeaveForm((current) => ({ ...current, date: event.target.value }))} aria-label="Data CO" />
+              </Label>
+              <Label className="grid gap-1">
+                <span className="text-xs text-muted-foreground">Repartizare</span>
+                <select className="h-10 rounded-md border bg-background px-3 text-sm" value={leaveForm.mode} onChange={(event) => setLeaveForm((current) => ({ ...current, mode: event.target.value as 'automatic' | 'manual' }))} aria-label="Mod repartizare CO">
+                  <option value="automatic">Automat</option>
+                  <option value="manual">Manual</option>
+                </select>
+              </Label>
               {leaveForm.mode === 'manual' && (
                 <>
-                  <Input type="number" min="0" step="0.5" value={leaveForm.totalHours} onChange={(event) => setLeaveForm((current) => ({ ...current, totalHours: event.target.value }))} aria-label="CO total" />
-                  <Input type="number" min="0" step="0.5" value={leaveForm.peoHours} onChange={(event) => setLeaveForm((current) => ({ ...current, peoHours: event.target.value }))} aria-label="CO PEO" />
-                  <Input type="number" min="0" step="0.5" value={leaveForm.cpcHours} onChange={(event) => setLeaveForm((current) => ({ ...current, cpcHours: event.target.value }))} aria-label="CO CPC" />
-                  <Input className="md:col-span-3" value={leaveForm.justification} onChange={(event) => setLeaveForm((current) => ({ ...current, justification: event.target.value }))} placeholder="Justificare repartizare manuala" />
+                  <Label className="grid gap-1">
+                    <span className="text-xs text-muted-foreground">Ore CO total</span>
+                    <Input type="number" min="0" step="0.5" value={leaveForm.totalHours} onChange={(event) => setLeaveForm((current) => ({ ...current, totalHours: event.target.value }))} aria-label="CO total" />
+                  </Label>
+                  <Label className="grid gap-1">
+                    <span className="text-xs text-muted-foreground">Ore CO PEO</span>
+                    <Input type="number" min="0" step="0.5" value={leaveForm.peoHours} onChange={(event) => setLeaveForm((current) => ({ ...current, peoHours: event.target.value }))} aria-label="CO PEO" />
+                  </Label>
+                  <Label className="grid gap-1">
+                    <span className="text-xs text-muted-foreground">Ore CO CPC</span>
+                    <Input type="number" min="0" step="0.5" value={leaveForm.cpcHours} onChange={(event) => setLeaveForm((current) => ({ ...current, cpcHours: event.target.value }))} aria-label="CO CPC" />
+                  </Label>
+                  <Label className="grid gap-1 md:col-span-3">
+                    <span className="text-xs text-muted-foreground">Justificare</span>
+                    <Input value={leaveForm.justification} onChange={(event) => setLeaveForm((current) => ({ ...current, justification: event.target.value }))} placeholder="Justificare repartizare manuala" />
+                  </Label>
                 </>
               )}
-              <Button className="md:col-span-2" onClick={saveFinancialLeave} disabled={savingLeave || !leaveForm.expertId || !leaveForm.date || (leaveForm.mode === 'manual' && !leaveForm.justification.trim())}>
+              <Button className="md:col-span-2 md:self-end" onClick={saveFinancialLeave} disabled={savingLeave || !leaveForm.expertId || !leaveForm.date || (leaveForm.mode === 'manual' && !leaveForm.justification.trim())}>
                 {savingLeave ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                 Salveaza CO
               </Button>

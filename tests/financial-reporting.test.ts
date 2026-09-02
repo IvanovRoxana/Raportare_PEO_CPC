@@ -52,6 +52,18 @@ test('coloana perioada CO foloseste calendar pentru selectia zilelor', () => {
   assert.match(source, /updateLeaveGridPeriod\(row, dates\)/);
 });
 
+test('formularul Adauga CO Financiar afiseaza titluri vizibile pentru campuri', () => {
+  const source = readFileSync('components/financial/financial-reporting-dashboard.tsx', 'utf8');
+
+  assert.match(source, />Expert</);
+  assert.match(source, />Data CO</);
+  assert.match(source, />Repartizare</);
+  assert.match(source, />Ore CO total</);
+  assert.match(source, />Ore CO PEO</);
+  assert.match(source, />Ore CO CPC</);
+  assert.match(source, />Justificare</);
+});
+
 test('salvarea CO financiar pastreaza CIM din coloana financiara, nu il deduce din PEO si CPC', () => {
   const source = readFileSync('components/financial/financial-reporting-dashboard.tsx', 'utf8');
   assert.doesNotMatch(source, /const cimDailyCap = peoNorm \+ cpcDailyCap/);
