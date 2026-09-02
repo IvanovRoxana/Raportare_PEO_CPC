@@ -226,6 +226,30 @@ async function scanTable<T>(
   return items;
 }
 
+async function queryTable<T>(
+  modelName: 'Activity' | 'Deliverable' | 'Expert',
+  input: Omit<Record<string, unknown>, 'TableName'> = {},
+) {
+  const TableName = await getTableName(modelName);
+  const items: T[] = [];
+  let ExclusiveStartKey: Record<string, DdbAttribute> | undefined;
+
+  do {
+    const response = await callSignedDynamo<{
+      Items?: Array<Record<string, DdbAttribute>>;
+      LastEvaluatedKey?: Record<string, DdbAttribute>;
+    }>('Query', {
+      TableName,
+      ...input,
+      ...(ExclusiveStartKey ? { ExclusiveStartKey } : {}),
+    });
+    items.push(...(response.Items || []).map((item) => fromDdbItem(item) as T));
+    ExclusiveStartKey = response.LastEvaluatedKey;
+  } while (ExclusiveStartKey);
+
+  return items;
+}
+
 async function getCurrentCaller(request: Request) {
   if (!hasAllowedOrigin(request)) {
     throw new ColleagueOverviewRouteError('Cerere respinsa.', 403);
@@ -330,18 +354,19 @@ function mapActivity(item: RawItem, deliverables: Deliverable[]): Activity {
 
 async function listDeliverablesByActivityIds(activityIds: string[], month: number, year: number) {
   if (activityIds.length === 0) return new Map<string, Deliverable[]>();
-  const allowedActivityIds = new Set(activityIds);
-
-  const deliverables = (await scanTable<RawItem>('Deliverable', {
-    FilterExpression: '#year = :year AND #month = :month',
-    ExpressionAttributeNames: { '#year': 'year', '#month': 'month' },
-    ExpressionAttributeValues: {
-      ':year': toDdbAttribute(year),
-      ':month': toDdbAttribute(month),
-    },
-  }))
-    .map(mapDeliverable)
-    .filter((deliverable) => allowedActivityIds.has(deliverable.activityId || ''));
+  const deliverableGroups = await Promise.all(activityIds.map((activityId) => (
+    queryTable<RawItem>('Deliverable', {
+      IndexName: 'deliverablesByActivityId',
+      KeyConditionExpression: 'activityId = :activityId',
+      ExpressionAttributeValues: {
+        ':activityId': toDdbAttribute(activityId),
+      },
+    })
+  )));
+  const deliverables = deliverableGroups
+    .flat()
+    .filter((deliverable) => deliverable.year === year && deliverable.month === month)
+    .map(mapDeliverable);
 
   const byActivityId = new Map<string, Deliverable[]>();
   deliverables.forEach((deliverable) => {
@@ -364,8 +389,9 @@ export async function GET(request: Request) {
 
     const caller = await getCurrentCaller(request);
     const currentProjectCode = caller.currentExpert?.projectCode;
-    const rows = await scanTable<Partial<Activity>>('Activity', {
-      FilterExpression: '#year = :year AND #month = :month',
+    const rows = await queryTable<Partial<Activity>>('Activity', {
+      IndexName: 'activitiesByYearAndMonth',
+      KeyConditionExpression: '#year = :year AND #month = :month',
       ExpressionAttributeNames: { '#year': 'year', '#month': 'month' },
       ExpressionAttributeValues: {
         ':year': toDdbAttribute(year),
