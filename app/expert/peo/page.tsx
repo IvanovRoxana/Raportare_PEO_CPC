@@ -3229,9 +3229,8 @@ function ExpertDashboardContent() {
         activeHref="/expert/peo"
         navItems={expertNavItems}
         contentClassName="max-w-none"
-        hideHeader={activeTab === 'calendar'}
         eyebrow="Modul Expert"
-        title={isClarificationScopedAccess ? 'Clarificare PM' : activeTab === 'calendar' ? 'Calendar pontaj' : showForm ? 'Adaugă activitate' : 'Activitățile mele'}
+        title={isClarificationScopedAccess ? 'Clarificare PM' : showForm ? 'Adaugă activitate' : 'Activitățile mele'}
         reportingMonth={`${getMonthName(currentMonth)} ${currentYear}`}
         description={
           isClarificationScopedAccess
