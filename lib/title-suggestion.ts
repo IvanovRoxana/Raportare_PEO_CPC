@@ -100,7 +100,7 @@ const ADMINISTRATIVE_FIRST_LINE_PATTERNS = [
   /^dat(a|ă)\s*[:.-]/i,
   /^loca(t|ț)ie\b/i,
   /^locul\b/i,
-  /^participant/i,
+  /^participan(t|ț)/i,
   /^semn(a|ă)turi?/i,
   /^dovad(a|ă)\b/i,
   /^captur(a|ă)\b/i,
@@ -150,6 +150,18 @@ function looksAdministrative(line: string) {
     || (ADMINISTRATIVE_TERMS.some((term) => lower.includes(term)) && !hasRelevantTitleTerm(normalized));
 }
 
+export function isAdministrativeTitleCandidate(line?: string | null) {
+  const normalized = normalizeSpaces(line || '');
+  const lower = normalized.toLowerCase();
+  if (!normalized) return false;
+  if (/^(data|dată)\b/i.test(normalized) && /\b(loca(t|ț)(ie|ia|iei)?|participan(t|ț)(i|ii)?|ora)\b/i.test(normalized)) return true;
+  if (/^(data|dată)\s*[:.-]/i.test(normalized) && /\d{1,2}[./-]\d{1,2}[./-]\d{2,4}/.test(normalized)) return true;
+  if (/^loca(t|ț)(ie|ia|iei)?\s*[:.-]/i.test(normalized)) return true;
+  if (/^participan(t|ț)(i|ii)?\s*[:.-]/i.test(normalized)) return true;
+  if (/^(semn(a|ă)turi?|dovad(a|ă)|captur(a|ă)|screenshot|teams|zoom|link|prezen(t|ț)(a|ă)|tabel)\b/i.test(normalized)) return true;
+  return lower.includes('data sedintei') || lower.includes('data ședinței') || lower.includes('locatia sedintei') || lower.includes('locația ședinței');
+}
+
 function isGenericStandalone(line: string) {
   return /^(raport|document|anex(a|ă)|livrabil|not(a|ă)|plan|ghid)$/i.test(normalizeSpaces(line));
 }
@@ -160,6 +172,7 @@ export function isGenericTitleLine(line: string) {
   if (normalized.length < 5) return true;
   if (normalized.length > 180) return true;
   if (words > 24) return true;
+  if (isAdministrativeTitleCandidate(normalized)) return true;
   if (/[,;:]\s*(str\.|sector|jude(t|ț)|telefon|tel\.|fax|email|e-mail|www\.|https?:\/\/)/i.test(normalized)) return true;
   if (/\b(CUI|CIF|IBAN|RO\d{2}[A-Z]{4})\b/i.test(normalized)) return true;
   if (/\b\d{6,}\b/.test(normalized) && !hasRelevantTitleTerm(normalized)) return true;
@@ -169,6 +182,7 @@ export function isGenericTitleLine(line: string) {
 function looksLikeContinuation(line: string) {
   const normalized = normalizeSpaces(line);
   if (isGenericTitleLine(normalized)) return false;
+  if (isAdministrativeTitleCandidate(normalized)) return false;
   if (wordCount(normalized) > 16) return false;
   if (/[.!?]$/.test(normalized)) return false;
   if (/^(ianuarie|februarie|martie|aprilie|mai|iunie|iulie|august|septembrie|octombrie|noiembrie|decembrie)\s+\d{4}$/i.test(normalized)) return false;
@@ -208,6 +222,7 @@ function scoreTitleCandidate(candidate: string, index: number, lineCount: number
 
   if (isGenericStandalone(normalized)) score -= 35;
   if (ADMINISTRATIVE_TERMS.some((term) => normalized.toLowerCase().includes(term)) && !hasRelevantTitleTerm(normalized)) score -= 20;
+  if (isAdministrativeTitleCandidate(normalized)) score -= 60;
   if (/^[A-ZĂÂÎȘȚ0-9 .,&-]{5,}$/.test(normalized) && !hasRelevantTitleTerm(normalized)) score -= 12;
   if (/[.!?]$/.test(normalized)) score -= 8;
   if (/:$/.test(normalized)) score -= 8;
@@ -281,8 +296,9 @@ export function suggestTitleFromFirstPage(text?: string | null): TitleSuggestion
       .sort((a, b) => b.score - a.score || a.index - b.index)
       .map((candidate) => candidate.value)
   );
-  const best = ranked[0] || null;
-  const bestScore = best ? candidateRows.find((row) => normalizeTitleForMatch(row.value) === normalizeTitleForMatch(best))?.score ?? 0 : 0;
+  const rawBest = ranked[0] || null;
+  const bestScore = rawBest ? candidateRows.find((row) => normalizeTitleForMatch(row.value) === normalizeTitleForMatch(rawBest))?.score ?? 0 : 0;
+  const best = bestScore > 0 ? rawBest : null;
   const confidence: TitleSuggestionConfidence = bestScore >= 55 ? 'high' : bestScore >= 35 ? 'medium' : 'low';
 
   return {
@@ -320,7 +336,7 @@ export function resolveDocumentTitleSuggestion(args: {
   documentText?: string | null;
 }): TitleSuggestionResult {
   const aiTitle = normalizeSpaces(args.aiSuggestion?.suggestedTitle || '');
-  if (aiTitle && titleExistsInDocumentText(args.documentText, aiTitle)) {
+  if (aiTitle && !isAdministrativeTitleCandidate(aiTitle) && titleExistsInDocumentText(args.documentText, aiTitle)) {
     return {
       suggestedTitle: aiTitle,
       confidence: args.aiSuggestion?.confidence || 'medium',
@@ -330,13 +346,31 @@ export function resolveDocumentTitleSuggestion(args: {
   }
 
   const localTitle = normalizeSpaces(args.localSuggestion.suggestedTitle || '');
-  if (localTitle && titleExistsInDocumentText(args.documentText, localTitle)) {
+  if (localTitle && !isAdministrativeTitleCandidate(localTitle) && titleExistsInDocumentText(args.documentText, localTitle)) {
     return {
       ...args.localSuggestion,
       suggestedTitle: localTitle,
       reason: args.aiSuggestion?.suggestedTitle === null
         ? 'AI nu a confirmat un titlu, dar sugestia locala apare explicit in prima pagina.'
         : args.localSuggestion.reason,
+    };
+  }
+
+  if (args.aiSuggestion?.suggestedTitle && isAdministrativeTitleCandidate(args.aiSuggestion.suggestedTitle)) {
+    return {
+      suggestedTitle: null,
+      confidence: 'low',
+      alternatives: [],
+      reason: 'Textul detectat este metadata administrativa, nu titlu de document.',
+    };
+  }
+
+  if (args.localSuggestion.suggestedTitle && isAdministrativeTitleCandidate(args.localSuggestion.suggestedTitle)) {
+    return {
+      suggestedTitle: null,
+      confidence: 'low',
+      alternatives: [],
+      reason: 'Textul detectat este metadata administrativa, nu titlu de document.',
     };
   }
 
@@ -388,6 +422,14 @@ export function validateDeclaredTitleInDocumentText(args: {
     };
   }
 
+  if (isAdministrativeTitleCandidate(args.declaredTitle)) {
+    return {
+      titleMatch: false,
+      titleCheckStatus: 'mismatch',
+      titleCheckMessage: 'Textul confirmat pare metadata administrativa, nu titlul documentului.',
+    };
+  }
+
   const matched = titleExistsInDocumentText(args.documentText, args.declaredTitle);
   return {
     titleMatch: matched,
@@ -408,7 +450,8 @@ export function applyAutomaticTitleSuggestion(args: {
 }) {
   const declaredTitle = normalizeSpaces(args.currentDeclaredTitle || '');
   const suggestedTitle = normalizeSpaces(args.suggestedTitle || '');
-  const canAutoFill = args.confidence === 'high';
+  const suggestedTitleLooksAdministrative = isAdministrativeTitleCandidate(suggestedTitle);
+  const canAutoFill = args.confidence === 'high' && !suggestedTitleLooksAdministrative;
   const currentTitleSource = args.currentTitleSource || (declaredTitle ? 'manual' : undefined);
   const keepExplicitExpertTitle = currentTitleSource === 'edited_by_expert' || currentTitleSource === 'admin_override';
   const currentTitleExistsInDocument = declaredTitle
@@ -431,7 +474,7 @@ export function applyAutomaticTitleSuggestion(args: {
     };
   }
 
-  if (!suggestedTitle) {
+  if (!suggestedTitle || suggestedTitleLooksAdministrative) {
     return {
       declaredTitle: currentTitleLooksStale ? '' : declaredTitle,
       titleSource: currentTitleLooksStale ? undefined : currentTitleSource as TitleSource | undefined,

@@ -665,13 +665,13 @@ export function DeliverableItem({
 
       if (!docTitle) {
         const hasExtractedText = Boolean(titleText && titleText.trim());
-        docTitle = hasExtractedText ? null : formatTitleFromFilename(file.name) || null;
+        docTitle = formatTitleFromFilename(file.name) || null;
         titleSuggestion = {
           suggestedTitle: docTitle,
           confidence: 'low',
           alternatives: titleSuggestion.alternatives,
           reason: hasExtractedText
-            ? 'Nu a fost identificat un titlu clar sustinut de textul extras din document.'
+            ? 'Nu a fost identificat un titlu clar sustinut de textul extras din document; propunere orientativa din numele fisierului.'
             : 'Titlu propus din numele fisierului; textul extras nu a oferit un titlu clar.',
         };
       }

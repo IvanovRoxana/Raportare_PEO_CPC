@@ -4,6 +4,7 @@ import {
   applyAutomaticTitleSuggestion,
   detectSuggestedTitleFromText,
   firstLinesLookAdministrative,
+  isAdministrativeTitleCandidate,
   shouldUseAiTitleSuggestion,
   isLikelyFilenameDerivedTitle,
   resolveDocumentTitleSuggestion,
@@ -233,6 +234,69 @@ test('ignores very short lines, page numbers, dates and generic labels', () => {
   ].join('\n');
 
   assert.equal(detectSuggestedTitleFromText(firstPage), 'Plan de interventie pentru dialog social');
+});
+
+test('does not suggest meeting date and location metadata as a document title', () => {
+  const firstPage = [
+    'Data ședinței: 04.06.2026 Locația ședinței: Sediul Confederației Patronale Concordia',
+    'Participanți: membri CPC',
+    'Subiecte discutate',
+  ].join('\n');
+
+  assert.equal(
+    isAdministrativeTitleCandidate('Data ședinței: 04.06.2026 Locația ședinței: Sediul Confederației Patronale Concordia'),
+    true,
+  );
+  assert.equal(detectSuggestedTitleFromText(firstPage), null);
+});
+
+test('rejects AI title suggestions that are literal administrative metadata', () => {
+  const metadataTitle = 'Data ședinței: 04.06.2026 Locația ședinței: Sediul Confederației Patronale Concordia';
+  const resolved = resolveDocumentTitleSuggestion({
+    localSuggestion: {
+      suggestedTitle: null,
+      confidence: 'low',
+      alternatives: [],
+    },
+    aiSuggestion: {
+      suggestedTitle: metadataTitle,
+      confidence: 'high',
+      alternatives: [],
+    },
+    documentText: `${metadataTitle}\nParticipanți: membri CPC`,
+  });
+
+  assert.equal(resolved.suggestedTitle, null);
+  assert.equal(resolved.confidence, 'low');
+});
+
+test('does not auto fill administrative metadata even with high confidence', () => {
+  assert.deepEqual(
+    applyAutomaticTitleSuggestion({
+      currentDeclaredTitle: '',
+      suggestedTitle: 'Data ședinței: 04.06.2026 Locația ședinței: Sediul Confederației Patronale Concordia',
+      confidence: 'high',
+      documentText: 'Data ședinței: 04.06.2026 Locația ședinței: Sediul Confederației Patronale Concordia',
+      fileName: '20260604_Minuta pregătiri preliminare evenimente regionale 1.docx',
+    }),
+    {
+      declaredTitle: '',
+      titleSource: undefined,
+      autoFilled: false,
+    },
+  );
+});
+
+test('blocks confirmation when the declared title is meeting metadata', () => {
+  const metadataTitle = 'Data ședinței: 04.06.2026 Locația ședinței: Sediul Confederației Patronale Concordia';
+  const result = validateDeclaredTitleInDocumentText({
+    documentText: `${metadataTitle}\nParticipanți: membri CPC`,
+    declaredTitle: metadataTitle,
+    titleSource: 'auto_detected',
+  });
+
+  assert.equal(result.titleMatch, false);
+  assert.equal(result.titleCheckStatus, 'mismatch');
 });
 
 test('routes uncertain or administrative title suggestions to AI', () => {

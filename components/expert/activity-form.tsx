@@ -483,13 +483,13 @@ async function extractDeliverableTextForActivityAutofill(deliverable: Deliverabl
   }
   if (!docTitle) {
     const hasExtractedText = Boolean(titleText && titleText.trim());
-    docTitle = hasExtractedText ? null : formatTitleFromFilename(fileName) || null;
+    docTitle = formatTitleFromFilename(fileName) || null;
     titleSuggestion = {
       suggestedTitle: docTitle,
       confidence: 'low',
       alternatives: titleSuggestion.alternatives,
       reason: hasExtractedText
-        ? 'Nu a fost identificat un titlu clar sustinut de textul extras din document.'
+        ? 'Nu a fost identificat un titlu clar sustinut de textul extras din document; propunere orientativa din numele fisierului.'
         : 'Titlu propus din numele fisierului; textul extras nu a oferit un titlu clar.',
     };
   }
