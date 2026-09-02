@@ -872,6 +872,56 @@ const schema = a.schema({
       allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
     ]),
 
+  SupportTicket: a
+    .model({
+      title: a.string().required(),
+      description: a.string().required(),
+      type: a.string().required(),
+      module: a.string().required(),
+      severity: a.string().required(),
+      status: a.string().default("new"),
+      expectedResult: a.string(),
+      actualResult: a.string(),
+      reproductionSteps: a.string(),
+      affectsMonthlyReporting: a.boolean().default(false),
+      canReproduce: a.string(),
+      userId: a.string(),
+      userEmail: a.email(),
+      userName: a.string(),
+      userRole: a.string(),
+      currentPath: a.string(),
+      selectedMonth: a.integer(),
+      selectedYear: a.integer(),
+      selectedExpertId: a.id(),
+      relatedActivityId: a.id(),
+      relatedDocumentId: a.id(),
+      browserInfo: a.string(),
+      appVersion: a.string(),
+      environment: a.string(),
+      screenshotFileName: a.string(),
+      lastClientError: a.string(),
+      lastApiError: a.string(),
+      networkStatus: a.string(),
+      linearIssueId: a.string(),
+      linearIssueUrl: a.string(),
+      linearLabels: a.string().array(),
+      linearPriority: a.string(),
+      createdBy: a.string(),
+      updatedBy: a.string(),
+      resolvedBy: a.string(),
+      resolvedAt: a.datetime(),
+    })
+    .secondaryIndexes((index) => [
+      index("status"),
+      index("module"),
+      index("severity"),
+      index("userEmail"),
+    ])
+    .authorization((allow) => [
+      allow.authenticated().to(["create"]),
+      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+    ]),
+
   AiEligibilityRuleset: a
     .model({
       title: a.string().required(),

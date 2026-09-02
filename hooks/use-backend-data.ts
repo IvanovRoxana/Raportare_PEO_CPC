@@ -50,9 +50,10 @@ import {
   procurementStatusHistoryService,
   procurementSuppliersService,
   sharedDeliverablesService,
+  supportTicketsService,
   reportingWorkBlocksService,
 } from '@/lib/backend-store';
-import type { Activity, Expert, ExpertNormContract, FinancialPersonLink, LeaveEntry, VerificationData, Neconformitate, PmReviewCase, PmReviewCaseCreateInput, PmReviewCaseUpdateInput, VerificationNote, AppSettings, ActivityCatalog, AiEligibilityRuleset, AiEligibilityRuleVersion, WorkingGroup, ConcurrentProject, ConcurrentProjectTimesheetEntry, ReportStatus, MonthAccessRequest, GrupTintaEntry, BusinessHubEntityDirectoryEntry, AuditLog, ActivityAutofillAudit, AdminInterventionRequest, HistoricalImportBatch, HistoricalTimesheetDayEntry, IndexedDeliverableCandidate, MonthlyActivityItem, MonthlyExpertReport, UploadedReportingFile, DocumentMetadata, SharedDeliverable, NotificationLogCreateInput, ReportingPeriodCreateInput, ReportingPeriodUpdateInput } from '@/lib/types';
+import type { Activity, Expert, ExpertNormContract, FinancialPersonLink, LeaveEntry, VerificationData, Neconformitate, PmReviewCase, PmReviewCaseCreateInput, PmReviewCaseUpdateInput, VerificationNote, AppSettings, ActivityCatalog, AiEligibilityRuleset, AiEligibilityRuleVersion, WorkingGroup, ConcurrentProject, ConcurrentProjectTimesheetEntry, ReportStatus, MonthAccessRequest, GrupTintaEntry, BusinessHubEntityDirectoryEntry, AuditLog, ActivityAutofillAudit, AdminInterventionRequest, HistoricalImportBatch, HistoricalTimesheetDayEntry, IndexedDeliverableCandidate, MonthlyActivityItem, MonthlyExpertReport, UploadedReportingFile, DocumentMetadata, SharedDeliverable, SupportTicket, SupportTicketCreateInput, SupportTicketUpdateInput, NotificationLogCreateInput, ReportingPeriodCreateInput, ReportingPeriodUpdateInput } from '@/lib/types';
 import { getContractedProcurementProjects, type ProcurementChecklist, type ProcurementContract, type ProcurementDeliverable, type ProcurementDocument, type ProcurementEvaluation, type ProcurementInvoice, type ProcurementLaunch, type ProcurementOffer, type ProcurementProject, type ProcurementReception, type ProcurementStatusHistory, type ProcurementSupplier } from '@/lib/procurement';
 import {
   buildDeterministicWorkBlockConsolidation,
@@ -1634,6 +1635,39 @@ export function useAuditLogMutations() {
   };
 
   return { create };
+}
+
+export function useSupportTickets() {
+  const key = 'support-tickets';
+  const { data, error, isLoading } = useSWR(
+    isBackendAvailable() ? key : null,
+    safeFetcher(supportTicketsService.getAll)
+  );
+
+  return {
+    tickets: stableList(data as SupportTicket[] | null | undefined),
+    isLoading,
+    error,
+    mutate: () => mutate(key),
+  };
+}
+
+export function useSupportTicketMutations() {
+  const refresh = () => mutate('support-tickets');
+
+  const create = async (input: SupportTicketCreateInput) => {
+    const created = await supportTicketsService.create(input);
+    refresh();
+    return created;
+  };
+
+  const update = async (ticket: SupportTicket, updates: SupportTicketUpdateInput) => {
+    const updated = await supportTicketsService.update(ticket.id, updates);
+    refresh();
+    return updated;
+  };
+
+  return { create, update };
 }
 
 export function useNotificationLogMutations() {

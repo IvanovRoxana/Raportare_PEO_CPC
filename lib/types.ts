@@ -367,6 +367,88 @@ export interface PmReviewCase {
 export type PmReviewCaseCreateInput = Omit<PmReviewCase, 'id' | 'createdAt' | 'updatedAt'>;
 export type PmReviewCaseUpdateInput = Partial<Omit<PmReviewCase, 'id' | 'createdAt' | 'updatedAt'>>;
 
+export type SupportTicketType =
+  | 'bug'
+  | 'question'
+  | 'suggestion'
+  | 'blocker'
+  | 'export_issue'
+  | 'ai_issue'
+  | 'access_issue'
+  | 'ux_issue'
+  | string;
+
+export type SupportTicketModule =
+  | 'expert'
+  | 'pm'
+  | 'financial'
+  | 'deliverables'
+  | 'gt'
+  | 'business_hub'
+  | 'achizitii'
+  | 'ai'
+  | 'export'
+  | 'admin'
+  | 'other'
+  | string;
+
+export type SupportTicketSeverity = 'blocking' | 'important' | 'minor' | string;
+export type SupportTicketStatus =
+  | 'new'
+  | 'confirmed'
+  | 'in_progress'
+  | 'testing'
+  | 'resolved'
+  | 'duplicate'
+  | 'not_bug'
+  | 'deferred'
+  | string;
+
+export interface SupportTicket {
+  id: string;
+  title: string;
+  description: string;
+  type: SupportTicketType;
+  module: SupportTicketModule;
+  severity: SupportTicketSeverity;
+  status: SupportTicketStatus;
+  expectedResult?: string;
+  actualResult?: string;
+  reproductionSteps?: string;
+  affectsMonthlyReporting?: boolean;
+  canReproduce?: 'yes' | 'no' | 'unknown' | string;
+  userId?: string;
+  userEmail?: string;
+  userName?: string;
+  userRole?: string;
+  currentPath?: string;
+  selectedMonth?: number;
+  selectedYear?: number;
+  selectedExpertId?: string;
+  relatedActivityId?: string;
+  relatedDocumentId?: string;
+  browserInfo?: string;
+  appVersion?: string;
+  environment?: string;
+  screenshotFileName?: string;
+  lastClientError?: string;
+  lastApiError?: string;
+  networkStatus?: string;
+  linearIssueId?: string;
+  linearIssueUrl?: string;
+  linearLabels?: string[];
+  linearPriority?: 'urgent' | 'high' | 'medium' | 'low' | string;
+  createdBy?: string;
+  updatedBy?: string;
+  resolvedBy?: string;
+  resolvedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type SupportTicketCreateInput = Omit<SupportTicket, 'id' | 'createdAt' | 'updatedAt'>;
+export type SupportTicketUpdateInput = Partial<Omit<SupportTicket, 'id' | 'createdAt' | 'updatedAt'>>;
+
 export interface DashboardComplianceRow {
   expertId: string;
   expertName: string;

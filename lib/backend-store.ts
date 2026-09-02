@@ -41,6 +41,7 @@ export const activityAutofillAuditsService = awsStore.activityAutofillAuditsServ
 export const documentsService = awsStore.documentsService;
 export const indexedDeliverableCandidatesService = awsStore.indexedDeliverableCandidatesService;
 export const sharedDeliverablesService = awsStore.sharedDeliverablesService;
+export const supportTicketsService = awsStore.supportTicketsService;
 export const procurementProjectsService = awsStore.procurementProjectsService;
 export const procurementDocumentsService = awsStore.procurementDocumentsService;
 export const procurementLaunchesService = awsStore.procurementLaunchesService;

@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { AppHeader } from '@/components/app-header'
+import { Toaster } from '@/components/ui/toaster'
 import { StagingEnvironmentBanner } from '@/components/staging-environment-banner'
 import { isProductionEnvironment } from '@/lib/runtime-environment'
 import './globals.css'
@@ -42,6 +43,7 @@ export default function RootLayout({
         <StagingEnvironmentBanner />
         <AppHeader />
         {children}
+        <Toaster />
         {process.env.NODE_ENV === 'production' && isProductionEnvironment() && <Analytics />}
       </body>
     </html>

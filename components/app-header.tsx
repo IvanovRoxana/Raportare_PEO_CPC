@@ -26,6 +26,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { UserMenu } from '@/components/user-menu';
+import { SupportTicketDialog } from '@/components/support/support-ticket-dialog';
 import { resolveDashboardAccess } from '@/lib/pm-dashboard';
 
 type HeaderNavItem = {
@@ -121,6 +122,7 @@ function canUseDashboardSelector(user: AppUser | null) {
 
 export function AppHeader() {
   const pathname = usePathname() || '/';
+  const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
   const [roles, setRoles] = useState<AppRole[] | null>(null);
   const [showDashboardSelector, setShowDashboardSelector] = useState(false);
   const [hasCheckedUser, setHasCheckedUser] = useState(false);
@@ -132,6 +134,7 @@ export function AppHeader() {
     getSignedInUser()
       .then((user) => {
         if (!isMounted) return;
+        setCurrentUser(user);
         setRoles(user?.roles ?? null);
         setShowDashboardSelector(canUseDashboardSelector(user));
       })
@@ -252,6 +255,7 @@ export function AppHeader() {
             </DropdownMenu>
           ) : null}
 
+          <SupportTicketDialog user={hasCheckedUser ? currentUser : null} />
           <UserMenu />
         </div>
       </div>

@@ -9,6 +9,7 @@ import {
   History,
   KeyRound,
   Lock,
+  MessageSquare,
   Plus,
   Settings,
   Sparkles,
@@ -28,6 +29,7 @@ import { AdminProjectsPanel } from '@/components/admin/admin-projects-panel';
 import { BusinessHubEntityDirectoryPanel } from '@/components/admin/business-hub-entity-directory-panel';
 import { PeoExpertCategoriesPanel } from '@/components/admin/peo-expert-categories-panel';
 import { ReportingPeriodsPanel } from '@/components/admin/reporting-periods-panel';
+import { SupportTicketsPanel } from '@/components/admin/support-tickets-panel';
 import { UsersRolesManagementPanel } from '@/components/admin/users-roles-management-panel';
 import { ViewAsExpertPanel } from '@/components/admin/view-as-expert-panel';
 import { Button } from '@/components/ui/button';
@@ -36,7 +38,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import activityCatalog from '@/data/import/activity-catalog.json';
 import type { ActivityCatalog } from '@/lib/types';
 
-const adminTabValues = ['utilizatori', 'categorii-experti', 'roluri', 'perioade-raportare', 'subactivitati', 'business-hub', 'ai', 'proiecte'] as const;
+const adminTabValues = ['utilizatori', 'categorii-experti', 'roluri', 'perioade-raportare', 'suport', 'subactivitati', 'business-hub', 'ai', 'proiecte'] as const;
 
 type AdminTabValue = (typeof adminTabValues)[number];
 
@@ -167,6 +169,7 @@ export default async function AdminPage({
                 ['categorii-experti', 'Categorii experti PEO', BriefcaseBusiness],
                 ['roluri', 'Roluri', ShieldCheck],
                 ['perioade-raportare', 'Perioade raportare', CalendarDays],
+                ['suport', 'Suport UAT', MessageSquare],
                 ['subactivitati', 'Subactivități', Settings],
                 ['business-hub', 'Business Hub', Building2],
                 ['ai', 'AI API', Sparkles],
@@ -199,6 +202,10 @@ export default async function AdminPage({
 
             <TabsContent value="perioade-raportare" className="m-0 p-6">
               <ReportingPeriodsPanel />
+            </TabsContent>
+
+            <TabsContent value="suport" className="m-0 p-6">
+              <SupportTicketsPanel />
             </TabsContent>
 
             {/*

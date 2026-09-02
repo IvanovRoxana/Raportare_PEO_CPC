@@ -74,6 +74,9 @@ import type {
   ReportStatus,
   SharedActivityRegistrationContext,
   SharedDeliverable,
+  SupportTicket,
+  SupportTicketCreateInput,
+  SupportTicketUpdateInput,
   UploadedReportingFile,
   VerificationData,
   VerificationNote,
@@ -630,6 +633,50 @@ function mapPmReviewCase(item: any): PmReviewCase {
     resolvedAt: item.resolvedAt ?? undefined,
     resolution: item.resolution ?? undefined,
     createdBy: item.createdBy ?? undefined,
+    createdAt: item.createdAt ?? undefined,
+    updatedAt: item.updatedAt ?? undefined,
+  };
+}
+
+function mapSupportTicket(item: any): SupportTicket {
+  return {
+    id: item.id,
+    title: item.title,
+    description: item.description,
+    type: item.type,
+    module: item.module,
+    severity: item.severity,
+    status: item.status ?? 'new',
+    expectedResult: item.expectedResult ?? undefined,
+    actualResult: item.actualResult ?? undefined,
+    reproductionSteps: item.reproductionSteps ?? undefined,
+    affectsMonthlyReporting: item.affectsMonthlyReporting ?? false,
+    canReproduce: item.canReproduce ?? undefined,
+    userId: item.userId ?? undefined,
+    userEmail: item.userEmail ?? undefined,
+    userName: item.userName ?? undefined,
+    userRole: item.userRole ?? undefined,
+    currentPath: item.currentPath ?? undefined,
+    selectedMonth: item.selectedMonth ?? undefined,
+    selectedYear: item.selectedYear ?? undefined,
+    selectedExpertId: item.selectedExpertId ?? undefined,
+    relatedActivityId: item.relatedActivityId ?? undefined,
+    relatedDocumentId: item.relatedDocumentId ?? undefined,
+    browserInfo: item.browserInfo ?? undefined,
+    appVersion: item.appVersion ?? undefined,
+    environment: item.environment ?? undefined,
+    screenshotFileName: item.screenshotFileName ?? undefined,
+    lastClientError: item.lastClientError ?? undefined,
+    lastApiError: item.lastApiError ?? undefined,
+    networkStatus: item.networkStatus ?? undefined,
+    linearIssueId: item.linearIssueId ?? undefined,
+    linearIssueUrl: item.linearIssueUrl ?? undefined,
+    linearLabels: item.linearLabels ?? [],
+    linearPriority: item.linearPriority ?? undefined,
+    createdBy: item.createdBy ?? undefined,
+    updatedBy: item.updatedBy ?? undefined,
+    resolvedBy: item.resolvedBy ?? undefined,
+    resolvedAt: item.resolvedAt ?? undefined,
     createdAt: item.createdAt ?? undefined,
     updatedAt: item.updatedAt ?? undefined,
   };
@@ -3601,6 +3648,155 @@ const localSettings = {
     if (typeof window !== 'undefined') {
       window.localStorage.setItem(`peo_setting_${key}`, value);
     }
+  },
+};
+
+const SUPPORT_TICKETS_LOCAL_STORAGE_KEY = 'peo-support-tickets';
+
+function readLocalSupportTickets(): SupportTicket[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(SUPPORT_TICKETS_LOCAL_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.map(mapSupportTicket) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeLocalSupportTickets(tickets: SupportTicket[]) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(SUPPORT_TICKETS_LOCAL_STORAGE_KEY, JSON.stringify(tickets));
+}
+
+function supportTicketFallbackId() {
+  return `support-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function buildSupportTicket(input: SupportTicketCreateInput): SupportTicket {
+  const createdAt = new Date().toISOString();
+  return {
+    id: supportTicketFallbackId(),
+    ...input,
+    status: input.status || 'new',
+    linearLabels: input.linearLabels ?? [],
+    createdAt,
+    updatedAt: createdAt,
+  };
+}
+
+export const supportTicketsService = {
+  async getAll(): Promise<SupportTicket[]> {
+    const client = getAwsDataClient() as any;
+    const model = client.models.SupportTicket;
+
+    if (!model) {
+      return readLocalSupportTickets().sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+    }
+
+    const scope = await getCurrentDataAccessScope(client);
+    if (!scope.canUsePmDashboard && !scope.canAccessAllExperts) return [];
+
+    const data = await listModel<any>(model);
+    return data.map(mapSupportTicket).sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+  },
+
+  async create(input: SupportTicketCreateInput): Promise<SupportTicket> {
+    const client = getAwsDataClient() as any;
+    const ticket = buildSupportTicket(input);
+    const model = client.models.SupportTicket;
+
+    if (!model) {
+      const tickets = readLocalSupportTickets();
+      writeLocalSupportTickets([ticket, ...tickets]);
+      return ticket;
+    }
+
+    const result = await model.create(omitUndefinedFields({
+      title: ticket.title,
+      description: ticket.description,
+      type: ticket.type,
+      module: ticket.module,
+      severity: ticket.severity,
+      status: ticket.status,
+      expectedResult: ticket.expectedResult,
+      actualResult: ticket.actualResult,
+      reproductionSteps: ticket.reproductionSteps,
+      affectsMonthlyReporting: ticket.affectsMonthlyReporting ?? false,
+      canReproduce: ticket.canReproduce,
+      userId: ticket.userId,
+      userEmail: ticket.userEmail,
+      userName: ticket.userName,
+      userRole: ticket.userRole,
+      currentPath: ticket.currentPath,
+      selectedMonth: ticket.selectedMonth,
+      selectedYear: ticket.selectedYear,
+      selectedExpertId: ticket.selectedExpertId,
+      relatedActivityId: ticket.relatedActivityId,
+      relatedDocumentId: ticket.relatedDocumentId,
+      browserInfo: ticket.browserInfo,
+      appVersion: ticket.appVersion,
+      environment: ticket.environment,
+      screenshotFileName: ticket.screenshotFileName,
+      lastClientError: ticket.lastClientError,
+      lastApiError: ticket.lastApiError,
+      networkStatus: ticket.networkStatus,
+      linearIssueId: ticket.linearIssueId,
+      linearIssueUrl: ticket.linearIssueUrl,
+      linearLabels: ticket.linearLabels,
+      linearPriority: ticket.linearPriority,
+      createdBy: ticket.createdBy,
+      updatedBy: ticket.updatedBy,
+      resolvedBy: ticket.resolvedBy,
+      resolvedAt: ticket.resolvedAt,
+    }));
+    assertNoErrors(result, 'AWS create support ticket');
+    return mapSupportTicket(result.data);
+  },
+
+  async update(id: string, updates: SupportTicketUpdateInput): Promise<SupportTicket | null> {
+    const client = getAwsDataClient() as any;
+    const model = client.models.SupportTicket;
+    const updatedAt = new Date().toISOString();
+
+    if (!model) {
+      const tickets = readLocalSupportTickets();
+      const nextTickets = tickets.map((ticket) => (
+        ticket.id === id ? { ...ticket, ...updates, updatedAt } : ticket
+      ));
+      writeLocalSupportTickets(nextTickets);
+      return nextTickets.find((ticket) => ticket.id === id) ?? null;
+    }
+
+    const scope = await getCurrentDataAccessScope(client);
+    if (!scope.canUsePmDashboard && !scope.canAccessAllExperts) {
+      throw new Error(ACCESS_DENIED_MESSAGE);
+    }
+
+    const result = await model.update(omitUndefinedFields({
+      id,
+      title: updates.title,
+      description: updates.description,
+      type: updates.type,
+      module: updates.module,
+      severity: updates.severity,
+      status: updates.status,
+      expectedResult: updates.expectedResult,
+      actualResult: updates.actualResult,
+      reproductionSteps: updates.reproductionSteps,
+      affectsMonthlyReporting: updates.affectsMonthlyReporting,
+      canReproduce: updates.canReproduce,
+      linearIssueId: updates.linearIssueId,
+      linearIssueUrl: updates.linearIssueUrl,
+      linearLabels: updates.linearLabels,
+      linearPriority: updates.linearPriority,
+      updatedBy: updates.updatedBy,
+      resolvedBy: updates.resolvedBy,
+      resolvedAt: updates.resolvedAt,
+    }));
+    assertNoErrors(result, 'AWS update support ticket');
+    return result.data ? mapSupportTicket(result.data) : null;
   },
 };
 
