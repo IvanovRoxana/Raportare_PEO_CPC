@@ -121,3 +121,15 @@ test('pagina Salariati expune actiunea de adaugare manuala sus in header', () =>
   assert.match(source, /const addEmployee = \(\) =>/);
   assert.match(source, /id="employee-editor"/);
 });
+
+test('editorul de norme expune doar norma PEO si norma CIM, nu plafoane tehnice sau reguli CO', () => {
+  const source = readFileSync('components/financial/financial-employees-dashboard.tsx', 'utf8');
+
+  assert.match(source, /placeholder="Norma PEO"/);
+  assert.match(source, /placeholder="Norma CIM"/);
+  assert.doesNotMatch(source, /placeholder="Plafon PEO\/zi"/);
+  assert.doesNotMatch(source, /placeholder="Plafon CIM\/zi"/);
+  assert.doesNotMatch(source, /placeholder="Ore CO\/zi"/);
+  assert.match(source, /peoDailyCap:\s*cimDailyCap/);
+  assert.match(source, /leaveHoursPerDay:\s*cimDailyCap/);
+});

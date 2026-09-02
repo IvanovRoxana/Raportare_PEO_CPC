@@ -58,17 +58,18 @@ export function applyFinancialReferenceNorms(
   );
   if (appEditedContract) return existingContracts;
 
+  const cimDailyCap = cimNorm.unit === 'HOURS_PER_DAY' ? cimNorm.value : 8;
   const financialContract: ExpertNormContract = {
     id: `financial-reference:${expert.id}`,
     expertId: expert.id,
     validFrom: referenceBaselineStart(),
     peoNormUnit: peoNorm.unit,
     peoNormValue: peoNorm.value,
-    peoDailyCap: peoNorm.unit === 'HOURS_PER_DAY' ? peoNorm.value : 0,
+    peoDailyCap: cimDailyCap,
     cimNormUnit: cimNorm.unit,
     cimNormValue: cimNorm.value,
-    cimDailyCap: cimNorm.unit === 'HOURS_PER_DAY' ? cimNorm.value : 8,
-    leaveHoursPerDay: cimNorm.unit === 'HOURS_PER_DAY' ? cimNorm.value : 8,
+    cimDailyCap,
+    leaveHoursPerDay: cimDailyCap,
     status: 'ACTIVE',
     justification: 'Norme preluate din tabelul Financiar',
   };

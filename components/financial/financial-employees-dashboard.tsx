@@ -49,11 +49,8 @@ type ContractForm = {
   validFrom: string;
   peoNormUnit: NormUnit;
   peoNormValue: string;
-  peoDailyCap: string;
   cimNormUnit: NormUnit;
   cimNormValue: string;
-  cimDailyCap: string;
-  leaveHoursPerDay: string;
   justification: string;
 };
 
@@ -75,6 +72,10 @@ function normalizeInput(value: string) {
 function numeric(value: string, fallback = 0) {
   const parsed = Number(String(value).replace(',', '.'));
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function dailyCapFromNorm(unit: NormUnit, value: string, fallback = 8) {
+  return unit === 'HOURS_PER_DAY' ? numeric(value, fallback) : fallback;
 }
 
 function fieldBadge(status: FinancialHrFieldCheck['status']) {
@@ -115,11 +116,8 @@ function contractDefaults(row?: FinancialHrValidationRow, expert?: Expert, contr
     validFrom,
     peoNormUnit: contract?.peoNormUnit ?? peoReference?.unit ?? 'HOURS_PER_DAY',
     peoNormValue: String(contract?.peoNormValue ?? peoReference?.value ?? fallbackDaily),
-    peoDailyCap: String(contract?.peoDailyCap ?? peoReference?.dailyCap ?? fallbackDaily),
     cimNormUnit: contract?.cimNormUnit ?? cimReference?.unit ?? 'HOURS_PER_DAY',
     cimNormValue: String(contract?.cimNormValue ?? cimReference?.value ?? fallbackDaily),
-    cimDailyCap: String(contract?.cimDailyCap ?? cimReference?.dailyCap ?? fallbackDaily),
-    leaveHoursPerDay: String(contract?.leaveHoursPerDay ?? cimReference?.dailyCap ?? fallbackDaily),
     justification: '',
   };
 }
@@ -224,7 +222,7 @@ export function FinancialEmployeesDashboard() {
     if (!employeeForm) return;
     setSaving(true);
     try {
-      const daily = contractForm ? numeric(contractForm.cimDailyCap, 8) : 8;
+      const daily = contractForm ? dailyCapFromNorm(contractForm.cimNormUnit, contractForm.cimNormValue, 8) : 8;
       const fields = {
         name: employeeForm.name.trim(),
         role: normalizeInput(employeeForm.positionInProject) ?? 'Salariat Concordia',
@@ -278,16 +276,17 @@ export function FinancialEmployeesDashboard() {
     }
     setSaving(true);
     try {
+      const cimDailyCap = dailyCapFromNorm(contractForm.cimNormUnit, contractForm.cimNormValue, 8);
       const payload: Omit<ExpertNormContract, 'id'> = {
         expertId: contractForm.expertId,
         validFrom: contractForm.validFrom,
         peoNormUnit: contractForm.peoNormUnit,
         peoNormValue: numeric(contractForm.peoNormValue),
-        peoDailyCap: numeric(contractForm.peoDailyCap),
+        peoDailyCap: cimDailyCap,
         cimNormUnit: contractForm.cimNormUnit,
         cimNormValue: numeric(contractForm.cimNormValue),
-        cimDailyCap: numeric(contractForm.cimDailyCap),
-        leaveHoursPerDay: numeric(contractForm.leaveHoursPerDay),
+        cimDailyCap,
+        leaveHoursPerDay: cimDailyCap,
         status: 'ACTIVE',
         justification: contractForm.justification,
         createdBy: 'financial-session',
@@ -449,14 +448,11 @@ export function FinancialEmployeesDashboard() {
                 <option value="HOURS_PER_MONTH">PEO h/luna</option>
               </select>
               <Input type="number" min="0" step="0.5" value={contractForm.peoNormValue} onChange={(event) => setContractForm((current) => current ? { ...current, peoNormValue: event.target.value } : current)} placeholder="Norma PEO" />
-              <Input type="number" min="0" step="0.5" value={contractForm.peoDailyCap} onChange={(event) => setContractForm((current) => current ? { ...current, peoDailyCap: event.target.value } : current)} placeholder="Plafon PEO/zi" />
               <select className="h-10 rounded-md border bg-background px-3 text-sm" value={contractForm.cimNormUnit} onChange={(event) => setContractForm((current) => current ? { ...current, cimNormUnit: event.target.value as NormUnit } : current)} aria-label="Unitate CIM">
                 <option value="HOURS_PER_DAY">CIM h/zi</option>
                 <option value="HOURS_PER_MONTH">CIM h/luna</option>
               </select>
               <Input type="number" min="0" step="0.5" value={contractForm.cimNormValue} onChange={(event) => setContractForm((current) => current ? { ...current, cimNormValue: event.target.value } : current)} placeholder="Norma CIM" />
-              <Input type="number" min="0" max="8" step="0.5" value={contractForm.cimDailyCap} onChange={(event) => setContractForm((current) => current ? { ...current, cimDailyCap: event.target.value, leaveHoursPerDay: event.target.value } : current)} placeholder="Plafon CIM/zi" />
-              <Input type="number" min="0" max="8" step="0.5" value={contractForm.leaveHoursPerDay} onChange={(event) => setContractForm((current) => current ? { ...current, leaveHoursPerDay: event.target.value } : current)} placeholder="Ore CO/zi" />
               <Input className="md:col-span-2" value={contractForm.justification} onChange={(event) => setContractForm((current) => current ? { ...current, justification: event.target.value } : current)} placeholder="Justificare modificare norma" />
               <Button onClick={saveContract} disabled={saving || !contractForm.expertId}>
                 {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
