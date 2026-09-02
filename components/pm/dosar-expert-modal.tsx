@@ -44,6 +44,7 @@ import type {
   Deliverable,
   DocumentMetadata,
   Expert,
+  LeaveEntry,
   Neconformitate,
   ReportStatus,
   VerificationData,
@@ -90,6 +91,7 @@ interface DosarExpertModalProps {
   initialFocus?: { activityId?: string; documentId?: string; issueType?: string };
   concurrentProjects?: ConcurrentProject[];
   concurrentTimesheetEntries?: ConcurrentProjectTimesheetEntry[];
+  leaveEntries?: LeaveEntry[];
   projectCode?: string;
   projectTitle?: string;
 }
@@ -307,6 +309,7 @@ export function DosarExpertModal({
   initialFocus,
   concurrentProjects = [],
   concurrentTimesheetEntries = [],
+  leaveEntries = [],
   projectCode = 'PEO',
   projectTitle = 'Program de Educatie si Ocupare',
 }: DosarExpertModalProps) {
@@ -953,6 +956,7 @@ export function DosarExpertModal({
           activities,
           concurrentProjects,
           concurrentTimesheetEntries,
+          leaveEntries,
           month,
           year,
         })),

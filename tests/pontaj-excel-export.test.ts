@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { readFileSync } from 'node:fs';
 import { inflateRawSync } from 'node:zlib';
 import { generatePontajExcel } from '../lib/pontaj-excel-export.ts';
 import { buildPontajExportPayload } from '../lib/pontaj-export-payload.ts';
@@ -67,6 +68,17 @@ describe('export pontaj Excel', () => {
 
     assert.match(cellXml(sheet, 'H15'), /<v>3<\/v>/);
     assert.match(cellXml(sheet, 'I15'), /<v>5<\/v>/);
+  });
+
+  it('exporturile PM trimit concediile financiare in payload-ul pontajului', () => {
+    const pmPage = readFileSync(new URL('../app/pm/page.tsx', import.meta.url), 'utf8');
+    const dossierModal = readFileSync(new URL('../components/pm/dosar-expert-modal.tsx', import.meta.url), 'utf8');
+
+    assert.match(pmPage, /useLeaveEntries\(selectedMonth,\s*selectedYear\)/);
+    assert.match(pmPage, /leaveEntries:\s*expertLeaveEntries/);
+    assert.match(pmPage, /leaveEntries=\{allLeaveEntries\.filter/);
+    assert.match(dossierModal, /leaveEntries = \[\]/);
+    assert.match(dossierModal, /leaveEntries,/);
   });
 
   it('pastreaza formulele GOODWORKS4ALL si curata valorile ramase din template', async () => {

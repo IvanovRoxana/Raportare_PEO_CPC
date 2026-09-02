@@ -63,6 +63,7 @@ import {
   useMonthAccessRequestMutations,
   useReportingPeriods,
   useActivitiesByMonth,
+  useLeaveEntries,
   useActivityCatalog,
   useAuditLogs,
   useAuditLogMutations,
@@ -307,6 +308,7 @@ export default function PMDashboard() {
   const { requests: allOlderMonthAccessRequests } = useMonthAccessRequestsForMonths(olderMonthAccessMonthRefs);
   const { updateRequest: updateMonthAccessRequest } = useMonthAccessRequestMutations();
   const { activities: allMonthActivities, mutate: refreshMonthActivities } = useActivitiesByMonth(selectedMonth, selectedYear);
+  const { leaveEntries: allLeaveEntries } = useLeaveEntries(selectedMonth, selectedYear);
   const { catalog: activityCatalog } = useActivityCatalog();
   const scopedAuditExpertId = hasExtendedExpertAccess ? null : dataAccessScope.currentExpertId ?? selectedExpertId;
   const { auditLogs: allAuditLogs } = useAuditLogs(scopedAuditExpertId, selectedMonth, selectedYear);
@@ -1521,6 +1523,7 @@ export default function PMDashboard() {
     setExportingPontajExpertId(expert.id);
     try {
       const expertActivities = monthActivities.filter((activity) => activity.expertId === expert.id);
+      const expertLeaveEntries = allLeaveEntries.filter((leave) => leave.expertId === expert.id && leave.status !== 'REJECTED');
       const expertConcurrentProjects = concurrentProjects.filter((project) => project.expertId === expert.id);
       const expertProjectIds = new Set(expertConcurrentProjects.map((project) => project.id));
       const expertConcurrentEntries = concurrentTimesheetEntries.filter(
@@ -1535,6 +1538,7 @@ export default function PMDashboard() {
           activities: expertActivities,
           concurrentProjects: expertConcurrentProjects,
           concurrentTimesheetEntries: expertConcurrentEntries,
+          leaveEntries: expertLeaveEntries,
           month: selectedMonth,
           year: selectedYear,
         })),
@@ -2172,6 +2176,7 @@ export default function PMDashboard() {
         initialFocus={reviewFocus || undefined}
         concurrentProjects={concurrentProjects.filter((project) => project.expertId === reviewExpertId)}
         concurrentTimesheetEntries={concurrentTimesheetEntries.filter((entry) => entry.expertId === reviewExpertId)}
+        leaveEntries={allLeaveEntries.filter((leave) => leave.expertId === reviewExpertId && leave.status !== 'REJECTED')}
         projectCode="302141"
         projectTitle="Consolidarea capacității Concordia pentru dialog social"
       />
