@@ -66,7 +66,7 @@ import {
   useSharedDeliverables,
   useNotificationLogMutations,
 } from '@/hooks/use-backend-data';
-import type { Activity, Deliverable, Expert, ReportStatus } from '@/lib/types';
+import type { Activity, Deliverable, DocumentMetadata, Expert, ReportStatus } from '@/lib/types';
 import { buildFinancialReportingSummary, normalizeFinancialPersonName } from '@/lib/financial-reporting';
 import { AdminViewAsBanner } from '@/components/admin/admin-view-as-banner';
 import { UserMenu } from '@/components/user-menu';
@@ -99,6 +99,7 @@ import {
   type ActivityEditScope,
 } from '@/lib/activity-edit';
 import { filterPendingSharedDeliverablesNotCoveredByActivity, filterSharedRelationsForMonths } from '@/lib/document-sharing';
+import { getDeliverableDocumentSignature } from '@/lib/deliverable-deduplication';
 import { buildExpertDeliverableRows } from '@/lib/expert-deliverables';
 import { isCurrentOrPreviousMonth } from '@/lib/pm-clarifications';
 import { isReportOpenForCorrection } from '@/lib/report-correction-flow';
@@ -239,6 +240,31 @@ function getDeliverableDisplayName(deliverable: Deliverable) {
     || deliverable.originalFileName
     || deliverable.docTitle
     || 'Livrabil fara titlu';
+}
+
+function getReadinessDeliverableKey(deliverable: Deliverable) {
+  return getDeliverableDocumentSignature(deliverable)
+    || deliverable.documentId
+    || deliverable.s3Key
+    || deliverable.filePath
+    || deliverable.id;
+}
+
+function getDocumentReadinessKey(document: DocumentMetadata) {
+  return getDeliverableDocumentSignature({
+    documentId: document.id,
+    fileName: document.originalFileName,
+    fileType: document.mimeType,
+    fileSize: document.fileSize,
+    filePath: document.s3Key,
+    s3Key: document.s3Key,
+    originalFileName: document.originalFileName,
+    fileHash: document.fileHash,
+    firstPageTextHash: document.firstPageTextHash,
+    contentFingerprint: document.contentFingerprint,
+  })
+    || document.id
+    || document.s3Key;
 }
 
 type FloatingWindowState = 'normal' | 'minimized' | 'maximized';
@@ -2216,14 +2242,28 @@ function ExpertDashboardContent() {
       actionLabel: 'Adauga activitate',
       action: { type: 'add-activity-date', date },
     }));
-    const missingDeliverableIssues: SubmitReadinessIssue[] = activitiesMissingDeliverables.map((activity) => ({
-      id: `missing-deliverable-${activity.id}`,
-      title: getActivityDisplayTitle(activity),
-      detail: 'Activitatea nu are niciun livrabil principal atasat.',
-      meta: `${formatDisplayDate(activity.date)}${activity.saCode ? ` / ${activity.saCode}` : ''}`,
-      actionLabel: 'Rezolva',
-      action: { type: 'edit-activity', activityId: activity.id, section: 'deliverables' },
-    }));
+    const attachedDocumentKeys = new Set(deliverableRefs.map(({ deliverable }) => getReadinessDeliverableKey(deliverable)).filter(Boolean));
+    const missingDeliverableIssues: SubmitReadinessIssue[] = activitiesMissingDeliverables.map((activity) => {
+      const unattachedDocuments = documents.filter((document) => {
+        if (attachedDocumentKeys.has(getDocumentReadinessKey(document))) return false;
+        if (document.sourceActivityId && document.sourceActivityId === activity.id) return true;
+        return document.activityDate === activity.date
+          && document.uploadedByExpertId === activity.expertId
+          && (!document.saCode || !activity.saCode || document.saCode === activity.saCode);
+      });
+      const documentCount = unattachedDocuments.length;
+
+      return {
+        id: `missing-deliverable-${activity.id}`,
+        title: getActivityDisplayTitle(activity),
+        detail: documentCount > 0
+          ? `${documentCount} document${documentCount === 1 ? '' : 'e'} exista in arhiva, dar nu ${documentCount === 1 ? 'este atasat' : 'sunt atasate'} ca livrabil principal pe activitatea aceasta.`
+          : 'Activitatea nu are niciun livrabil principal atasat.',
+        meta: `${formatDisplayDate(activity.date)}${activity.saCode ? ` / ${activity.saCode}` : ''}`,
+        actionLabel: 'Rezolva',
+        action: { type: 'edit-activity', activityId: activity.id, section: 'deliverables' },
+      };
+    });
     const unconfirmedTitleGroups = unconfirmedTitles.reduce((groups, item) => {
       const group = groups.get(item.activity.id) || {
         activity: item.activity,
@@ -2248,11 +2288,27 @@ function ExpertDashboardContent() {
         action: { type: 'edit-activity', activityId: activity.id, section: 'deliverables', deliverableId: deliverables[0]?.id },
       };
     });
-    const aiReviewIssues: SubmitReadinessIssue[] = aiReviewDeliverables.map(({ activity, deliverable }) => ({
-      id: `ai-${activity.id}-${deliverable.id}`,
+    const aiReviewGroups = aiReviewDeliverables.reduce((groups, item) => {
+      const key = getReadinessDeliverableKey(item.deliverable);
+      const group = groups.get(key) || {
+        activity: item.activity,
+        deliverable: item.deliverable,
+        activities: [] as Activity[],
+      };
+      group.activities.push(item.activity);
+      groups.set(key, group);
+      return groups;
+    }, new Map<string, { activity: Activity; deliverable: Deliverable; activities: Activity[] }>());
+    const aiReviewIssues: SubmitReadinessIssue[] = Array.from(aiReviewGroups.entries()).map(([key, { activity, deliverable, activities: issueActivities }]) => ({
+      id: `ai-${key}`,
       title: getDeliverableDisplayName(deliverable),
-      detail: deliverable.aiReason || 'Livrabilul este in review sau marcat neeligibil.',
-      meta: `${formatDisplayDate(activity.date)} / ${getActivityDisplayTitle(activity)}`,
+      detail: [
+        deliverable.aiReason || 'Livrabilul este in review sau marcat neeligibil.',
+        issueActivities.length > 1 ? `Acelasi document apare pe ${issueActivities.length} activitati.` : '',
+      ].filter(Boolean).join(' '),
+      meta: issueActivities.length > 1
+        ? `${issueActivities.length} activitati: ${issueActivities.slice(0, 3).map((item) => formatDisplayDate(item.date)).join(', ')}${issueActivities.length > 3 ? '...' : ''}`
+        : `${formatDisplayDate(activity.date)} / ${getActivityDisplayTitle(activity)}`,
       actionLabel: 'Rezolva',
       action: { type: 'edit-activity', activityId: activity.id, section: 'deliverables', deliverableId: deliverable.id },
     }));
@@ -2327,10 +2383,10 @@ function ExpertDashboardContent() {
       {
         key: 'ai',
         label: 'Verificari AI',
-        detail: aiReviewDeliverables.length === 0
+        detail: aiReviewIssues.length === 0
           ? 'Nu exista livrabile in review sau ineligible.'
-          : `${aiReviewDeliverables.length} livrabile sunt in review sau ineligible.`,
-        severity: aiReviewDeliverables.length === 0 ? 'ok' : 'blocking',
+          : `${aiReviewIssues.length} livrabile distincte sunt in review sau ineligible.`,
+        severity: aiReviewIssues.length === 0 ? 'ok' : 'blocking',
         issues: aiReviewIssues,
       },
       {
