@@ -530,6 +530,7 @@ async function extractDeliverableTextForActivityAutofill(deliverable: Deliverabl
 }
 
 const EMPTY_INITIAL_COLLABORATORS: string[] = [];
+const LEGACY_INITIAL_ACTIVITY_SELECT_VALUE = '__saved_initial_activity__';
 
 function areStringArraysEqual(left: string[], right: string[]) {
   return left.length === right.length && left.every((value, index) => value === right[index]);
@@ -1041,6 +1042,9 @@ export function ActivityForm({
     return activityTabCatalog
       .filter(item => item.saCode === saCode);
   }, [saCode, activityTabCatalog]);
+  const initialActivityTitle = initialActivity
+    ? (initialActivity.activityType || initialActivity.title || '').trim()
+    : '';
 
   const businessHubRegistryCatalogItem = useMemo(() => {
     if (!isBusinessHubExpert) return null;
@@ -1064,6 +1068,15 @@ export function ActivityForm({
         item.activityName === activityTitle
     ) || null;
   }, [activityTitle, availableActivityItems, saCode, selectedCatalogActivityId]);
+  const isInitialActivitySelectionPreserved = Boolean(
+    initialActivity
+    && activityTitle.trim()
+    && initialActivityTitle
+    && normalizeActivityLabel(activityTitle) === normalizeActivityLabel(initialActivityTitle)
+    && !selectedCatalogItem,
+  );
+  const standardCatalogActivityIdForSave = selectedCatalogItem?.id
+    ?? (isInitialActivitySelectionPreserved ? initialActivity?.catalogActivityId : undefined);
 
   const selectedGdprCatalogItem = useMemo(() => {
     return gdprCatalogItems.find((item) => item.id === selectedCatalogActivityId)
@@ -1076,13 +1089,20 @@ export function ActivityForm({
       || null;
   }, [activityTitle, gdprCatalogItems, gdprTemplateCode, selectedCatalogActivityId]);
 
-  const selectedActivitySelectValue = selectedCatalogItem?.id || '';
+  const selectedActivitySelectValue = selectedCatalogItem?.id
+    || (isInitialActivitySelectionPreserved ? LEGACY_INITIAL_ACTIVITY_SELECT_VALUE : '');
 
   const handleActivitySelectionChange = useCallback((catalogActivityId: string) => {
+    if (catalogActivityId === LEGACY_INITIAL_ACTIVITY_SELECT_VALUE) {
+      setSelectedCatalogActivityId(initialActivity?.catalogActivityId || '');
+      setActivityTitle(initialActivityTitle);
+      return;
+    }
+
     const catalogItem = availableActivityItems.find((item) => item.id === catalogActivityId);
     setSelectedCatalogActivityId(catalogActivityId);
     setActivityTitle(catalogItem?.activityName || '');
-  }, [availableActivityItems]);
+  }, [availableActivityItems, initialActivity?.catalogActivityId, initialActivityTitle]);
 
   const handleGdprCatalogActivityChange = useCallback((catalogActivityId: string) => {
     const catalogItem = gdprCatalogItems.find((item) => item.id === catalogActivityId);
@@ -1422,11 +1442,19 @@ export function ActivityForm({
   // Update activity when SA changes
   useEffect(() => {
     if (isGdprExpert && gdprTemplateCode) return;
+    if (isInitialActivitySelectionPreserved) return;
     if (availableActivityItems.length > 0 && !selectedCatalogItem) {
       setSelectedCatalogActivityId('');
       setActivityTitle('');
     }
-  }, [saCode, availableActivityItems, selectedCatalogItem, isGdprExpert, gdprTemplateCode]);
+  }, [
+    saCode,
+    availableActivityItems,
+    selectedCatalogItem,
+    isGdprExpert,
+    gdprTemplateCode,
+    isInitialActivitySelectionPreserved,
+  ]);
 
   const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -1829,7 +1857,7 @@ export function ActivityForm({
         ? businessHubRegistryCatalogItem?.id
         : isGdprExpert
           ? selectedGdprCatalogItem?.id
-          : selectedCatalogItem?.id,
+          : standardCatalogActivityIdForSave,
       activityType: effectiveActivityTitle,
       title: effectiveActivityTitle,
       description,
@@ -1947,7 +1975,7 @@ export function ActivityForm({
           ? businessHubRegistryCatalogItem?.id
           : isGdprExpert
             ? selectedGdprCatalogItem?.id
-            : selectedCatalogItem?.id,
+            : standardCatalogActivityIdForSave,
         title: effectiveActivityTitle,
         description,
         activitySummary: activitySummary.trim() || undefined,
@@ -2214,7 +2242,7 @@ export function ActivityForm({
     month,
     onSave,
     saCode,
-    selectedCatalogItem?.id,
+    standardCatalogActivityIdForSave,
     selectedActivityDates,
     showStandardActivityWorkflow,
     skipMainDeliverableForNow,
@@ -3437,9 +3465,19 @@ export function ActivityForm({
                           {availableActivityItems.length === 0 ? (
                             <div className="px-2 py-1.5 text-sm text-muted-foreground">Nicio activitate pentru acest SA</div>
                           ) : (
-                            availableActivityItems.map((item) => (
-                              <SelectItem key={item.id} value={item.id}>{item.activityName}</SelectItem>
-                            ))
+                            <>
+                              {isInitialActivitySelectionPreserved && (
+                                <>
+                                  <SelectItem value={LEGACY_INITIAL_ACTIVITY_SELECT_VALUE}>
+                                    {initialActivityTitle}
+                                  </SelectItem>
+                                  <SelectSeparator />
+                                </>
+                              )}
+                              {availableActivityItems.map((item) => (
+                                <SelectItem key={item.id} value={item.id}>{item.activityName}</SelectItem>
+                              ))}
+                            </>
                           )}
                         </SelectContent>
                       </Select>
