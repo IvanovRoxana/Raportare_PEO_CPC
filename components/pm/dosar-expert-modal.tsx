@@ -568,6 +568,7 @@ export function DosarExpertModal({
     initialFocus?.documentId
     && (
       initialFocus.issueType === 'pm_unlock_requests'
+      || initialFocus.issueType === 'pm_unlock_requested'
       || initialFocus.issueType === 'eligibility_manual_review'
       || initialFocus.issueType === 'eligibility_ai_review'
       || initialFocus.issueType === 'eligibility_rules'

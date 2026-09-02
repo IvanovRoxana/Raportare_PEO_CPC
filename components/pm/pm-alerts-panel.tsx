@@ -259,7 +259,16 @@ export function PmAlertsPanel({
                         </div>
                       </div>
                       <div className="flex flex-wrap justify-end gap-2">
-                        <Button variant="outline" size="sm" onClick={() => openDocument(document)} disabled={documentActionId !== null}>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => (
+                            onOpenDossier
+                              ? onOpenDossier(document.uploadedByExpertId, { documentId: document.id, activityId: document.sourceActivityId, issueType: 'pm_unlock_requests' })
+                              : openDocument(document)
+                          )}
+                          disabled={documentActionId !== null}
+                        >
                           {documentActionId === `open-${document.id}` ? <FileWarning className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                           Deschide
                         </Button>
@@ -275,7 +284,7 @@ export function PmAlertsPanel({
                           {documentActionId === `approve-unlock-${document.id}` ? <FileWarning className="h-4 w-4" /> : <ShieldCheck className="h-4 w-4" />}
                           Aproba deblocarea
                         </Button>
-                        <Button variant="ghost" size="sm" onClick={() => onOpenDossier?.(document.uploadedByExpertId, { documentId: document.id, activityId: document.sourceActivityId, issueType: 'pm_unlock_requested' })}>
+                        <Button variant="ghost" size="sm" onClick={() => onOpenDossier?.(document.uploadedByExpertId, { documentId: document.id, activityId: document.sourceActivityId, issueType: 'pm_unlock_requests' })}>
                           <FolderOpen className="h-4 w-4" />
                           Dosar
                         </Button>

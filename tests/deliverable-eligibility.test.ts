@@ -44,6 +44,7 @@ const eligibilityRouteSource = readFileSync(new URL('../app/api/ai/check-deliver
 const eventReportRouteSource = readFileSync(new URL('../app/api/ai/generate-event-report/route.ts', import.meta.url), 'utf8');
 const deliverableTypesSource = readFileSync(new URL('../lib/deliverable-types.ts', import.meta.url), 'utf8');
 const pmDossierModalSource = readFileSync(new URL('../components/pm/dosar-expert-modal.tsx', import.meta.url), 'utf8');
+const pmAlertsPanelSource = readFileSync(new URL('../components/pm/pm-alerts-panel.tsx', import.meta.url), 'utf8');
 const backendDataHooksSource = readFileSync(new URL('../hooks/use-backend-data.ts', import.meta.url), 'utf8');
 const awsStoreSource = readFileSync(new URL('../lib/aws-store.ts', import.meta.url), 'utf8');
 const amplifyDataResourceSource = readFileSync(new URL('../amplify/data/resource.ts', import.meta.url), 'utf8');
@@ -534,6 +535,13 @@ test('dosarul PM randeaza preview DOCX ca HTML cand fisierul poate fi preluat', 
   assert.match(pmDossierModalSource, /setDocxPreviewHtml\(buildDocxPreviewHtml\(converted\.value\)\)/);
   assert.match(pmDossierModalSource, /srcDoc=\{docxPreviewHtml\}/);
   assert.match(pmDossierModalSource, /sandbox=""/);
+});
+
+test('deblocarea PM deschide dosarul targetat cu preview si formular de reincadrare', () => {
+  assert.match(pmDossierModalSource, /initialFocus\.issueType === 'pm_unlock_requests'/);
+  assert.match(pmDossierModalSource, /initialFocus\.issueType === 'pm_unlock_requested'/);
+  assert.match(pmDossierModalSource, /<CardTitle className="text-sm">Reincadrare PM<\/CardTitle>/);
+  assert.match(pmAlertsPanelSource, /onOpenDossier\(document\.uploadedByExpertId, \{ documentId: document\.id, activityId: document\.sourceActivityId, issueType: 'pm_unlock_requests' \}\)/);
 });
 
 test('formularul trimite toate livrabilele incarcate din grupul activitatii la eligibilitate', () => {
