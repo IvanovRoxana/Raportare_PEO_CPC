@@ -83,7 +83,7 @@ interface DosarExpertModalProps {
   onRejectMonth?: () => Promise<void> | void;
   onApproveMonth?: () => Promise<void> | void;
   onApproveActivity?: (activities: Activity[]) => Promise<void> | void;
-  onRequestActivityClarification?: (activities: Activity[]) => Promise<void> | void;
+  onRequestActivityClarification?: (activities: Activity[]) => Promise<{ pmNotes?: string } | void> | { pmNotes?: string } | void;
   onCreatePmReviewCase?: (input: PmReviewCaseCreateInput) => Promise<unknown> | void;
   onApprovePmUnlock?: (document: DocumentMetadata) => Promise<void> | void;
   clarificationThreads?: PmClarificationThread[];
@@ -324,7 +324,7 @@ export function DosarExpertModal({
   const [docxPreviewHtml, setDocxPreviewHtml] = useState<string | null>(null);
   const [docxPreviewError, setDocxPreviewError] = useState<string | null>(null);
   const [inlinePreviewLoading, setInlinePreviewLoading] = useState(false);
-  const [locallyApprovedActivityIds, setLocallyApprovedActivityIds] = useState<Set<string>>(new Set());
+  const [localActivityReviewOverrides, setLocalActivityReviewOverrides] = useState<Map<string, Pick<Activity, 'status' | 'pmNotes'>>>(new Map());
   const [selectedEligibilityCategories, setSelectedEligibilityCategories] = useState<string[]>([]);
   const [eligibilitySaCode, setEligibilitySaCode] = useState('');
   const [eligibilityCatalogActivityId, setEligibilityCatalogActivityId] = useState('');
@@ -373,7 +373,7 @@ export function DosarExpertModal({
   }, [initialFocus, open]);
 
   useEffect(() => {
-    if (!open) setLocallyApprovedActivityIds(new Set());
+    if (!open) setLocalActivityReviewOverrides(new Map());
   }, [open]);
 
   // Calculate stats
@@ -423,13 +423,12 @@ export function DosarExpertModal({
   };
 
   const displayActivities = useMemo(() => {
-    if (locallyApprovedActivityIds.size === 0) return activities;
-    return activities.map((activity) => (
-      locallyApprovedActivityIds.has(activity.id)
-        ? { ...activity, status: 'approved' as const, pmNotes: '' }
-        : activity
-    ));
-  }, [activities, locallyApprovedActivityIds]);
+    if (localActivityReviewOverrides.size === 0) return activities;
+    return activities.map((activity) => {
+      const override = localActivityReviewOverrides.get(activity.id);
+      return override ? { ...activity, ...override } : activity;
+    });
+  }, [activities, localActivityReviewOverrides]);
 
   // Group activities by SA and consolidate multi-day entries from the same pontaj thread.
   const activitiesByType = useMemo(() => {
@@ -991,18 +990,30 @@ export function DosarExpertModal({
   const runActivityAction = async (
     action: 'approve' | 'clarification',
     group: DossierActivityGroup,
-    handler?: (activities: Activity[]) => Promise<void> | void
+    handler?: (activities: Activity[]) => Promise<{ pmNotes?: string } | void> | { pmNotes?: string } | void
   ) => {
     if (!handler) return;
 
     setActivityActionId(`${action}-${group.key}`);
     setDocumentError(null);
     try {
-      await handler(group.activities);
+      const result = await handler(group.activities);
       if (action === 'approve') {
-        setLocallyApprovedActivityIds((current) => {
-          const next = new Set(current);
-          group.activities.forEach((activity) => next.add(activity.id));
+        setLocalActivityReviewOverrides((current) => {
+          const next = new Map(current);
+          group.activities.forEach((activity) => next.set(activity.id, { status: 'approved', pmNotes: '' }));
+          return next;
+        });
+      } else if (action === 'clarification') {
+        const pmNotes = result && 'pmNotes' in result && result.pmNotes
+          ? result.pmNotes
+          : 'Clarificari solicitate de PM pentru aceasta activitate.';
+        setLocalActivityReviewOverrides((current) => {
+          const next = new Map(current);
+          group.activities.forEach((activity) => next.set(activity.id, {
+            status: 'sent',
+            pmNotes,
+          }));
           return next;
         });
       }
@@ -1552,14 +1563,24 @@ export function DosarExpertModal({
                             {groups.map(group => {
                               const datesLabel = group.dates.map(formatActivityDay).join(', ');
                               const fullDatesLabel = group.dates.map(formatActivityDate).join(', ');
-                              const isApproved = group.activities.every((activity) => activity.status === 'approved' || locallyApprovedActivityIds.has(activity.id));
+                              const isApproved = group.activities.every((activity) => activity.status === 'approved');
                               const hasClarification = !isApproved && group.activities.some((activity) => Boolean(activity.pmNotes));
                               const approveActionId = `approve-${group.key}`;
                               const clarificationActionId = `clarification-${group.key}`;
                               const caseActionId = `case-${group.key}`;
 
                               return (
-                                <div id={`dossier-activity-${group.representative.id}`} key={group.key} className="rounded-lg border border-slate-200 bg-white p-3 text-xs shadow-sm">
+                                <div
+                                  id={`dossier-activity-${group.representative.id}`}
+                                  key={group.key}
+                                  className={`rounded-lg border p-3 text-xs shadow-sm ${
+                                    hasClarification
+                                      ? 'border-amber-200 bg-amber-50/40'
+                                      : isApproved
+                                        ? 'border-green-200 bg-green-50/40'
+                                        : 'border-slate-200 bg-white'
+                                  }`}
+                                >
                                   <div className="flex justify-between items-start gap-3">
                                   <div className="min-w-0 flex-1">
                                     <div className="flex gap-2">
@@ -1622,7 +1643,7 @@ export function DosarExpertModal({
                                       <GdprPmSummary activity={group.representative} />
                                     )}
                                     {hasClarification && (
-                                      <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] text-amber-800">
+                                      <div className="mt-2 rounded-md border border-amber-200 bg-amber-100/70 px-2 py-1 text-[10px] text-amber-900">
                                         Clarificare PM: {group.activities.find((activity) => activity.pmNotes)?.pmNotes}
                                       </div>
                                     )}
@@ -1632,6 +1653,11 @@ export function DosarExpertModal({
                                     {isApproved && (
                                       <Badge variant="outline" className="border-green-200 bg-green-50 text-[10px] text-green-700">
                                         conform
+                                      </Badge>
+                                    )}
+                                    {hasClarification && (
+                                      <Badge variant="outline" className="border-amber-200 bg-amber-100 text-[10px] text-amber-800">
+                                        clarificari cerute
                                       </Badge>
                                     )}
                                   </div>
@@ -1656,8 +1682,8 @@ export function DosarExpertModal({
                                         size="sm"
                                         className="h-7 px-2 text-[10px]"
                                         onClick={() => runActivityAction('clarification', group, onRequestActivityClarification)}
-                                        disabled={!onRequestActivityClarification || activityActionId !== null}
-                                        title="Cere clarificari pentru aceasta activitate"
+                                        disabled={!onRequestActivityClarification || activityActionId !== null || hasClarification || isApproved}
+                                        title={hasClarification ? 'Clarificarile au fost deja cerute pentru aceasta activitate' : 'Cere clarificari pentru aceasta activitate'}
                                       >
                                         {activityActionId === clarificationActionId ? <Loader2 className="h-3 w-3 animate-spin" /> : <MessageSquare className="h-3 w-3" />}
                                         Cere clarificari

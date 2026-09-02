@@ -949,6 +949,7 @@ export default function PMDashboard() {
       }));
     }
     await refreshMonthActivities();
+    return { pmNotes: pmNote };
   };
 
   const requestDocumentClarification = async (documentMeta: DocumentMetadata) => {
