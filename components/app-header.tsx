@@ -16,7 +16,7 @@ import {
   UsersRound,
   type LucideIcon,
 } from 'lucide-react';
-import { getSignedInUser, type AppRole } from '@/lib/aws/auth';
+import { getSignedInUser, type AppRole, type AppUser } from '@/lib/aws/auth';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import {
@@ -26,6 +26,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { UserMenu } from '@/components/user-menu';
+import { resolveDashboardAccess } from '@/lib/pm-dashboard';
 
 type HeaderNavItem = {
   label: string;
@@ -107,9 +108,21 @@ function canShowItem(item: HeaderNavItem, roles: AppRole[]) {
   return item.roles.some((role) => roles.includes(role));
 }
 
+function canUseDashboardSelector(user: AppUser | null) {
+  if (!user) return false;
+
+  const { canUseExpert, canUsePm, canUseAchizitii } = resolveDashboardAccess({ roles: user.roles });
+  const canUseAdmin = user.roles.includes('admin');
+  const canUseGt = user.category === 'gt' || canUsePm || canUseAdmin;
+  const availableDashboards = [canUseExpert, canUsePm, canUseGt, canUseAchizitii, canUseAdmin].filter(Boolean).length;
+
+  return availableDashboards > 1;
+}
+
 export function AppHeader() {
   const pathname = usePathname() || '/';
   const [roles, setRoles] = useState<AppRole[] | null>(null);
+  const [showDashboardSelector, setShowDashboardSelector] = useState(false);
   const [hasCheckedUser, setHasCheckedUser] = useState(false);
 
   useEffect(() => {
@@ -120,6 +133,7 @@ export function AppHeader() {
       .then((user) => {
         if (!isMounted) return;
         setRoles(user?.roles ?? null);
+        setShowDashboardSelector(canUseDashboardSelector(user));
       })
       .finally(() => {
         if (isMounted) setHasCheckedUser(true);
@@ -132,8 +146,11 @@ export function AppHeader() {
 
   const visibleNavItems = useMemo(() => {
     if (!hasCheckedUser || !roles) return [];
-    return headerNavItems.filter((item) => canShowItem(item, roles));
-  }, [hasCheckedUser, roles]);
+    return headerNavItems.filter((item) => {
+      if (item.href === '/auth/select-dashboard' && !showDashboardSelector) return false;
+      return canShowItem(item, roles);
+    });
+  }, [hasCheckedUser, roles, showDashboardSelector]);
 
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-white/95 shadow-sm backdrop-blur">
