@@ -19,3 +19,10 @@ test('newsletterul colegilor citeste livrabilele prin indexul activityId', () =>
     /scanTable<RawItem>\('Deliverable'[\s\S]*FilterExpression:\s*'#year = :year AND #month = :month'/,
   );
 });
+
+test('newsletterul colegilor ascunde eroarea bruta AccessDenied de la DynamoDB', () => {
+  assert.match(source, /function isDynamoAccessDenied/);
+  assert.match(source, /AccessDeniedException\|not authorized to perform\|access denied/);
+  assert.match(source, /DYNAMO_ACCESS_DENIED_MESSAGE/);
+  assert.match(source, /COGNITO_SYNC_AWS_\*/);
+});

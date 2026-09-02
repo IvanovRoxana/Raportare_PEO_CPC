@@ -35,6 +35,8 @@ const cognitoEndpoint = `https://cognito-idp.${region}.amazonaws.com/`;
 const dynamoEndpoint = `https://dynamodb.${region}.amazonaws.com/`;
 const dynamoHost = `dynamodb.${region}.amazonaws.com`;
 const tableNameCache: Record<string, string> = {};
+const DYNAMO_ACCESS_DENIED_MESSAGE =
+  'Nu am putut citi activitatile colegilor din DynamoDB. Verifica permisiunile COGNITO_SYNC_AWS_* pentru Scan/Query pe tabelele si indexurile Activity, Expert si Deliverable.';
 
 function hasAllowedOrigin(request: Request) {
   const origin = request.headers.get('origin');
@@ -75,6 +77,13 @@ function sha256(value: string) {
 
 function hmac(key: Buffer | string, value: string) {
   return createHmac('sha256', key).update(value, 'utf8').digest();
+}
+
+function isDynamoAccessDenied(error: unknown) {
+  const serialized = error instanceof Error
+    ? `${error.name} ${error.message}`
+    : JSON.stringify(error);
+  return /AccessDeniedException|not authorized to perform|access denied/i.test(serialized || '');
 }
 
 function getSignatureKey(secretAccessKey: string, dateStamp: string) {
@@ -146,7 +155,11 @@ async function callSignedDynamo<T>(target: string, payload: Record<string, unkno
 
   if (!response.ok) {
     const errorBody = await response.json().catch(() => null);
-    throw new ColleagueOverviewRouteError(errorBody?.message || errorBody?.__type || `${target} failed.`, response.status);
+    const message = errorBody?.message || errorBody?.__type || `${target} failed.`;
+    if (isDynamoAccessDenied(message)) {
+      throw new ColleagueOverviewRouteError(DYNAMO_ACCESS_DENIED_MESSAGE, 503);
+    }
+    throw new ColleagueOverviewRouteError(message, response.status);
   }
 
   return response.json() as Promise<T>;
