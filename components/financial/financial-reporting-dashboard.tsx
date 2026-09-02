@@ -62,6 +62,11 @@ type LeaveGridDraft = {
   period: string;
 };
 
+type StoredLeaveGridDrafts = {
+  drafts?: Record<string, LeaveGridDraft>;
+  dirtyKeys?: string[];
+};
+
 const MONTHS = [
   'Ianuarie', 'Februarie', 'Martie', 'Aprilie', 'Mai', 'Iunie',
   'Iulie', 'August', 'Septembrie', 'Octombrie', 'Noiembrie', 'Decembrie',
@@ -126,6 +131,42 @@ function numericCell(value: string) {
 
 function formatNumericCell(value: number) {
   return value ? compactHours(value) : '0';
+}
+
+function emptyLeaveGridDraft(): LeaveGridDraft {
+  return {
+    peoNorm: '0',
+    peoDays: '0',
+    peoHours: '0',
+    cpcNorm: '0',
+    cpcDays: '0',
+    cpcHours: '0',
+    period: '',
+  };
+}
+
+function readStoredLeaveGridDrafts(storageKey: string): StoredLeaveGridDrafts {
+  if (typeof window === 'undefined') return {};
+  try {
+    const stored = window.sessionStorage.getItem(storageKey);
+    return stored ? JSON.parse(stored) as StoredLeaveGridDrafts : {};
+  } catch {
+    return {};
+  }
+}
+
+function buildLeaveGridDraft(row: FinancialTimesheetRow, normRow?: NormPanelRow): LeaveGridDraft {
+  const peoNorm = normRow?.peoDailyCap ?? parseDailyHoursLabel(row.peoNorm);
+  const cpcNorm = normRow?.cpcFormulaHours ?? Math.max(0, parseDailyHoursLabel(row.cimNorm) - peoNorm);
+  return {
+    peoNorm: formatNumericCell(peoNorm),
+    peoDays: formatNumericCell(peoNorm > 0 ? row.peoLeave / peoNorm : 0),
+    peoHours: formatNumericCell(row.peoLeave),
+    cpcNorm: formatNumericCell(cpcNorm),
+    cpcDays: formatNumericCell(cpcNorm > 0 ? row.concordiaLeave / cpcNorm : 0),
+    cpcHours: formatNumericCell(row.concordiaLeave),
+    period: formatLeavePeriod(getPeoLeaveDates(row.leaveEntries)),
+  };
 }
 
 function formatLeavePeriod(dates: string[]) {
@@ -341,6 +382,7 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
   const [hourlyRateDrafts, setHourlyRateDrafts] = useState<Record<string, string>>({});
   const [savingHourlyRate, setSavingHourlyRate] = useState<string | null>(null);
   const [leaveGridDrafts, setLeaveGridDrafts] = useState<Record<string, LeaveGridDraft>>({});
+  const [dirtyLeaveGridRows, setDirtyLeaveGridRows] = useState<Set<string>>(() => new Set());
   const [savingLeaveRow, setSavingLeaveRow] = useState<string | null>(null);
   const [leaveForm, setLeaveForm] = useState({
     expertId: '',
@@ -365,6 +407,7 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
   const { create: createFinancialPersonLink, update: updateFinancialPersonLink } = useFinancialPersonLinkMutations();
   const enabled = mode === 'timesheets' ? isFinancialTimesheetsEnabledClient() : isFinancialLeaveEnabledClient();
   const isLoading = loadingExperts || loadingActivities || loadingProjects || loadingEntries || loadingContracts || loadingLinks || loadingLeave;
+  const leaveGridDraftStorageKey = `financial-leave-grid-drafts-v2-${year}-${String(month + 1).padStart(2, '0')}`;
 
   useEffect(() => {
     setHourlyRateDrafts((current) => {
@@ -489,24 +532,39 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
 
   useEffect(() => {
     if (mode !== 'leave') return;
-    const nextDrafts: Record<string, LeaveGridDraft> = {};
-    for (const row of visibleRows) {
-      const key = leaveGridRowKey(row);
-      const normRow = row.expertId ? normPanelByExpert.get(row.expertId) : undefined;
-      const peoNorm = normRow?.peoDailyCap ?? parseDailyHoursLabel(row.peoNorm);
-      const cpcNorm = normRow?.cpcFormulaHours ?? Math.max(0, parseDailyHoursLabel(row.cimNorm) - peoNorm);
-      nextDrafts[key] = {
-        peoNorm: formatNumericCell(peoNorm),
-        peoDays: formatNumericCell(peoNorm > 0 ? row.peoLeave / peoNorm : 0),
-        peoHours: formatNumericCell(row.peoLeave),
-        cpcNorm: formatNumericCell(cpcNorm),
-        cpcDays: formatNumericCell(cpcNorm > 0 ? row.concordiaLeave / cpcNorm : 0),
-        cpcHours: formatNumericCell(row.concordiaLeave),
-        period: formatLeavePeriod(getPeoLeaveDates(row.leaveEntries)),
-      };
+    const stored = readStoredLeaveGridDrafts(leaveGridDraftStorageKey);
+    if (stored.drafts) {
+      setLeaveGridDrafts(stored.drafts);
+    } else {
+      setLeaveGridDrafts({});
     }
-    setLeaveGridDrafts(nextDrafts);
-  }, [mode, normPanelByExpert, visibleRows]);
+    setDirtyLeaveGridRows(new Set(stored.dirtyKeys ?? []));
+  }, [leaveGridDraftStorageKey, mode]);
+
+  useEffect(() => {
+    if (mode !== 'leave') return;
+    setLeaveGridDrafts((current) => {
+      const nextDrafts = { ...current };
+      for (const row of visibleRows) {
+        const key = leaveGridRowKey(row);
+        if (dirtyLeaveGridRows.has(key) && current[key]) continue;
+        nextDrafts[key] = buildLeaveGridDraft(row, row.expertId ? normPanelByExpert.get(row.expertId) : undefined);
+      }
+      return nextDrafts;
+    });
+  }, [dirtyLeaveGridRows, mode, normPanelByExpert, visibleRows]);
+
+  useEffect(() => {
+    if (mode !== 'leave' || typeof window === 'undefined') return;
+    try {
+      window.sessionStorage.setItem(leaveGridDraftStorageKey, JSON.stringify({
+        drafts: leaveGridDrafts,
+        dirtyKeys: [...dirtyLeaveGridRows],
+      }));
+    } catch {
+      // Draft caching is best effort; persisted LeaveEntry remains the source of truth.
+    }
+  }, [dirtyLeaveGridRows, leaveGridDraftStorageKey, leaveGridDrafts, mode]);
 
   const leaveGridTotals = useMemo(() => visibleRows.reduce((totals, row) => {
     const draft = leaveGridDrafts[leaveGridRowKey(row)];
@@ -626,16 +684,9 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
 
   const updateLeaveGridDraft = (row: FinancialTimesheetRow, field: keyof LeaveGridDraft, value: string) => {
     const key = leaveGridRowKey(row);
+    setDirtyLeaveGridRows((current) => new Set(current).add(key));
     setLeaveGridDrafts((current) => {
-      const previous = current[key] ?? {
-        peoNorm: '0',
-        peoDays: '0',
-        peoHours: '0',
-        cpcNorm: '0',
-        cpcDays: '0',
-        cpcHours: '0',
-        period: '',
-      };
+      const previous = current[key] ?? emptyLeaveGridDraft();
       const next = { ...previous, [field]: value };
       if (field === 'peoNorm' || field === 'peoDays') {
         const nextPeoNorm = numericCell(next.peoNorm);
@@ -655,16 +706,9 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
 
   const updateLeaveGridPeriod = (row: FinancialTimesheetRow, dates: string[]) => {
     const key = leaveGridRowKey(row);
+    setDirtyLeaveGridRows((current) => new Set(current).add(key));
     setLeaveGridDrafts((current) => {
-      const previous = current[key] ?? {
-        peoNorm: '0',
-        peoDays: '0',
-        peoHours: '0',
-        cpcNorm: '0',
-        cpcDays: '0',
-        cpcHours: '0',
-        period: '',
-      };
+      const previous = current[key] ?? emptyLeaveGridDraft();
       const next = {
         ...previous,
         period: formatLeavePeriod(dates),
@@ -821,6 +865,18 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
           savedLeaveCount += 1;
         }
       }
+      setLeaveGridDrafts((current) => ({
+        ...current,
+        [key]: {
+          ...draft,
+          peoDays: formatNumericCell(peoDays),
+          peoHours: formatNumericCell(peoHours),
+          cpcDays: formatNumericCell(cpcDays),
+          cpcHours: formatNumericCell(cpcHours),
+          period: formatLeavePeriod(replacementDates),
+        },
+      }));
+      setDirtyLeaveGridRows((current) => new Set(current).add(key));
       await refreshLeaveEntries();
       setVerificationMessage(
         savedLeaveCount > 0
@@ -1261,15 +1317,7 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
                   <tbody>
                     {visibleRows.map((row) => {
                       const key = leaveGridRowKey(row);
-                      const draft = leaveGridDrafts[key] ?? {
-                        peoNorm: '0',
-                        peoDays: '0',
-                        peoHours: '0',
-                        cpcNorm: '0',
-                        cpcDays: '0',
-                        cpcHours: '0',
-                        period: '',
-                      };
+                      const draft = leaveGridDrafts[key] ?? emptyLeaveGridDraft();
                       const hasDraftLeave = row.leaveEntries.some((leave) => leave.status !== 'VALIDATED' && leave.status !== 'REJECTED');
                       const inputBaseClass = 'h-7 w-full min-w-0 rounded-sm border border-transparent bg-white/70 px-1 text-center text-[11px] tabular-nums shadow-none hover:border-slate-300 hover:bg-white focus-visible:border-primary focus-visible:bg-white focus-visible:ring-1 focus-visible:ring-primary disabled:bg-transparent';
                       return (
