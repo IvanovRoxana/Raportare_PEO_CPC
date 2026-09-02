@@ -123,6 +123,7 @@ function contractDefaults(row?: FinancialHrValidationRow, expert?: Expert, contr
 }
 
 export function FinancialEmployeesDashboard() {
+  const today = new Date();
   const searchParams = useSearchParams();
   const { experts, isLoading: loadingExperts } = useExperts({ includeInactive: true });
   const { contracts, isLoading: loadingContracts } = useAllExpertNormContracts();
@@ -130,8 +131,8 @@ export function FinancialEmployeesDashboard() {
   const { create: createExpert, update: updateExpert } = useExpertMutations();
   const { create: createContract, update: updateContract } = useExpertNormContractMutations();
   const { create: createLink, update: updateLink } = useFinancialPersonLinkMutations();
-  const [month, setMonth] = useState(5);
-  const [year, setYear] = useState(2026);
+  const [month, setMonth] = useState(() => today.getMonth());
+  const [year, setYear] = useState(() => today.getFullYear());
   const [search, setSearch] = useState('');
   const [onlyIssues, setOnlyIssues] = useState(true);
   const [selectedRowId, setSelectedRowId] = useState('');
