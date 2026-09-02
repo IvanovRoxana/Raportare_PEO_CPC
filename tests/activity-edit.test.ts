@@ -345,6 +345,44 @@ test('editarea unei singure zile o desprinde din serie si pastreaza celelalte zi
   assert.equal(submitted.find((item) => item.id === 'activity-5')?.periodGroupId, periodGroupId);
 });
 
+test('editarea unei singure zile pastreaza livrabilul adaugat pe ziua desprinsa din serie', () => {
+  const periodGroupId = 'activity-period:period-1';
+  const newDeliverable = deliverable('deliverable-26', { documentId: 'document-26' });
+  const groupMembers = [
+    activity('activity-25', { date: '2026-08-25', hours: 8, periodGroupId, title: 'Activitate veche' }),
+    activity('activity-26', { date: '2026-08-26', hours: 8, periodGroupId, title: 'Activitate veche' }),
+    activity('activity-27', { date: '2026-08-27', hours: 8, periodGroupId, title: 'Activitate veche' }),
+  ];
+  const submitted = buildSubmittedActivitiesForEdit(
+    groupMembers[1],
+    [
+      activity('activity-26', {
+        date: '2026-08-26',
+        hours: 8,
+        periodGroupId,
+        title: 'Activitate modificata',
+        deliverables: [newDeliverable],
+      }),
+      activity('generated-25', { date: '2026-08-25', hours: 8, periodGroupId, title: 'Activitate modificata' }),
+      activity('generated-27', { date: '2026-08-27', hours: 8, periodGroupId, title: 'Activitate modificata' }),
+    ],
+    groupMembers.map((item) => item.date),
+    Object.fromEntries(groupMembers.map((item) => [item.date, String(item.hours)])),
+    groupMembers,
+    'expert-1',
+    (value, fallback) => String(value ?? fallback),
+    'single',
+  );
+
+  const editedDay = submitted.find((item) => item.id === 'activity-26');
+  const otherDays = submitted.filter((item) => item.id !== 'activity-26');
+
+  assert.notEqual(editedDay?.periodGroupId, periodGroupId);
+  assert.equal(editedDay?.deliverables?.[0]?.documentId, 'document-26');
+  assert.deepEqual(otherDays.map((item) => item.deliverables ?? []), [[], []]);
+  assert.ok(otherDays.every((item) => item.periodGroupId === periodGroupId));
+});
+
 test('editarea intregii serii propaga activitatea si livrabilele, pastrand datele specifice fiecarei zile', () => {
   const periodGroupId = 'activity-period:period-1';
   const firstDeliverable = deliverable('deliverable-1');

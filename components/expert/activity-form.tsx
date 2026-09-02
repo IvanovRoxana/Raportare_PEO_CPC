@@ -137,6 +137,10 @@ function resolveSavedSlotType(deliverableType?: string, category?: string): Deli
     : 'livrabil';
 }
 
+function isMainDeliverableSlot(deliverable: Pick<DeliverableSlot, 'slotType'>) {
+  return !deliverable.slotType || deliverable.slotType === 'livrabil' || deliverable.slotType === 'main';
+}
+
 type DuplicateDeliverableActivityChoice = {
   id: string;
   date: string;
@@ -2242,7 +2246,7 @@ export function ActivityForm({
   }, [collaboratorSuggestions]);
 
   // Filter deliverables by type
-  const mainDeliverables = deliverables.filter(d => !d.slotType || d.slotType === 'livrabil');
+  const mainDeliverables = deliverables.filter(isMainDeliverableSlot);
   const mainDeliverablesForEligibility = mainDeliverables.filter((d) => d.uploaded && !d.isPhoto);
   const eligibilityWorkingGroupId = initialActivity?.workingGroupId || initialActivity?.periodGroupId;
   const eligibilityPeriodGroupId = initialActivity?.periodGroupId;

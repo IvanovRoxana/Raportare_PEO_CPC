@@ -59,6 +59,14 @@ test('formularul pastreaza tipul livrabilului nou incarcat in aceleasi campuri c
   assert.match(activityFormSource, /category: resolvedDeliverableType,\s*deliverableType: resolvedDeliverableType,/);
 });
 
+test('formularul afiseaza aliasul salvat main ca livrabil principal', () => {
+  assert.match(
+    activityFormSource,
+    /function isMainDeliverableSlot\(deliverable: Pick<DeliverableSlot, 'slotType'>\) \{\s*return !deliverable\.slotType \|\| deliverable\.slotType === 'livrabil' \|\| deliverable\.slotType === 'main';\s*\}/,
+  );
+  assert.match(activityFormSource, /const mainDeliverables = deliverables\.filter\(isMainDeliverableSlot\)/);
+});
+
 test('formularul salveaza activitatea cu livrabil pending cand uploadul S3 esueaza', () => {
   assert.match(activityFormSource, /const uploadFailures: string\[\] = \[\]/);
   assert.match(activityFormSource, /Fisierul nu mai este disponibil in formular\. Reincarca livrabilul\./);
