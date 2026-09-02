@@ -98,6 +98,8 @@ const ADMINISTRATIVE_TERMS = [
 const ADMINISTRATIVE_FIRST_LINE_PATTERNS = [
   /^data\b/i,
   /^dat(a|ă)\s*[:.-]/i,
+  /^ora\b/i,
+  /^interval\b/i,
   /^loca(t|ț)ie\b/i,
   /^locul\b/i,
   /^participan(t|ț)/i,
@@ -111,6 +113,13 @@ const ADMINISTRATIVE_FIRST_LINE_PATTERNS = [
   /^agenda\b/i,
   /^prezen(t|ț)(a|ă)\b/i,
   /^tabel\b/i,
+];
+
+const MEETING_TITLE_PATTERNS = [
+  /^(minut(a|ă)|minutele)\b/i,
+  /^proces[- ]?verbal\b/i,
+  /^(înt(a|â)lnire|int(a|â)lnire|ședin(t|ț)(a|ă)|sedin(t|ț)(a|ă)|reuniune|mas(a|ă)\s+rotund(a|ă)|workshop|webinar)\b/i,
+  /^agenda\s+(înt(a|â)lnirii|int(a|â)lnirii|ședin(t|ț)ei|sedin(t|ț)ei|reuniunii|discu(t|ț)iilor)\b/i,
 ];
 
 function normalizeSpaces(value: string) {
@@ -150,6 +159,23 @@ function looksAdministrative(line: string) {
     || (ADMINISTRATIVE_TERMS.some((term) => lower.includes(term)) && !hasRelevantTitleTerm(normalized));
 }
 
+function looksLikeMeetingTitle(line: string) {
+  const normalized = normalizeSpaces(line);
+  const words = wordCount(normalized);
+  if (normalized.length < 10 || normalized.length > 180) return false;
+  if (words < 3 || words > 24) return false;
+  if (/[.!?;:]$/.test(normalized)) return false;
+  if (isAdministrativeTitleCandidate(normalized)) return false;
+  if (/^(subiecte|teme|puncte)\s+(discutate|abordate)\b/i.test(normalized) && words <= 4) return false;
+  return MEETING_TITLE_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
+function looksLikeMeetingDocument(lines: string[]) {
+  const firstLines = lines.slice(0, 10);
+  const administrativeCount = firstLines.filter((line) => looksAdministrative(line)).length;
+  return administrativeCount >= 2 || firstLines.some((line) => looksLikeMeetingTitle(line));
+}
+
 export function isAdministrativeTitleCandidate(line?: string | null) {
   const normalized = normalizeSpaces(line || '');
   const lower = normalized.toLowerCase();
@@ -184,6 +210,7 @@ function looksLikeContinuation(line: string) {
   if (isGenericTitleLine(normalized)) return false;
   if (isAdministrativeTitleCandidate(normalized)) return false;
   if (wordCount(normalized) > 16) return false;
+  if (/^(\d+[\).]|[-•*])\s+/.test(normalized)) return false;
   if (/[.!?]$/.test(normalized)) return false;
   if (/^(ianuarie|februarie|martie|aprilie|mai|iunie|iulie|august|septembrie|octombrie|noiembrie|decembrie)\s+\d{4}$/i.test(normalized)) return false;
   if (/^(aprobat|avizat|întocmit|intocmit|data|semn(a|ă)tura)/i.test(normalized)) return false;
@@ -243,6 +270,41 @@ function uniqueCandidates(candidates: string[]) {
   return result;
 }
 
+export function detectMomTitleCandidate(lines: string[]) {
+  if (!looksLikeMeetingDocument(lines)) return null;
+
+  const scanLimit = Math.min(lines.length, Math.max(14, Math.ceil(lines.length * 0.75)));
+  const candidates: Array<{ value: string; score: number; index: number }> = [];
+
+  for (let index = 0; index < scanLimit; index += 1) {
+    const line = lines[index];
+    if (!looksLikeMeetingTitle(line)) continue;
+
+    let value = line;
+    let score = 70;
+    const previousAdminLines = lines.slice(0, index).filter((candidate) => looksAdministrative(candidate)).length;
+    const nextLine = lines[index + 1];
+
+    if (previousAdminLines >= 2) score += 12;
+    if (index <= 12) score += 8;
+    if (/^(minut(a|ă)|minutele|proces[- ]?verbal)\b/i.test(line)) score += 12;
+    if (nextLine && looksLikeContinuation(nextLine)) {
+      value = `${line} ${nextLine}`;
+      score += 4;
+    }
+
+    candidates.push({ value, score, index });
+  }
+
+  const ranked = uniqueCandidates(
+    candidates
+      .sort((a, b) => b.score - a.score || a.index - b.index)
+      .map((candidate) => candidate.value),
+  );
+
+  return ranked[0] || null;
+}
+
 export function formatTitleFromFilename(fileName?: string | null) {
   const withoutExtension = normalizeSpaces(String(fileName || '').replace(/\.[^.]+$/, ''));
   return withoutExtension
@@ -272,6 +334,16 @@ export function suggestTitleFromFirstPage(text?: string | null): TitleSuggestion
       confidence: 'low',
       alternatives: [],
       reason: 'Nu există text extras din prima pagină.',
+    };
+  }
+
+  const momTitle = detectMomTitleCandidate(lines);
+  if (momTitle) {
+    return {
+      suggestedTitle: momTitle,
+      confidence: 'high',
+      alternatives: [],
+      reason: 'Candidat MoM selectat după ignorarea metadatelor de întâlnire din prima pagină.',
     };
   }
 

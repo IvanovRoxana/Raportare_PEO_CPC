@@ -11,8 +11,8 @@ export const dynamic = 'force-dynamic';
 const titleSchema = z.object({
   suggestedTitle: z.string().nullable(),
   confidence: z.enum(['high', 'medium', 'low']),
-  alternatives: z.array(z.string()).default([]),
-  reason: z.string().optional(),
+  alternatives: z.array(z.string()),
+  reason: z.string(),
 });
 
 function trimText(value: unknown, maxChars: number) {

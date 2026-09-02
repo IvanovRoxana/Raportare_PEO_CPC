@@ -250,6 +250,37 @@ test('does not suggest meeting date and location metadata as a document title', 
   assert.equal(detectSuggestedTitleFromText(firstPage), null);
 });
 
+test('detects MoM title after date location and participant metadata', () => {
+  const firstPage = [
+    'Data: 12.03.2026',
+    'Locatie: Microsoft Teams',
+    'Participanti: experti CPC si reprezentanti federatii',
+    'Semnaturi',
+    'Minuta intalnirii de lucru privind pregatirea consultarilor publice regionale',
+    'Au fost analizate temele propuse pentru dialogul social.',
+  ].join('\n');
+
+  assert.equal(
+    detectSuggestedTitleFromText(firstPage),
+    'Minuta intalnirii de lucru privind pregatirea consultarilor publice regionale',
+  );
+});
+
+test('detects meeting agenda title after MoM metadata', () => {
+  const firstPage = [
+    'Data sedintei: 04.06.2026',
+    'Locatia sedintei: Sediul CPC',
+    'Participanti: echipa proiect',
+    'Agenda intalnirii privind organizarea evenimentelor regionale',
+    '1. Stabilirea etapelor de lucru',
+  ].join('\n');
+
+  assert.equal(
+    detectSuggestedTitleFromText(firstPage),
+    'Agenda intalnirii privind organizarea evenimentelor regionale',
+  );
+});
+
 test('rejects AI title suggestions that are literal administrative metadata', () => {
   const metadataTitle = 'Data ședinței: 04.06.2026 Locația ședinței: Sediul Confederației Patronale Concordia';
   const resolved = resolveDocumentTitleSuggestion({
