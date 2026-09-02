@@ -3752,7 +3752,7 @@ export function ActivityForm({
                   </div>
                 )}
 
-                {!isWorkspaceLayout && activityAutofillError && (
+                {activityAutofillError && (
                   <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
                     {activityAutofillError}
                   </div>
