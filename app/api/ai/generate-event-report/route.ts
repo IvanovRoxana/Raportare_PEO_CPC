@@ -64,19 +64,21 @@ Generează raportul în format JSON cu următoarea structură:
 - nextSteps: Pașii următori stabiliți
 - attachments: Lista anexelor recomandate
 
-Dacă anumite informații lipsesc din descriere, completează-le cu valori plauzibile bazate pe contextul proiectului PEO.`,
+Dacă anumite informații lipsesc din descriere, completează-le cu valori plauzibile bazate pe contextul proiectului PEO.
+Data raportului trebuie sa ramana exact data pontata primita mai sus: ${date}.`,
       output: Output.object({
         schema: EventReportSchema,
       }),
     });
 
     const output = result.output;
+    const normalizedReport = output ? { ...output, eventDate: date } : output;
 
     // Also generate the formatted MOM document text
-    const momText = generateMOMText(output, expertName, date);
+    const momText = generateMOMText(normalizedReport, expertName, date);
 
     return NextResponse.json({ 
-      report: output,
+      report: normalizedReport,
       momText,
       auditId: result.auditId,
     });
@@ -144,7 +146,7 @@ ${report.attachments.map((att, i) => `${i + 1}. ${att}`).join('\n')}
 ---
 
 Întocmit de: ${expertName}
-Data întocmirii: ${new Date().toLocaleDateString('ro-RO')}
+Data întocmirii: ${formattedDate}
 
 Semnătură organizator: _____________________
 

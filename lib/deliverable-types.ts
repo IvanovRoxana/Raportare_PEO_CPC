@@ -61,37 +61,53 @@ export function isEventActivity(activityType: string): boolean {
 // Helper to extract date from document text
 export function extractEventDate(text: string): string | null {
   if (!text) return null;
-  
+
   // Try various Romanian date formats
   const patterns = [
     /(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{4})/,
     /(\d{1,2})\s+(ianuarie|februarie|martie|aprilie|mai|iunie|iulie|august|septembrie|octombrie|noiembrie|decembrie)\s+(\d{4})/i,
   ];
-  
+
   const monthNames: Record<string, string> = {
     'ianuarie': '01', 'februarie': '02', 'martie': '03', 'aprilie': '04',
     'mai': '05', 'iunie': '06', 'iulie': '07', 'august': '08',
     'septembrie': '09', 'octombrie': '10', 'noiembrie': '11', 'decembrie': '12'
   };
-  
-  for (const pattern of patterns) {
-    const match = text.match(pattern);
-    if (match) {
-      if (match[2] && monthNames[match[2].toLowerCase()]) {
-        const day = match[1].padStart(2, '0');
-        const month = monthNames[match[2].toLowerCase()];
-        const year = match[3];
-        return `${year}-${month}-${day}`;
-      } else {
-        const day = match[1].padStart(2, '0');
-        const month = match[2].padStart(2, '0');
-        const year = match[3];
-        return `${year}-${month}-${day}`;
+
+  const parseDate = (source: string) => {
+    for (const pattern of patterns) {
+      const match = source.match(pattern);
+      if (match) {
+        if (match[2] && monthNames[match[2].toLowerCase()]) {
+          const day = match[1].padStart(2, '0');
+          const month = monthNames[match[2].toLowerCase()];
+          const year = match[3];
+          return `${year}-${month}-${day}`;
+        } else {
+          const day = match[1].padStart(2, '0');
+          const month = match[2].padStart(2, '0');
+          const year = match[3];
+          return `${year}-${month}-${day}`;
+        }
       }
     }
-  }
-  
-  return null;
+
+    return null;
+  };
+
+  const eventDateLine = text
+    .split(/\r?\n/)
+    .find((line) => {
+      const normalizedLine = line
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase();
+
+      return /^\s*(data(?:\s+eveniment(?:ului)?)?|eveniment)\s*[:=-]/.test(normalizedLine)
+        && !normalizedLine.includes('intocmirii');
+    });
+
+  return (eventDateLine ? parseDate(eventDateLine) : null) || parseDate(text);
 }
 
 // Helper to check if title is contained in document

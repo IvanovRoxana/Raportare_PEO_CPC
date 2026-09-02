@@ -16,6 +16,7 @@ import {
   protectConcordiaPublicationEligibility,
   validateEligibilitySuggestedSettings,
 } from '../lib/deliverable-eligibility.ts';
+import { extractEventDate } from '../lib/deliverable-types.ts';
 
 const activityCatalogCandidates = [
   {
@@ -40,6 +41,7 @@ const deliverableItemSource = readFileSync(new URL('../components/expert/deliver
 const activityFormSource = readFileSync(new URL('../components/expert/activity-form.tsx', import.meta.url), 'utf8');
 const peoPageSource = readFileSync(new URL('../app/expert/peo/page.tsx', import.meta.url), 'utf8');
 const eligibilityRouteSource = readFileSync(new URL('../app/api/ai/check-deliverable-eligibility/route.ts', import.meta.url), 'utf8');
+const eventReportRouteSource = readFileSync(new URL('../app/api/ai/generate-event-report/route.ts', import.meta.url), 'utf8');
 const deliverableTypesSource = readFileSync(new URL('../lib/deliverable-types.ts', import.meta.url), 'utf8');
 const pmDossierModalSource = readFileSync(new URL('../components/pm/dosar-expert-modal.tsx', import.meta.url), 'utf8');
 const backendDataHooksSource = readFileSync(new URL('../hooks/use-backend-data.ts', import.meta.url), 'utf8');
@@ -143,6 +145,17 @@ test('butonul de selectie fisier nu trimite formularul inainte de upload foto', 
     deliverableItemSource,
     /<Button\s+type="button"\s+variant="outline"\s+size="sm"\s+onClick=\{\(\) => fileRef\.current\?\.click\(\)\}/,
   );
+});
+
+test('raportul de eveniment generat foloseste data pontata, nu data generarii', () => {
+  assert.equal(extractEventDate([
+    'MINUTA DE INTALNIRE (MOM)',
+    'DATA: joi, 27 august 2026',
+    'Data intocmirii: 02.09.2026',
+  ].join('\n')), '2026-08-27');
+  assert.match(eventReportRouteSource, /const normalizedReport = output \? \{ \.\.\.output, eventDate: date \} : output/);
+  assert.match(eventReportRouteSource, /Data [îi]ntocmirii:\s*\$\{formattedDate\}/);
+  assert.doesNotMatch(eventReportRouteSource, /Data [îi]ntocmirii:\s*\$\{new Date\(\)\.toLocaleDateString\('ro-RO'\)\}/);
 });
 
 test('accepta sugestii de activitate si tip livrabil cand exista in listele permise', () => {
