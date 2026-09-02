@@ -2419,8 +2419,8 @@ function ExpertDashboardContent() {
       month: currentMonth,
       status: 'sent',
       sentDate: new Date().toISOString(),
-      expertAccessApproved: reportStatus?.expertAccessApproved ?? false,
-      expertAccessApprovedAt: reportStatus?.expertAccessApprovedAt,
+      expertAccessApproved: isCorrectionOpen ? false : reportStatus?.expertAccessApproved ?? false,
+      expertAccessApprovedAt: isCorrectionOpen ? undefined : reportStatus?.expertAccessApprovedAt,
       pmNotes: reportStatus?.pmNotes,
     });
 
@@ -3534,7 +3534,7 @@ function ExpertDashboardContent() {
                     type="button"
                     className="w-full md:w-auto"
                     onClick={handleSubmitMonth}
-                    disabled={isApproved || isSent || isInReview || isClarificationScopedAccess || !submissionDataReady}
+                    disabled={isApproved || isSent || isInReview || (isClarificationScopedAccess && !isCorrectionOpen) || !submissionDataReady}
                   >
                     {submitButtonIcon}
                     {submitButtonLabel}
