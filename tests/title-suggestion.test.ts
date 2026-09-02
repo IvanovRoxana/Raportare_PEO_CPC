@@ -149,6 +149,24 @@ test('blocks validation when edited title is not present in the document text', 
   assert.equal(result.titleCheckStatus, 'mismatch');
 });
 
+test('matches titles when ampersand is extracted as the word and', () => {
+  const documentText = 'European distressed investing and asset based lending SUMMIT';
+  assert.equal(
+    titleExistsInDocumentText(documentText, 'European distressed investing & asset based lending SUMMIT'),
+    true,
+  );
+
+  assert.deepEqual(validateDeclaredTitleInDocumentText({
+    documentText,
+    declaredTitle: 'European distressed investing & asset based lending SUMMIT',
+    titleSource: 'edited_by_expert',
+  }), {
+    titleMatch: true,
+    titleCheckStatus: 'matched',
+    titleCheckMessage: 'Titlul se regaseste in document.',
+  });
+});
+
 test('does not validate short filename-derived titles by loose word overlap', () => {
   const documentText = [
     'Confederatia Patronala Concordia',

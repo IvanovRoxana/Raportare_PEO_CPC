@@ -1060,6 +1060,8 @@ export function DeliverableItem({
   const effectiveTitleCheckMessage = hasInvalidConfirmedTitle
     ? (currentTitleValidation?.titleCheckMessage || 'Titlul confirmat anterior nu mai trece validarea curenta.')
     : deliverable.titleCheckMessage;
+  const canConfirmCurrentTitle = effectiveTitleCheckStatus !== 'mismatch'
+    && effectiveTitleCheckStatus !== 'extraction_failed';
   const step2ok = deliverable.isPhoto || (deliverable.uploaded && effectiveTitleConfirmed);
   const step3ok = deliverable.isPhoto || (deliverable.uploaded && !!deliverable.stadiu);
   const step4ok = deliverable.isPhoto || !eligibilityCheckEnabled || (deliverable.uploaded && !!deliverable.aiCheck);
@@ -1425,8 +1427,12 @@ export function DeliverableItem({
           variant="outline"
           size="sm"
           onClick={handleConfirmTitle}
-          disabled={metadataLocked || effectiveTitleCheckStatus === 'mismatch'}
-          className={`justify-self-start border-green-400 text-xs text-green-700 hover:bg-green-50 disabled:border-amber-300 disabled:text-amber-700 ${renderInlineNotes ? 'xl:col-start-1' : ''}`}
+          disabled={metadataLocked || !canConfirmCurrentTitle}
+          className={`justify-self-start text-xs ${
+            canConfirmCurrentTitle
+              ? 'border-green-400 text-green-700 hover:bg-green-50'
+              : 'border-amber-300 text-amber-700 hover:bg-amber-50 disabled:border-amber-300 disabled:text-amber-700'
+          } ${renderInlineNotes ? 'xl:col-start-1' : ''}`}
         >
           {effectiveTitleCheckStatus === 'mismatch' || effectiveTitleCheckStatus === 'extraction_failed' ? (
             <AlertTriangle className="h-3 w-3 mr-1" />
