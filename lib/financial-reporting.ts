@@ -109,6 +109,8 @@ function expertNormLabel(expert: Expert | undefined) {
 }
 
 function projectBucket(project: ConcurrentProject | undefined) {
+  if (project?.timesheetBucket === 'peo_pids') return 'goodworks';
+  if (project?.timesheetBucket === 'outside_peo_pids') return 'concordia';
   const label = `${project?.projectName ?? ''} ${project?.projectCode ?? ''}`.toLowerCase();
   return label.includes('goodworks') ? 'goodworks' : 'concordia';
 }

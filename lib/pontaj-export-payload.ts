@@ -78,6 +78,7 @@ export function buildPontajExportPayload({
       id: project.id,
       projectName: project.projectName,
       projectCode: project.projectCode,
+      timesheetBucket: project.timesheetBucket,
       dailyHours: project.dailyHours,
       startDate: project.startDate,
       endDate: project.endDate,

@@ -31,6 +31,67 @@ describe('export pontaj Excel', () => {
     assert.equal(payload.expert.hourlyRate, 135.75);
   });
 
+  it('pastreaza timesheetBucket si clasifica proiectele concurente explicit in PEO/PIDS', async () => {
+    const payload = buildPontajExportPayload({
+      kind: 'consolidated',
+      month: 4,
+      year: 2026,
+      expert: { id: 'expert-bucket', name: 'Expert Bucket', role: 'Expert PEO', category: 'Expert', oreZi: 6, norma: 8 },
+      activities: [
+        {
+          id: 'activity-bucket',
+          expertId: 'expert-bucket',
+          date: '2026-05-05',
+          hours: 6,
+          activityType: 'Activitate PEO',
+          saCode: 'SA3.4',
+          title: 'Activitate PEO',
+          status: 'approved',
+        },
+      ],
+      concurrentProjects: [
+        {
+          id: 'pids-project',
+          expertId: 'expert-bucket',
+          projectName: 'Program educatie',
+          projectCode: 'PIDS-1',
+          timesheetBucket: 'peo_pids',
+          dailyHours: 2,
+          startDate: '2026-05-01',
+          isActive: true,
+        },
+      ],
+      concurrentTimesheetEntries: [
+        {
+          id: 'pids-entry',
+          concurrentProjectId: 'pids-project',
+          expertId: 'expert-bucket',
+          date: '2026-05-05',
+          month: 4,
+          year: 2026,
+          wp: 'WP-PIDS',
+          hours: 2,
+          taskName: 'Activitate PIDS',
+          relevantDeliverable: 'Livrabil PIDS',
+          dayType: 'lucratoare',
+          status: 'verified',
+          source: 'pm_manual',
+        },
+      ],
+    });
+
+    assert.equal(payload.concurrentProjects?.[0]?.timesheetBucket, 'peo_pids');
+
+    const workbook = await generatePontajExcel(payload);
+    const files = readXlsx(workbook.buffer);
+    const sheet = files.get('xl/worksheets/sheet5.xml')!.toString('utf8');
+
+    assert.match(cellXml(sheet, 'F16'), /SUMIFS\(\$E\$49:\$E\$\d+,\$A\$49:\$A\$\d+,&quot;=&quot;&amp;DATE\(2026,5,F13\)\)/);
+    assert.match(cellXml(sheet, 'F15'), /MAX\(0,8-SUM\(F16:F17\)\)/);
+    assert.match(cellXml(sheet, 'E53'), /<v>2<\/v>/);
+    assert.match(cellXml(sheet, 'F53'), /Activitate PIDS/);
+  });
+
   it('trimite separat norma PEO si plafonul CIM pentru exportul pontajului', async () => {
     const payload = buildPontajExportPayload({
       kind: 'peo',

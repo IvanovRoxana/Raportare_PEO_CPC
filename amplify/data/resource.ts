@@ -1063,6 +1063,7 @@ const schema = a.schema({
       projectCode: a.string(),
       expertProjectRole: a.string(),
       fundingSource: a.string(),
+      timesheetBucket: a.string(),
       dailyHours: a.float().required(),
       startDate: a.date().required(),
       endDate: a.date(),

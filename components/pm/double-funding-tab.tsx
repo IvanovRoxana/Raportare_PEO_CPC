@@ -38,9 +38,9 @@ interface DoubleFundingTabProps {
   year: number;
 }
 
-type NewConcurrentProjectForm = { expertId: string; projectName: string; projectCode: string; expertProjectRole: string; fundingSource: string; startDate: string; endDate: string; dailyHours: string; notes: string };
+type NewConcurrentProjectForm = { expertId: string; projectName: string; projectCode: string; expertProjectRole: string; fundingSource: string; timesheetBucket: 'peo_pids' | 'outside_peo_pids'; startDate: string; endDate: string; dailyHours: string; notes: string };
 
-const emptyConcurrentProjectForm: NewConcurrentProjectForm = { expertId: '', projectName: '', projectCode: '', expertProjectRole: '', fundingSource: '', startDate: '', endDate: '', dailyHours: '0', notes: '' };
+const emptyConcurrentProjectForm: NewConcurrentProjectForm = { expertId: '', projectName: '', projectCode: '', expertProjectRole: '', fundingSource: '', timesheetBucket: 'outside_peo_pids', startDate: '', endDate: '', dailyHours: '0', notes: '' };
 
 const statusLabels: Record<DoubleFundingRiskStatus | 'all', string> = {
   all: 'Toate statusurile',
@@ -382,6 +382,7 @@ function ConcurrentProjectsAdmin({
       projectCode: newProject.projectCode,
       expertProjectRole: newProject.expertProjectRole,
       fundingSource: newProject.fundingSource,
+      timesheetBucket: newProject.timesheetBucket,
       dailyHours: Number(newProject.dailyHours) || 0,
       startDate: newProject.startDate,
       endDate: newProject.endDate || undefined,
@@ -458,6 +459,16 @@ function ConcurrentProjectsAdmin({
           <Field label="Cod proiect" value={newProject.projectCode} onChange={(value) => setNewProject({ ...newProject, projectCode: value })} placeholder="P6-GW4ALL" />
           <Field label="Rol expert" value={newProject.expertProjectRole} onChange={(value) => setNewProject({ ...newProject, expertProjectRole: value })} placeholder="Project Officer" />
           <Field label="Finanțator" value={newProject.fundingSource} onChange={(value) => setNewProject({ ...newProject, fundingSource: value })} />
+          <div className="space-y-1">
+            <Label>Bucket pontaj</Label>
+            <Select value={newProject.timesheetBucket} onValueChange={(value) => setNewProject({ ...newProject, timesheetBucket: value as NewConcurrentProjectForm['timesheetBucket'] })}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="outside_peo_pids">În afara PEO/PIDS</SelectItem>
+                <SelectItem value="peo_pids">PEO/PIDS</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
           <Field label="Start" type="date" value={newProject.startDate} onChange={(value) => setNewProject({ ...newProject, startDate: value })} />
           <Field label="Final" type="date" value={newProject.endDate} onChange={(value) => setNewProject({ ...newProject, endDate: value })} />
           <Field label="DailyHours fallback" type="number" value={newProject.dailyHours} onChange={(value) => setNewProject({ ...newProject, dailyHours: value })} />

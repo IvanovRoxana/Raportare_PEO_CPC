@@ -20,6 +20,7 @@ type ProjectForm = {
   projectName: string;
   projectCode: string;
   fundingSource: string;
+  timesheetBucket: 'peo_pids' | 'outside_peo_pids';
   expertProjectRole: string;
   expertFunction: string;
   dailyHours: string;
@@ -34,6 +35,7 @@ const EMPTY_FORM: ProjectForm = {
   projectName: '',
   projectCode: '',
   fundingSource: '',
+  timesheetBucket: 'outside_peo_pids',
   expertProjectRole: '',
   expertFunction: '',
   dailyHours: '0',
@@ -106,6 +108,7 @@ export function AdminProjectsPanel() {
           expertProjectRole: optionalText(form.expertProjectRole),
           expertFunction: optionalText(form.expertFunction),
           fundingSource: optionalText(form.fundingSource),
+          timesheetBucket: form.timesheetBucket,
           dailyHours,
           startDate: form.startDate,
           endDate: optionalText(form.endDate),
@@ -204,6 +207,17 @@ export function AdminProjectsPanel() {
               <Label>Final</Label>
               <Input type="date" value={form.endDate} onChange={(event) => updateField('endDate', event.target.value)} />
             </div>
+          </div>
+
+          <div>
+            <Label>Bucket pontaj</Label>
+            <Select value={form.timesheetBucket} onValueChange={(value) => updateField('timesheetBucket', value)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="outside_peo_pids">În afara PEO/PIDS</SelectItem>
+                <SelectItem value="peo_pids">PEO/PIDS</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <div>

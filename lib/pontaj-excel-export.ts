@@ -985,6 +985,8 @@ function getGoodworksHours(
 }
 
 function isGoodworksProject(project: Partial<ConcurrentProject>) {
+  if (project.timesheetBucket === 'peo_pids') return project.isActive !== false;
+  if (project.timesheetBucket === 'outside_peo_pids') return false;
   const label = `${project.projectName ?? ''} ${project.projectCode ?? ''}`.toLowerCase();
   return project.isActive !== false && (label.includes('goodworks') || label.includes('gw4all'));
 }

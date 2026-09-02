@@ -1028,6 +1028,7 @@ export interface ConcurrentProject {
   projectCode?: string;
   expertProjectRole?: string;
   fundingSource?: string;
+  timesheetBucket?: TimesheetBucket;
   dailyHours: number;
   startDate: string;
   endDate?: string;
@@ -1043,6 +1044,7 @@ export interface ConcurrentProject {
   updatedAt?: string;
 }
 
+export type TimesheetBucket = 'peo_pids' | 'outside_peo_pids' | string;
 export type ConcurrentProjectDayType = 'lucratoare' | 'weekend' | 'sarbatoare' | 'CO' | 'CM' | 'Altele' | string;
 export type ConcurrentProjectTimesheetSource = 'expert_manual' | 'pm_manual' | 'import' | string;
 export type ConcurrentProjectTimesheetStatus = 'draft' | 'submitted' | 'verified' | 'rejected' | string;
