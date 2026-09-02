@@ -98,8 +98,8 @@ export const activityAgentFormReviewSchema = z.object({
 
 export const activityAgentGenerationSchema = z.object({
   description: z.string().min(80),
-  warnings: z.array(z.string()).default([]),
-  usedFacts: z.array(z.string()).default([]),
+  warnings: z.array(z.string()),
+  usedFacts: z.array(z.string()),
 });
 
 export const activityAgentFactSheetSchema = z.object({

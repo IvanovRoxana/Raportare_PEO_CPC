@@ -227,6 +227,15 @@ test('activity agent generation schema accepts only final description, warnings 
   assert.deepEqual(Object.keys(parsed).sort(), ['description', 'usedFacts', 'warnings']);
 });
 
+test('activity agent generation schema requires all structured output keys', () => {
+  const parsed = activityAgentGenerationSchema.safeParse({
+    description: 'În data de 24 iulie 2026, am analizat initiative legislative regionale si am formulat informatii relevante pentru membrii CPC, contribuind la fundamentarea informarii in cadrul proiectului.',
+    usedFacts: [],
+  });
+
+  assert.equal(parsed.success, false);
+});
+
 test('activity agent prompt requests Anexa 10 final JSON contract', () => {
   const prompt = buildActivityAgentPrompt(baseRequest);
 
