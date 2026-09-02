@@ -65,6 +65,15 @@ test('formularul Adauga CO Financiar afiseaza titluri vizibile pentru campuri', 
   assert.match(source, />Justificare</);
 });
 
+test('RAP-59 elimina actiunile de test din meniul Concedii financiar', () => {
+  const source = readFileSync('components/financial/financial-reporting-dashboard.tsx', 'utf8');
+
+  assert.doesNotMatch(source, /Pregateste CO automat/);
+  assert.doesNotMatch(source, /Pregateste CO manual/);
+  assert.doesNotMatch(source, /Valideaza primul draft/);
+  assert.doesNotMatch(source, /Gestioneaza norme/);
+});
+
 test('rata orara este camp persistent pe Expert si mapata prin AWS store', () => {
   const schema = readFileSync('amplify/data/resource.ts', 'utf8');
   const types = readFileSync('lib/types.ts', 'utf8');

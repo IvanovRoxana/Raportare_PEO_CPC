@@ -373,7 +373,6 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
   const [search, setSearch] = useState('');
   const [onlyConflicts, setOnlyConflicts] = useState(false);
   const [exporting, setExporting] = useState<string | null>(null);
-  const [validating, setValidating] = useState<string | null>(null);
   const [savingLeave, setSavingLeave] = useState(false);
   const [verificationMessage, setVerificationMessage] = useState('');
   const [selectedFinancialPersonKey, setSelectedFinancialPersonKey] = useState('');
@@ -400,7 +399,7 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
   const { contracts, isLoading: loadingContracts } = useAllExpertNormContracts();
   const { links: financialPersonLinks, isLoading: loadingLinks } = useFinancialPersonLinks();
   const { leaveEntries, isLoading: loadingLeave, mutate: refreshLeaveEntries } = useLeaveEntries(month, year);
-  const { createAutomatic, createManual, remove: removeLeaveEntry, updateStatus } = useLeaveEntryMutations(month, year);
+  const { createAutomatic, createManual, remove: removeLeaveEntry } = useLeaveEntryMutations(month, year);
   const { update: updateExpert } = useExpertMutations();
   const { create: createNormContract, update: updateNormContract } = useExpertNormContractMutations();
   const { create: createAuditLog } = useAuditLogMutations();
@@ -451,21 +450,6 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
     });
   }, [summary.rows, search, onlyConflicts, mode]);
 
-  const visibleLeaveRows = useMemo<Array<{ row: FinancialTimesheetRow; leave: LeaveEntry | null }>>(
-    () => visibleRows.reduce<Array<{ row: FinancialTimesheetRow; leave: LeaveEntry | null }>>((result, row) => {
-      if (row.leaveEntries.length) {
-        result.push(...row.leaveEntries.map((leave) => ({ row, leave })));
-      } else {
-        result.push({ row, leave: null });
-      }
-      return result;
-    }, []),
-    [visibleRows],
-  );
-  const firstDraftLeave = useMemo(
-    () => visibleLeaveRows.find(({ leave }) => leave && leave.status !== 'VALIDATED' && leave.status !== 'REJECTED')?.leave ?? null,
-    [visibleLeaveRows],
-  );
   const normPanelRows = useMemo(() => {
     const query = search.trim().toLocaleLowerCase('ro-RO');
     const referenceDate = isoDate(year, month, 1);
@@ -575,28 +559,6 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
       cpcHours: totals.cpcHours + numericCell(draft?.cpcHours ?? '0'),
     };
   }, { peoDays: 0, peoHours: 0, cpcDays: 0, cpcHours: 0 }), [leaveGridDrafts, visibleRows]);
-
-  const firstExpert = useMemo(() => experts.find((expert) => expert.id) ?? null, [experts]);
-  const monthlyExpert = useMemo(() => {
-    const monthlyContract = contracts.find((contract) => contract.peoNormUnit === 'HOURS_PER_MONTH' && contract.peoDailyCap === 6);
-    return monthlyContract ? experts.find((expert) => expert.id === monthlyContract.expertId) ?? null : null;
-  }, [contracts, experts]);
-  const setLeaveStatus = async (
-    leaveId: string,
-    status: 'VALIDATED' | 'REJECTED',
-  ) => {
-    setValidating(leaveId);
-    try {
-      await updateStatus(
-        leaveId,
-        status,
-        'financial-session',
-        status === 'REJECTED' ? 'Respins din dashboardul Financiar' : undefined,
-      );
-    } finally {
-      setValidating(null);
-    }
-  };
 
   const updateHourlyRateDraft = (row: FinancialTimesheetRow, value: string) => {
     if (!row.expertId) return;
@@ -977,43 +939,6 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
     setVerificationMessage(`Pontaje: ${TIMESHEET_ACCEPTANCE_COLUMNS.length}/12 coloane configurate, tabel compact, bulina conflict la hover si export TEST disponibil.`);
   };
 
-  const prepareAutomaticLeaveCheck = () => {
-    const target = monthlyExpert ?? firstExpert;
-    if (!target) return;
-    setLeaveForm((current) => ({
-      ...current,
-      expertId: target.id,
-      date: isoDate(year, month, 1),
-      mode: 'automatic',
-      justification: '',
-    }));
-    setVerificationMessage(`Concedii: CO automat pregatit pentru ${target.name}. Apasa Salveaza CO pentru calcul CIM -> PEO/CPC.`);
-  };
-
-  const prepareManualLeaveCheck = () => {
-    const target = monthlyExpert ?? firstExpert;
-    if (!target) return;
-    setLeaveForm({
-      expertId: target.id,
-      date: isoDate(year, month, 2),
-      mode: 'manual',
-      totalHours: '8',
-      peoHours: '6',
-      cpcHours: '2',
-      justification: 'Verificare repartizare manuala CO staging',
-    });
-    setVerificationMessage(`Concedii: CO manual pregatit pentru ${target.name}, cu justificare si split 6 PEO + 2 CPC.`);
-  };
-
-  const validateFirstDraftLeave = async () => {
-    if (!firstDraftLeave) {
-      setVerificationMessage('Concedii: nu exista CO draft vizibil pentru validare. Creeaza sau afiseaza un CO draft.');
-      return;
-    }
-    await setLeaveStatus(firstDraftLeave.id, 'VALIDATED');
-    setVerificationMessage('Concedii: primul CO draft vizibil a fost validat.');
-  };
-
   const title = mode === 'timesheets' ? 'Pontaje centralizate' : 'Concedii centralizate';
   const description = mode === 'timesheets'
     ? 'Orele introduse în modulul Raportare sunt sursa de adevăr. Excelul atașat este utilizat numai pentru audit și evidențierea diferențelor.'
@@ -1049,16 +974,15 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
         <Card><CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-sm font-medium"><ShieldCheck className="h-4 w-4" />Lipsă în aplicație</CardTitle></CardHeader><CardContent className="text-2xl font-semibold text-red-700">{summary.missingExperts}</CardContent></Card>
       </div>
 
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-sm">
-            <CheckCircle2 className="h-4 w-4" />
-            Verificare {mode === 'timesheets' ? 'Pontaje' : 'Concedii'}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-2 sm:flex sm:flex-wrap sm:items-center">
-          {mode === 'timesheets' ? (
-            <>
+      {mode === 'timesheets' && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <CheckCircle2 className="h-4 w-4" />
+              Verificare Pontaje
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-2 sm:flex sm:flex-wrap sm:items-center">
               <Button className="justify-start sm:justify-center" variant="outline" onClick={verifyTimesheetDashboard}>
                 <CheckCircle2 className="mr-2 h-4 w-4" />
                 Verifica 12 coloane
@@ -1074,32 +998,10 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
                 {exporting === 'centralizer' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
                 Verifica export TEST
               </Button>
-            </>
-          ) : (
-            <>
-              <Button className="justify-start sm:justify-center" variant="outline" onClick={prepareAutomaticLeaveCheck}>
-                <Plus className="mr-2 h-4 w-4" />
-                Pregateste CO automat
-              </Button>
-              <Button className="justify-start sm:justify-center" variant="outline" onClick={prepareManualLeaveCheck}>
-                <Plus className="mr-2 h-4 w-4" />
-                Pregateste CO manual
-              </Button>
-              <Button className="justify-start sm:justify-center" variant="outline" onClick={validateFirstDraftLeave} disabled={validating !== null}>
-                {validating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
-                Valideaza primul draft
-              </Button>
-              <Button asChild className="justify-start sm:justify-center" variant="outline">
-                <Link href="/financiar/salariati">
-                <ShieldCheck className="mr-2 h-4 w-4" />
-                Gestioneaza norme
-                </Link>
-              </Button>
-            </>
-          )}
-          {verificationMessage && <div className="min-w-full rounded-md border bg-slate-50 px-3 py-2 text-sm text-slate-700">{verificationMessage}</div>}
-        </CardContent>
-      </Card>
+            {verificationMessage && <div className="min-w-full rounded-md border bg-slate-50 px-3 py-2 text-sm text-slate-700">{verificationMessage}</div>}
+          </CardContent>
+        </Card>
+      )}
 
       {selectedFinancialRow && (
         <Card className="border-amber-300 bg-amber-50/50">
