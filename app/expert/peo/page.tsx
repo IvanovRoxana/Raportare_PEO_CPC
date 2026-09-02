@@ -256,8 +256,6 @@ function getDocumentReadinessKey(document: DocumentMetadata) {
     fileName: document.originalFileName,
     fileType: document.mimeType,
     fileSize: document.fileSize,
-    filePath: document.s3Key,
-    s3Key: document.s3Key,
     originalFileName: document.originalFileName,
     fileHash: document.fileHash,
     firstPageTextHash: document.firstPageTextHash,
