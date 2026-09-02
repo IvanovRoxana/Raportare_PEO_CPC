@@ -40,6 +40,7 @@ const deliverableItemSource = readFileSync(new URL('../components/expert/deliver
 const activityFormSource = readFileSync(new URL('../components/expert/activity-form.tsx', import.meta.url), 'utf8');
 const peoPageSource = readFileSync(new URL('../app/expert/peo/page.tsx', import.meta.url), 'utf8');
 const eligibilityRouteSource = readFileSync(new URL('../app/api/ai/check-deliverable-eligibility/route.ts', import.meta.url), 'utf8');
+const eventReportRouteSource = readFileSync(new URL('../app/api/ai/generate-event-report/route.ts', import.meta.url), 'utf8');
 const deliverableTypesSource = readFileSync(new URL('../lib/deliverable-types.ts', import.meta.url), 'utf8');
 const pmDossierModalSource = readFileSync(new URL('../components/pm/dosar-expert-modal.tsx', import.meta.url), 'utf8');
 const backendDataHooksSource = readFileSync(new URL('../hooks/use-backend-data.ts', import.meta.url), 'utf8');
@@ -109,6 +110,13 @@ test('explicatia pentru ore suplimentare la eveniment ramane vizibila dupa compl
   );
   assert.match(activityFormSource, /\{shouldShowExtendedEventDescription && \(/g);
   assert.doesNotMatch(activityFormSource, /\{needsExtendedDesc && \(\s*<div className="mt-2">\s*<Label className="text-xs text-amber-700">Activitati conexe evenimentului - obligatoriu<\/Label>/);
+});
+
+test('MOM-ul generat foloseste data pontata, nu data curenta', () => {
+  assert.match(eventReportRouteSource, /eventDate: date/);
+  assert.match(eventReportRouteSource, /const formattedDate = formatDateRo\(date\);/);
+  assert.match(eventReportRouteSource, /Data întocmirii: \$\{formattedDate\}/);
+  assert.doesNotMatch(eventReportRouteSource, /Data întocmirii: \$\{new Date\(\)\.toLocaleDateString/);
 });
 
 test('livrabilele pending upload pastreaza diagnosticul si il afiseaza in formular', () => {

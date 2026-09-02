@@ -70,7 +70,9 @@ Dacă anumite informații lipsesc din descriere, completează-le cu valori plauz
       }),
     });
 
-    const output = result.output;
+    const output = result.output
+      ? { ...result.output, eventDate: date }
+      : result.output;
 
     // Also generate the formatted MOM document text
     const momText = generateMOMText(output, expertName, date);
@@ -86,15 +88,25 @@ Dacă anumite informații lipsesc din descriere, completează-le cu valori plauz
   }
 }
 
-function generateMOMText(report: z.infer<typeof EventReportSchema> | undefined, expertName: string, date: string): string {
-  if (!report) return '';
+function parseLocalDate(date: string): Date {
+  const match = date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return new Date(date);
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+}
 
-  const formattedDate = new Date(date).toLocaleDateString('ro-RO', {
+function formatDateRo(date: string): string {
+  return parseLocalDate(date).toLocaleDateString('ro-RO', {
     weekday: 'long',
     year: 'numeric',
     month: 'long',
     day: 'numeric',
   });
+}
+
+function generateMOMText(report: z.infer<typeof EventReportSchema> | undefined, expertName: string, date: string): string {
+  if (!report) return '';
+
+  const formattedDate = formatDateRo(date);
 
   return `
 MINUTĂ DE ÎNTÂLNIRE (MOM)
@@ -144,7 +156,7 @@ ${report.attachments.map((att, i) => `${i + 1}. ${att}`).join('\n')}
 ---
 
 Întocmit de: ${expertName}
-Data întocmirii: ${new Date().toLocaleDateString('ro-RO')}
+Data întocmirii: ${formattedDate}
 
 Semnătură organizator: _____________________
 

@@ -63,6 +63,10 @@ export function extractEventDate(text: string): string | null {
   if (!text) return null;
   
   // Try various Romanian date formats
+  const eventDatePatterns = [
+    /(?:^|\n)\s*DATA\s*:\s*(?:[a-zăâîșț]+,\s*)?(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{4})/i,
+    /(?:^|\n)\s*DATA\s*:\s*(?:[a-zăâîșț]+,\s*)?(\d{1,2})\s+(ianuarie|februarie|martie|aprilie|mai|iunie|iulie|august|septembrie|octombrie|noiembrie|decembrie)\s+(\d{4})/i,
+  ];
   const patterns = [
     /(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{4})/,
     /(\d{1,2})\s+(ianuarie|februarie|martie|aprilie|mai|iunie|iulie|august|septembrie|octombrie|noiembrie|decembrie)\s+(\d{4})/i,
@@ -74,7 +78,7 @@ export function extractEventDate(text: string): string | null {
     'septembrie': '09', 'octombrie': '10', 'noiembrie': '11', 'decembrie': '12'
   };
   
-  for (const pattern of patterns) {
+  for (const pattern of [...eventDatePatterns, ...patterns]) {
     const match = text.match(pattern);
     if (match) {
       if (match[2] && monthNames[match[2].toLowerCase()]) {

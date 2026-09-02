@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { inferDeliverableStadiuFromEligibility } from '../lib/deliverable-types.ts';
+import { extractEventDate, inferDeliverableStadiuFromEligibility } from '../lib/deliverable-types.ts';
 
 test('pastreaza stadiul ales manual peste inferenta din eligibilitate', () => {
   assert.equal(
@@ -44,5 +44,21 @@ test('nu infera stadiu final pentru verificari neconcludente', () => {
       riskFlags: [],
     }),
     '',
+  );
+});
+
+test('extrage data evenimentului din linia DATA, nu data intocmirii MOM', () => {
+  assert.equal(
+    extractEventDate(`
+MINUTA DE INTALNIRE (MOM)
+
+EVENIMENT: Consultare membri
+DATA: joi, 20 august 2026
+LOCATIA: online
+
+Intocmit de: Expert Test
+Data intocmirii: 01.09.2026
+`),
+    '2026-08-20',
   );
 });

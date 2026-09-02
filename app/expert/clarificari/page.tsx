@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { AlertTriangle, ArrowLeft, ArrowRight, CalendarDays, ClipboardList, Loader2, MessageSquare } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ArrowRight, CalendarDays, CheckCircle2, ClipboardList, Loader2, MessageSquare } from 'lucide-react';
 import { AdminViewAsBanner } from '@/components/admin/admin-view-as-banner';
 import { DashboardShell, expertNavItems } from '@/components/layout/dashboard-shell';
 import { Button } from '@/components/ui/button';
@@ -15,7 +15,8 @@ import { getSignedInUser } from '@/lib/aws/auth';
 import { getMonthName } from '@/lib/backend-store';
 import { buildClarificationEditHref, getActivitiesWithPmClarifications } from '@/lib/pm-clarifications';
 import { PM_REVIEW_CASE_PRIORITY_LABELS, PM_REVIEW_CASE_SUBJECT_LABELS, isPmReviewCaseVisibleForExpert } from '@/lib/pm-review-cases';
-import type { Activity, PmReviewCase } from '@/lib/types';
+import { isReportOpenForCorrection } from '@/lib/report-correction-flow';
+import type { Activity, PmReviewCase, ReportStatus } from '@/lib/types';
 
 function readMonthParam(value: string | null, fallback: number) {
   const parsed = Number(value);
@@ -81,6 +82,57 @@ function ActivityClarificationCard({ activity, month, year }: { activity: Activi
         ) : null}
       </CardContent>
     </Card>
+  );
+}
+
+function MonthlyClarificationActions({
+  reportStatus,
+  month,
+  year,
+}: {
+  reportStatus?: ReportStatus | null;
+  month: number;
+  year: number;
+}) {
+  if (!reportStatus?.pmNotes?.trim()) return null;
+
+  const isCorrectionOpen = isReportOpenForCorrection(reportStatus);
+
+  return (
+    <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-semibold">Observații lunare PM</p>
+          <p className="mt-1 leading-6">{reportStatus.pmNotes}</p>
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+            <Badge variant={isCorrectionOpen ? 'default' : 'outline'}>
+              {isCorrectionOpen ? 'Corecții deschise' : 'Acces de corecție neconfirmat'}
+            </Badge>
+            <span className="text-amber-800">
+              {isCorrectionOpen
+                ? 'Revizuiește luna, apoi retrimite raportarea din pontaj.'
+                : 'PM trebuie să redeschidă luna ca să poți salva modificări.'}
+            </span>
+          </div>
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <Button asChild variant={isCorrectionOpen ? 'default' : 'outline'}>
+            <Link href={`/expert/peo?month=${month}&year=${year}`}>
+              <ArrowRight className="h-4 w-4" />
+              {isCorrectionOpen ? 'Corectează pontajul' : 'Vezi pontajul'}
+            </Link>
+          </Button>
+          {isCorrectionOpen ? (
+            <Button asChild variant="outline">
+              <Link href={`/expert/peo?month=${month}&year=${year}`}>
+                <CheckCircle2 className="h-4 w-4" />
+                Retrimite din pontaj
+              </Link>
+            </Button>
+          ) : null}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -251,10 +303,7 @@ function ExpertClarificationsContent() {
             </CardHeader>
             <CardContent className="space-y-3">
               {reportStatus?.pmNotes ? (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-                  <p className="font-semibold">Observații lunare PM</p>
-                  <p className="mt-1 leading-6">{reportStatus.pmNotes}</p>
-                </div>
+                <MonthlyClarificationActions reportStatus={reportStatus} month={month} year={year} />
               ) : (
                 <p className="text-sm text-muted-foreground">Nu exista observații lunare PM pentru luna selectată.</p>
               )}
@@ -296,11 +345,19 @@ function ExpertClarificationsContent() {
           ) : !activitiesLoading && !reportStatusLoading && visiblePmReviewCases.length === 0 ? (
             <Card className="rounded-lg">
               <CardContent className="flex flex-col items-center gap-3 p-8 text-center">
-                <AlertTriangle className="h-8 w-8 text-muted-foreground" />
+                {reportStatus?.pmNotes ? (
+                  <CheckCircle2 className="h-8 w-8 text-emerald-600" />
+                ) : (
+                  <AlertTriangle className="h-8 w-8 text-muted-foreground" />
+                )}
                 <div>
-                  <h2 className="font-semibold">Nu sunt activități marcate punctual</h2>
+                  <h2 className="font-semibold">
+                    {reportStatus?.pmNotes ? 'Clarificarea este lunară' : 'Nu sunt activități marcate punctual'}
+                  </h2>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Dacă PM a transmis doar o observație lunară, revizuiește pontajul din pagina activităților.
+                    {reportStatus?.pmNotes
+                      ? 'PM nu a marcat o activitate anume. Folosește acțiunile de mai sus pentru revizuirea lunii.'
+                      : 'Dacă PM a transmis doar o observație lunară, revizuiește pontajul din pagina activităților.'}
                   </p>
                 </div>
                 <Button asChild variant="outline">
