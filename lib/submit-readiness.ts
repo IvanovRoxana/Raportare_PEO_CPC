@@ -1,5 +1,6 @@
 import type { Activity, ActivityCatalog, Deliverable } from './types.ts';
 import { isEventActivity, isExceptionActivity } from './peo-constants.ts';
+import { isEventActivityCatalogItem } from './activity-catalog-merge.ts';
 import { getBusinessHubMetaMissingFields, parseBusinessHubMetaJson } from './business-hub-reporting.ts';
 import { getEventDocumentationStatus } from './event-documentation.ts';
 import { normalizePeoCategory } from './peo-category.ts';
@@ -186,16 +187,26 @@ export function hasUsableDeliverable(deliverables?: Deliverable[]) {
   );
 }
 
-function isEventActivityForSubmit(activity: Activity) {
-  return isEventActivity(activity.activityType || activity.title || '')
-    || (activity.deliverables ?? []).some((deliverable) => {
-      const kind = deliverable.category || deliverable.deliverableType;
-      return kind === 'event_mom' || kind === 'event_proof';
-    });
+function hasStructuredEventDeliverables(activity: Activity) {
+  return (activity.deliverables ?? []).some((deliverable) => {
+    const kind = deliverable.category || deliverable.deliverableType;
+    return kind === 'event_mom' || kind === 'event_proof';
+  });
 }
 
-function hasUsableDeliverableForActivity(activity: Activity) {
-  if (isEventActivityForSubmit(activity)) {
+function isEventActivityForSubmit(activity: Activity, activityCatalog: ActivityCatalog[] = []) {
+  if (hasStructuredEventDeliverables(activity)) return true;
+
+  if (activity.catalogActivityId) {
+    const catalogItem = activityCatalog.find((item) => item.id === activity.catalogActivityId);
+    if (catalogItem) return isEventActivityCatalogItem(catalogItem);
+  }
+
+  return isEventActivity(activity.activityType || activity.title || '');
+}
+
+function hasUsableDeliverableForActivity(activity: Activity, activityCatalog: ActivityCatalog[] = []) {
+  if (isEventActivityForSubmit(activity, activityCatalog)) {
     return getEventDocumentationStatus(activity.deliverables ?? []).complete;
   }
 
@@ -257,7 +268,10 @@ function needsDeliverableValidation(
     && !(expertCategory === 'gdpr' && activity.gdprTemplateCode);
 }
 
-export function createActivityDeliverableAvailabilityResolver(activities: Activity[]) {
+export function createActivityDeliverableAvailabilityResolver(
+  activities: Activity[],
+  activityCatalog: ActivityCatalog[] = [],
+) {
   const periodDeliverableAvailability = new Map<string, boolean>();
   const monthlySocialMediaDeliverableAvailability = new Map<string, boolean>();
   const monthlyComDeliverableAvailability = new Map<string, boolean>();
@@ -271,7 +285,7 @@ export function createActivityDeliverableAvailabilityResolver(activities: Activi
     if (groupId) {
       periodDeliverableAvailability.set(
         groupId,
-        (periodDeliverableAvailability.get(groupId) ?? false) || hasUsableDeliverableForActivity(activity),
+        (periodDeliverableAvailability.get(groupId) ?? false) || hasUsableDeliverableForActivity(activity, activityCatalog),
       );
     }
 
@@ -279,7 +293,7 @@ export function createActivityDeliverableAvailabilityResolver(activities: Activi
       monthlySocialMediaDeliverableAvailability.set(
         monthlySocialMediaSignature,
         (monthlySocialMediaDeliverableAvailability.get(monthlySocialMediaSignature) ?? false)
-          || hasUsableDeliverableForActivity(activity),
+          || hasUsableDeliverableForActivity(activity, activityCatalog),
       );
     }
 
@@ -287,7 +301,7 @@ export function createActivityDeliverableAvailabilityResolver(activities: Activi
       monthlyComDeliverableAvailability.set(
         monthlyComSignature,
         (monthlyComDeliverableAvailability.get(monthlyComSignature) ?? false)
-          || hasUsableDeliverableForActivity(activity),
+          || hasUsableDeliverableForActivity(activity, activityCatalog),
       );
     }
   });
@@ -304,7 +318,7 @@ export function createActivityDeliverableAvailabilityResolver(activities: Activi
       || (monthlyComSignature
         ? monthlyComDeliverableAvailability.get(monthlyComSignature) === true
         : false)
-      || hasUsableDeliverableForActivity(activity);
+      || hasUsableDeliverableForActivity(activity, activityCatalog);
   };
 }
 
@@ -316,7 +330,7 @@ export function getActivitiesMissingDeliverables(
   const groupedActivities = new Map<string, Activity[]>();
   const standaloneActivities: Activity[] = [];
   const inferredLegacyGroups = inferLegacyActivityPeriodGroups(activities);
-  const hasAvailableDeliverable = createActivityDeliverableAvailabilityResolver(activities);
+  const hasAvailableDeliverable = createActivityDeliverableAvailabilityResolver(activities, activityCatalog);
   const isCatalogException = createCatalogNoDeliverableResolver(activityCatalog);
 
   activities.forEach((activity) => {

@@ -2174,7 +2174,7 @@ function ExpertDashboardContent() {
     const deliverableRefs = activities.flatMap((activity) =>
       (activity.deliverables ?? []).map((deliverable) => ({ activity, deliverable })),
     );
-    const activityHasUsableDeliverable = createActivityDeliverableAvailabilityResolver(activities);
+    const activityHasUsableDeliverable = createActivityDeliverableAvailabilityResolver(activities, activityCatalog);
     const unconfirmedTitles = deliverableRefs.filter(({ deliverable }) =>
       needsTitleConfirmation(deliverable) && deliverable.titleConfirmed !== true,
     );

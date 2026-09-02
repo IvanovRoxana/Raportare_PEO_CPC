@@ -173,6 +173,38 @@ test('activitatile de eveniment nu accepta poza singura ca livrabil complet', ()
   assert.deepEqual(missingDeliverables.map((activity) => activity.id), ['event-proof-only']);
 });
 
+test('activitatile din catalog non-eveniment accepta livrabil principal chiar daca titlul contine dezbatere', () => {
+  const activities: Activity[] = [baseActivity({
+    id: 'gabriel-26-august',
+    date: '2026-08-26',
+    saCode: 'SA3.4',
+    catalogActivityId: 'pregatire-consultare',
+    activityType: 'Pregatire participare / reprezentare consultare publica sau dezbatere',
+    title: 'Pregatire participare / reprezentare consultare publica sau dezbatere',
+    deliverables: [{
+      id: 'deliverable-26',
+      fileName: 'CPC-reorganizare-medat.pdf',
+      fileType: 'application/pdf',
+      fileSize: 1234,
+      documentId: 'doc-deliverable-26',
+      deliverableType: 'Document de pozitie / analiza legislativa',
+      uploaded: true,
+    }],
+  })];
+
+  const missingDeliverables = getActivitiesMissingDeliverables(activities, {
+    activityCatalog: [catalogActivity({
+      id: 'pregatire-consultare',
+      saCode: 'SA3.4',
+      serviceCategory: 'Infrastructura dialog social',
+      activityName: 'Pregatire participare / reprezentare consultare publica sau dezbatere',
+      deliverables: 'Document de pozitie / analiza legislativa',
+    })],
+  });
+
+  assert.deepEqual(missingDeliverables.map((activity) => activity.id), []);
+});
+
 test('activitatile marcate N/A in catalog sunt eligibile fara livrabil', () => {
   const activities = [baseActivity({
     id: 'catalog-exception',
