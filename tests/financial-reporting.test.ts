@@ -559,6 +559,56 @@ test('centralizatorul nu afiseaza pozitiile si functiile Excel ca date din aplic
   assert.ok(summary.rows[0].conflicts.some((conflict) => conflict.code === 'role_mismatch'));
 });
 
+test('RAP-57 Pontaje marcheaza diferentele HR fara comparatie vizuala cu Salariati', () => {
+  const summary = buildFinancialReportingSummary({
+    experts: [{
+      ...expert,
+      basePositionConcordia: 'Pozitie aplicatie',
+      positionInProject: 'Functie PEO aplicatie',
+      goodworksPosition: 'Goodworks aplicatie',
+    }],
+    activities: [],
+    concurrentProjects: [],
+    concurrentEntries: [],
+    normContracts: [{
+      id: 'norm-rap-57',
+      expertId: expert.id,
+      validFrom: '2026-06-01',
+      peoNormUnit: 'HOURS_PER_DAY',
+      peoNormValue: 6,
+      peoDailyCap: 6,
+      cimNormUnit: 'HOURS_PER_DAY',
+      cimNormValue: 6,
+      cimDailyCap: 6,
+      leaveHoursPerDay: 6,
+      status: 'ACTIVE',
+      justification: 'Test RAP-57',
+    }],
+    month: 5,
+    year: 2026,
+    referencePeople: [{
+      name: 'Roxana Ivanov',
+      basePosition: 'Pozitie Excel',
+      peoPosition: 'Functie PEO Excel',
+      peoNorm: '8 h/zi',
+      cimNorm: '8 h/zi',
+      concordiaWorked: 0,
+      concordiaLeave: 0,
+      peoWorked: 0,
+      peoLeave: 0,
+      goodworksPosition: 'Goodworks Excel',
+      goodworksWorked: 0,
+    }],
+  });
+
+  const conflictCodes = new Set(summary.rows[0].conflicts.map((conflict) => conflict.code));
+  assert.ok(conflictCodes.has('base_position_mismatch'));
+  assert.ok(conflictCodes.has('role_mismatch'));
+  assert.ok(conflictCodes.has('goodworks_role_mismatch'));
+  assert.ok(conflictCodes.has('daily_norm_mismatch'));
+  assert.ok(conflictCodes.has('cim_norm_mismatch'));
+});
+
 test('pozitia de baza Concordia nu se completeaza din campurile administrative', () => {
   const summary = buildFinancialReportingSummary({
     experts: [{ ...expert, basePositionConcordia: undefined, jobDescriptionText: 'Pozitie din Admin' }],

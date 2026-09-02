@@ -109,6 +109,10 @@ import {
 import { buildPmClarificationThreads } from '@/lib/pm-clarification-flow';
 import { buildReportCorrectionStatusUpdate, buildReportReopenStatusUpdate } from '@/lib/report-correction-flow';
 import { isPmDeliverableInMonth } from '@/lib/pm-deliverable-status';
+import {
+  buildPmUnlockedDeliverableFromDocument,
+  resolvePmUnlockActivityContext,
+} from '@/lib/pm-unlock-deliverable';
 import { buildOpisXlsxBlob, buildOpisXlsxFilename } from '@/lib/opis-xls-export';
 import { buildPontajExportPayload } from '@/lib/pontaj-export-payload';
 import { isActivePmUnlockRequest, isAutoResolvedPmUnlockRequest } from '@/lib/pm-unlock-status';
@@ -681,38 +685,28 @@ export default function PMDashboard() {
       pmUnlockApprovedBy: reviewerName,
     };
 
-    const matchesDocument = (deliverable: NonNullable<Activity['deliverables']>[number]) => (
-      deliverable.documentId === document.id
-      || deliverable.id === document.id
-      || Boolean(document.s3Key && deliverable.s3Key === document.s3Key)
-      || Boolean(document.fileHash && deliverable.fileHash === document.fileHash)
-      || Boolean(document.firstPageTextHash && deliverable.firstPageTextHash === document.firstPageTextHash)
-      || Boolean(document.contentFingerprint && deliverable.contentFingerprint === document.contentFingerprint)
-    );
-    const activityWithMatchingDeliverable = monthActivities.find((activity) => (
-      (activity.deliverables ?? []).some(matchesDocument)
-    ));
-    const sourceActivity = activityWithMatchingDeliverable
-      || (document.sourceActivityId
-        ? monthActivities.find((activity) => activity.id === document.sourceActivityId)
-        : undefined);
-    const sourceDeliverable = sourceActivity?.deliverables?.find(matchesDocument);
+    const { sourceActivity, sourceDeliverable } = resolvePmUnlockActivityContext(document, monthActivities);
 
-    if (sourceActivity && sourceDeliverable) {
+    if (sourceActivity) {
       await updateActivity(sourceActivity.id, {
-        deliverables: sourceActivity.deliverables?.map((deliverable) => (
-          deliverable.id === sourceDeliverable.id
-            ? {
-                ...deliverable,
-                aiStatus: 'eligible',
-                aiReason: 'Livrabil aprobat manual de PM.',
-                eligibilityCheck: {
-                  ...(deliverable.eligibilityCheck || document.eligibilityCheck),
-                  ...approvedCheck,
-                },
-              }
-            : deliverable
-        )),
+        deliverables: sourceDeliverable
+          ? sourceActivity.deliverables?.map((deliverable) => (
+              deliverable.id === sourceDeliverable.id
+                ? {
+                    ...deliverable,
+                    aiStatus: 'eligible',
+                    aiReason: 'Livrabil aprobat manual de PM.',
+                    eligibilityCheck: {
+                      ...(deliverable.eligibilityCheck || document.eligibilityCheck),
+                      ...approvedCheck,
+                    },
+                  }
+                : deliverable
+            ))
+          : [
+              ...(sourceActivity.deliverables ?? []),
+              buildPmUnlockedDeliverableFromDocument(document, sourceActivity, approvedCheck),
+            ],
       });
     }
 

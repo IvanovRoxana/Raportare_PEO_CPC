@@ -8,9 +8,12 @@ import { calculateLeaveAllocationForDay } from './financial-leave-allocation.ts'
 export type FinancialConflictCode =
   | 'missing_expert'
   | 'extra_expert'
+  | 'base_position_mismatch'
   | 'role_mismatch'
+  | 'goodworks_role_mismatch'
   | 'daily_norm_mismatch'
   | 'monthly_norm_mismatch'
+  | 'cim_norm_mismatch'
   | 'peo_hours_mismatch'
   | 'leave_hours_mismatch'
   | 'concordia_hours_mismatch'
@@ -116,6 +119,23 @@ function projectBucket(project: ConcurrentProject | undefined) {
   return label.includes('goodworks') ? 'goodworks' : 'concordia';
 }
 
+function normalizedReferenceValue(value: string | undefined) {
+  const trimmed = value?.trim();
+  return trimmed && trimmed !== '-' ? normalizeFinancialPersonName(trimmed) : '';
+}
+
+function normalizedAppValue(value: string | undefined) {
+  const trimmed = value?.trim();
+  return trimmed && trimmed !== '-' ? normalizeFinancialPersonName(trimmed) : '';
+}
+
+function valuesMatch(appValue: string | undefined, referenceValue: string | undefined) {
+  const expected = normalizedReferenceValue(referenceValue);
+  const actual = normalizedAppValue(appValue);
+  if (!expected && !actual) return true;
+  return Boolean(expected && actual && (expected.includes(actual) || actual.includes(expected)));
+}
+
 function referencePosition(value: string | undefined) {
   const trimmed = value?.trim();
   return trimmed && trimmed !== '-' ? trimmed : undefined;
@@ -151,6 +171,7 @@ function compareReference(
   expert: Expert | undefined,
   reference: FinancialReferencePerson,
   compareHours: boolean,
+  activeAppContract?: ExpertNormContract,
 ) {
   const conflicts = row.conflicts;
   if (!expert) {
@@ -158,20 +179,45 @@ function compareReference(
     return;
   }
 
-  if (reference.peoPosition !== '-') {
-    const expectedRole = normalizeFinancialPersonName(reference.peoPosition);
-    const actualRole = normalizeFinancialPersonName(expert.positionInProject ?? expert.role);
-    if (expectedRole && actualRole && !expectedRole.includes(actualRole) && !actualRole.includes(expectedRole)) {
-      addConflict(conflicts, 'role_mismatch', `Funcție diferită: aplicație „${expert.positionInProject ?? expert.role}”, Excel „${reference.peoPosition}”.`);
-    }
+  if (!valuesMatch(expert.basePositionConcordia, reference.basePosition)) {
+    addConflict(
+      conflicts,
+      'base_position_mismatch',
+      `Poziție de bază diferită: aplicație „${referencePosition(expert.basePositionConcordia) ?? '-'}”, Excel „${reference.basePosition}”.`,
+    );
   }
 
-  const workbookNorm = parseWorkbookNorm(reference.peoNorm);
-  if (workbookNorm?.kind === 'daily' && !isSameNumber(expertDailyNorm(expert), workbookNorm.value)) {
-    addConflict(conflicts, 'daily_norm_mismatch', `Normă zilnică diferită: aplicație ${expertDailyNorm(expert) ?? 0} h, Excel ${workbookNorm.value} h.`);
+  if (!valuesMatch(expert.positionInProject ?? expert.role, reference.peoPosition)) {
+    addConflict(
+      conflicts,
+      'role_mismatch',
+      `Funcție PEO diferită: aplicație „${expert.positionInProject ?? expert.role ?? '-'}”, Excel „${reference.peoPosition}”.`,
+    );
   }
-  if (workbookNorm?.kind === 'monthly' && !isSameNumber(expertMonthlyNorm(expert), workbookNorm.value)) {
-    addConflict(conflicts, 'monthly_norm_mismatch', `Normă lunară diferită: aplicație ${expertMonthlyNorm(expert) ?? 0} h, Excel ${workbookNorm.value} h.`);
+
+  if (!valuesMatch(expert.goodworksPosition, reference.goodworksPosition)) {
+    addConflict(
+      conflicts,
+      'goodworks_role_mismatch',
+      `Funcție GOODWORKS4ALL diferită: aplicație „${referencePosition(expert.goodworksPosition) ?? '-'}”, Excel „${reference.goodworksPosition}”.`,
+    );
+  }
+
+  const workbookPeoNorm = parseWorkbookNorm(reference.peoNorm);
+  const appPeoNormValue = activeAppContract?.peoNormValue ?? (
+    workbookPeoNorm?.kind === 'monthly' ? expertMonthlyNorm(expert) : expertDailyNorm(expert)
+  );
+  if (workbookPeoNorm?.kind === 'daily' && !isSameNumber(appPeoNormValue, workbookPeoNorm.value)) {
+    addConflict(conflicts, 'daily_norm_mismatch', `Normă PEO diferită: aplicație ${appPeoNormValue ?? 0} h/zi, Excel ${workbookPeoNorm.value} h/zi.`);
+  }
+  if (workbookPeoNorm?.kind === 'monthly' && !isSameNumber(appPeoNormValue, workbookPeoNorm.value)) {
+    addConflict(conflicts, 'monthly_norm_mismatch', `Normă PEO lunară diferită: aplicație ${appPeoNormValue ?? 0} h, Excel ${workbookPeoNorm.value} h.`);
+  }
+
+  const workbookCimNorm = parseWorkbookNorm(reference.cimNorm);
+  const appCimNormValue = activeAppContract?.cimNormValue ?? expertDailyNorm(expert);
+  if (workbookCimNorm && !isSameNumber(appCimNormValue, workbookCimNorm.value)) {
+    addConflict(conflicts, 'cim_norm_mismatch', `Normă CIM diferită: aplicație ${appCimNormValue ?? 0} h/zi, Excel ${reference.cimNorm}.`);
   }
 
   if (!compareHours) return;
@@ -400,7 +446,10 @@ export function buildFinancialReportingSummary(input: {
       matchSuggestions: expert ? [] : rankFinancialPersonMatches(reference?.name ?? normalizedName, input.experts, financialPersonLinks),
     };
 
-    if (reference) compareReference(row, expert, reference, compareHours);
+    const rawActiveContract = expert
+      ? getEffectiveNormContract(normContracts, expert.id, input.year + '-' + String(input.month + 1).padStart(2, '0') + '-01')
+      : undefined;
+    if (reference) compareReference(row, expert, reference, compareHours, rawActiveContract);
     if (expert && !reference) addConflict(row.conflicts, 'extra_expert', 'Expertul există în aplicație, dar nu apare în Excelul de referință.');
     for (const conflict of capacity?.conflicts ?? []) {
       const code = conflict.code === 'MONTHLY_PEO_EXCEEDED'
