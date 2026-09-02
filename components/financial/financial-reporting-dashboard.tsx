@@ -849,12 +849,14 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
       const expertProjects = projects.filter((project) => project.expertId === expert.id);
       const projectIds = new Set(expertProjects.map((project) => project.id));
       const hourlyRate = Number(hourlyRates[hourlyRateRowKey(row)]?.replace(',', '.')) || undefined;
+      const peoDailyHours = parseDailyHoursLabel(row.peoNorm || row.workbookNorm) || expert.oreZi || expert.dailyHours || expert.norma;
+      const cimDailyHours = parseDailyHoursLabel(row.cimNorm) || expert.norma || 8;
       const response = await fetch('/api/export/pontaj', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(buildPontajExportPayload({
           kind: 'consolidated',
-          expert: { ...expert, hourlyRate },
+          expert: { ...expert, norma: cimDailyHours, oreZi: peoDailyHours, dailyHours: peoDailyHours, normType: 'project', hourlyRate },
           activities: activities.filter((activity) => activity.expertId === expert.id),
           concurrentProjects: expertProjects,
           concurrentTimesheetEntries: entries.filter((entry) => projectIds.has(entry.concurrentProjectId)),

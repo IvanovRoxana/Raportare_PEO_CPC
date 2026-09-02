@@ -30,6 +30,45 @@ describe('export pontaj Excel', () => {
     assert.equal(payload.expert.hourlyRate, 135.75);
   });
 
+  it('trimite separat norma PEO si plafonul CIM pentru exportul pontajului', async () => {
+    const payload = buildPontajExportPayload({
+      kind: 'peo',
+      month: 5,
+      year: 2026,
+      expert: {
+        id: 'gabriel-zvinca',
+        name: 'Gabriel Zvinca',
+        role: 'Responsabil Afaceri Publice',
+        norma: 4,
+        oreZi: 4,
+        dailyHours: 4,
+      },
+      activities: [
+        {
+          id: 'activity-partial',
+          expertId: 'gabriel-zvinca',
+          date: '2026-06-02',
+          hours: 3,
+          activityType: 'A3',
+          saCode: 'SA3.4',
+          title: 'Activitate partiala',
+          status: 'approved',
+        },
+      ],
+    });
+
+    assert.equal(payload.expert.oreZi, 4);
+    assert.equal(payload.expert.dailyHours, 4);
+    assert.equal(payload.expert.norma, 8);
+
+    const workbook = await generatePontajExcel(payload);
+    const files = readXlsx(workbook.buffer);
+    const sheet = files.get('xl/worksheets/sheet1.xml')!.toString('utf8');
+
+    assert.match(cellXml(sheet, 'H15'), /<v>3<\/v>/);
+    assert.match(cellXml(sheet, 'I15'), /<v>5<\/v>/);
+  });
+
   it('pastreaza formulele GOODWORKS4ALL si curata valorile ramase din template', async () => {
     const workbook = await generatePontajExcel({
       kind: 'consolidated',

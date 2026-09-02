@@ -33,6 +33,9 @@ export function buildPontajExportPayload({
   month,
   year,
 }: BuildPontajExportPayloadInput): ExportPayload {
+  const peoDailyHours = getPeoDailyHours(expert);
+  const cimDailyHours = getCimDailyHours(expert, peoDailyHours);
+
   return {
     kind,
     expert: {
@@ -40,10 +43,10 @@ export function buildPontajExportPayload({
       name: expert.name,
       role: expert.role,
       category: expert.category,
-      norma: expert.norma,
+      norma: cimDailyHours,
       normType: expert.normType,
-      oreZi: expert.oreZi,
-      dailyHours: expert.dailyHours,
+      oreZi: peoDailyHours,
+      dailyHours: peoDailyHours,
       positionInProject: expert.positionInProject,
       projectCode: expert.projectCode,
       projectTitle: expert.projectTitle,
@@ -119,4 +122,14 @@ export function buildPontajExportPayload({
 function limitText(value: string | undefined, maxLength: number) {
   if (!value) return value;
   return value.length > maxLength ? value.slice(0, maxLength) : value;
+}
+
+function getPeoDailyHours(expert: Expert) {
+  return Number(expert.oreZi ?? expert.dailyHours ?? expert.norma ?? 8) || 8;
+}
+
+function getCimDailyHours(expert: Expert, peoDailyHours: number) {
+  const candidate = Number(expert.norma ?? 8) || 8;
+  if (expert.normType === 'project') return Math.max(candidate, peoDailyHours);
+  return Math.max(candidate, peoDailyHours, 8);
 }
