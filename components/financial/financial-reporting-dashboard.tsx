@@ -316,8 +316,9 @@ function ConflictDot({ row }: { row: FinancialTimesheetRow }) {
 }
 
 export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
-  const [month, setMonth] = useState(5);
-  const [year, setYear] = useState(2026);
+  const today = new Date();
+  const [month, setMonth] = useState(() => today.getMonth());
+  const [year, setYear] = useState(() => today.getFullYear());
   const [search, setSearch] = useState('');
   const [onlyConflicts, setOnlyConflicts] = useState(false);
   const [exporting, setExporting] = useState<string | null>(null);
@@ -332,7 +333,7 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
   const [savingLeaveRow, setSavingLeaveRow] = useState<string | null>(null);
   const [leaveForm, setLeaveForm] = useState({
     expertId: '',
-    date: isoDate(2026, 5),
+    date: isoDate(today.getFullYear(), today.getMonth()),
     mode: 'automatic' as 'automatic' | 'manual',
     totalHours: '8',
     peoHours: '6',
