@@ -34,5 +34,9 @@ export const storage = defineStorage({
       allow.authenticated.to(["read", "write"]),
       allow.groups(["pm", "admin"]).to(["read", "write", "delete"]),
     ],
+    "support-tickets/*": [
+      allow.authenticated.to(["write"]),
+      allow.groups(["pm", "admin"]).to(["read", "write", "delete"]),
+    ],
   }),
 });

@@ -119,14 +119,24 @@ function getActivityGroupKey(activity: Activity, inferredLegacyGroups: Map<strin
     ].join(':');
   }
 
+  const catalogKey = normalizeText(activity.catalogActivityId).toLowerCase();
+  const activityIdentityKey = catalogKey
+    ? `catalog:${catalogKey}`
+    : [
+        'manual',
+        normalizeText(activity.expertId).toLowerCase(),
+        normalizeText(activity.saCode).toLowerCase(),
+        normalizeText(activity.activityType || activity.title).toLowerCase(),
+      ].join(':');
+
   if (activity.workingGroupId && !isActivityPeriodGroupId(activity.workingGroupId)) {
-    return `working:${activity.workingGroupId}`;
+    return `working:${activity.workingGroupId}:${activityIdentityKey}`;
   }
-  if (activity.periodGroupId) return `period:${activity.periodGroupId}`;
-  if (activity.workingGroupId) return `working:${activity.workingGroupId}`;
+  if (activity.periodGroupId) return `period:${activity.periodGroupId}:${activityIdentityKey}`;
+  if (activity.workingGroupId) return `working:${activity.workingGroupId}:${activityIdentityKey}`;
 
   const inferredGroupId = inferredLegacyGroups.get(activity.id);
-  if (inferredGroupId) return `legacy:${inferredGroupId}`;
+  if (inferredGroupId) return `legacy:${inferredGroupId}:${activityIdentityKey}`;
 
   return `activity:${activity.id}`;
 }

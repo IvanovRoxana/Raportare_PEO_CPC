@@ -431,6 +431,9 @@ export interface SupportTicket {
   appVersion?: string;
   environment?: string;
   screenshotFileName?: string;
+  screenshotS3Key?: string;
+  screenshotContentType?: string;
+  screenshotSize?: number;
   lastClientError?: string;
   lastApiError?: string;
   networkStatus?: string;

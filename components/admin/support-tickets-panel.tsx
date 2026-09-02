@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { getUrl } from 'aws-amplify/storage';
 import { ArrowRight, MessageSquare, RefreshCw } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -62,7 +63,24 @@ function SupportTicketRow({ ticket }: { ticket: SupportTicket }) {
   const { update } = useSupportTicketMutations();
   const [status, setStatus] = useState(ticket.status);
   const [linearIssueUrl, setLinearIssueUrl] = useState(ticket.linearIssueUrl ?? '');
+  const [screenshotUrl, setScreenshotUrl] = useState<string | undefined>();
   const [isSaving, setIsSaving] = useState(false);
+
+  async function openScreenshot() {
+    if (!ticket.screenshotS3Key) return;
+    try {
+      const result = await getUrl({ path: ticket.screenshotS3Key });
+      const url = result.url.toString();
+      setScreenshotUrl(url);
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch (error) {
+      toast({
+        title: 'Nu am putut deschide screenshotul',
+        description: error instanceof Error ? error.message : 'Verifica accesul la Storage.',
+        variant: 'destructive',
+      });
+    }
+  }
 
   async function saveUpdates() {
     setIsSaving(true);
@@ -108,6 +126,20 @@ function SupportTicketRow({ ticket }: { ticket: SupportTicket }) {
         <div className="text-xs text-muted-foreground">{ticket.userRole || '-'}</div>
         <div className="mt-2 text-xs text-muted-foreground">{ticket.currentPath || '-'}</div>
         <div className="mt-1 text-xs text-muted-foreground">{formatDate(ticket.createdAt)}</div>
+        {ticket.screenshotFileName ? (
+          <div className="mt-2 text-xs text-muted-foreground">
+            Screenshot: {ticket.screenshotFileName}
+          </div>
+        ) : null}
+        {ticket.screenshotS3Key ? (
+          <Button type="button" variant="outline" size="sm" className="mt-2" onClick={openScreenshot}>
+            Deschide screenshot
+          </Button>
+        ) : screenshotUrl ? (
+          <a href={screenshotUrl} target="_blank" rel="noreferrer" className="mt-2 block text-xs font-semibold text-primary">
+            Deschide screenshot
+          </a>
+        ) : null}
       </TableCell>
       <TableCell className="min-w-[16rem] whitespace-normal">
         <div className="space-y-2">
