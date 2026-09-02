@@ -31,7 +31,14 @@ class ColleagueOverviewRouteError extends Error {
 const region = outputs.auth?.aws_region || 'eu-north-1';
 const userPoolId = outputs.auth?.user_pool_id;
 const appSyncEndpoint = outputs.data?.url || '';
-const appSyncApiId = outputs.data?.url ? new URL(outputs.data.url).hostname.split('.')[0] : '';
+const outputData = outputs.data as typeof outputs.data & {
+  api_id?: string;
+  aws_appsync_api_id?: string;
+};
+const appSyncApiId = process.env.APPSYNC_API_ID
+  || outputData.aws_appsync_api_id
+  || outputData.api_id
+  || '3wpaiebzefggpcmhzurrifx53i';
 const cognitoEndpoint = `https://cognito-idp.${region}.amazonaws.com/`;
 const dynamoEndpoint = `https://dynamodb.${region}.amazonaws.com/`;
 const dynamoHost = `dynamodb.${region}.amazonaws.com`;
