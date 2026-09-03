@@ -30,7 +30,7 @@ import {
 } from '@/hooks/use-backend-data';
 import { getWorkingDaysListInMonth } from '@/lib/working-hours';
 import { buildFinancialReportingSummary, normalizeFinancialPersonName } from '@/lib/financial-reporting';
-import { isReportOpenForCorrection } from '@/lib/report-correction-flow';
+import { buildReportSubmissionStatusUpdate, canSubmitReportToPm, isReportOpenForCorrection } from '@/lib/report-correction-flow';
 
 function readMonthParam(value: string | null, fallback: number) {
   const parsed = Number(value);
@@ -291,6 +291,7 @@ function ExportRaContent() {
   const isInReview = currentStatus === 'in_review';
   const isClarifications = currentStatus === 'clarifications';
   const isCorrectionOpen = isReportOpenForCorrection(reportStatus);
+  const canSubmitCurrentReportStatus = canSubmitReportToPm(reportStatus);
   const approvedExportBlockedReason = isSent || isInReview
     ? 'Exportul RA si Pontaj PEO este disponibil dupa aprobarea lunii de catre PM.'
     : 'Trimite luna catre PM si asteapta aprobarea pentru a exporta RA si Pontaj PEO.';
@@ -326,18 +327,14 @@ function ExportRaContent() {
             ? 'PM a redeschis raportarea pentru corectii. Retrimite dupa actualizare.'
           : undefined;
   const handleSubmitMonth = async () => {
-    if (!selectedExpertId || isApproved || isSent || isInReview || activities.length === 0 || blockedActivities.length > 0) return;
+    if (!selectedExpertId || !canSubmitCurrentReportStatus || activities.length === 0 || blockedActivities.length > 0) return;
 
-    await updateReportStatus({
+    await updateReportStatus(buildReportSubmissionStatusUpdate({
+      currentStatus: reportStatus,
       expertId: selectedExpertId,
       year: currentYear,
       month: currentMonth,
-      status: 'sent',
-      sentDate: new Date().toISOString(),
-      expertAccessApproved: reportStatus?.expertAccessApproved ?? false,
-      expertAccessApprovedAt: reportStatus?.expertAccessApprovedAt,
-      pmNotes: reportStatus?.pmNotes,
-    } satisfies Omit<ReportStatus, 'id'>);
+    }));
   };
 
   if (isLoading && (experts.length === 0 || !selectedExpertId)) {
@@ -420,7 +417,7 @@ function ExportRaContent() {
                   type="button"
                   variant="outline"
                   onClick={handleSubmitMonth}
-                  disabled={isApproved || isSent || isInReview || reportStatusLoading || activities.length === 0 || blockedActivities.length > 0}
+                  disabled={!canSubmitCurrentReportStatus || reportStatusLoading || activities.length === 0 || blockedActivities.length > 0}
                   title={submitButtonTitle}
                 >
                   {reportStatusLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : submitButtonIcon}
@@ -500,7 +497,7 @@ function ExportRaContent() {
             clarificationNotes={reportStatus?.pmNotes}
             clarificationCount={activitiesWithPmClarificationsCount}
             onSubmitMonth={handleSubmitMonth}
-            submitMonthDisabled={isApproved || isSent || isInReview || reportStatusLoading || activities.length === 0 || blockedActivities.length > 0}
+            submitMonthDisabled={!canSubmitCurrentReportStatus || reportStatusLoading || activities.length === 0 || blockedActivities.length > 0}
             submitMonthLabel={submitButtonLabel}
             submitMonthTitle={submitButtonTitle}
             isSubmittingMonth={reportStatusLoading}

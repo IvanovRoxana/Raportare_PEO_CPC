@@ -3,6 +3,9 @@ import test from 'node:test';
 import {
   buildReportCorrectionStatusUpdate,
   buildReportReopenStatusUpdate,
+  buildReportSubmissionStatusUpdate,
+  canSubmitReportToPm,
+  getReportSubmissionMode,
   isReportOpenForCorrection,
 } from '../lib/report-correction-flow.ts';
 import type { ReportStatus } from '../lib/types.ts';
@@ -40,6 +43,54 @@ test('recunoaste doar clarificarile cu acces expert ca raportari redeschise', ()
   assert.equal(isReportOpenForCorrection({ status: 'clarifications', expertAccessApproved: true }), true);
   assert.equal(isReportOpenForCorrection({ status: 'clarifications', expertAccessApproved: false }), false);
   assert.equal(isReportOpenForCorrection({ status: 'approved', expertAccessApproved: true }), false);
+});
+
+test('separa trimiterea initiala de retrimiterea dupa corectii PM', () => {
+  assert.equal(getReportSubmissionMode(undefined), 'initial_submit');
+  assert.equal(getReportSubmissionMode({ status: 'draft', expertAccessApproved: false }), 'initial_submit');
+  assert.equal(getReportSubmissionMode({ status: 'rejected', expertAccessApproved: false }), 'initial_submit');
+  assert.equal(getReportSubmissionMode({ status: 'clarifications', expertAccessApproved: true }), 'resubmit_after_correction');
+  assert.equal(getReportSubmissionMode({ status: 'clarifications', expertAccessApproved: false }), null);
+  assert.equal(getReportSubmissionMode({ status: 'sent', expertAccessApproved: false }), null);
+  assert.equal(getReportSubmissionMode({ status: 'in_review', expertAccessApproved: false }), null);
+  assert.equal(getReportSubmissionMode({ status: 'approved', expertAccessApproved: true }), null);
+});
+
+test('retrimiterea dupa corectii inchide accesul expertului si nu permite bypass la clarificari simple', () => {
+  const status: ReportStatus = {
+    id: 'status-3',
+    expertId: 'expert-3',
+    month: 7,
+    year: 2026,
+    status: 'clarifications',
+    sentDate: '2026-08-27T10:00:00.000Z',
+    expertAccessApproved: true,
+    expertAccessApprovedAt: '2026-08-28T10:00:00.000Z',
+    pmNotes: 'Corecteaza luna si retrimite.',
+  };
+
+  const update = buildReportSubmissionStatusUpdate({
+    currentStatus: status,
+    expertId: status.expertId,
+    month: status.month,
+    year: status.year,
+  });
+
+  assert.equal(update.status, 'sent');
+  assert.equal(update.approvalDate, undefined);
+  assert.equal(update.expertAccessApproved, false);
+  assert.equal(update.expertAccessApprovedAt, undefined);
+  assert.equal(update.pmNotes, status.pmNotes);
+  assert.equal(canSubmitReportToPm({ status: 'clarifications', expertAccessApproved: false }), false);
+  assert.throws(
+    () => buildReportSubmissionStatusUpdate({
+      currentStatus: { ...status, expertAccessApproved: false },
+      expertId: status.expertId,
+      month: status.month,
+      year: status.year,
+    }),
+    /statusul curent/,
+  );
 });
 
 test('marcheaza o raportare aprobata ca redeschisa pentru verificare PM', () => {

@@ -102,7 +102,7 @@ import { filterPendingSharedDeliverablesNotCoveredByActivity, filterSharedRelati
 import { getDeliverableDocumentSignature } from '@/lib/deliverable-deduplication';
 import { buildExpertDeliverableRows } from '@/lib/expert-deliverables';
 import { isCurrentOrPreviousMonth } from '@/lib/pm-clarifications';
-import { isReportOpenForCorrection } from '@/lib/report-correction-flow';
+import { buildReportSubmissionStatusUpdate, canSubmitReportToPm, isReportOpenForCorrection } from '@/lib/report-correction-flow';
 import { isReportingWorkBlocksEnabledClient } from '@/lib/feature-flags';
 import { buildActivitySaveWorkBlockInput } from '@/lib/activity-report/activity-save-work-block';
 import { cn } from '@/lib/utils';
@@ -2149,6 +2149,7 @@ function ExpertDashboardContent() {
   const isInReview = currentStatus === 'in_review';
   const isClarifications = currentStatus === 'clarifications';
   const isCorrectionOpen = isReportOpenForCorrection(reportStatus);
+  const canSubmitCurrentReportStatus = canSubmitReportToPm(reportStatus);
   const clarificationHref = `/expert/clarificari?month=${currentMonth}&year=${currentYear}`;
   const statusMeta = statusLabels[currentStatus as ReportStatus['status']] || statusLabels.draft;
   const statusDescription = isApproved
@@ -2452,7 +2453,7 @@ function ExpertDashboardContent() {
         : submitReadiness.disabledReason || undefined;
 
   const handleSubmitMonth = async () => {
-    if (!selectedExpertId || isApproved) return;
+    if (!selectedExpertId || !canSubmitCurrentReportStatus) return;
     if (!submissionDataReady) {
       setSaveError(SUBMISSION_DATA_LOADING_MESSAGE);
       return;
@@ -2467,16 +2468,12 @@ function ExpertDashboardContent() {
     }
 
     setSaveError(null);
-    await updateReportStatus({
+    await updateReportStatus(buildReportSubmissionStatusUpdate({
+      currentStatus: reportStatus,
       expertId: selectedExpertId,
       year: currentYear,
       month: currentMonth,
-      status: 'sent',
-      sentDate: new Date().toISOString(),
-      expertAccessApproved: isCorrectionOpen ? false : reportStatus?.expertAccessApproved ?? false,
-      expertAccessApprovedAt: isCorrectionOpen ? undefined : reportStatus?.expertAccessApprovedAt,
-      pmNotes: reportStatus?.pmNotes,
-    });
+    }));
 
     const pmEmails = getPmNotificationRecipients(experts);
     try {
@@ -3588,7 +3585,7 @@ function ExpertDashboardContent() {
                     type="button"
                     className="w-full md:w-auto"
                     onClick={handleSubmitMonth}
-                    disabled={isApproved || isSent || isInReview || (isClarificationScopedAccess && !isCorrectionOpen) || !submissionDataReady}
+                    disabled={!canSubmitCurrentReportStatus || (isClarificationScopedAccess && !isCorrectionOpen) || !submissionDataReady}
                   >
                     {submitButtonIcon}
                     {submitButtonLabel}
@@ -3730,7 +3727,7 @@ function ExpertDashboardContent() {
                           type="button"
                           className="w-full"
                           onClick={handleSubmitMonth}
-                          disabled={isApproved || isSent || isInReview || !submissionDataReady}
+                          disabled={!canSubmitCurrentReportStatus || !submissionDataReady}
                         >
                           {submitButtonIcon}
                           {submitButtonLabel}
