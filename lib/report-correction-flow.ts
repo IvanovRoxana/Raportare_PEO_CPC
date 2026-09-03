@@ -45,7 +45,7 @@ export function buildReportReopenStatusUpdate(input: {
 }
 
 export function isReportOpenForCorrection(status?: Pick<ReportStatus, 'status' | 'expertAccessApproved'> | null) {
-  return status?.status === 'clarifications' && status.expertAccessApproved === true;
+  return status?.status === 'clarifications';
 }
 
 export function getReportSubmissionMode(status?: Pick<ReportStatus, 'status' | 'expertAccessApproved'> | null): ReportSubmissionMode | null {

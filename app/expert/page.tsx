@@ -39,6 +39,7 @@ import { getActivitiesWithPmClarifications } from '@/lib/pm-clarifications';
 import { canAccessPmDashboard } from '@/lib/pm-dashboard';
 import { buildPontajExportPayload } from '@/lib/pontaj-export-payload';
 import { calculateMonthlyNormInfo } from '@/lib/pontaj-rules';
+import { buildReportSubmissionStatusUpdate, canSubmitReportToPm, isReportOpenForCorrection } from '@/lib/report-correction-flow';
 import type { Activity, ConcurrentProject, ConcurrentProjectTimesheetEntry, Expert, LeaveEntry, ReportStatus } from '@/lib/types';
 import { getNonWorkingDayInfo } from '@/lib/non-working-days';
 import { cn } from '@/lib/utils';
@@ -570,7 +571,7 @@ export default function ExpertHomeDashboard() {
   const expertName = currentExpert?.name ?? signedInName;
   const expertFirstName = expertName.split(/\s+/).filter(Boolean)[0] || 'Expert';
   const isBaseMonth = currentMonth === baseMonth && currentYear === baseYear;
-  const selectedMonthHasAccess = isBaseMonth || currentMonthStatus?.expertAccessApproved === true;
+  const selectedMonthHasAccess = isBaseMonth || currentMonthStatus?.expertAccessApproved === true || isReportOpenForCorrection(currentMonthStatus);
   const selectedMonthRequestPending = currentMonthAccessRequest?.status === 'pending';
   const selectableMonths = useMemo(
     () => MONTH_SELECTOR_OFFSETS.map((offset) => {
@@ -778,9 +779,11 @@ export default function ExpertHomeDashboard() {
   const isCurrentMonthApproved = currentReportStatus === 'approved';
   const isCurrentMonthSent = currentReportStatus === 'sent';
   const isCurrentMonthInReview = currentReportStatus === 'in_review';
+  const canSubmitCurrentReportStatus = canSubmitReportToPm(currentMonthStatus);
   const canSubmitCurrentMonth =
     Boolean(currentExpert)
     && selectedMonthHasAccess
+    && canSubmitCurrentReportStatus
     && peoActivities.length > 0
     && !dashboardHasBlockingItems
     && !isCurrentMonthApproved
@@ -808,16 +811,12 @@ export default function ExpertHomeDashboard() {
     setIsSubmittingMonth(true);
     setSubmitNotice(null);
     try {
-      await updateCurrentMonthStatus({
+      await updateCurrentMonthStatus(buildReportSubmissionStatusUpdate({
+        currentStatus: currentMonthStatus,
         expertId: currentExpert.id,
         year: currentYear,
         month: currentMonth,
-        status: 'sent',
-        sentDate: new Date().toISOString(),
-        expertAccessApproved: currentMonthStatus?.expertAccessApproved ?? false,
-        expertAccessApprovedAt: currentMonthStatus?.expertAccessApprovedAt,
-        pmNotes: currentMonthStatus?.pmNotes,
-      } satisfies Omit<ReportStatus, 'id'>);
+      }));
       setSubmitNotice('Luna a fost trimisa catre PM.');
     } catch (error) {
       setSubmitNotice(error instanceof Error ? error.message : 'Trimiterea lunii catre PM a esuat.');

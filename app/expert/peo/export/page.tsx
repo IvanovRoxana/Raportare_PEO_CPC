@@ -324,7 +324,7 @@ function ExportRaContent() {
         : isSent
           ? 'Luna a fost deja trimisa catre PM.'
           : isClarifications && isCorrectionOpen
-            ? 'PM a redeschis raportarea pentru corectii. Retrimite dupa actualizare.'
+            ? 'PM a solicitat clarificari. Retrimite dupa actualizare.'
           : undefined;
   const handleSubmitMonth = async () => {
     if (!selectedExpertId || !canSubmitCurrentReportStatus || activities.length === 0 || blockedActivities.length > 0) return;

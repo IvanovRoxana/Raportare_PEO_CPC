@@ -39,9 +39,9 @@ test('redeschide o raportare aprobata pentru corectii expert', () => {
   assert.ok(update.expertAccessApprovedAt);
 });
 
-test('recunoaste doar clarificarile cu acces expert ca raportari redeschise', () => {
+test('recunoaste automat clarificarile ca raportari redeschise pentru expert', () => {
   assert.equal(isReportOpenForCorrection({ status: 'clarifications', expertAccessApproved: true }), true);
-  assert.equal(isReportOpenForCorrection({ status: 'clarifications', expertAccessApproved: false }), false);
+  assert.equal(isReportOpenForCorrection({ status: 'clarifications', expertAccessApproved: false }), true);
   assert.equal(isReportOpenForCorrection({ status: 'approved', expertAccessApproved: true }), false);
 });
 
@@ -50,13 +50,13 @@ test('separa trimiterea initiala de retrimiterea dupa corectii PM', () => {
   assert.equal(getReportSubmissionMode({ status: 'draft', expertAccessApproved: false }), 'initial_submit');
   assert.equal(getReportSubmissionMode({ status: 'rejected', expertAccessApproved: false }), 'initial_submit');
   assert.equal(getReportSubmissionMode({ status: 'clarifications', expertAccessApproved: true }), 'resubmit_after_correction');
-  assert.equal(getReportSubmissionMode({ status: 'clarifications', expertAccessApproved: false }), null);
+  assert.equal(getReportSubmissionMode({ status: 'clarifications', expertAccessApproved: false }), 'resubmit_after_correction');
   assert.equal(getReportSubmissionMode({ status: 'sent', expertAccessApproved: false }), null);
   assert.equal(getReportSubmissionMode({ status: 'in_review', expertAccessApproved: false }), null);
   assert.equal(getReportSubmissionMode({ status: 'approved', expertAccessApproved: true }), null);
 });
 
-test('retrimiterea dupa corectii inchide accesul expertului si nu permite bypass la clarificari simple', () => {
+test('retrimiterea dupa corectii inchide accesul expertului si lasa clarificarile automat retrimisibile', () => {
   const status: ReportStatus = {
     id: 'status-3',
     expertId: 'expert-3',
@@ -81,16 +81,17 @@ test('retrimiterea dupa corectii inchide accesul expertului si nu permite bypass
   assert.equal(update.expertAccessApproved, false);
   assert.equal(update.expertAccessApprovedAt, undefined);
   assert.equal(update.pmNotes, status.pmNotes);
-  assert.equal(canSubmitReportToPm({ status: 'clarifications', expertAccessApproved: false }), false);
-  assert.throws(
-    () => buildReportSubmissionStatusUpdate({
-      currentStatus: { ...status, expertAccessApproved: false },
-      expertId: status.expertId,
-      month: status.month,
-      year: status.year,
-    }),
-    /statusul curent/,
-  );
+  assert.equal(canSubmitReportToPm({ status: 'clarifications', expertAccessApproved: false }), true);
+
+  const legacyClarificationUpdate = buildReportSubmissionStatusUpdate({
+    currentStatus: { ...status, expertAccessApproved: false, expertAccessApprovedAt: undefined },
+    expertId: status.expertId,
+    month: status.month,
+    year: status.year,
+  });
+  assert.equal(legacyClarificationUpdate.status, 'sent');
+  assert.equal(legacyClarificationUpdate.expertAccessApproved, false);
+  assert.equal(legacyClarificationUpdate.expertAccessApprovedAt, undefined);
 });
 
 test('marcheaza o raportare aprobata ca redeschisa pentru verificare PM', () => {

@@ -7,7 +7,7 @@ const clarificationsPageSource = readFileSync(
   'utf8',
 );
 
-test('pagina de clarificari lunare foloseste flow-ul curent de redeschidere PM', () => {
+test('pagina de clarificari lunare foloseste flow-ul curent de corectii PM', () => {
   assert.match(clarificationsPageSource, /isReportOpenForCorrection/);
   assert.match(clarificationsPageSource, /Corectează pontajul, apoi folosește butonul „Retrimite după corecții” din pontaj\./);
   assert.match(clarificationsPageSource, /Corectează în pontaj/);

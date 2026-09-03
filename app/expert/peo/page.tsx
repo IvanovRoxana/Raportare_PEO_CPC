@@ -2160,7 +2160,7 @@ function ExpertDashboardContent() {
         ? 'Luna a fost trimisă către PM și așteaptă verificarea.'
         : isClarifications
           ? isCorrectionOpen
-            ? 'PM a redeschis raportarea pentru corecții. Verifică observațiile, corectează și retrimite luna către PM.'
+            ? 'PM a solicitat clarificări. Luna este disponibilă pentru corecții; verifică observațiile, corectează și retrimite către PM.'
             : 'PM a solicitat clarificări. Deschide panoul de clarificări pentru detalii.'
         : 'Completează pontajul și trimite luna către PM când pachetul este pregătit.';
   const submitButtonIcon = isApproved
