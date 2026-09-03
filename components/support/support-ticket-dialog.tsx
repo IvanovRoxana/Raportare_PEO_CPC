@@ -429,7 +429,20 @@ export function SupportTicketDialog({ user }: { user: AppUser | null }) {
               <span>Afecteaza raportarea lunara sau exportul final.</span>
             </label>
             <div className="space-y-2">
-              <Label htmlFor="support-screenshot">Screenshot</Label>
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor="support-screenshot">Screenshot</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleCaptureScreenshot}
+                  disabled={isCapturing || isSubmitting}
+                  className="h-8 shrink-0"
+                >
+                  <Upload className="h-4 w-4" />
+                  {isCapturing ? 'Capturez...' : 'Fa screenshot'}
+                </Button>
+              </div>
               <Input
                 id="support-screenshot"
                 type="file"
@@ -456,22 +469,10 @@ export function SupportTicketDialog({ user }: { user: AppUser | null }) {
             </div>
           </div>
 
-          <div className="rounded-md border border-border bg-slate-50 p-3">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-sm font-semibold text-slate-950">Captura ecran</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Formularul se inchide temporar, alegi ecranul/fereastra/tabul, apoi revine aici.
-                </p>
-              </div>
-              <Button type="button" variant="outline" onClick={handleCaptureScreenshot} disabled={isCapturing || isSubmitting}>
-                <Upload className="h-4 w-4" />
-                {isCapturing ? 'Se captureaza...' : 'Fa screenshot'}
-              </Button>
-            </div>
-            {screenshotFileName ? (
+          {screenshotFileName ? (
+            <div className="rounded-md border border-border bg-slate-50 p-3">
               <>
-                <div className="mt-3 flex flex-col gap-3 rounded-md border border-slate-200 bg-white p-3 sm:flex-row sm:items-center">
+                <div className="flex flex-col gap-3 rounded-md border border-slate-200 bg-white p-3 sm:flex-row sm:items-center">
                   {screenshotPreviewUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
@@ -510,8 +511,8 @@ export function SupportTicketDialog({ user }: { user: AppUser | null }) {
                   <span>Am verificat screenshotul si nu contine CNP-uri, date personale sensibile sau documente integrale.</span>
                 </label>
               </>
-            ) : null}
-          </div>
+            </div>
+          ) : null}
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={isSubmitting}>
