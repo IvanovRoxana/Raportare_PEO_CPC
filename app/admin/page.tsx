@@ -11,6 +11,7 @@ import {
   Lock,
   MessageSquare,
   Plus,
+  FileText,
   Settings,
   Sparkles,
   ShieldCheck,
@@ -28,17 +29,19 @@ import { AdminUsersTable } from '@/components/admin/admin-users-table';
 import { AdminProjectsPanel } from '@/components/admin/admin-projects-panel';
 import { BusinessHubEntityDirectoryPanel } from '@/components/admin/business-hub-entity-directory-panel';
 import { PeoExpertCategoriesPanel } from '@/components/admin/peo-expert-categories-panel';
+import { PontajSignaturesPanel } from '@/components/admin/pontaj-signatures-panel';
 import { ReportingPeriodsPanel } from '@/components/admin/reporting-periods-panel';
 import { SupportTicketsPanel } from '@/components/admin/support-tickets-panel';
 import { UsersRolesManagementPanel } from '@/components/admin/users-roles-management-panel';
 import { ViewAsExpertPanel } from '@/components/admin/view-as-expert-panel';
+import { AdminAccessGuard } from '@/components/admin/admin-access-guard';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import activityCatalog from '@/data/import/activity-catalog.json';
 import type { ActivityCatalog } from '@/lib/types';
 
-const adminTabValues = ['utilizatori', 'categorii-experti', 'roluri', 'perioade-raportare', 'suport', 'subactivitati', 'business-hub', 'ai', 'proiecte'] as const;
+const adminTabValues = ['utilizatori', 'categorii-experti', 'semnaturi-pontaj', 'roluri', 'perioade-raportare', 'suport', 'subactivitati', 'business-hub', 'ai', 'proiecte'] as const;
 
 type AdminTabValue = (typeof adminTabValues)[number];
 
@@ -62,6 +65,7 @@ export default async function AdminPage({
   const selectedTab = resolveAdminTab((await searchParams)?.tab);
 
   return (
+    <AdminAccessGuard>
     <DashboardShell
       activeHref="/admin"
       navItems={adminNavItems}
@@ -167,6 +171,7 @@ export default async function AdminPage({
               {[
                 ['utilizatori', 'Utilizatori', UsersRound],
                 ['categorii-experti', 'Categorii experti PEO', BriefcaseBusiness],
+                ['semnaturi-pontaj', 'Semnaturi pontaj', FileText],
                 ['roluri', 'Roluri', ShieldCheck],
                 ['perioade-raportare', 'Perioade raportare', CalendarDays],
                 ['suport', 'Suport UAT', MessageSquare],
@@ -194,6 +199,10 @@ export default async function AdminPage({
 
             <TabsContent value="categorii-experti" className="m-0 p-6">
               <PeoExpertCategoriesPanel />
+            </TabsContent>
+
+            <TabsContent value="semnaturi-pontaj" className="m-0 p-6">
+              <PontajSignaturesPanel />
             </TabsContent>
 
             <TabsContent value="roluri" className="m-0 p-6">
@@ -248,5 +257,6 @@ export default async function AdminPage({
         </Tabs>
       </Card>
     </DashboardShell>
+    </AdminAccessGuard>
   );
 }

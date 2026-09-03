@@ -8,6 +8,7 @@ import {
   buildBusinessHubPreliminaryReportText,
   buildGdprActivityDescription,
   buildGdprDeliverableText,
+  createGeneratedGdprDeliverableSlot,
   getGdprRequiredFields,
   isGdprDeliverableRequired,
   validateGdprActivityDraft,
@@ -48,6 +49,24 @@ test('publicarea online genereaza descriere si livrabil GDPR specializat', () =>
   assert.match(description, /website, LinkedIn/);
   assert.match(deliverable, /RAPORT PRELIMINAR PRIVIND VERIFICAREA RESPECTARII GDPR IN PUBLICAREA ONLINE/);
   assert.match(deliverable, /Khamissi Simona/);
+});
+
+test('rapoartele preliminare GDPR sunt directionate in slotul RP', () => {
+  const preliminarySlot = createGeneratedGdprDeliverableSlot({
+    templateCode: 'GDPR_PUBLICARE',
+    meta: baseMeta,
+    date: '2026-01-13',
+    expertName: 'Khamissi Simona',
+  });
+  const monthlyReportSlot = createGeneratedGdprDeliverableSlot({
+    templateCode: 'GDPR_RAPORT_LUNAR',
+    meta: baseMeta,
+    date: '2026-01-31',
+    expertName: 'Khamissi Simona',
+  });
+
+  assert.equal(preliminarySlot.slotType, 'raport_preliminar');
+  assert.equal(monthlyReportSlot.slotType, 'livrabil');
 });
 
 test('evenimentul cu foto-video cere informare, temei si drept de opozitie', () => {

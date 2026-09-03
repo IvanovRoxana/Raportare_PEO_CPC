@@ -54,6 +54,7 @@ import type {
   ReportingPeriod,
   ReportStatus,
   SharedDeliverable,
+  SupportTicket,
 } from '@/lib/types';
 import type { PmSubmittedReportRow } from '@/components/pm/pm-submitted-reports-panel';
 import { DeliverablesView } from './pm-deliverables-view';
@@ -109,6 +110,7 @@ export type PmWorkspaceProps = {
   pmUnlockRequests: DocumentMetadata[];
   resolvedPmUnlockRequests: DocumentMetadata[];
   eventDocumentIssues: Activity[];
+  supportTickets?: SupportTicket[];
   isExportingOpisTotal: boolean;
   exportingPontajExpertId?: string | null;
   onOpenDossier: (expert: Expert, options?: { activityId?: string; documentId?: string; issueType?: string }) => void;
@@ -364,6 +366,20 @@ function ReportGroup({ title, tone, rows, props }: { title: string; tone: 'emera
 
 function NonconformitiesView(props: PmWorkspaceProps) {
   const [acceptedTitleDocument, setAcceptedTitleDocument] = useState<DocumentMetadata | null>(null);
+  const activeDocumentTicketById = useMemo(() => {
+    const active = new Map<string, SupportTicket>();
+    (props.supportTickets || []).forEach((ticket) => {
+      if (
+        ticket.relatedDocumentId
+        && ticket.selectedMonth === props.selectedMonth
+        && ticket.selectedYear === props.selectedYear
+        && !['resolved', 'duplicate', 'not_bug', 'deferred'].includes(ticket.status)
+      ) {
+        active.set(ticket.relatedDocumentId, ticket);
+      }
+    });
+    return active;
+  }, [props.selectedMonth, props.selectedYear, props.supportTickets]);
   const cards = [
     ['Livrabile comune cu denumiri diferite', props.titleIssues.length],
     ['Evenimente comune zile diferite', props.eventDocumentIssues.length],
@@ -379,10 +395,11 @@ function NonconformitiesView(props: PmWorkspaceProps) {
         items={props.titleIssues.map((doc) => ({ id: doc.id, title: doc.declaredTitle || doc.originalFileName, detail: doc.titleCheckMessage || 'Denumire diferită', expertId: doc.uploadedByExpertId, document: doc }))}
         props={props}
         onSetAcceptedTitle={setAcceptedTitleDocument}
+        activeDocumentTicketById={activeDocumentTicketById}
       />
-      <IssueSection title="Evenimente comune pontate în zile diferite" items={props.eventDocumentIssues.map((activity) => ({ id: activity.id, title: activity.title || activity.activityType, detail: activity.date, expertId: activity.expertId, activity }))} props={props} />
-      <IssueSection title="Colaborare declarată dar neconfirmată reciproc" items={props.pendingSharedDeliverables.map((item) => ({ id: item.relation.id, title: item.relation.sourceActivityTitle || item.document?.declaredTitle || item.document?.originalFileName || 'Livrabil comun', detail: `${item.sourceExpert?.name || item.relation.sourceExpertName || 'Expert sursă'} → ${item.targetExpert?.name || 'Expert țintă'}`, expertId: item.relation.sourceExpertId, document: item.document }))} props={props} />
-      <IssueSection title="Livrabile neeligibile" items={props.pmUnlockRequests.map((doc) => ({ id: doc.id, title: doc.declaredTitle || doc.originalFileName, detail: doc.eligibilityCheck?.summary || doc.eligibilityCheck?.status || 'Necesită decizie PM', expertId: doc.uploadedByExpertId, document: doc }))} props={props} />
+      <IssueSection title="Evenimente comune pontate în zile diferite" items={props.eventDocumentIssues.map((activity) => ({ id: activity.id, title: activity.title || activity.activityType, detail: activity.date, expertId: activity.expertId, activity }))} props={props} activeDocumentTicketById={activeDocumentTicketById} />
+      <IssueSection title="Colaborare declarată dar neconfirmată reciproc" items={props.pendingSharedDeliverables.map((item) => ({ id: item.relation.id, title: item.relation.sourceActivityTitle || item.document?.declaredTitle || item.document?.originalFileName || 'Livrabil comun', detail: `${item.sourceExpert?.name || item.relation.sourceExpertName || 'Expert sursă'} → ${item.targetExpert?.name || 'Expert țintă'}`, expertId: item.relation.sourceExpertId, document: item.document }))} props={props} activeDocumentTicketById={activeDocumentTicketById} />
+      <IssueSection title="Livrabile neeligibile" items={props.pmUnlockRequests.map((doc) => ({ id: doc.id, title: doc.declaredTitle || doc.originalFileName, detail: doc.eligibilityCheck?.summary || doc.eligibilityCheck?.status || 'Necesită decizie PM', expertId: doc.uploadedByExpertId, document: doc }))} props={props} activeDocumentTicketById={activeDocumentTicketById} />
       <IssueSection title="Verificări manuale PM" items={props.neconformitati.filter((item) => !item.resolved).map((item) => ({ id: item.id, title: item.description, detail: item.severity, expertId: item.affectedExpertId }))} props={props} />
       <AcceptedTitleDialog
         document={acceptedTitleDocument}
@@ -403,11 +420,13 @@ function IssueSection({
   items,
   props,
   onSetAcceptedTitle,
+  activeDocumentTicketById,
 }: {
   title: string;
   items: Array<{ id: string; title: string; detail?: string; expertId?: string; document?: DocumentMetadata; activity?: Activity }>;
   props: PmWorkspaceProps;
   onSetAcceptedTitle?: (document: DocumentMetadata) => void;
+  activeDocumentTicketById?: Map<string, SupportTicket>;
 }) {
   return (
     <section className="overflow-hidden rounded-lg border bg-white shadow-sm">
@@ -419,10 +438,16 @@ function IssueSection({
           items.map((item) => {
             const expertId = item.expertId;
             const document = item.document;
+            const activeTicket = document ? activeDocumentTicketById?.get(document.id) : undefined;
             return (
               <div key={item.id} className="flex flex-col gap-2 p-4 md:flex-row md:items-center md:justify-between">
                 <div>
-                  <div className="font-semibold text-[#1f3f75]">{item.title}</div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="font-semibold text-[#1f3f75]">{item.title}</div>
+                    {activeTicket ? (
+                      <Badge variant="secondary">Tichet {activeTicket.status}</Badge>
+                    ) : null}
+                  </div>
                   <div className="text-xs text-slate-500">{item.detail}</div>
                 </div>
                 <div className="flex gap-2">

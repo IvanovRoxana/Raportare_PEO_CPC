@@ -73,11 +73,13 @@ import {
   useGTEntities,
   useGTPersons,
   useSharedDeliverables,
+  useSupportTickets,
   useGrupTintaByMonth,
   useWorkingGroups,
   useAllConcurrentProjects,
   useConcurrentProjects,
   useConcurrentProjectTimesheetByMonth,
+  useSupportTicketMutations,
 } from '@/hooks/use-backend-data';
 import { buildDashboardComplianceRows } from '@/lib/reporting-dashboard';
 import { getSignedInUser, type AppUser } from '@/lib/aws/auth';
@@ -116,6 +118,10 @@ import {
 import { buildOpisXlsxBlob, buildOpisXlsxFilename } from '@/lib/opis-xls-export';
 import { buildPontajExportPayload } from '@/lib/pontaj-export-payload';
 import { isActivePmUnlockRequest, isAutoResolvedPmUnlockRequest } from '@/lib/pm-unlock-status';
+import {
+  buildPmDocumentClarificationSupportTicket,
+  findActiveDocumentSupportTicket,
+} from '@/lib/support-ticketing';
 import {
   buildPmApprovedDeliverableNotification,
   buildPmApprovedMonthNotification,
@@ -185,6 +191,14 @@ function triggerDownload(blob: Blob, filename: string) {
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
+}
+
+function getClientEnvironment() {
+  return process.env.NEXT_PUBLIC_APP_ENV || process.env.NODE_ENV || 'unknown';
+}
+
+function getAppVersion() {
+  return process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA || process.env.NEXT_PUBLIC_APP_VERSION || 'local';
 }
 
 function getFilenameFromContentDisposition(disposition: string, fallbackName: string) {
@@ -259,6 +273,8 @@ export default function PMDashboard() {
   const { create: createActivity, update: updateActivity } = useActivityMutations();
   const { create: createAuditLog } = useAuditLogMutations();
   const { createMany: createNotificationLogs } = useNotificationLogMutations();
+  const { create: createSupportTicket, update: updateSupportTicket } = useSupportTicketMutations();
+  const { tickets: supportTickets } = useSupportTickets();
   const { updateEligibilityCheck: updateDocumentEligibilityCheck } = useDocumentMutations();
   const {
     status: reportStatus,
@@ -1029,6 +1045,43 @@ export default function PMDashboard() {
           targetLabel: `documentul ${documentMeta.originalFileName}`,
         }));
       }
+
+      try {
+        const ticketInput = buildPmDocumentClarificationSupportTicket({
+          document: documentMeta,
+          expert,
+          note: pmNote,
+          month: selectedMonth,
+          year: selectedYear,
+          actorId: currentUser?.id || currentUser?.email || 'pm',
+          actorName: currentUser?.displayName || currentUser?.email || 'PM',
+          actorRole: currentUser?.roles?.join(',') || 'pm',
+          currentPath: '/pm',
+          appVersion: getAppVersion(),
+          environment: getClientEnvironment(),
+        });
+        const existingTicket = findActiveDocumentSupportTicket(supportTickets, ticketInput);
+
+        if (existingTicket) {
+          await updateSupportTicket(existingTicket, {
+            ...ticketInput,
+            description: [
+              existingTicket.description,
+              '',
+              `Actualizare PM (${new Date().toLocaleString('ro-RO')}):`,
+              pmNote,
+            ].join('\n'),
+            status: existingTicket.status === 'new' ? 'confirmed' : existingTicket.status,
+            updatedBy: currentUser?.displayName || currentUser?.email || 'PM',
+          });
+        } else {
+          await createSupportTicket(ticketInput);
+        }
+      } catch (ticketError) {
+        window.alert(ticketError instanceof Error
+          ? `Clarificarea a fost trimisa, dar tichetul nu a putut fi inregistrat: ${ticketError.message}`
+          : 'Clarificarea a fost trimisa, dar tichetul nu a putut fi inregistrat.');
+      }
     } catch (error) {
       window.alert(error instanceof Error ? error.message : 'Clarificarea nu a putut fi salvata.');
     }
@@ -1638,6 +1691,7 @@ export default function PMDashboard() {
         onApprovePmUnlock={approvePmUnlockRequest}
         onDownloadTotalOpisXls={handleDownloadTotalOpisXls}
         onDownloadExpertPontaj={handleDownloadExpertPontaj}
+        supportTickets={supportTickets}
         fallbackCatalog={fallbackActivityCatalog as ActivityCatalog[]}
         onEligibilityGovernanceAudit={recordEligibilityGovernanceAudit}
       />
@@ -1971,6 +2025,7 @@ export default function PMDashboard() {
           unresolvedNeconformitati={localNeconformitati.filter((item) => !item.resolved)}
           dashboardRows={dashboardRows}
           clarificationThreads={clarificationThreads}
+          supportTickets={supportTickets}
           activeAlertFilter={activeAlertFilter}
           onOpenDossier={openReviewReportById}
           onRequestDocumentClarification={requestDocumentClarification}

@@ -27,6 +27,15 @@ import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { useSupportTicketMutations } from '@/hooks/use-backend-data';
 import { uploadAuthenticatedData } from '@/lib/authenticated-storage';
+import {
+  buildSupportTicketLinearLabels,
+  buildSupportTicketLinearPriority,
+  buildSupportTicketTitle,
+  inferSupportTicketModuleFromPath,
+  supportTicketModules,
+  supportTicketSeverities,
+  supportTicketTypes,
+} from '@/lib/support-ticketing';
 import type {
   SupportTicketModule,
   SupportTicketSeverity,
@@ -34,68 +43,7 @@ import type {
 } from '@/lib/types';
 import type { AppUser } from '@/lib/aws/auth';
 
-const ticketTypes: Array<{ value: SupportTicketType; label: string }> = [
-  { value: 'bug', label: 'Bug' },
-  { value: 'question', label: 'Intrebare' },
-  { value: 'suggestion', label: 'Sugestie' },
-  { value: 'blocker', label: 'Blocaj' },
-  { value: 'export_issue', label: 'Problema export' },
-  { value: 'ai_issue', label: 'Problema AI' },
-  { value: 'access_issue', label: 'Acces / date' },
-  { value: 'ux_issue', label: 'UX / neclaritate' },
-];
-
-const ticketModules: Array<{ value: SupportTicketModule; label: string }> = [
-  { value: 'expert', label: 'Expert' },
-  { value: 'pm', label: 'PM' },
-  { value: 'financial', label: 'Financiar' },
-  { value: 'deliverables', label: 'Livrabile' },
-  { value: 'gt', label: 'GT' },
-  { value: 'business_hub', label: 'Business Hub' },
-  { value: 'achizitii', label: 'Achizitii' },
-  { value: 'ai', label: 'AI' },
-  { value: 'export', label: 'Export' },
-  { value: 'admin', label: 'Admin' },
-  { value: 'other', label: 'Alt modul' },
-];
-
-const severityOptions: Array<{ value: SupportTicketSeverity; label: string }> = [
-  { value: 'blocking', label: 'Blocheaza raportarea' },
-  { value: 'important', label: 'Important' },
-  { value: 'minor', label: 'Minor' },
-];
-
-function inferModuleFromPath(pathname: string): SupportTicketModule {
-  if (pathname.startsWith('/pm')) return 'pm';
-  if (pathname.startsWith('/financiar')) return 'financial';
-  if (pathname.startsWith('/gt')) return 'gt';
-  if (pathname.startsWith('/achizitii')) return 'achizitii';
-  if (pathname.startsWith('/admin')) return 'admin';
-  if (pathname.includes('livrabile')) return 'deliverables';
-  if (pathname.startsWith('/api/ai')) return 'ai';
-  return 'expert';
-}
-
-function buildLinearLabels(input: {
-  module: SupportTicketModule;
-  type: SupportTicketType;
-  severity: SupportTicketSeverity;
-  affectsMonthlyReporting: boolean;
-}) {
-  const labels = ['PL uat', 'PL needs-retest', `PL ${input.module}`];
-  if (input.type === 'ai_issue') labels.push('PL ai-validation');
-  if (input.type === 'export_issue') labels.push('PL export-validation');
-  if (input.type === 'access_issue') labels.push('PL security-gdpr');
-  if (input.severity === 'blocking' || input.affectsMonthlyReporting) labels.push('PL blocker-live');
-  return Array.from(new Set(labels));
-}
-
-function buildLinearPriority(severity: SupportTicketSeverity, type: SupportTicketType) {
-  if (severity === 'blocking' || type === 'access_issue') return 'urgent';
-  if (type === 'export_issue') return 'high';
-  if (severity === 'important') return 'medium';
-  return 'low';
-}
+const MAX_SUPPORT_SCREENSHOT_SIZE = 8 * 1024 * 1024;
 
 function getClientEnvironment() {
   return process.env.NEXT_PUBLIC_APP_ENV || process.env.NODE_ENV || 'unknown';
@@ -183,7 +131,7 @@ export function SupportTicketDialog({ user }: { user: AppUser | null }) {
   const [isCapturing, setIsCapturing] = useState(false);
   const [lastClientError, setLastClientError] = useState<string | undefined>();
   const [type, setType] = useState<SupportTicketType>('bug');
-  const [module, setModule] = useState<SupportTicketModule>(() => inferModuleFromPath(pathname));
+  const [module, setModule] = useState<SupportTicketModule>(() => inferSupportTicketModuleFromPath(pathname));
   const [severity, setSeverity] = useState<SupportTicketSeverity>('important');
   const [canReproduce, setCanReproduce] = useState('unknown');
   const [affectsMonthlyReporting, setAffectsMonthlyReporting] = useState(false);
@@ -194,9 +142,10 @@ export function SupportTicketDialog({ user }: { user: AppUser | null }) {
   const [screenshotFile, setScreenshotFile] = useState<File | null>(null);
   const [screenshotFileName, setScreenshotFileName] = useState<string | undefined>();
   const [screenshotPreviewUrl, setScreenshotPreviewUrl] = useState<string | undefined>();
+  const [screenshotPrivacyConfirmed, setScreenshotPrivacyConfirmed] = useState(false);
 
   useEffect(() => {
-    setModule(inferModuleFromPath(pathname));
+    setModule(inferSupportTicketModuleFromPath(pathname));
   }, [pathname]);
 
   useEffect(() => {
@@ -216,9 +165,7 @@ export function SupportTicketDialog({ user }: { user: AppUser | null }) {
   }, []);
 
   const title = useMemo(() => {
-    const moduleLabel = ticketModules.find((item) => item.value === module)?.label || module;
-    const typeLabel = ticketTypes.find((item) => item.value === type)?.label || type;
-    return `[UAT][${moduleLabel}] ${typeLabel}`;
+    return buildSupportTicketTitle({ module, type });
   }, [module, type]);
 
   useEffect(() => {
@@ -237,8 +184,12 @@ export function SupportTicketDialog({ user }: { user: AppUser | null }) {
     try {
       flushSync(() => setOpen(false));
       const file = await captureScreenAsFile();
+      if (file.size > MAX_SUPPORT_SCREENSHOT_SIZE) {
+        throw new Error('Screenshotul depaseste limita de 8 MB. Foloseste o captura mai mica sau upload manual.');
+      }
       setScreenshotFile(file);
       setScreenshotFileName(file.name);
+      setScreenshotPrivacyConfirmed(false);
       toast({
         title: 'Screenshot atasat',
         description: 'Formularul s-a redeschis. Poti continua descrierea problemei.',
@@ -265,10 +216,18 @@ export function SupportTicketDialog({ user }: { user: AppUser | null }) {
       });
       return;
     }
+    if (screenshotFile && !screenshotPrivacyConfirmed) {
+      toast({
+        title: 'Confirma screenshotul',
+        description: 'Bifeaza ca ai verificat captura si nu include CNP-uri, date personale sensibile sau documente integrale.',
+        variant: 'destructive',
+      });
+      return;
+    }
 
     setIsSubmitting(true);
     try {
-      const linearLabels = buildLinearLabels({ module, type, severity, affectsMonthlyReporting });
+      const linearLabels = buildSupportTicketLinearLabels({ module, type, severity, affectsMonthlyReporting });
       let uploadedScreenshot: string | undefined;
       let uploadErrorMessage: string | undefined;
 
@@ -309,7 +268,7 @@ export function SupportTicketDialog({ user }: { user: AppUser | null }) {
           .join('\n') || undefined,
         networkStatus: navigator.onLine ? 'online' : 'offline',
         linearLabels,
-        linearPriority: buildLinearPriority(severity, type),
+        linearPriority: buildSupportTicketLinearPriority(severity, type),
         createdBy: user?.email || user?.id,
       });
 
@@ -324,6 +283,7 @@ export function SupportTicketDialog({ user }: { user: AppUser | null }) {
       setReproductionSteps('');
       setScreenshotFile(null);
       setScreenshotFileName(undefined);
+      setScreenshotPrivacyConfirmed(false);
       setCanReproduce('unknown');
       setAffectsMonthlyReporting(false);
     } catch (error) {
@@ -365,7 +325,7 @@ export function SupportTicketDialog({ user }: { user: AppUser | null }) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {ticketTypes.map((item) => (
+                  {supportTicketTypes.map((item) => (
                     <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
                   ))}
                 </SelectContent>
@@ -379,7 +339,7 @@ export function SupportTicketDialog({ user }: { user: AppUser | null }) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {ticketModules.map((item) => (
+                  {supportTicketModules.map((item) => (
                     <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
                   ))}
                 </SelectContent>
@@ -393,7 +353,7 @@ export function SupportTicketDialog({ user }: { user: AppUser | null }) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {severityOptions.map((item) => (
+                  {supportTicketSeverities.map((item) => (
                     <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
                   ))}
                 </SelectContent>
@@ -476,8 +436,21 @@ export function SupportTicketDialog({ user }: { user: AppUser | null }) {
                 accept="image/*"
                 onChange={(event) => {
                   const file = event.target.files?.[0] ?? null;
+                  if (file && file.size > MAX_SUPPORT_SCREENSHOT_SIZE) {
+                    toast({
+                      title: 'Screenshot prea mare',
+                      description: 'Limita pentru atasamentele de suport este 8 MB.',
+                      variant: 'destructive',
+                    });
+                    event.target.value = '';
+                    setScreenshotFile(null);
+                    setScreenshotFileName(undefined);
+                    setScreenshotPrivacyConfirmed(false);
+                    return;
+                  }
                   setScreenshotFile(file);
                   setScreenshotFileName(file?.name);
+                  setScreenshotPrivacyConfirmed(false);
                 }}
               />
             </div>
@@ -497,34 +470,46 @@ export function SupportTicketDialog({ user }: { user: AppUser | null }) {
               </Button>
             </div>
             {screenshotFileName ? (
-              <div className="mt-3 flex flex-col gap-3 rounded-md border border-slate-200 bg-white p-3 sm:flex-row sm:items-center">
-                {screenshotPreviewUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={screenshotPreviewUrl}
-                    alt="Preview screenshot"
-                    className="h-20 w-32 rounded-md border border-slate-200 object-cover"
-                  />
-                ) : null}
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-slate-950">{screenshotFileName}</p>
-                  <p className="text-xs text-muted-foreground">
-                    Screenshotul va fi atasat ticketului la trimitere.
-                  </p>
+              <>
+                <div className="mt-3 flex flex-col gap-3 rounded-md border border-slate-200 bg-white p-3 sm:flex-row sm:items-center">
+                  {screenshotPreviewUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={screenshotPreviewUrl}
+                      alt="Preview screenshot"
+                      className="h-20 w-32 rounded-md border border-slate-200 object-cover"
+                    />
+                  ) : null}
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-slate-950">{screenshotFileName}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Screenshotul va fi atasat ticketului la trimitere.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setScreenshotFile(null);
+                      setScreenshotFileName(undefined);
+                      setScreenshotPrivacyConfirmed(false);
+                    }}
+                  >
+                    <X className="h-4 w-4" />
+                    Sterge
+                  </Button>
                 </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setScreenshotFile(null);
-                    setScreenshotFileName(undefined);
-                  }}
-                >
-                  <X className="h-4 w-4" />
-                  Sterge
-                </Button>
-              </div>
+                <label className="mt-3 flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900">
+                  <input
+                    type="checkbox"
+                    checked={screenshotPrivacyConfirmed}
+                    onChange={(event) => setScreenshotPrivacyConfirmed(event.target.checked)}
+                    className="mt-1 h-4 w-4 rounded border-amber-300"
+                  />
+                  <span>Am verificat screenshotul si nu contine CNP-uri, date personale sensibile sau documente integrale.</span>
+                </label>
+              </>
             ) : null}
           </div>
 

@@ -11,7 +11,7 @@ import {
 } from '@/lib/document-sharing';
 import { clarificationStatusLabel } from '@/lib/pm-clarification-flow';
 import { groupPmTitleIssues } from '@/lib/pm-title-issues';
-import type { Activity, DashboardComplianceRow, DocumentMetadata, Expert, Neconformitate, PmClarificationThread, SharedDeliverable } from '@/lib/types';
+import type { Activity, DashboardComplianceRow, DocumentMetadata, Expert, Neconformitate, PmClarificationThread, SharedDeliverable, SupportTicket } from '@/lib/types';
 
 type PendingSharedDeliverable = {
   relation: SharedDeliverable;
@@ -29,6 +29,7 @@ type PmAlertsPanelProps = {
   unresolvedNeconformitati: Neconformitate[];
   dashboardRows: DashboardComplianceRow[];
   clarificationThreads?: PmClarificationThread[];
+  supportTickets?: SupportTicket[];
   activeAlertFilter?: 'title_mismatch' | 'pm_unlock_requests' | 'shared_deliverables' | 'event_documents' | 'all';
   onOpenDossier?: (expertId: string, options?: { activityId?: string; documentId?: string; issueType?: string }) => void;
   onRequestDocumentClarification?: (document: DocumentMetadata) => void;
@@ -44,6 +45,7 @@ export function PmAlertsPanel({
   unresolvedNeconformitati,
   dashboardRows,
   clarificationThreads = [],
+  supportTickets = [],
   activeAlertFilter = 'all',
   onOpenDossier,
   onRequestDocumentClarification,
@@ -78,6 +80,14 @@ export function PmAlertsPanel({
     clarificationThreads
       .filter((thread) => thread.targetType === 'document')
       .map((thread) => [thread.targetId, thread]),
+  );
+  const activeDocumentTicketById = new Map(
+    supportTickets
+      .filter((ticket) => (
+        ticket.relatedDocumentId
+        && !['resolved', 'duplicate', 'not_bug', 'deferred'].includes(ticket.status)
+      ))
+      .map((ticket) => [ticket.relatedDocumentId, ticket]),
   );
 
   const saveBlob = (blob: Blob, fileName: string) => {
@@ -175,6 +185,7 @@ export function PmAlertsPanel({
                   <div className="space-y-2">
                     {group.documents.slice(0, 3).map((document) => {
                       const clarificationThread = documentClarificationById.get(document.id);
+                      const activeTicket = activeDocumentTicketById.get(document.id);
 
                       return (
                         <div key={document.id} className="rounded-md border bg-background px-3 py-2">
@@ -184,6 +195,9 @@ export function PmAlertsPanel({
                                 <span className="font-medium">{document.originalFileName}</span>
                                 {clarificationThread && (
                                   <Badge variant="secondary">{clarificationStatusLabel(clarificationThread.status)}</Badge>
+                                )}
+                                {activeTicket && (
+                                  <Badge variant="secondary">Tichet {activeTicket.status}</Badge>
                                 )}
                               </div>
                               <div className="mt-1 text-xs text-muted-foreground">
@@ -232,6 +246,7 @@ export function PmAlertsPanel({
             <AlertCard title={`Deblocari PM solicitate (${pmUnlockRequests.length})`} tone="destructive">
               {pmUnlockRequests.slice(0, 6).map((document) => {
                 const clarificationThread = documentClarificationById.get(document.id);
+                const activeTicket = activeDocumentTicketById.get(document.id);
                 const check = document.eligibilityCheck;
 
                 return (
@@ -243,6 +258,9 @@ export function PmAlertsPanel({
                           <Badge variant="destructive">Deblocare solicitata</Badge>
                           {clarificationThread && (
                             <Badge variant="secondary">{clarificationStatusLabel(clarificationThread.status)}</Badge>
+                          )}
+                          {activeTicket && (
+                            <Badge variant="secondary">Tichet {activeTicket.status}</Badge>
                           )}
                         </div>
                         <div className="mt-1 text-xs text-muted-foreground">

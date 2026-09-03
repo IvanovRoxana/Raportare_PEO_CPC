@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { DatabaseBackup, FileArchive, History, ShieldCheck } from 'lucide-react';
 import { DashboardShell } from '@/components/layout/dashboard-shell';
 import { HistoricalImportPanel } from '@/components/admin/historical-import-panel';
+import { AdminAccessGuard } from '@/components/admin/admin-access-guard';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
@@ -13,6 +14,7 @@ const guardrails = [
 
 export default function AdminHistoricalImportPage() {
   return (
+    <AdminAccessGuard>
     <DashboardShell
       activeHref="/admin"
       eyebrow="Import istoric raportare"
@@ -64,5 +66,6 @@ export default function AdminHistoricalImportPage() {
         </CardContent>
       </Card>
     </DashboardShell>
+    </AdminAccessGuard>
   );
 }

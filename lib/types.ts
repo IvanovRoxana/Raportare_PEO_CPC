@@ -24,6 +24,12 @@ export interface Expert {
   contractType?: string;
   expertExperienceCategory?: string;
   hourlyRate?: number;
+  managerName?: string;
+  managerTitle?: string;
+  legalRepresentativeName?: string;
+  legalRepresentativeTitle?: string;
+  authorizedRepresentativeName?: string;
+  authorizedRepresentativeTitle?: string;
   jobDescriptionText?: string;
   aiReportingInstructions?: string;
   beneficiary?: string;

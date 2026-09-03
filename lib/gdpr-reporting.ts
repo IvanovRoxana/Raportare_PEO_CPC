@@ -1195,13 +1195,23 @@ export function buildGdprDeliverableFileName(input: GdprGenerationInput) {
   return `${datePart}_${title}.docx`;
 }
 
+function resolveGeneratedGdprSlotType(template?: GdprTemplate): DeliverableSlot['slotType'] {
+  const title = template?.deliverableTitle || '';
+  if (template?.code === 'GDPR_BUSINESS_HUB' || /^raport preliminar\b/i.test(title)) {
+    return 'raport_preliminar';
+  }
+
+  return 'livrabil';
+}
+
 export function createGeneratedGdprDeliverableSlot(input: GdprGenerationInput & { fileData?: string; fileSize?: number }): DeliverableSlot {
   const template = getGdprTemplate(input.templateCode);
   const fileName = buildGdprDeliverableFileName(input);
+  const slotType = resolveGeneratedGdprSlotType(template ?? undefined);
 
   return {
     id: `gdpr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-    slotType: 'livrabil',
+    slotType,
     type: template?.deliverableType || 'Raport verificare GDPR',
     name: fileName,
     filename: fileName,

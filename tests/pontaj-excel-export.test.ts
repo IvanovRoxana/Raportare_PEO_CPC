@@ -19,6 +19,10 @@ describe('export pontaj Excel', () => {
         expertExperienceCategory: '< 5 ani',
         aiReportingInstructions: 'Exporta pontajul pe zile si pastreaza formatul template-ului.',
         hourlyRate: 135.75,
+        managerName: 'Manager Confirmat',
+        managerTitle: 'Manager proiect',
+        legalRepresentativeName: 'Reprezentant Legal',
+        legalRepresentativeTitle: 'Director executiv',
       },
       activities: [],
     });
@@ -29,6 +33,68 @@ describe('export pontaj Excel', () => {
     );
     assert.equal(payload.expert.expertExperienceCategory, '< 5 ani');
     assert.equal(payload.expert.hourlyRate, 135.75);
+    assert.equal(payload.expert.managerName, 'Manager Confirmat');
+    assert.equal(payload.expert.managerTitle, 'Manager proiect');
+    assert.equal(payload.expert.legalRepresentativeName, 'Reprezentant Legal');
+    assert.equal(payload.expert.legalRepresentativeTitle, 'Director executiv');
+  });
+
+  it('completeaza semnatarul managerului confirmat in Pontaj_PEO simplu', async () => {
+    const workbook = await generatePontajExcel(buildPontajExportPayload({
+      kind: 'peo',
+      month: 5,
+      year: 2026,
+      expert: {
+        id: 'expert-manager-confirmat',
+        name: 'Expert Semnaturi',
+        role: 'Expert PEO',
+        norma: 8,
+        oreZi: 8,
+        managerName: 'Manager Confirmat',
+        managerTitle: 'Manager proiect PEO',
+      },
+      activities: [
+        { id: 'activity-manager-confirmat', expertId: 'expert-manager-confirmat', date: '2026-06-02', hours: 8, activityType: 'Activitate PEO', title: 'Activitate PEO', saCode: 'SA3.4', status: 'approved' },
+      ],
+    }));
+
+    const files = readXlsx(workbook.buffer);
+    const sheet = files.get('xl/worksheets/sheet1.xml')!.toString('utf8');
+    const sharedStrings = readSharedStrings(files);
+
+    assert.equal(cellText(sheet, 'D47', sharedStrings), 'Expert Semnaturi');
+    assert.equal(cellText(sheet, 'A51', sharedStrings), 'Numele managerului de proiect:');
+    assert.equal(cellText(sheet, 'D51', sharedStrings), 'Manager Confirmat - Manager proiect PEO');
+  });
+
+  it('completeaza reprezentantul legal confirmat in blocul de semnaturi consolidat', async () => {
+    const workbook = await generatePontajExcel(buildPontajExportPayload({
+      kind: 'consolidated',
+      month: 4,
+      year: 2026,
+      expert: {
+        id: 'expert-legal-confirmat',
+        name: 'Expert Reprezentant',
+        role: 'Expert PEO',
+        norma: 8,
+        oreZi: 8,
+        legalRepresentativeName: 'Reprezentant Legal',
+        legalRepresentativeTitle: 'Director executiv',
+      },
+      activities: [
+        { id: 'activity-legal-confirmat', expertId: 'expert-legal-confirmat', date: '2026-05-21', hours: 8, activityType: 'Activitate PEO', title: 'Activitate PEO', saCode: 'SA3.4', status: 'approved' },
+      ],
+      concurrentProjects: [],
+      concurrentTimesheetEntries: [],
+    }));
+
+    const files = readXlsx(workbook.buffer);
+    const sheet = files.get('xl/worksheets/sheet5.xml')!.toString('utf8');
+    const sharedStrings = readSharedStrings(files);
+
+    assert.equal(cellText(sheet, 'D92', sharedStrings), 'Expert Reprezentant');
+    assert.equal(cellText(sheet, 'A96', sharedStrings), 'Numele reprezentantului legal:');
+    assert.equal(cellText(sheet, 'D96', sharedStrings), 'Reprezentant Legal - Director executiv');
   });
 
   it('pastreaza timesheetBucket si clasifica proiectele concurente explicit in PEO/PIDS', async () => {
@@ -747,7 +813,17 @@ function readSharedStrings(files: Map<string, Buffer>) {
 
 function cellText(xml: string, ref: string, sharedStrings: string[]) {
   const cell = cellXml(xml, ref);
+  const inlineValue = cell.match(/<is><t[^>]*>([\s\S]*?)<\/t><\/is>/)?.[1];
+  if (inlineValue !== undefined) return decodeXml(inlineValue);
   const value = cell.match(/<v>([\s\S]*?)<\/v>/)?.[1] ?? '';
   if (/\bt="s"/.test(cell)) return sharedStrings[Number(value)] ?? '';
   return value;
+}
+
+function decodeXml(value: string) {
+  return value
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
 }

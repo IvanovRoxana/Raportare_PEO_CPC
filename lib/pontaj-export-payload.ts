@@ -54,6 +54,12 @@ export function buildPontajExportPayload({
       aiReportingInstructions: limitText(expert.aiReportingInstructions, 4000),
       beneficiary: expert.beneficiary,
       hourlyRate: expert.hourlyRate,
+      managerName: limitText(expert.managerName, 200),
+      managerTitle: limitText(expert.managerTitle, 200),
+      legalRepresentativeName: limitText(expert.legalRepresentativeName, 200),
+      legalRepresentativeTitle: limitText(expert.legalRepresentativeTitle, 200),
+      authorizedRepresentativeName: limitText(expert.authorizedRepresentativeName, 200),
+      authorizedRepresentativeTitle: limitText(expert.authorizedRepresentativeTitle, 200),
       saCodes: expert.saCodes,
     },
     activities: activities.map((activity) => ({

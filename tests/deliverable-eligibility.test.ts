@@ -59,7 +59,8 @@ test('formularul pastreaza tipul livrabilului nou incarcat in aceleasi campuri c
   assert.match(deliverableItemSource, /value=\{deliverable\.type \|\| deliverable\.deliverableType \|\| ''\}/);
   assert.match(deliverableItemSource, /type: value,\s*deliverableType: value,/);
   assert.match(activityFormSource, /const resolvedDeliverableType = d\.type \|\| d\.deliverableType \|\| d\.slotType/);
-  assert.match(activityFormSource, /category: resolvedDeliverableType,\s*deliverableType: resolvedDeliverableType,/);
+  assert.match(activityFormSource, /const resolvedDeliverableCategory = getSavedDeliverableCategory\(d\)/);
+  assert.match(activityFormSource, /category: resolvedDeliverableCategory,\s*deliverableType: resolvedDeliverableType,/);
 });
 
 test('formularul afiseaza aliasul salvat main ca livrabil principal', () => {

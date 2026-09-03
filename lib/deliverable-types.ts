@@ -196,6 +196,7 @@ export interface DeliverableSlot {
   sourceActivityId?: string;
   activityDate?: string;
   saCode?: string;
+  category?: DeliverableSlotType;
   deliverableType?: string;
   isCommonDeliverable?: boolean;
   requiresEventProof?: boolean;

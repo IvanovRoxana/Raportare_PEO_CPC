@@ -3,6 +3,7 @@ import { CheckCircle2, Database, Lock, ShieldCheck, UsersRound } from 'lucide-re
 import { DashboardShell } from '@/components/layout/dashboard-shell';
 import { ViewAsExpertPanel } from '@/components/admin/view-as-expert-panel';
 import { UsersRolesManagementPanel } from '@/components/admin/users-roles-management-panel';
+import { AdminAccessGuard } from '@/components/admin/admin-access-guard';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { adminRoles } from '@/lib/admin-module';
@@ -16,6 +17,7 @@ const awsDataPoints = [
 
 export default function AdminUsersPage() {
   return (
+    <AdminAccessGuard>
     <DashboardShell
       activeHref="/admin"
       eyebrow="Utilizatori si roluri · AWS"
@@ -90,5 +92,6 @@ export default function AdminUsersPage() {
         </aside>
       </section>
     </DashboardShell>
+    </AdminAccessGuard>
   );
 }

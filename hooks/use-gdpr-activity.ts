@@ -432,7 +432,7 @@ async function generateBusinessHubDeliverable({
       fileSize: generatedBlob.size,
     });
     const pvSlot: DeliverableSlot = {
-      ...createDeliverableSlot('livrabil', file.name),
+      ...createDeliverableSlot('justificativ', file.name),
       name: file.name,
       filename: file.name,
       rawFilename: file.name.replace(/\.[^.]+$/, ''),

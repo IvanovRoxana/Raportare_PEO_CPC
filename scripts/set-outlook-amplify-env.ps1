@@ -54,7 +54,7 @@ function New-TokenEncryptionKey {
 }
 
 $clientId = Read-RequiredValue "OUTLOOK_CLIENT_ID din Microsoft Entra"
-$tenantId = Read-RequiredValue "OUTLOOK_TENANT_ID" "organizations"
+$tenantId = Read-RequiredValue "OUTLOOK_TENANT_ID" "459cc33f-ec96-4318-9269-8b1370a2ff58"
 $clientSecret = Read-SecretValue "OUTLOOK_CLIENT_SECRET din Microsoft Entra"
 $tokenEncryptionKey = Read-SecretValue "OUTLOOK_TOKEN_ENCRYPTION_KEY (Enter daca vrei sa folosesti una generata)" $false
 

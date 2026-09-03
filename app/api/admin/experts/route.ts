@@ -34,6 +34,13 @@ const EXPERT_FIELDS = [
   'contractNumber',
   'contractType',
   'expertExperienceCategory',
+  'hourlyRate',
+  'managerName',
+  'managerTitle',
+  'legalRepresentativeName',
+  'legalRepresentativeTitle',
+  'authorizedRepresentativeName',
+  'authorizedRepresentativeTitle',
   'jobDescriptionText',
   'aiReportingInstructions',
   'beneficiary',
@@ -295,6 +302,13 @@ const EXPERT_SELECTION = `
   contractNumber
   contractType
   expertExperienceCategory
+  hourlyRate
+  managerName
+  managerTitle
+  legalRepresentativeName
+  legalRepresentativeTitle
+  authorizedRepresentativeName
+  authorizedRepresentativeTitle
   jobDescriptionText
   aiReportingInstructions
   beneficiary

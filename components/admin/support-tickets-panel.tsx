@@ -1,8 +1,9 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { fetchAuthSession } from 'aws-amplify/auth';
 import { getUrl } from 'aws-amplify/storage';
-import { ArrowRight, MessageSquare, RefreshCw } from 'lucide-react';
+import { ArrowRight, MessageSquare, RefreshCw, Send } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,6 +19,7 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
 import { useSupportTicketMutations, useSupportTickets } from '@/hooks/use-backend-data';
+import { buildLinearIssueDraft } from '@/lib/support-ticketing';
 import type { SupportTicket, SupportTicketStatus } from '@/lib/types';
 
 const statusLabels: Record<string, string> = {
@@ -65,6 +67,7 @@ function SupportTicketRow({ ticket }: { ticket: SupportTicket }) {
   const [linearIssueUrl, setLinearIssueUrl] = useState(ticket.linearIssueUrl ?? '');
   const [screenshotUrl, setScreenshotUrl] = useState<string | undefined>();
   const [isSaving, setIsSaving] = useState(false);
+  const [isCreatingLinearIssue, setIsCreatingLinearIssue] = useState(false);
 
   async function openScreenshot() {
     if (!ticket.screenshotS3Key) return;
@@ -100,6 +103,80 @@ function SupportTicketRow({ ticket }: { ticket: SupportTicket }) {
       });
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  async function copyLinearDraft() {
+    const draft = buildLinearIssueDraft(ticket);
+    const text = [
+      `Title: ${draft.title}`,
+      `Priority: ${draft.priority || '-'}`,
+      `Labels: ${draft.labels.join(', ') || '-'}`,
+      '',
+      draft.description,
+    ].join('\n');
+
+    try {
+      await navigator.clipboard.writeText(text);
+      toast({ title: 'Draft Linear copiat', description: 'Titlul, prioritatea, etichetele si descrierea sunt in clipboard.' });
+    } catch (error) {
+      toast({
+        title: 'Nu am putut copia draftul',
+        description: error instanceof Error ? error.message : 'Copiaza manual datele ticketului.',
+        variant: 'destructive',
+      });
+    }
+  }
+
+  async function createLinearIssue() {
+    if (ticket.linearIssueUrl) return;
+
+    setIsCreatingLinearIssue(true);
+    try {
+      const token = (await fetchAuthSession({ forceRefresh: true })).tokens?.accessToken?.toString();
+      if (!token) throw new Error('Lipseste tokenul Cognito.');
+
+      const response = await fetch('/api/admin/support-tickets/linear', {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${token}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ ticket }),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(body?.error || 'Crearea issue-ului Linear a esuat.');
+      }
+
+      const issueUrl = String(body?.issueUrl || '').trim();
+      const issueId = String(body?.issueId || '').trim();
+      if (!issueUrl) throw new Error('Linear nu a returnat URL-ul issue-ului.');
+
+      await update(ticket, {
+        status: ticket.status === 'new' ? 'confirmed' : ticket.status,
+        linearIssueId: issueId || ticket.linearIssueId,
+        linearIssueUrl: issueUrl,
+        updatedBy: 'admin',
+      });
+      setStatus(ticket.status === 'new' ? 'confirmed' : ticket.status);
+      setLinearIssueUrl(issueUrl);
+
+      const missingLabels = Array.isArray(body?.missingLabels) ? body.missingLabels.filter(Boolean) : [];
+      toast({
+        title: 'Issue Linear creat',
+        description: missingLabels.length
+          ? `Linkul a fost salvat. Etichete lipsa in Linear: ${missingLabels.join(', ')}.`
+          : 'Linkul Linear a fost salvat pe tichet.',
+      });
+    } catch (error) {
+      toast({
+        title: 'Nu am putut crea issue Linear',
+        description: error instanceof Error ? error.message : 'Verifica LINEAR_API_KEY si LINEAR_TEAM_ID.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsCreatingLinearIssue(false);
     }
   }
 
@@ -179,6 +256,15 @@ function SupportTicketRow({ ticket }: { ticket: SupportTicket }) {
             Linear
             <ArrowRight className="h-3.5 w-3.5" />
           </a>
+        ) : null}
+        <Button type="button" variant="outline" size="sm" className="mt-3" onClick={copyLinearDraft}>
+          Copiaza draft Linear
+        </Button>
+        {!ticket.linearIssueUrl ? (
+          <Button type="button" size="sm" className="mt-2" onClick={createLinearIssue} disabled={isCreatingLinearIssue}>
+            <Send className="h-4 w-4" />
+            {isCreatingLinearIssue ? 'Se creeaza...' : 'Creeaza in Linear'}
+          </Button>
         ) : null}
       </TableCell>
     </TableRow>

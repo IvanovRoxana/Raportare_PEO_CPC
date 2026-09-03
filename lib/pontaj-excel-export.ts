@@ -52,6 +52,7 @@ export interface ZipEntry {
 const PEO_TEMPLATE = path.join(process.cwd(), 'public', 'templates', 'pontaj-peo-template.xlsx');
 const CONSOLIDATED_TEMPLATE = path.join(process.cwd(), 'public', 'templates', 'pontaj-consolidat-template.xlsx');
 const CONSOLIDATED_NO_GOODWORKS_TEMPLATE = path.join(process.cwd(), 'public', 'templates', 'pontaj-consolidat-fara-goodworks-template.xlsx');
+const DEFAULT_MANAGER_NAME = 'MIHAELA GRIGORAS';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DAY_COLUMNS = [
@@ -227,8 +228,7 @@ async function generatePeoWorkbook(payload: ExportPayload): Promise<GeneratedWor
   sheetXml = setCell(sheetXml, `A${totalRow}`, 'NR. TOTAL DE ORE');
   sheetXml = setCell(sheetXml, `H${totalRow}`, peoTotalHours);
   sheetXml = setCell(sheetXml, `I${totalRow}`, otherTotalHours);
-  sheetXml = setCell(sheetXml, `D${totalRow + 5}`, lastPeoWorkedDateSerial);
-  sheetXml = setCell(sheetXml, `D${totalRow + 9}`, lastPeoWorkedDateSerial);
+  sheetXml = setSignatureBlock(sheetXml, totalRow, payload.expert, lastPeoWorkedDateSerial);
 
   files.set(sheetPath, Buffer.from(sheetXml, 'utf8'));
   files.set('xl/workbook.xml', Buffer.from(setFullCalcOnLoad(files.get('xl/workbook.xml')!.toString('utf8')), 'utf8'));
@@ -402,9 +402,7 @@ async function generateConsolidatedWorkbook(payload: ExportPayload): Promise<Gen
   sheetXml = setCell(sheetXml, `AM${peoSection.totalRow}`, hasFinancialLeaveAllocations
     ? financialCpcLeaveTotal
     : { formula: `SUM(AM${peoSection.startRow}:AM${detailEnd})+COUNTIF(AM${peoSection.startRow}:AM${detailEnd},"CO")*${Math.max(0, cimDailyHours - dailyHours)}` });
-  sheetXml = setCell(sheetXml, `D${peoSection.totalRow + 3}`, stringValue(payload.expert.name));
-  sheetXml = setCell(sheetXml, `D${peoSection.totalRow + 5}`, lastPeoWorkedDateSerial);
-  sheetXml = setCell(sheetXml, `D${peoSection.totalRow + 9}`, lastPeoWorkedDateSerial);
+  sheetXml = setSignatureBlock(sheetXml, peoSection.totalRow, payload.expert, lastPeoWorkedDateSerial);
 
   files.set(sheetPath, Buffer.from(sheetXml, 'utf8'));
   files.set('xl/workbook.xml', Buffer.from(setFullCalcOnLoad(files.get('xl/workbook.xml')!.toString('utf8')), 'utf8'));
@@ -1160,6 +1158,46 @@ function getExpertPosition(expert: Partial<Expert>) {
 
 function getExpertCategoryForExport(expert: Partial<Expert>) {
   return expert.expertExperienceCategory || expert.category || getExpertPosition(expert);
+}
+
+function setSignatureBlock(sheetXml: string, totalRow: number, expert: Partial<Expert>, signatureDateSerial: number) {
+  const approver = getApproverSignature(expert);
+  sheetXml = setCell(sheetXml, `D${totalRow + 3}`, stringValue(expert.name));
+  sheetXml = setCell(sheetXml, `D${totalRow + 5}`, signatureDateSerial);
+  if (approver.label) {
+    sheetXml = setCell(sheetXml, `A${totalRow + 7}`, approver.label);
+  }
+  sheetXml = setCell(sheetXml, `D${totalRow + 7}`, formatSignerName(approver.name, approver.title));
+  sheetXml = setCell(sheetXml, `D${totalRow + 9}`, signatureDateSerial);
+  return sheetXml;
+}
+
+function getApproverSignature(expert: Partial<Expert>) {
+  if (expert.legalRepresentativeName) {
+    return {
+      label: 'Numele reprezentantului legal:',
+      name: expert.legalRepresentativeName,
+      title: expert.legalRepresentativeTitle,
+    };
+  }
+  if (expert.authorizedRepresentativeName) {
+    return {
+      label: 'Numele imputernicitului:',
+      name: expert.authorizedRepresentativeName,
+      title: expert.authorizedRepresentativeTitle,
+    };
+  }
+  return {
+    label: '',
+    name: expert.managerName || DEFAULT_MANAGER_NAME,
+    title: expert.managerTitle,
+  };
+}
+
+function formatSignerName(name: string | undefined, title: string | undefined) {
+  const signerName = name?.trim() || DEFAULT_MANAGER_NAME;
+  const signerTitle = title?.trim();
+  return signerTitle ? `${signerName} - ${signerTitle}` : signerName;
 }
 
 function getLastPeoWorkedDateSerial(activities: Partial<Activity>[], year: number, month: number) {

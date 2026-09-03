@@ -142,6 +142,10 @@ function isMainDeliverableSlot(deliverable: Pick<DeliverableSlot, 'slotType'>) {
   return !deliverable.slotType || deliverable.slotType === 'livrabil' || deliverable.slotType === 'main';
 }
 
+function getSavedDeliverableCategory(deliverable: Pick<DeliverableSlot, 'slotType'>) {
+  return deliverable.slotType || 'livrabil';
+}
+
 type DuplicateDeliverableActivityChoice = {
   id: string;
   date: string;
@@ -288,6 +292,7 @@ function mapSavedDeliverableToSlot(deliverable: Deliverable, preserveId: boolean
   return {
     id: preserveId ? deliverable.id : generateId(),
     slotType: resolveSavedSlotType(deliverable.deliverableType, deliverable.category),
+    category: resolveSavedSlotType(deliverable.deliverableType, deliverable.category),
     name: deliverable.fileName,
     filename: deliverable.fileName,
     fileType: deliverable.fileType,
@@ -1721,6 +1726,7 @@ export function ActivityForm({
       sharedWithExpertIds: deliverable.common ? collaborators : [],
       duplicateStatus: firstPageTextHash ? 'fingerprinted' : undefined,
       uploadError: undefined,
+      category: getSavedDeliverableCategory(deliverable),
     };
   }, [
     collaborators,
@@ -1747,7 +1753,7 @@ export function ActivityForm({
     const reportingWarnings: string[] = [];
     const eventDocumentationForSave = getEventDocumentationStatus(deliverables);
     const hasMainDeliverableForSave = deliverables.some((deliverable) => (
-      (!deliverable.slotType || deliverable.slotType === 'livrabil')
+      isMainDeliverableSlot(deliverable)
       && deliverable.uploaded
       && Boolean(deliverable.filename || deliverable.name)
     ));
@@ -1991,6 +1997,7 @@ export function ActivityForm({
         deliverables: shouldAttachDeliverables ? deliverablesForSave
           .map(d => {
             const resolvedDeliverableType = d.type || d.deliverableType || d.slotType;
+            const resolvedDeliverableCategory = getSavedDeliverableCategory(d);
             return {
               id: d.id,
               activityId,
@@ -2012,7 +2019,7 @@ export function ActivityForm({
               sourceActivityId: d.sourceActivityId,
               activityDate: date,
               saCode,
-              category: resolvedDeliverableType,
+              category: resolvedDeliverableCategory,
               deliverableType: resolvedDeliverableType,
               stadiu: d.stadiu,
               uploaded: true,
