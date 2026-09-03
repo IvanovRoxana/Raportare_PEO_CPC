@@ -2464,7 +2464,7 @@ export function ActivityForm({
   const currentWizardStepIndex = Math.max(0, wizardSteps.findIndex((step) => step.id === currentWizardStep));
   const isLastWizardStep = currentWizardStepIndex === wizardSteps.length - 1;
   const canSubmitFromCurrentStep = isLastWizardStep || (isLeave && currentWizardStep === 'time');
-  const canSaveFromCurrentStep = Boolean(initialActivity) || canSubmitFromCurrentStep;
+  const canSaveFromCurrentStep = true;
   const isSupportingDeliverableStep = (
     currentWizardStep === 'deliverables'
     || currentWizardStep === 'collaboration'
