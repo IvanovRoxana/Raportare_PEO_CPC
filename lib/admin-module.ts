@@ -1,3 +1,4 @@
+import { hasUsableMainDeliverable } from './submit-readiness.ts';
 import type { Activity, Expert, ReportStatus } from './types';
 
 export type AdminRole = 'expert' | 'pm' | 'project_admin' | 'technical_super_admin';
@@ -218,7 +219,7 @@ export function buildAdminDashboardSnapshot(input: AdminDashboardSnapshotInput):
 
   const incompleteActivities = input.activities.filter((activity) => !activity.saCode || activity.status === 'draft').length;
   const missingDeliverables = input.activities.filter(
-    (activity) => !activity.deliverables || activity.deliverables.length === 0,
+    (activity) => !hasUsableMainDeliverable(activity.deliverables),
   ).length;
   const configurationErrors = activeExperts
     .filter((expert) => !expert.email || !expert.saCodes || expert.saCodes.length === 0)

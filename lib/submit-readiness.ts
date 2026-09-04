@@ -187,9 +187,38 @@ export function hasUsableDeliverable(deliverables?: Deliverable[]) {
   );
 }
 
+function getDeliverableKind(deliverable: Deliverable) {
+  return deliverable.category || deliverable.deliverableType;
+}
+
+export function isMainDeliverable(deliverable: Deliverable) {
+  const kind = getDeliverableKind(deliverable);
+  return kind !== 'raport_preliminar'
+    && kind !== 'justificativ'
+    && kind !== 'event_mom'
+    && kind !== 'event_proof';
+}
+
+export function hasUsableMainDeliverable(deliverables?: Deliverable[]) {
+  return (deliverables ?? []).some((deliverable) =>
+    isMainDeliverable(deliverable)
+    && Boolean(deliverable.filePath || deliverable.s3Key || deliverable.fileName || deliverable.documentId),
+  );
+}
+
+function hasUsableMonthlyComEvidence(deliverables?: Deliverable[]) {
+  return (deliverables ?? []).some((deliverable) => {
+    const kind = getDeliverableKind(deliverable);
+    return kind !== 'justificativ'
+      && kind !== 'event_mom'
+      && kind !== 'event_proof'
+      && Boolean(deliverable.filePath || deliverable.s3Key || deliverable.fileName || deliverable.documentId);
+  });
+}
+
 function hasStructuredEventDeliverables(activity: Activity) {
   return (activity.deliverables ?? []).some((deliverable) => {
-    const kind = deliverable.category || deliverable.deliverableType;
+    const kind = getDeliverableKind(deliverable);
     return kind === 'event_mom' || kind === 'event_proof';
   });
 }
@@ -210,7 +239,7 @@ function hasUsableDeliverableForActivity(activity: Activity, activityCatalog: Ac
     return getEventDocumentationStatus(activity.deliverables ?? []).complete;
   }
 
-  return hasUsableDeliverable(activity.deliverables);
+  return hasUsableMainDeliverable(activity.deliverables);
 }
 
 interface GetActivitiesMissingDeliverablesOptions {
@@ -301,7 +330,7 @@ export function createActivityDeliverableAvailabilityResolver(
       monthlyComDeliverableAvailability.set(
         monthlyComSignature,
         (monthlyComDeliverableAvailability.get(monthlyComSignature) ?? false)
-          || hasUsableDeliverableForActivity(activity, activityCatalog),
+          || hasUsableMonthlyComEvidence(activity.deliverables),
       );
     }
   });

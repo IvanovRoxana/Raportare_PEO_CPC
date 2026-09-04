@@ -129,6 +129,7 @@ const SAVED_SLOT_TYPES = new Set<DeliverableSlot['slotType']>([
 ]);
 
 const MISSING_MAIN_DELIVERABLE_MESSAGE = 'Adauga un livrabil principal sau bifeaza "Incarc livrabilul principal mai tarziu" in pasul Livrabile.';
+const ONLY_PRELIMINARY_REPORT_MESSAGE = 'Ai incarcat raport preliminar, dar activitatea inca nu are livrabil principal.';
 const MISSING_EVENT_DOCUMENTATION_MESSAGE = 'Completeaza documentele de eveniment: incarca MOM/Raport eveniment sau genereaza raportul si ataseaza poza/lista de prezenta.';
 
 function resolveSavedSlotType(deliverableType?: string, category?: string): DeliverableSlot['slotType'] {
@@ -1757,6 +1758,11 @@ export function ActivityForm({
       && deliverable.uploaded
       && Boolean(deliverable.filename || deliverable.name)
     ));
+    const hasPreliminaryReportForSave = deliverables.some((deliverable) => (
+      deliverable.slotType === 'raport_preliminar'
+      && deliverable.uploaded
+      && Boolean(deliverable.filename || deliverable.name)
+    ));
     if (
       showStandardActivityWorkflow
       && !isLeave
@@ -1766,7 +1772,11 @@ export function ActivityForm({
         ? !eventDocumentationForSave.complete
         : (!hasMainDeliverableForSave && !skipMainDeliverableForNow))
     ) {
-      reportingWarnings.push(isEvent ? MISSING_EVENT_DOCUMENTATION_MESSAGE : MISSING_MAIN_DELIVERABLE_MESSAGE);
+      reportingWarnings.push(isEvent
+        ? MISSING_EVENT_DOCUMENTATION_MESSAGE
+        : hasPreliminaryReportForSave
+          ? ONLY_PRELIMINARY_REPORT_MESSAGE
+          : MISSING_MAIN_DELIVERABLE_MESSAGE);
     }
 
     const invalidTitleDeliverable = deliverables.find((d) => {
@@ -2343,6 +2353,9 @@ export function ActivityForm({
   );
   const hasEventMomAsMainDeliverable = isEvent && eventDocumentationStatus.complete;
   const hasUploadedMainDeliverable = mainDeliverables.some((deliverable) => (
+    deliverable.uploaded && Boolean(deliverable.filename || deliverable.name)
+  ));
+  const hasUploadedPreliminaryReport = prelimDeliverables.some((deliverable) => (
     deliverable.uploaded && Boolean(deliverable.filename || deliverable.name)
   ));
   const requiresMainDeliverableEligibility = (
@@ -4491,6 +4504,8 @@ export function ActivityForm({
                 ? MISSING_EVENT_DOCUMENTATION_MESSAGE
                 : skipMainDeliverableForNow
                   ? 'Livrabilul principal este marcat pentru incarcare ulterioara. Validarea finala ramane activa daca regulile cer documentul acum.'
+                  : hasUploadedPreliminaryReport
+                    ? ONLY_PRELIMINARY_REPORT_MESSAGE
                   : 'Activitatea necesita cel putin un livrabil principal.'}
             </span>
           </div>

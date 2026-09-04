@@ -319,14 +319,15 @@ test('randul PM numara activitatile inregistrate cu livrabile lipsa', () => {
     activities: [
       { id: 'a1', expertId: 'e1', date: '2026-05-04', title: 'Activitate cu livrabil', activityType: 'Raport', hours: 4, deliverables: [{ id: 'd1', fileName: 'raport.pdf', deliverableType: 'Raport' }] },
       { id: 'a2', expertId: 'e1', date: '2026-05-05', title: 'Activitate fara livrabil', activityType: 'Raport', hours: 4, deliverables: [] },
+      { id: 'a3', expertId: 'e1', date: '2026-05-06', title: 'Activitate doar cu RP', activityType: 'Raport', hours: 4, deliverables: [{ id: 'rp', fileName: 'raport-preliminar.docx', deliverableType: 'raport_preliminar' }] },
     ] as Activity[],
     auditLogs: [],
     month: 4,
     year: 2026,
   });
 
-  assert.equal(rows[0].activityCount, 2);
-  assert.equal(rows[0].missingDeliverableActivityCount, 1);
+  assert.equal(rows[0].activityCount, 3);
+  assert.equal(rows[0].missingDeliverableActivityCount, 2);
 });
 
 test('checkCrossAlignment detecteaza activitati similare intre experti diferiti', () => {

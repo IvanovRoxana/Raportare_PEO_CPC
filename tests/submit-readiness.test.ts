@@ -133,6 +133,44 @@ test('activitatile fara grup isi pastreaza validarea individuala de livrabil', (
   assert.deepEqual(missingDeliverables.map((activity) => activity.id), ['standalone']);
 });
 
+test('raportul preliminar singur nu acopera livrabilul principal pentru o activitate standard', () => {
+  const activities: Activity[] = [
+    baseActivity({
+      id: 'prelim-only',
+      deliverables: [{
+        id: 'prelim',
+        fileName: 'raport-preliminar.docx',
+        fileType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        fileSize: 1234,
+        deliverableType: 'raport_preliminar',
+      }],
+    }),
+  ];
+
+  const missingDeliverables = getActivitiesMissingDeliverables(activities);
+
+  assert.deepEqual(missingDeliverables.map((activity) => activity.id), ['prelim-only']);
+});
+
+test('documentul justificativ singur nu acopera livrabilul principal pentru o activitate standard', () => {
+  const activities: Activity[] = [
+    baseActivity({
+      id: 'justificativ-only',
+      deliverables: [{
+        id: 'justificativ',
+        fileName: 'nota-justificativa.pdf',
+        fileType: 'application/pdf',
+        fileSize: 1234,
+        deliverableType: 'justificativ',
+      }],
+    }),
+  ];
+
+  const missingDeliverables = getActivitiesMissingDeliverables(activities);
+
+  assert.deepEqual(missingDeliverables.map((activity) => activity.id), ['justificativ-only']);
+});
+
 test('activitatile de eveniment accepta MOM sau raport eveniment ca livrabil', () => {
   const activities: Activity[] = [baseActivity({
     id: 'event-mom',

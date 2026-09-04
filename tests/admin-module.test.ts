@@ -18,6 +18,7 @@ test('snapshot admin calculeaza indicatorii de avertizare', () => {
   const activities = [
     { id: 'a1', expertId: 'e1', date: '2026-05-04', activityType: 'Analiza', title: 'Analiza', hours: 4, saCode: 'SA3.1', status: 'sent', deliverables: [{ id: 'd1', fileName: 'raport.pdf', fileType: 'application/pdf', fileSize: 1 }] },
     { id: 'a2', expertId: 'e2', date: '2026-05-04', activityType: 'Raport', title: 'Raport', hours: 2, status: 'draft' },
+    { id: 'a3', expertId: 'e1', date: '2026-05-05', activityType: 'Raport', title: 'Raport preliminar', hours: 2, saCode: 'SA3.1', status: 'sent', deliverables: [{ id: 'rp', fileName: 'raport-preliminar.docx', fileType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', fileSize: 1, deliverableType: 'raport_preliminar' }] },
   ] as Activity[];
   const reportStatuses = [
     { id: 'r1', expertId: 'e1', month: 4, year: 2026, status: 'draft' },
@@ -36,7 +37,7 @@ test('snapshot admin calculeaza indicatorii de avertizare', () => {
   assert.equal(snapshot.totalExperts, 2);
   assert.equal(snapshot.reportedExperts, 2);
   assert.equal(snapshot.incompleteActivities, 1);
-  assert.equal(snapshot.missingDeliverables, 1);
+  assert.equal(snapshot.missingDeliverables, 2);
   assert.equal(snapshot.draftReports, 1);
   assert.equal(snapshot.validatedReports, 1);
   assert.deepEqual(snapshot.activeReportingMonths, ['Mai 2026']);

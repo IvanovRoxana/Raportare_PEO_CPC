@@ -136,6 +136,33 @@ test('standard event preparation with a normal deliverable does not require MOM'
   );
 });
 
+test('standard activity with only preliminary report remains missing main deliverable', () => {
+  assert.equal(
+    getActivityStatus({
+      id: 'a-prelim',
+      expertId: 'e1',
+      expertName: 'Expert AP',
+      date: '2026-05-15',
+      hours: 4,
+      activityType: 'Analiza acte normative',
+      title: 'Analiza acte normative',
+      description: 'Analiza actelor normative.',
+      deliverables: [
+        {
+          id: 'prelim',
+          activityId: 'a-prelim',
+          fileName: 'raport-preliminar.docx',
+          fileType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          fileSize: 1024,
+          deliverableType: 'raport_preliminar',
+          uploaded: true,
+        },
+      ],
+    }),
+    'missing',
+  );
+});
+
 test('event status requires proof when the event report was generated in the form', () => {
   assert.equal(
     getActivityStatus({
