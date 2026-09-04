@@ -213,11 +213,12 @@ test('expert submit waits for required reporting data before compliance checks',
   assert.match(expertPeoPageSource, /isReady: reportStatusReady/);
   assert.match(expertPeoPageSource, /isReady: reportingWorkBlockBundlesReady/);
   assert.match(expertPeoPageSource, /const workBlocksReady = !reportingWorkBlocksEnabled \|\| reportingWorkBlockBundlesReady/);
-  assert.match(expertPeoPageSource, /const submissionDataReady = activitiesReady && documentsReady && reportStatusReady && workBlocksReady/);
+  assert.match(expertPeoPageSource, /const normContractsReady = !selectedExpertId \|\| !selectedExpertNormContractsLoading/);
+  assert.match(expertPeoPageSource, /const submissionDataReady = activitiesReady && documentsReady && reportStatusReady && workBlocksReady && normContractsReady/);
   assert.match(expertPeoPageSource, /if \(!submissionDataReady\) \{/);
   assert.match(expertPeoPageSource, /disabledReason: SUBMISSION_DATA_LOADING_MESSAGE/);
   assert.match(expertPeoPageSource, /setSaveError\(SUBMISSION_DATA_LOADING_MESSAGE\)/);
-  assert.match(expertPeoPageSource, /disabled=\{isApproved \|\| isSent \|\| isInReview \|\| !submissionDataReady\}/);
+  assert.match(expertPeoPageSource, /disabled=\{!canSubmitCurrentReportStatus \|\| \(isClarificationScopedAccess && !isCorrectionOpen\) \|\| !submissionDataReady\}/);
 });
 
 test('expert activity save flow auto-persists reporting work blocks from saved activities', () => {

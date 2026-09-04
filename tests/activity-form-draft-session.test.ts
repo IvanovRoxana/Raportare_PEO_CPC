@@ -19,7 +19,7 @@ test('editarea si precompletarea isi pastreaza identitatile de flux', () => {
   assert.match(formKeySource, /`edit-\$\{editingActivity\.id\}-\$\{activityResolutionHint\?\.id \|\| 'manual'\}`/);
   assert.match(
     formKeySource,
-    /`prefill-\$\{pendingSharedActivityRelationId \|\| pendingSharedDeliverableRelationId \|\| draftSessionId\}`/,
+    /`prefill-\$\{pendingSharedActivityRelationIds\.join\('\|'\) \|\| pendingSharedActivityRelationId \|\| pendingSharedDeliverableRelationId \|\| draftSessionId\}`/,
   );
 });
 

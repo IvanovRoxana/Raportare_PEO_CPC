@@ -244,8 +244,9 @@ test('aprobarea manuala PM marcheaza livrabilul eligibil si sincronizeaza copia 
   assert.doesNotMatch(pmDashboardSource, /const approvePmUnlockRequest = async \(document: DocumentMetadata\) => \{\s*if \(!canManagePmReview/);
   assert.match(pmDashboardSource, /status:\s*'eligibil'/);
   assert.match(pmDashboardSource, /aiStatus:\s*'eligible'/);
-  assert.match(pmDashboardSource, /const activityWithMatchingDeliverable = monthActivities\.find/);
-  assert.match(pmDashboardSource, /const sourceActivity = activityWithMatchingDeliverable/);
+  assert.match(pmDashboardSource, /const \{ sourceActivity, sourceDeliverable \} = resolvePmUnlockActivityContext\(document, monthActivities\)/);
+  assert.match(pmDashboardSource, /await updateActivity\(sourceActivity\.id, \{/);
+  assert.match(pmDashboardSource, /buildPmUnlockedDeliverableFromDocument\(document, sourceActivity, approvedCheck\)/);
   assert.match(pmDashboardSource, /updateDocumentEligibilityCheck\(document\.id, approvedCheck\)/);
   assert.match(pmDashboardSource, /actionType:\s*'pm_deliverable_unlock_approved'/);
   assert.match(pmDashboardSource, /fieldName:\s*`document:\$\{document\.id\}:eligibilityCheck`/);
