@@ -7,7 +7,7 @@ export const ACTIVITY_CATALOG_EXPORT_HEADERS = [
   'Nr. activitate',
   'Nume activitate',
   'Categorie serviciu',
-  'Categorie eveniment',
+  'Este eveniment',
   'Activ',
   'Descriere',
   'Obiective',
@@ -116,9 +116,18 @@ function parseActive(value: string) {
   return null;
 }
 
+function parseOptionalBoolean(value: string) {
+  const normalized = normalizeKeyPart(value);
+  if (!normalized) return undefined;
+  if (['da', 'yes', 'true', '1', 'activ', 'active'].includes(normalized)) return true;
+  if (['nu', 'no', 'false', '0', 'inactiv', 'inactive'].includes(normalized)) return false;
+  return null;
+}
+
 function normalizeDraft(row: Record<(typeof ACTIVITY_CATALOG_EXPORT_HEADERS)[number], string>): Omit<ActivityCatalog, 'id' | 'createdAt'> | null {
   const isActive = parseActive(row.Activ);
-  if (isActive === null) return null;
+  const isEvent = parseOptionalBoolean(row['Este eveniment']);
+  if (isActive === null || isEvent === null) return null;
 
   return {
     category: row['Categorie expert'].trim().toLowerCase(),
@@ -126,7 +135,7 @@ function normalizeDraft(row: Record<(typeof ACTIVITY_CATALOG_EXPORT_HEADERS)[num
     activityNumber: Number(row['Nr. activitate']) || 0,
     activityName: row['Nume activitate'].trim(),
     serviceCategory: row['Categorie serviciu'].trim(),
-    eventCategory: row['Categorie eveniment'].trim() || undefined,
+    isEvent,
     isActive,
     description: row.Descriere.trim(),
     objectives: row.Obiective.trim(),
@@ -146,7 +155,7 @@ export function exportActivityCatalogCsv(catalog: ActivityCatalog[]) {
     item.activityNumber,
     item.activityName,
     item.serviceCategory,
-    item.eventCategory,
+    item.isEvent === undefined ? '' : item.isEvent ? 'Da' : 'Nu',
     item.isActive === false ? 'Nu' : 'Da',
     item.description,
     item.objectives,
@@ -228,7 +237,7 @@ export function buildActivityCatalogImportPlan(csv: string, existingCatalog: Act
     'activityNumber',
     'activityName',
     'serviceCategory',
-    'eventCategory',
+    'isEvent',
     'isActive',
     'description',
     'objectives',

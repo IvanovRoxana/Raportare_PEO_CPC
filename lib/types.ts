@@ -973,7 +973,7 @@ export interface ActivityCatalog {
   saCode: string;
   gdprTemplateCode?: string;
   serviceCategory: string;
-  eventCategory?: string;
+  isEvent?: boolean;
   activityNumber: number;
   activityName: string;
   isActive?: boolean;

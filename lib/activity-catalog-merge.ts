@@ -19,13 +19,13 @@ function normalizeActivityCatalogLabel(value?: string) {
     .toLowerCase();
 }
 
-export function isEventActivityCatalogItem(item: Pick<ActivityCatalog, 'serviceCategory' | 'eventCategory'>) {
-  return Boolean(item.eventCategory?.trim())
-    || normalizeActivityCatalogLabel(item.serviceCategory) === normalizeActivityCatalogLabel(EVENT_ACTIVITY_SERVICE_CATEGORY);
+export function isEventActivityCatalogItem(item: Pick<ActivityCatalog, 'serviceCategory' | 'isEvent'>) {
+  if (item.isEvent !== undefined) return Boolean(item.isEvent);
+  return normalizeActivityCatalogLabel(item.serviceCategory) === normalizeActivityCatalogLabel(EVENT_ACTIVITY_SERVICE_CATEGORY);
 }
 
 export function requiresSameDayForSharedEventActivity(
-  item: Pick<ActivityCatalog, 'serviceCategory' | 'eventCategory' | 'requiresSameDayForSharedDeliverable'>,
+  item: Pick<ActivityCatalog, 'serviceCategory' | 'isEvent' | 'requiresSameDayForSharedDeliverable'>,
 ) {
   return item.requiresSameDayForSharedDeliverable ?? isEventActivityCatalogItem(item);
 }

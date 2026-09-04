@@ -229,7 +229,7 @@ test('filtrarea formularului nu amesteca activitati cu acelasi SA din categorii 
   assert.deepEqual(filtered.map((item) => item.id), ['bh-sa32-corect']);
 });
 
-test('formularul separa activitatile standard de activitatile de eveniment dupa categoria serviciului sau categoria evenimentului', () => {
+test('formularul separa activitatile standard de activitatile de eveniment dupa isEvent', () => {
   const catalog = [
     {
       id: 'ap-standard',
@@ -244,23 +244,24 @@ test('formularul separa activitatile standard de activitatile de eveniment dupa 
       category: 'ap',
       saCode: 'SA3.4',
       activityNumber: 2,
-      serviceCategory: 'Reprezentare și participare la evenimente',
+      serviceCategory: 'Infrastructura dialog social',
+      isEvent: true,
       activityName: 'Organizare eveniment / masa rotunda / dezbatere',
     },
     {
-      id: 'ap-event-category',
+      id: 'ap-standard-explicit',
       category: 'ap',
       saCode: 'SA3.4',
       activityNumber: 3,
-      serviceCategory: 'Infrastructura dialog social',
-      eventCategory: 'Masa rotunda',
-      activityName: 'Participare la masa rotunda',
+      serviceCategory: 'Reprezentare și participare la evenimente',
+      isEvent: false,
+      activityName: 'Pregatire eveniment',
     },
   ] as ActivityCatalog[];
 
-  assert.deepEqual(filterActivityCatalogForFormTab(catalog, 'standard').map((item) => item.id), ['ap-standard']);
-  assert.deepEqual(filterActivityCatalogForFormTab(catalog, 'event').map((item) => item.id), ['ap-event', 'ap-event-category']);
-  assert.deepEqual(filterActivityCatalogForFormTab(catalog, 'business_hub').map((item) => item.id), ['ap-standard', 'ap-event', 'ap-event-category']);
+  assert.deepEqual(filterActivityCatalogForFormTab(catalog, 'standard').map((item) => item.id), ['ap-standard', 'ap-standard-explicit']);
+  assert.deepEqual(filterActivityCatalogForFormTab(catalog, 'event').map((item) => item.id), ['ap-event']);
+  assert.deepEqual(filterActivityCatalogForFormTab(catalog, 'business_hub').map((item) => item.id), ['ap-standard', 'ap-event', 'ap-standard-explicit']);
 });
 
 test('activitatile de organizare si cele fara categorie serviciu raman in tabul standard', () => {
@@ -302,6 +303,23 @@ test('categoria de eveniment este recunoscuta indiferent de diacritice', () => {
   assert.equal(
     isEventActivityCatalogItem({
       serviceCategory: 'Reprezentare si participare la evenimente',
+    } as ActivityCatalog),
+    true,
+  );
+});
+
+test('isEvent explicit suprascrie fallback-ul pe categoria serviciului', () => {
+  assert.equal(
+    isEventActivityCatalogItem({
+      serviceCategory: 'Reprezentare si participare la evenimente',
+      isEvent: false,
+    } as ActivityCatalog),
+    false,
+  );
+  assert.equal(
+    isEventActivityCatalogItem({
+      serviceCategory: 'Infrastructura dialog social',
+      isEvent: true,
     } as ActivityCatalog),
     true,
   );

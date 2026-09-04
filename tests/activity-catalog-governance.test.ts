@@ -15,7 +15,7 @@ const baseCatalog: ActivityCatalog[] = [
     activityNumber: 1,
     activityName: 'Monitorizare legislativa',
     serviceCategory: 'Dialog social',
-    eventCategory: 'Dezbatere',
+    isEvent: true,
     isActive: true,
     description: 'Descriere veche',
     objectives: '',
@@ -32,6 +32,7 @@ const baseCatalog: ActivityCatalog[] = [
     activityNumber: 1,
     activityName: 'Comunicare membri',
     serviceCategory: 'Comunicare',
+    isEvent: false,
     isActive: true,
     description: '',
     objectives: '',
@@ -55,8 +56,8 @@ test('exportul catalogului pastreaza anteturile oficiale', () => {
 test('importul accepta coloanele corecte si converteste Activ Da/Nu', () => {
   const imported = csv([
     [...ACTIVITY_CATALOG_EXPORT_HEADERS],
-    ['cat-1', 'ap', 'SA3.2', '1', 'Monitorizare legislativa', 'Dialog social', 'Masa rotunda', 'Nu', 'Descriere noua', '', '', '', '', 'Nota de informare', ''],
-    ['', 'gt', 'SA1.1', '2', 'Informare grup tinta', 'Informare', '', 'Da', 'Descriere', '', '', '', '', 'Lista participanti', ''],
+    ['cat-1', 'ap', 'SA3.2', '1', 'Monitorizare legislativa', 'Dialog social', 'Da', 'Nu', 'Descriere noua', '', '', '', '', 'Nota de informare', ''],
+    ['', 'gt', 'SA1.1', '2', 'Informare grup tinta', 'Informare', 'Nu', 'Da', 'Descriere', '', '', '', '', 'Lista participanti', ''],
   ]);
 
   const plan = buildActivityCatalogImportPlan(imported, baseCatalog);
@@ -64,16 +65,26 @@ test('importul accepta coloanele corecte si converteste Activ Da/Nu', () => {
   assert.deepEqual(plan.errors, []);
   assert.equal(plan.diffs.filter((diff) => diff.action === 'update').length, 1);
   assert.equal(plan.diffs.filter((diff) => diff.action === 'create').length, 1);
+  assert.equal(plan.rows[0].draft.isEvent, true);
   assert.equal(plan.rows[0].draft.isActive, false);
-  assert.equal(plan.rows[0].draft.eventCategory, 'Masa rotunda');
+  assert.equal(plan.rows[1].draft.isEvent, false);
   assert.equal(plan.rows[1].draft.isActive, true);
-  assert.equal(plan.rows[1].draft.eventCategory, undefined);
+});
+
+test('exportul lasa isEvent gol cand valoarea lipseste pentru fallback legacy', () => {
+  const exported = exportActivityCatalogCsv([{
+    ...baseCatalog[0],
+    isEvent: undefined,
+  }]);
+
+  const cells = exported.split(/\r?\n/)[1].split(',');
+  assert.equal(cells[6], '');
 });
 
 test('importul respinge coloane lipsa sau redenumite', () => {
   const imported = csv([
     ACTIVITY_CATALOG_EXPORT_HEADERS.filter((header) => header !== 'Indicatori'),
-    ['cat-1', 'ap', 'SA3.2', '1', 'Monitorizare legislativa', 'Dialog social', 'Da'],
+    ['cat-1', 'ap', 'SA3.2', '1', 'Monitorizare legislativa', 'Dialog social', 'Da', 'Da'],
   ]);
 
   const plan = buildActivityCatalogImportPlan(imported, baseCatalog);
@@ -96,7 +107,7 @@ test('importul respinge duplicate ambigue', () => {
 test('importul nu sterge randurile absente', () => {
   const imported = csv([
     [...ACTIVITY_CATALOG_EXPORT_HEADERS],
-    ['cat-1', 'ap', 'SA3.2', '1', 'Monitorizare legislativa', 'Dialog social', 'Dezbatere', 'Da', 'Descriere veche', '', '', '', '', 'Nota de informare', ''],
+    ['cat-1', 'ap', 'SA3.2', '1', 'Monitorizare legislativa', 'Dialog social', 'Da', 'Da', 'Descriere veche', '', '', '', '', 'Nota de informare', ''],
   ]);
 
   const plan = buildActivityCatalogImportPlan(imported, baseCatalog);

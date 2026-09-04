@@ -36,13 +36,22 @@ const catalog = [
     requiresSameDayForSharedDeliverable: false,
   },
   {
-    id: 'event-category-only',
+    id: 'event-flag-only',
     category: 'ap',
     saCode: 'SA3.4',
     activityNumber: 4,
     serviceCategory: 'Infrastructura dialog social',
-    eventCategory: 'Webinar',
+    isEvent: true,
     activityName: 'Participare webinar',
+  },
+  {
+    id: 'explicit-standard',
+    category: 'ap',
+    saCode: 'SA3.4',
+    activityNumber: 5,
+    serviceCategory: 'Reprezentare si participare la evenimente',
+    isEvent: false,
+    activityName: 'Pregatire materiale eveniment',
   },
 ] as ActivityCatalog[];
 
@@ -68,14 +77,25 @@ test('PM classifies the event service category as event participation', () => {
   );
 });
 
-test('PM classifies rows with event category as event participation', () => {
+test('PM classifies rows with isEvent as event participation', () => {
   assert.equal(
     isActivityEventForDocumentation({
-      catalogActivityId: 'event-category-only',
+      catalogActivityId: 'event-flag-only',
       activityType: 'Participare webinar',
       title: 'Participare webinar',
     }, catalog),
     true,
+  );
+});
+
+test('PM keeps explicitly non-event catalog rows as standard activities', () => {
+  assert.equal(
+    isActivityEventForDocumentation({
+      catalogActivityId: 'explicit-standard',
+      activityType: 'Pregatire materiale eveniment',
+      title: 'Pregatire materiale eveniment',
+    }, catalog),
+    false,
   );
 });
 
