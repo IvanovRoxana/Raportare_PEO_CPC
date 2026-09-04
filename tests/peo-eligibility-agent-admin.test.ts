@@ -5,8 +5,10 @@ import path from 'node:path';
 
 const repoRoot = process.cwd();
 const adminPageSource = fs.readFileSync(path.join(repoRoot, 'app/admin/page.tsx'), 'utf8');
+const adminUsersSource = fs.readFileSync(path.join(repoRoot, 'components/admin/admin-users-table.tsx'), 'utf8');
 const pmPageSource = fs.readFileSync(path.join(repoRoot, 'app/pm/page.tsx'), 'utf8');
 const pmEligibilityGovernanceSource = fs.readFileSync(path.join(repoRoot, 'components/pm/eligibility-governance-panel.tsx'), 'utf8');
+const pmAiReportingInstructionsSource = fs.readFileSync(path.join(repoRoot, 'components/pm/ai-reporting-instructions-panel.tsx'), 'utf8');
 const panelSource = fs.readFileSync(path.join(repoRoot, 'components/pm/peo-eligibility-agent-panel.tsx'), 'utf8');
 const envExampleSource = fs.readFileSync(path.join(repoRoot, '.env.example'), 'utf8');
 
@@ -21,6 +23,13 @@ test('PM exposes eligibility categories as a separate menu item', () => {
   assert.match(pmPageSource, /Categorii eligibilitate/);
   assert.match(pmPageSource, /value="eligibility-governance"/);
   assert.match(pmPageSource, /Catalog eligibilitate/);
+});
+
+test('AI reporting instructions are managed from PM, not Admin users', () => {
+  assert.doesNotMatch(adminUsersSource, /Instructiuni AI pentru raportare/);
+  assert.match(pmEligibilityGovernanceSource, /AiReportingInstructionsPanel/);
+  assert.match(pmAiReportingInstructionsSource, /Prompturi AI pentru raportare/);
+  assert.match(pmAiReportingInstructionsSource, /aiReportingInstructions/);
 });
 
 test('PEO Eligibility Agent panel defines controlled knowledge and tools', () => {

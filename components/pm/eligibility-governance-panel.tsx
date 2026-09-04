@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { History, Loader2, RotateCcw, Save, ShieldCheck } from 'lucide-react';
+import { AiReportingInstructionsPanel } from '@/components/pm/ai-reporting-instructions-panel';
 import { PeoEligibilityAgentPanel } from '@/components/pm/peo-eligibility-agent-panel';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -12,11 +13,13 @@ import {
   useAiEligibilityRulesets,
 } from '@/hooks/use-backend-data';
 import { isActivePmUnlockRequest } from '@/lib/pm-unlock-status';
-import type { DocumentMetadata } from '@/lib/types';
+import type { DocumentMetadata, Expert } from '@/lib/types';
 
 interface EligibilityGovernancePanelProps {
   documents: DocumentMetadata[];
+  experts: Expert[];
   actorName?: string;
+  onExpertsChanged?: () => Promise<unknown> | unknown;
   onAudit?: (input: {
     actionType: string;
     oldValue?: string;
@@ -37,7 +40,9 @@ function stringifyRules(value: unknown) {
 
 export function EligibilityGovernancePanel({
   documents,
+  experts,
   actorName,
+  onExpertsChanged,
   onAudit,
 }: EligibilityGovernancePanelProps) {
   const { rulesets, activeRuleset, isLoading } = useAiEligibilityRulesets();
@@ -153,6 +158,13 @@ export function EligibilityGovernancePanel({
   return (
     <div className="space-y-6">
       <PeoEligibilityAgentPanel />
+
+      <AiReportingInstructionsPanel
+        experts={experts}
+        actorName={actorName}
+        onSaved={onExpertsChanged}
+        onAudit={onAudit}
+      />
 
       <section className="rounded-md border bg-white p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">

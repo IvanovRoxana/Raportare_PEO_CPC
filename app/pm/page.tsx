@@ -239,7 +239,7 @@ export default function PMDashboard() {
   const [localNotes, setLocalNotes] = useState<VerificationNote[]>([]);
 
   // Data hooks
-  const { experts, isLoading: expertsLoading } = useExperts();
+  const { experts, isLoading: expertsLoading, mutate: refreshExperts } = useExperts();
   const dataAccessScope = useMemo(
     () => resolveDataAccessScope({ user: currentUser, experts }),
     [currentUser, experts]
@@ -2155,7 +2155,9 @@ export default function PMDashboard() {
             <TabsContent value="eligibility-governance">
               <EligibilityGovernancePanel
                 documents={documents}
+                experts={visibleExperts}
                 actorName={currentUser?.displayName || currentUser?.email || 'PM'}
+                onExpertsChanged={refreshExperts}
                 onAudit={recordEligibilityGovernanceAudit}
               />
             </TabsContent>
