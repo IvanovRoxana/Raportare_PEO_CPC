@@ -15,6 +15,7 @@ const baseCatalog: ActivityCatalog[] = [
     activityNumber: 1,
     activityName: 'Monitorizare legislativa',
     serviceCategory: 'Dialog social',
+    eventCategory: 'Dezbatere',
     isActive: true,
     description: 'Descriere veche',
     objectives: '',
@@ -54,8 +55,8 @@ test('exportul catalogului pastreaza anteturile oficiale', () => {
 test('importul accepta coloanele corecte si converteste Activ Da/Nu', () => {
   const imported = csv([
     [...ACTIVITY_CATALOG_EXPORT_HEADERS],
-    ['cat-1', 'ap', 'SA3.2', '1', 'Monitorizare legislativa', 'Dialog social', 'Nu', 'Descriere noua', '', '', '', '', 'Nota de informare', ''],
-    ['', 'gt', 'SA1.1', '2', 'Informare grup tinta', 'Informare', 'Da', 'Descriere', '', '', '', '', 'Lista participanti', ''],
+    ['cat-1', 'ap', 'SA3.2', '1', 'Monitorizare legislativa', 'Dialog social', 'Masa rotunda', 'Nu', 'Descriere noua', '', '', '', '', 'Nota de informare', ''],
+    ['', 'gt', 'SA1.1', '2', 'Informare grup tinta', 'Informare', '', 'Da', 'Descriere', '', '', '', '', 'Lista participanti', ''],
   ]);
 
   const plan = buildActivityCatalogImportPlan(imported, baseCatalog);
@@ -64,7 +65,9 @@ test('importul accepta coloanele corecte si converteste Activ Da/Nu', () => {
   assert.equal(plan.diffs.filter((diff) => diff.action === 'update').length, 1);
   assert.equal(plan.diffs.filter((diff) => diff.action === 'create').length, 1);
   assert.equal(plan.rows[0].draft.isActive, false);
+  assert.equal(plan.rows[0].draft.eventCategory, 'Masa rotunda');
   assert.equal(plan.rows[1].draft.isActive, true);
+  assert.equal(plan.rows[1].draft.eventCategory, undefined);
 });
 
 test('importul respinge coloane lipsa sau redenumite', () => {
@@ -81,8 +84,8 @@ test('importul respinge coloane lipsa sau redenumite', () => {
 test('importul respinge duplicate ambigue', () => {
   const imported = csv([
     [...ACTIVITY_CATALOG_EXPORT_HEADERS],
-    ['', 'ap', 'SA3.2', '1', 'Monitorizare legislativa', 'Dialog social', 'Da', '', '', '', '', '', '', ''],
-    ['', 'ap', 'SA3.2', '1', 'Monitorizare legislativa', 'Dialog social', 'Da', '', '', '', '', '', '', ''],
+    ['', 'ap', 'SA3.2', '1', 'Monitorizare legislativa', 'Dialog social', '', 'Da', '', '', '', '', '', '', ''],
+    ['', 'ap', 'SA3.2', '1', 'Monitorizare legislativa', 'Dialog social', '', 'Da', '', '', '', '', '', '', ''],
   ]);
 
   const plan = buildActivityCatalogImportPlan(imported, baseCatalog);
@@ -93,7 +96,7 @@ test('importul respinge duplicate ambigue', () => {
 test('importul nu sterge randurile absente', () => {
   const imported = csv([
     [...ACTIVITY_CATALOG_EXPORT_HEADERS],
-    ['cat-1', 'ap', 'SA3.2', '1', 'Monitorizare legislativa', 'Dialog social', 'Da', 'Descriere veche', '', '', '', '', 'Nota de informare', ''],
+    ['cat-1', 'ap', 'SA3.2', '1', 'Monitorizare legislativa', 'Dialog social', 'Dezbatere', 'Da', 'Descriere veche', '', '', '', '', 'Nota de informare', ''],
   ]);
 
   const plan = buildActivityCatalogImportPlan(imported, baseCatalog);

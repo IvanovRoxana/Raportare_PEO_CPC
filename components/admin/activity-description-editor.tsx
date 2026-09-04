@@ -63,6 +63,7 @@ function matchesCatalogSearch(item: ActivityCatalog, query: string) {
     item.saCode,
     item.category,
     item.serviceCategory,
+    item.eventCategory,
     item.description,
     item.objectives,
     item.serviceComponent,
@@ -94,6 +95,7 @@ function draftFromActivity(activity?: ActivityCatalog | null): ActivityCatalogDr
       ? resolveGdprTemplateCodeForCatalogActivity(activity)
       : activity?.gdprTemplateCode,
     serviceCategory: activity?.serviceCategory ?? '',
+    eventCategory: activity?.eventCategory ?? '',
     activityNumber: activity?.activityNumber ?? 0,
     activityName: activity?.activityName ?? '',
     isActive: activity?.isActive ?? true,
@@ -119,6 +121,7 @@ function normalizeDraft(draft: ActivityCatalogDraft): ActivityCatalogDraft {
       ? draft.gdprTemplateCode?.trim() || 'GDPR_ALTE_VERIFICARI'
       : undefined,
     serviceCategory: draft.serviceCategory.trim(),
+    eventCategory: draft.eventCategory?.trim() || undefined,
     activityNumber: Number.isFinite(Number(draft.activityNumber)) ? Number(draft.activityNumber) : 0,
     activityName: draft.activityName.trim(),
     requiresSameDayForSharedDeliverable: Boolean(draft.requiresSameDayForSharedDeliverable),
@@ -1014,6 +1017,18 @@ export function ActivityCatalogGovernancePanel({
                       placeholder="Categorie serviciu noua"
                     />
                   )}
+                </div>
+
+                <div className="space-y-2">
+                  <label htmlFor="catalog-event-category" className="text-sm font-semibold text-slate-900">
+                    Categorie eveniment
+                  </label>
+                  <Input
+                    id="catalog-event-category"
+                    value={draft.eventCategory ?? ''}
+                    onChange={(event) => updateDraft('eventCategory', event.target.value)}
+                    placeholder="ex: Eveniment anual / webinar / masa rotunda"
+                  />
                 </div>
 
                 <label className="flex items-start gap-3 rounded-md border bg-slate-50 p-3 text-sm md:col-span-2">

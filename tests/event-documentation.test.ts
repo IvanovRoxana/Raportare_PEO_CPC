@@ -35,6 +35,15 @@ const catalog = [
     activityName: 'Elaborare materiale suport eveniment',
     requiresSameDayForSharedDeliverable: false,
   },
+  {
+    id: 'event-category-only',
+    category: 'ap',
+    saCode: 'SA3.4',
+    activityNumber: 4,
+    serviceCategory: 'Infrastructura dialog social',
+    eventCategory: 'Webinar',
+    activityName: 'Participare webinar',
+  },
 ] as ActivityCatalog[];
 
 test('PM does not classify standard event preparation as event participation', () => {
@@ -54,6 +63,17 @@ test('PM classifies the event service category as event participation', () => {
       catalogActivityId: 'event-participation',
       activityType: 'Participare la eveniment',
       title: 'Participare la eveniment',
+    }, catalog),
+    true,
+  );
+});
+
+test('PM classifies rows with event category as event participation', () => {
+  assert.equal(
+    isActivityEventForDocumentation({
+      catalogActivityId: 'event-category-only',
+      activityType: 'Participare webinar',
+      title: 'Participare webinar',
     }, catalog),
     true,
   );

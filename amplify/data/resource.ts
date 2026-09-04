@@ -757,6 +757,7 @@ const schema = a.schema({
       saCode: a.string().required(),
       gdprTemplateCode: a.string(),
       serviceCategory: a.string(),
+      eventCategory: a.string(),
       activityNumber: a.integer(),
       activityName: a.string().required(),
       isActive: a.boolean().default(true),
