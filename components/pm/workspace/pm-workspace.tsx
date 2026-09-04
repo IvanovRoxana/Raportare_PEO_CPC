@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ActivityCatalogGovernancePanel } from '@/components/admin/activity-description-editor';
+import { ActivityCatalogGovernancePanel } from '@/components/pm/activity-catalog-governance-panel';
 import { ExpertAvatar } from '@/components/expert/expert-avatar';
 import {
   Dialog,

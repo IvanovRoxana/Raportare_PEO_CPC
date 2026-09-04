@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { History, Loader2, RotateCcw, Save, ShieldCheck } from 'lucide-react';
-import { ActivityCatalogGovernancePanel } from '@/components/admin/activity-description-editor';
+import { PeoEligibilityAgentPanel } from '@/components/pm/peo-eligibility-agent-panel';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
@@ -12,11 +12,9 @@ import {
   useAiEligibilityRulesets,
 } from '@/hooks/use-backend-data';
 import { isActivePmUnlockRequest } from '@/lib/pm-unlock-status';
-import type { Activity, ActivityCatalog, DocumentMetadata } from '@/lib/types';
+import type { DocumentMetadata } from '@/lib/types';
 
 interface EligibilityGovernancePanelProps {
-  fallbackCatalog?: ActivityCatalog[];
-  activities: Activity[];
   documents: DocumentMetadata[];
   actorName?: string;
   onAudit?: (input: {
@@ -38,8 +36,6 @@ function stringifyRules(value: unknown) {
 }
 
 export function EligibilityGovernancePanel({
-  fallbackCatalog = [],
-  activities,
   documents,
   actorName,
   onAudit,
@@ -156,13 +152,7 @@ export function EligibilityGovernancePanel({
 
   return (
     <div className="space-y-6">
-      <ActivityCatalogGovernancePanel
-        fallbackCatalog={fallbackCatalog}
-        mode="pm"
-        activities={activities}
-        documents={documents}
-        onAudit={onAudit}
-      />
+      <PeoEligibilityAgentPanel />
 
       <section className="rounded-md border bg-white p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">

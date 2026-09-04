@@ -23,7 +23,6 @@ import { ProgressBar, RightInfoCard } from '@/components/layout/dashboard-primit
 import { ActivityDescriptionEditor } from '@/components/admin/activity-description-editor';
 import { AiApiStatusPanel } from '@/components/admin/ai-api-status-panel';
 import { AiContextHealthPanel } from '@/components/admin/ai-context-health-panel';
-import { PeoEligibilityAgentPanel } from '@/components/admin/peo-eligibility-agent-panel';
 import { AdminStatCards } from '@/components/admin/admin-stat-cards';
 import { AdminUsersTable } from '@/components/admin/admin-users-table';
 import { AdminProjectsPanel } from '@/components/admin/admin-projects-panel';
@@ -249,7 +248,6 @@ export default async function AdminPage({
             <TabsContent value="ai" className="m-0 p-6">
               <div className="space-y-6">
                 <AiApiStatusPanel />
-                <PeoEligibilityAgentPanel />
                 <AiContextHealthPanel />
               </div>
             </TabsContent>

@@ -166,6 +166,7 @@ import { PmSubmittedReportsPanel, type PmSubmittedReportRow } from '@/components
 import { AiRagAuditTab } from '@/components/pm/ai-rag-audit-tab';
 import { PmWorkspace } from '@/components/pm/workspace/pm-workspace';
 import { EligibilityGovernancePanel } from '@/components/pm/eligibility-governance-panel';
+import { ActivityCatalogGovernancePanel } from '@/components/pm/activity-catalog-governance-panel';
 import { PmReviewCasesPanel } from '@/components/pm/pm-review-cases-panel';
 import fallbackActivityCatalog from '@/data/import/activity-catalog.json';
 
@@ -2054,6 +2055,7 @@ export default function PMDashboard() {
             <TabsTrigger value="progres">Raport Progres</TabsTrigger>
             <TabsTrigger value="working-groups">Grupuri lucru</TabsTrigger>
             <TabsTrigger value="gt">Progres GT</TabsTrigger>
+            {hasExtendedExpertAccess && <TabsTrigger value="eligibility-categories">Categorii eligibilitate</TabsTrigger>}
             {hasExtendedExpertAccess && <TabsTrigger value="eligibility-governance">Catalog eligibilitate</TabsTrigger>}
             {hasExtendedExpertAccess && <TabsTrigger value="ai-rag">AI RAG</TabsTrigger>}
             <TabsTrigger value="neconformitati">
@@ -2138,10 +2140,20 @@ export default function PMDashboard() {
           </TabsContent>
 
           {hasExtendedExpertAccess && (
+            <TabsContent value="eligibility-categories">
+              <ActivityCatalogGovernancePanel
+                fallbackCatalog={fallbackActivityCatalog as ActivityCatalog[]}
+                mode="pm"
+                activities={monthActivities}
+                documents={documents}
+                onAudit={recordEligibilityGovernanceAudit}
+              />
+            </TabsContent>
+          )}
+
+          {hasExtendedExpertAccess && (
             <TabsContent value="eligibility-governance">
               <EligibilityGovernancePanel
-                fallbackCatalog={fallbackActivityCatalog as ActivityCatalog[]}
-                activities={monthActivities}
                 documents={documents}
                 actorName={currentUser?.displayName || currentUser?.email || 'PM'}
                 onAudit={recordEligibilityGovernanceAudit}
