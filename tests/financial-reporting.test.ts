@@ -160,6 +160,35 @@ test('grila CO financiar foloseste perioada ca selectie PEO si pastreaza zilele 
   );
 });
 
+test('grila CO financiar extinde zilele CPC din perioada PEO cand pontajul CO nu este incarcat in rand', () => {
+  const allocations = buildFinancialLeaveGridAllocations({
+    existingLeaveDates: [],
+    peoDates: ['2026-08-17', '2026-08-18'],
+    peoHours: 16,
+    cpcHours: 72,
+    peoDays: 2,
+    cpcDays: 9,
+  });
+
+  assert.equal(allocations.length, 9);
+  assert.deepEqual(
+    allocations.map((allocation) => allocation.date),
+    [
+      '2026-08-17',
+      '2026-08-18',
+      '2026-08-19',
+      '2026-08-20',
+      '2026-08-21',
+      '2026-08-24',
+      '2026-08-25',
+      '2026-08-26',
+      '2026-08-27',
+    ],
+  );
+  assert.equal(allocations.reduce((sum, allocation) => sum + allocation.peoHours, 0), 16);
+  assert.equal(allocations.reduce((sum, allocation) => sum + allocation.cpcHours, 0), 72);
+});
+
 test('perioada initiala din grila CO financiar afiseaza doar zilele cu CO PEO', () => {
   const leaves: LeaveEntry[] = [
     { id: 'leave-peo', expertId: expert.id, date: '2026-08-17', month: 7, year: 2026, type: 'CO', totalHours: 8, peoHours: 8, cpcHours: 8, source: 'FINANCIAL', status: 'VALIDATED', lockedForExpert: true },

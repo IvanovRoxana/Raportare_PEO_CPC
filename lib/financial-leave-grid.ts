@@ -34,10 +34,39 @@ function takeAllocationDates(candidates: string[], requestedDays: number, label:
   return dates.slice(0, count);
 }
 
+function isoDate(year: number, month: number, day: number) {
+  return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+function expandWorkingDatesFromSelection(seedDates: string[], requestedDays: number) {
+  const count = Math.round(requestedDays);
+  if (count <= 0) return [];
+  const sortedSeedDates = uniqueSortedDates(seedDates);
+  const firstSeedDate = sortedSeedDates[0];
+  if (!firstSeedDate) return [];
+  const year = Number(firstSeedDate.slice(0, 4));
+  const month = Number(firstSeedDate.slice(5, 7)) - 1;
+  const startDay = Number(firstSeedDate.slice(8, 10));
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(startDay)) return sortedSeedDates;
+
+  const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  const expanded = new Set(sortedSeedDates);
+  for (let day = startDay; day <= lastDay && expanded.size < count; day += 1) {
+    const date = new Date(Date.UTC(year, month, day));
+    const weekday = date.getUTCDay();
+    if (weekday === 0 || weekday === 6) continue;
+    expanded.add(isoDate(year, month, day));
+  }
+  return uniqueSortedDates([...expanded]).slice(0, count);
+}
+
 export function buildFinancialLeaveGridAllocations(input: FinancialLeaveGridAllocationInput): FinancialLeaveGridAllocation[] {
   const peoDates = takeAllocationDates(input.peoDates, input.peoHours > 0 ? input.peoDays || input.peoDates.length : 0, 'PEO');
-  const cpcCandidateDates = uniqueSortedDates([...input.existingLeaveDates, ...input.peoDates]);
-  const cpcRequestedDays = input.cpcHours > 0 ? input.cpcDays || cpcCandidateDates.length || peoDates.length : 0;
+  const cpcRequestedDays = input.cpcHours > 0 ? input.cpcDays || input.existingLeaveDates.length || input.peoDates.length || peoDates.length : 0;
+  const knownCpcCandidateDates = uniqueSortedDates([...input.existingLeaveDates, ...input.peoDates]);
+  const cpcCandidateDates = knownCpcCandidateDates.length >= Math.round(cpcRequestedDays)
+    ? knownCpcCandidateDates
+    : expandWorkingDatesFromSelection(input.peoDates, cpcRequestedDays);
   const cpcDates = takeAllocationDates(cpcCandidateDates, cpcRequestedDays, 'CPC');
 
   if (input.peoHours > 0 && peoDates.length === 0) {
