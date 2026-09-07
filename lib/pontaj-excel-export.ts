@@ -12,6 +12,7 @@ import {
   sumLeaveAllocationHours,
   type FinancialLeaveAllocation,
 } from './financial-leave-allocation.ts';
+import { isPeoPidsTimesheetProject } from './concurrent-project-timesheet-bucket.ts';
 
 export type CellInput = string | number | null | { formula: string };
 
@@ -285,7 +286,7 @@ async function generateConsolidatedWorkbook(payload: ExportPayload): Promise<Gen
   sheetXml = setCell(sheetXml, 'A12', `${MONTHS_EN[payload.month]} ${payload.year} - ${norm.normHours} working hours`);
   sheetXml = setCell(sheetXml, `A${summaryRows.concordia}`, 'CONCORDIA');
   if (hasGoodworks) {
-    sheetXml = setCell(sheetXml, `A${summaryRows.goodworks}`, 'GOODWORKS4ALL');
+    sheetXml = setCell(sheetXml, `A${summaryRows.goodworks}`, 'PEO/PIDS');
   }
   sheetXml = setCell(sheetXml, `A${summaryRows.peo}`, `PEO_${getExpertPosition(payload.expert)}`);
 
@@ -498,7 +499,7 @@ function setTimesheetRowTotals(sheetXml: string, row: number, dailyHours: number
 
 function getGoodworksDailyHours(projects: Partial<ConcurrentProject>[]) {
   return projects
-    .filter((project) => project.isActive !== false && isGoodworksProject(project))
+    .filter(isPeoPidsTimesheetProject)
     .reduce((total, project) => total + (Number(project.dailyHours) || 0), 0);
 }
 
@@ -981,10 +982,7 @@ function getGoodworksHours(
 }
 
 function isGoodworksProject(project: Partial<ConcurrentProject>) {
-  if (project.timesheetBucket === 'peo_pids') return project.isActive !== false;
-  if (project.timesheetBucket === 'outside_peo_pids') return false;
-  const label = `${project.projectName ?? ''} ${project.projectCode ?? ''}`.toLowerCase();
-  return project.isActive !== false && (label.includes('goodworks') || label.includes('gw4all'));
+  return isPeoPidsTimesheetProject(project);
 }
 
 function hasGoodworksProject(projects: Partial<ConcurrentProject>[]) {

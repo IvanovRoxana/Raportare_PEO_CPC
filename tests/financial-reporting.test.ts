@@ -491,6 +491,31 @@ test('orele CPC lucrate se calculeaza din norma CIM minus PEO, GOODWORKS si CO m
   assert.equal(summary.rows[0].totalMonth, 168);
 });
 
+test('timesheetBucket clasifica explicit proiectele concurente in PEO/PIDS si in afara PEO/PIDS', () => {
+  const projects: ConcurrentProject[] = [
+    { id: 'pids', expertId: expert.id, projectName: 'Program educatie', projectCode: 'PIDS-1', timesheetBucket: 'peo_pids', expertProjectRole: 'Expert PIDS', dailyHours: 2, startDate: '2026-07-01', isActive: true },
+    { id: 'outside', expertId: expert.id, projectName: 'Proiect extern', projectCode: 'EXT-1', timesheetBucket: 'outside_peo_pids', expertProjectRole: 'Expert extern', dailyHours: 3, startDate: '2026-07-01', isActive: true },
+  ];
+  const entries: ConcurrentProjectTimesheetEntry[] = [
+    { id: 'pids-entry', concurrentProjectId: 'pids', expertId: expert.id, date: '2026-07-02', month: 6, year: 2026, hours: 2, dayType: 'lucratoare', status: 'verified', source: 'import' },
+    { id: 'outside-entry', concurrentProjectId: 'outside', expertId: expert.id, date: '2026-07-03', month: 6, year: 2026, hours: 3, dayType: 'lucratoare', status: 'verified', source: 'import' },
+  ];
+
+  const summary = buildFinancialReportingSummary({
+    experts: [expert],
+    activities: [],
+    concurrentProjects: projects,
+    concurrentEntries: entries,
+    month: 6,
+    year: 2026,
+    referencePeople: [],
+  });
+
+  assert.equal(summary.rows[0].goodworksWorked, 2);
+  assert.equal(summary.rows[0].concordiaWorked, 182);
+  assert.equal(summary.rows[0].goodworksFunction, 'Expert PIDS');
+});
+
 test('pontajele financiare afiseaza CO validat financiar peste orele raportate de expert', () => {
   const nida: Expert = {
     id: 'nida',

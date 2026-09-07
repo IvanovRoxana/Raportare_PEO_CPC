@@ -151,7 +151,9 @@ describe('export pontaj Excel', () => {
     const workbook = await generatePontajExcel(payload);
     const files = readXlsx(workbook.buffer);
     const sheet = files.get('xl/worksheets/sheet5.xml')!.toString('utf8');
+    const sharedStrings = readSharedStrings(files);
 
+    assert.equal(cellText(sheet, 'A16', sharedStrings), 'PEO/PIDS');
     assert.match(cellXml(sheet, 'F16'), /SUMIFS\(\$E\$49:\$E\$\d+,\$A\$49:\$A\$\d+,&quot;=&quot;&amp;DATE\(2026,5,F13\)\)/);
     assert.match(cellXml(sheet, 'F15'), /MAX\(0,8-SUM\(F16:F17\)\)/);
     assert.match(cellXml(sheet, 'E53'), /<v>2<\/v>/);

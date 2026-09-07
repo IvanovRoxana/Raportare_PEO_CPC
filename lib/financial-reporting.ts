@@ -4,6 +4,7 @@ import type { Activity, ConcurrentProject, ConcurrentProjectTimesheetEntry, Expe
 import { calculateCapacitySnapshot, getEffectiveNormContract, resolveNormContract } from './time-capacity.ts';
 import { applyFinancialReferenceNorms } from './financial-norm-contracts.ts';
 import { calculateLeaveAllocationForDay } from './financial-leave-allocation.ts';
+import { classifyConcurrentProjectTimesheetBucket } from './concurrent-project-timesheet-bucket.ts';
 
 export type FinancialConflictCode =
   | 'missing_expert'
@@ -113,10 +114,7 @@ function expertNormLabel(expert: Expert | undefined) {
 }
 
 function projectBucket(project: ConcurrentProject | undefined) {
-  if (project?.timesheetBucket === 'peo_pids') return 'goodworks';
-  if (project?.timesheetBucket === 'outside_peo_pids') return 'concordia';
-  const label = `${project?.projectName ?? ''} ${project?.projectCode ?? ''}`.toLowerCase();
-  return label.includes('goodworks') ? 'goodworks' : 'concordia';
+  return classifyConcurrentProjectTimesheetBucket(project) === 'peo_pids' ? 'goodworks' : 'concordia';
 }
 
 function normalizedReferenceValue(value: string | undefined) {
