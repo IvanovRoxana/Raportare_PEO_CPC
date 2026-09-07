@@ -3,6 +3,7 @@ import type { LeaveEntry } from './types';
 export interface FinancialLeaveGridAllocationInput {
   existingLeaveDates: string[];
   peoDates: string[];
+  cpcDates?: string[];
   peoHours: number;
   cpcHours: number;
   peoDays: number;
@@ -79,7 +80,10 @@ export function buildFinancialLeaveGridAllocations(input: FinancialLeaveGridAllo
   const cpcRequestedDays = input.cpcHours > 0 ? input.cpcDays || input.existingLeaveDates.length || input.peoDates.length || peoDates.length : 0;
   const peoPerDay = peoDates.length ? input.peoHours / peoDates.length : 0;
   const peoDateSet = new Set(peoDates);
-  const knownCpcCandidateDates = uniqueSortedDates([...input.existingLeaveDates, ...input.peoDates]);
+  const explicitCpcDates = uniqueSortedDates(input.cpcDates ?? []);
+  const knownCpcCandidateDates = explicitCpcDates.length
+    ? explicitCpcDates
+    : uniqueSortedDates([...input.existingLeaveDates, ...input.peoDates]);
   const knownCpcCapacityDates = knownCpcCandidateDates.filter((date) => cpcCapacityForDate(date, peoDateSet, peoPerDay) > 0);
   const cpcCandidateDates = knownCpcCapacityDates.length >= Math.round(cpcRequestedDays)
     ? knownCpcCandidateDates
@@ -107,7 +111,7 @@ export function buildFinancialLeaveGridAllocations(input: FinancialLeaveGridAllo
       date,
       peoHours,
       cpcHours,
-      totalHours: roundHours(Math.max(peoHours, cpcHours)),
+      totalHours: roundHours(peoHours + cpcHours),
     };
   }).filter((allocation) => allocation.peoHours > 0 || allocation.cpcHours > 0);
 }
@@ -116,6 +120,14 @@ export function getPeoLeaveDates(leaves: LeaveEntry[]) {
   return uniqueSortedDates(
     leaves
       .filter((leave) => leave.status !== 'REJECTED' && leave.type === 'CO' && (Number(leave.peoHours) || 0) > 0)
+      .map((leave) => leave.date),
+  );
+}
+
+export function getCpcLeaveDates(leaves: LeaveEntry[]) {
+  return uniqueSortedDates(
+    leaves
+      .filter((leave) => leave.status !== 'REJECTED' && leave.type === 'CO' && (Number(leave.cpcHours) || 0) > 0)
       .map((leave) => leave.date),
   );
 }

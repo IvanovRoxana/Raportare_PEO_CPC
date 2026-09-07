@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { aggregateLeaveAllocationsByDate, calculateLeaveAllocationForDay } from '../lib/financial-leave-allocation.ts';
-import { buildFinancialLeaveGridAllocations, getPeoLeaveDates } from '../lib/financial-leave-grid.ts';
+import { buildFinancialLeaveGridAllocations, getCpcLeaveDates, getPeoLeaveDates } from '../lib/financial-leave-grid.ts';
 import { applyFinancialReferenceNorms } from '../lib/financial-norm-contracts.ts';
 import { buildFinancialReportingSummary } from '../lib/financial-reporting.ts';
 import type { Activity, ConcurrentProject, ConcurrentProjectTimesheetEntry, Expert, ExpertNormContract, LeaveEntry } from '../lib/types.ts';
@@ -50,7 +50,10 @@ test('coloana perioada CO foloseste calendar pentru selectia zilelor', () => {
   const source = readFileSync('components/financial/financial-reporting-dashboard.tsx', 'utf8');
   assert.match(source, /function FinancialLeavePeriodPicker/);
   assert.match(source, /<PopoverTrigger asChild>/);
-  assert.match(source, /updateLeaveGridPeriod\(row, dates\)/);
+  assert.match(source, /PERIOADA<br \/>CO PEO/);
+  assert.match(source, /PERIOADA<br \/>CO CPC/);
+  assert.match(source, /updateLeaveGridPeriod\(row, 'period', dates\)/);
+  assert.match(source, /updateLeaveGridPeriod\(row, 'cpcPeriod', dates\)/);
 });
 
 test('formularul Adauga CO Financiar afiseaza titluri vizibile pentru campuri', () => {
@@ -176,6 +179,39 @@ test('grila CO financiar foloseste perioada ca selectie PEO si pastreaza zilele 
   );
 });
 
+test('grila CO financiar respecta perioade separate pentru CO PEO si CO CPC', () => {
+  const allocations = buildFinancialLeaveGridAllocations({
+    existingLeaveDates: [],
+    peoDates: ['2026-08-17', '2026-08-18'],
+    cpcDates: [
+      '2026-08-19',
+      '2026-08-20',
+      '2026-08-21',
+      '2026-08-24',
+      '2026-08-25',
+      '2026-08-26',
+      '2026-08-27',
+      '2026-08-28',
+      '2026-08-31',
+    ],
+    peoHours: 16,
+    cpcHours: 72,
+    peoDays: 2,
+    cpcDays: 9,
+  });
+
+  assert.equal(allocations.length, 11);
+  assert.deepEqual(
+    allocations.filter((allocation) => allocation.peoHours > 0).map((allocation) => allocation.date),
+    ['2026-08-17', '2026-08-18'],
+  );
+  assert.deepEqual(
+    allocations.filter((allocation) => allocation.cpcHours > 0).map((allocation) => allocation.date),
+    ['2026-08-19', '2026-08-20', '2026-08-21', '2026-08-24', '2026-08-25', '2026-08-26', '2026-08-27', '2026-08-28', '2026-08-31'],
+  );
+  assert.ok(allocations.every((allocation) => allocation.peoHours + allocation.cpcHours <= 8));
+});
+
 test('grila CO financiar extinde zilele CPC din perioada PEO cand pontajul CO nu este incarcat in rand', () => {
   const allocations = buildFinancialLeaveGridAllocations({
     existingLeaveDates: [],
@@ -240,6 +276,7 @@ test('perioada initiala din grila CO financiar afiseaza doar zilele cu CO PEO', 
   ];
 
   assert.deepEqual(getPeoLeaveDates(leaves), ['2026-08-17']);
+  assert.deepEqual(getCpcLeaveDates(leaves), ['2026-08-19']);
 });
 
 test('RAP-50 centralizeaza interpretarea CO intr-o functie domain comuna', () => {

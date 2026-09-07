@@ -26,7 +26,7 @@ import {
   useLeaveEntryMutations,
 } from '@/hooks/use-backend-data';
 import { buildFinancialReportingSummary, type FinancialTimesheetRow } from '@/lib/financial-reporting';
-import { buildFinancialLeaveGridAllocations, getPeoLeaveDates } from '@/lib/financial-leave-grid';
+import { buildFinancialLeaveGridAllocations, getCpcLeaveDates, getPeoLeaveDates } from '@/lib/financial-leave-grid';
 import { normalizeFinancialPersonKey, rankFinancialPersonMatches } from '@/lib/financial-person-matching';
 import { isFinancialLeaveEnabledClient, isFinancialTimesheetsEnabledClient } from '@/lib/feature-flags';
 import { buildPontajExportPayload } from '@/lib/pontaj-export-payload';
@@ -60,6 +60,7 @@ type LeaveGridDraft = {
   cpcDays: string;
   cpcHours: string;
   period: string;
+  cpcPeriod: string;
 };
 
 type StoredLeaveGridDrafts = {
@@ -142,6 +143,7 @@ function emptyLeaveGridDraft(): LeaveGridDraft {
     cpcDays: '0',
     cpcHours: '0',
     period: '',
+    cpcPeriod: '',
   };
 }
 
@@ -166,6 +168,7 @@ function buildLeaveGridDraft(row: FinancialTimesheetRow, normRow?: NormPanelRow)
     cpcDays: formatNumericCell(cpcNorm > 0 ? row.concordiaLeave / cpcNorm : 0),
     cpcHours: formatNumericCell(row.concordiaLeave),
     period: formatLeavePeriod(getPeoLeaveDates(row.leaveEntries)),
+    cpcPeriod: formatLeavePeriod(getCpcLeaveDates(row.leaveEntries)),
   };
 }
 
@@ -666,29 +669,35 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
     });
   };
 
-  const updateLeaveGridPeriod = (row: FinancialTimesheetRow, dates: string[]) => {
+  const updateLeaveGridPeriod = (row: FinancialTimesheetRow, field: 'period' | 'cpcPeriod', dates: string[]) => {
     const key = leaveGridRowKey(row);
     setDirtyLeaveGridRows((current) => new Set(current).add(key));
     setLeaveGridDrafts((current) => {
-      const previous = current[key] ?? emptyLeaveGridDraft();
+      const previous = { ...emptyLeaveGridDraft(), ...current[key] };
       const next = {
         ...previous,
-        period: formatLeavePeriod(dates),
+        [field]: formatLeavePeriod(dates),
       };
       const selectedDays = dates.length;
-      const peoNorm = numericCell(next.peoNorm);
-      const cpcNorm = numericCell(next.cpcNorm);
-      if (peoNorm > 0) {
-        next.peoDays = formatNumericCell(selectedDays);
-        next.peoHours = formatNumericCell(peoNorm * selectedDays);
+      if (field === 'period') {
+        const peoNorm = numericCell(next.peoNorm);
+        if (peoNorm > 0) {
+          next.peoDays = formatNumericCell(selectedDays);
+          next.peoHours = formatNumericCell(peoNorm * selectedDays);
+        }
       }
-      if (cpcNorm > 0) {
-        next.cpcDays = formatNumericCell(selectedDays);
-        next.cpcHours = formatNumericCell(cpcNorm * selectedDays);
+      if (field === 'cpcPeriod') {
+        const cpcNorm = numericCell(next.cpcNorm);
+        if (cpcNorm > 0) {
+          next.cpcDays = formatNumericCell(selectedDays);
+          next.cpcHours = formatNumericCell(cpcNorm * selectedDays);
+        }
       }
-      if (selectedDays === 0) {
+      if (selectedDays === 0 && field === 'period') {
         next.peoDays = '0';
         next.peoHours = '0';
+      }
+      if (selectedDays === 0 && field === 'cpcPeriod') {
         next.cpcDays = '0';
         next.cpcHours = '0';
       }
@@ -708,8 +717,8 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
       return;
     }
     const key = leaveGridRowKey(row);
-    const draft = leaveGridDrafts[key];
-    if (!draft) return;
+    const draft = { ...emptyLeaveGridDraft(), ...leaveGridDrafts[key] };
+    if (!leaveGridDrafts[key]) return;
 
     const peoNorm = numericCell(draft.peoNorm);
     const cpcNorm = numericCell(draft.cpcNorm);
@@ -718,26 +727,37 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
     const draftPeoHours = numericCell(draft.peoHours);
     const draftCpcHours = numericCell(draft.cpcHours);
     let replacementDates: string[];
+    let cpcReplacementDates: string[];
     try {
       replacementDates = parseLeavePeriod(draft.period, month, year);
     } catch (error) {
-      setVerificationMessage(error instanceof Error ? error.message : 'Perioada CO nu este valida.');
+      setVerificationMessage(error instanceof Error ? error.message : 'Perioada CO PEO nu este valida.');
       return;
     }
-    const selectedDays = replacementDates.length;
-    const peoDays = draftPeoDays || (peoNorm > 0 ? selectedDays : 0);
-    const cpcDays = draftCpcDays || (cpcNorm > 0 ? selectedDays : 0);
+    try {
+      cpcReplacementDates = parseLeavePeriod(draft.cpcPeriod, month, year);
+    } catch (error) {
+      setVerificationMessage(error instanceof Error ? error.message : 'Perioada CO CPC nu este valida.');
+      return;
+    }
+    const hasSelectedLeaveDates = replacementDates.length > 0 || cpcReplacementDates.length > 0;
+    const peoDays = draftPeoDays || (peoNorm > 0 ? replacementDates.length : 0);
+    const cpcDays = draftCpcDays || (cpcNorm > 0 ? cpcReplacementDates.length : 0);
     const peoHours = draftPeoHours || peoNorm * peoDays;
     const cpcHours = draftCpcHours || cpcNorm * cpcDays;
     if (peoHours > 0 && replacementDates.length === 0) {
       setVerificationMessage(`Completeaza perioada CO PEO pentru ${row.name}, de exemplu 01-08; 29-31.`);
       return;
     }
-    if (selectedDays > 0 && peoHours + cpcHours === 0) {
+    if (cpcHours > 0 && cpcReplacementDates.length === 0) {
+      setVerificationMessage(`Completeaza perioada CO CPC pentru ${row.name}, de exemplu 03-07; 19-27.`);
+      return;
+    }
+    if (hasSelectedLeaveDates && peoHours + cpcHours === 0) {
       setVerificationMessage(`Completeaza norma sau orele CO pentru ${row.name} inainte de salvare.`);
       return;
     }
-    if (selectedDays > 0 && (peoDays !== draftPeoDays || cpcDays !== draftCpcDays || peoHours !== draftPeoHours || cpcHours !== draftCpcHours)) {
+    if (hasSelectedLeaveDates && (peoDays !== draftPeoDays || cpcDays !== draftCpcDays || peoHours !== draftPeoHours || cpcHours !== draftCpcHours)) {
       setLeaveGridDrafts((current) => ({
         ...current,
         [key]: {
@@ -754,6 +774,7 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
       const allocations = buildFinancialLeaveGridAllocations({
         existingLeaveDates: row.coLeaveDates,
         peoDates: replacementDates,
+        cpcDates: cpcReplacementDates,
         peoHours,
         cpcHours,
         peoDays,
@@ -821,7 +842,7 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
             status: 'VALIDATED',
             lockedForExpert: true,
             automaticSplit: false,
-            justification: `Actualizare manuala CO Financiar: PEO ${draft.period || '-'}, CPC ${formatLeavePeriod(allocations.filter((allocationItem) => allocationItem.cpcHours > 0).map((allocationItem) => allocationItem.date)) || '-'}`,
+            justification: `Actualizare manuala CO Financiar: PEO ${draft.period || '-'}, CPC ${draft.cpcPeriod || '-'}`,
             createdBy: 'financial-session',
           });
           savedLeaveCount += 1;
@@ -836,6 +857,7 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
           cpcDays: formatNumericCell(cpcDays),
           cpcHours: formatNumericCell(cpcHours),
           period: formatLeavePeriod(replacementDates),
+          cpcPeriod: formatLeavePeriod(cpcReplacementDates),
         },
       }));
       setDirtyLeaveGridRows((current) => {
@@ -1197,16 +1219,16 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
                     {verificationMessage}
                   </div>
                 ) : null}
-                <table className="w-full min-w-[1060px] table-fixed border-collapse border-t-2 border-black text-[11px] leading-tight">
+                <table className="w-full min-w-[1180px] table-fixed border-collapse border-t-2 border-black text-[11px] leading-tight">
                   <colgroup>
-                    {[22, 8, 9, 9, 8, 9, 9, 18, 8].map((width, index) => <col key={index} style={{ width: `${width}%` }} />)}
+                    {[20, 7, 8, 8, 7, 8, 8, 14, 14, 6].map((width, index) => <col key={index} style={{ width: `${width}%` }} />)}
                   </colgroup>
                   <thead>
                     <tr>
                       <th className="border-b-2 border-r border-black bg-[#f58f93] px-2 py-3 text-left text-[11px] font-bold uppercase" colSpan={2}>
                         {MONTHS[month].toUpperCase()} {year}
                       </th>
-                      <th className="border-b-2 border-black bg-white" colSpan={7} />
+                      <th className="border-b-2 border-black bg-white" colSpan={8} />
                     </tr>
                     <tr className="border-b-2 border-black bg-white text-center text-[10px] font-bold uppercase">
                       <th className="border-r border-black px-2 py-2">NUME PRENUME</th>
@@ -1217,13 +1239,14 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
                       <th className="border-r border-black px-2 py-2">ZILE CO<br />CPC</th>
                       <th className="border-r border-black bg-slate-200 px-2 py-2">ORE CO<br />CPC</th>
                       <th className="border-r border-black px-2 py-2">PERIOADA<br />CO PEO {MONTHS[month].toUpperCase()}</th>
+                      <th className="border-r border-black px-2 py-2">PERIOADA<br />CO CPC {MONTHS[month].toUpperCase()}</th>
                       <th className="px-2 py-2">SALVEAZA</th>
                     </tr>
                   </thead>
                   <tbody>
                     {visibleRows.map((row) => {
                       const key = leaveGridRowKey(row);
-                      const draft = leaveGridDrafts[key] ?? emptyLeaveGridDraft();
+                      const draft = { ...emptyLeaveGridDraft(), ...leaveGridDrafts[key] };
                       const hasDraftLeave = row.leaveEntries.some((leave) => leave.status !== 'VALIDATED' && leave.status !== 'REJECTED');
                       const inputBaseClass = 'h-7 w-full min-w-0 rounded-sm border border-transparent bg-white/70 px-1 text-center text-[11px] tabular-nums shadow-none hover:border-slate-300 hover:bg-white focus-visible:border-primary focus-visible:bg-white focus-visible:ring-1 focus-visible:ring-primary disabled:bg-transparent';
                       return (
@@ -1257,9 +1280,19 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
                             <FinancialLeavePeriodPicker
                               disabled={!row.expertId}
                               month={month}
-                              onSelectDates={(dates) => updateLeaveGridPeriod(row, dates)}
+                              onSelectDates={(dates) => updateLeaveGridPeriod(row, 'period', dates)}
                               period={draft.period}
                               rowName={row.name}
+                              year={year}
+                            />
+                          </td>
+                          <td className="border-r border-black px-1 py-1">
+                            <FinancialLeavePeriodPicker
+                              disabled={!row.expertId}
+                              month={month}
+                              onSelectDates={(dates) => updateLeaveGridPeriod(row, 'cpcPeriod', dates)}
+                              period={draft.cpcPeriod}
+                              rowName={`${row.name} CPC`}
                               year={year}
                             />
                           </td>
@@ -1281,6 +1314,7 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
                       <td className="border-r border-black px-1 py-2" />
                       <td className="border-r border-black px-1 py-2 text-center tabular-nums">{compactHours(leaveGridTotals.cpcDays)}</td>
                       <td className="border-r border-black px-1 py-2 text-center tabular-nums">{compactHours(leaveGridTotals.cpcHours)}</td>
+                      <td className="border-r border-black px-1 py-2" />
                       <td className="border-r border-black px-1 py-2" />
                       <td className="px-1 py-2" />
                     </tr>
