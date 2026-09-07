@@ -838,7 +838,11 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
           period: formatLeavePeriod(replacementDates),
         },
       }));
-      setDirtyLeaveGridRows((current) => new Set(current).add(key));
+      setDirtyLeaveGridRows((current) => {
+        const next = new Set(current);
+        next.delete(key);
+        return next;
+      });
       await refreshLeaveEntries();
       setVerificationMessage(
         savedLeaveCount > 0

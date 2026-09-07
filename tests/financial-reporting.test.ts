@@ -117,6 +117,18 @@ test('grila CO financiar pastreaza drafturile editate la refresh si navigare in 
   assert.match(hydrateSource, /if \(dirtyLeaveGridRows\.has\(key\) && current\[key\]\) continue;/);
 });
 
+test('grila CO financiar curata starea draft dupa salvarea reala in backend', () => {
+  const source = readFileSync('components/financial/financial-reporting-dashboard.tsx', 'utf8');
+  const saveGridStart = source.indexOf('const saveLeaveGridRow = async');
+  const saveGridEnd = source.indexOf('const saveFinancialLeave = async');
+  const saveGridSource = source.slice(saveGridStart, saveGridEnd);
+
+  assert.notEqual(saveGridStart, -1);
+  assert.notEqual(saveGridEnd, -1);
+  assert.match(saveGridSource, /next\.delete\(key\)/);
+  assert.doesNotMatch(saveGridSource, /setDirtyLeaveGridRows\(\(current\) => new Set\(current\)\.add\(key\)\)/);
+});
+
 test('grila CO financiar nu sterge orele manuale cand norma CPC este zero', () => {
   const source = readFileSync('components/financial/financial-reporting-dashboard.tsx', 'utf8');
   const updateDraftStart = source.indexOf('const updateLeaveGridDraft = ');
