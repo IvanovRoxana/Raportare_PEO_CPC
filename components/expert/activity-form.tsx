@@ -2070,6 +2070,8 @@ export function ActivityForm({
         periodGroupId: activityPeriodGroupId,
         shareStatus: activityCommon ? 'shared' : 'private',
         takenByExperts: activityCommon ? collaborators : [],
+        originActivityId: activitySeed?.originActivityId,
+        projectCode: activitySeed?.projectCode || expert?.projectCode,
         gdprTemplateCode: isGdprExpert ? gdprTemplateCode : undefined,
         gdprMetaJson: isGdprExpert ? serializeGdprMeta({ ...gdprMeta, concluzie: gdprConclusionCode }) : undefined,
         gdprGeneratedText: isGdprExpert ? (gdprGeneratedText || description) : undefined,

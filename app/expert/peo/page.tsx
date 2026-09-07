@@ -2855,6 +2855,7 @@ function ExpertDashboardContent() {
       location: sourceActivity.location,
       dayType: sourceActivity.dayType,
       projectCode: sourceActivity.projectCode,
+      originActivityId: sourceActivity.id,
       shareStatus: 'shared',
       takenByExperts: sourceCollaborators,
       gdprTemplateCode: sourceActivity.gdprTemplateCode,
