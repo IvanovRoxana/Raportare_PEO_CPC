@@ -60,14 +60,31 @@ function expandWorkingDatesFromSelection(seedDates: string[], requestedDays: num
   return uniqueSortedDates([...expanded]).slice(0, count);
 }
 
+function cpcCapacityForDate(date: string, peoDateSet: Set<string>, peoPerDay: number) {
+  return Math.max(0, 8 - (peoDateSet.has(date) ? peoPerDay : 0));
+}
+
+function takeCpcAllocationDates(candidates: string[], requestedDays: number, peoDateSet: Set<string>, peoPerDay: number) {
+  const count = Math.round(requestedDays);
+  if (count <= 0) return [];
+  const dates = uniqueSortedDates(candidates).filter((date) => cpcCapacityForDate(date, peoDateSet, peoPerDay) > 0);
+  if (dates.length < count) {
+    throw new Error(`Nu exista suficiente zile CO pentru repartizarea CPC: ai ${dates.length}, dar sunt necesare ${count}.`);
+  }
+  return dates.slice(0, count);
+}
+
 export function buildFinancialLeaveGridAllocations(input: FinancialLeaveGridAllocationInput): FinancialLeaveGridAllocation[] {
   const peoDates = takeAllocationDates(input.peoDates, input.peoHours > 0 ? input.peoDays || input.peoDates.length : 0, 'PEO');
   const cpcRequestedDays = input.cpcHours > 0 ? input.cpcDays || input.existingLeaveDates.length || input.peoDates.length || peoDates.length : 0;
+  const peoPerDay = peoDates.length ? input.peoHours / peoDates.length : 0;
+  const peoDateSet = new Set(peoDates);
   const knownCpcCandidateDates = uniqueSortedDates([...input.existingLeaveDates, ...input.peoDates]);
-  const cpcCandidateDates = knownCpcCandidateDates.length >= Math.round(cpcRequestedDays)
+  const knownCpcCapacityDates = knownCpcCandidateDates.filter((date) => cpcCapacityForDate(date, peoDateSet, peoPerDay) > 0);
+  const cpcCandidateDates = knownCpcCapacityDates.length >= Math.round(cpcRequestedDays)
     ? knownCpcCandidateDates
-    : expandWorkingDatesFromSelection(input.peoDates, cpcRequestedDays);
-  const cpcDates = takeAllocationDates(cpcCandidateDates, cpcRequestedDays, 'CPC');
+    : expandWorkingDatesFromSelection(input.peoDates, cpcRequestedDays + peoDates.length);
+  const cpcDates = takeCpcAllocationDates(cpcCandidateDates, cpcRequestedDays, peoDateSet, peoPerDay);
 
   if (input.peoHours > 0 && peoDates.length === 0) {
     throw new Error('Alege perioada CO PEO inainte de salvare.');
@@ -76,22 +93,23 @@ export function buildFinancialLeaveGridAllocations(input: FinancialLeaveGridAllo
     throw new Error('Nu exista zile CO pe care sa fie repartizate orele CPC.');
   }
 
-  const peoPerDay = peoDates.length ? input.peoHours / peoDates.length : 0;
-  const cpcPerDay = cpcDates.length ? input.cpcHours / cpcDates.length : 0;
-  const peoDateSet = new Set(peoDates);
-  const cpcDateSet = new Set(cpcDates);
-  const cpcUsesBroaderLeaveCalendar = cpcDates.length > peoDates.length;
+  const nominalCpcPerDay = cpcDates.length ? input.cpcHours / cpcDates.length : 0;
+  let remainingCpcHours = roundHours(input.cpcHours);
 
   return uniqueSortedDates([...peoDates, ...cpcDates]).map((date) => {
     const peoHours = peoDateSet.has(date) ? roundHours(peoPerDay) : 0;
-    const cpcHours = cpcDateSet.has(date) ? roundHours(cpcPerDay) : 0;
+    const cpcDailyCapacity = Math.max(0, 8 - peoHours);
+    const cpcHours = cpcDates.includes(date)
+      ? roundHours(Math.min(nominalCpcPerDay, cpcDailyCapacity, remainingCpcHours))
+      : 0;
+    remainingCpcHours = roundHours(remainingCpcHours - cpcHours);
     return {
       date,
       peoHours,
       cpcHours,
-      totalHours: cpcUsesBroaderLeaveCalendar ? Math.max(peoHours, cpcHours) : roundHours(peoHours + cpcHours),
+      totalHours: roundHours(Math.max(peoHours, cpcHours)),
     };
-  });
+  }).filter((allocation) => allocation.peoHours > 0 || allocation.cpcHours > 0);
 }
 
 export function getPeoLeaveDates(leaves: LeaveEntry[]) {

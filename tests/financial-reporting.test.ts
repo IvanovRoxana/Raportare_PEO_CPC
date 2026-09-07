@@ -162,13 +162,17 @@ test('grila CO financiar foloseste perioada ca selectie PEO si pastreaza zilele 
     cpcDays: 9,
   });
 
-  assert.equal(allocations.length, 9);
+  assert.equal(allocations.length, 11);
   assert.equal(allocations.reduce((sum, allocation) => sum + allocation.peoHours, 0), 16);
   assert.equal(allocations.reduce((sum, allocation) => sum + allocation.cpcHours, 0), 72);
-  assert.equal(allocations.reduce((sum, allocation) => sum + allocation.totalHours, 0), 72);
+  assert.equal(allocations.reduce((sum, allocation) => sum + allocation.totalHours, 0), 88);
   assert.deepEqual(
     allocations.filter((allocation) => allocation.peoHours > 0).map((allocation) => allocation.date),
     ['2026-08-17', '2026-08-18'],
+  );
+  assert.deepEqual(
+    allocations.filter((allocation) => allocation.cpcHours > 0).map((allocation) => allocation.date),
+    ['2026-08-19', '2026-08-20', '2026-08-21', '2026-08-24', '2026-08-25', '2026-08-26', '2026-08-27', '2026-08-28', '2026-08-31'],
   );
 });
 
@@ -182,7 +186,7 @@ test('grila CO financiar extinde zilele CPC din perioada PEO cand pontajul CO nu
     cpcDays: 9,
   });
 
-  assert.equal(allocations.length, 9);
+  assert.equal(allocations.length, 11);
   assert.deepEqual(
     allocations.map((allocation) => allocation.date),
     [
@@ -195,15 +199,43 @@ test('grila CO financiar extinde zilele CPC din perioada PEO cand pontajul CO nu
       '2026-08-25',
       '2026-08-26',
       '2026-08-27',
+      '2026-08-28',
+      '2026-08-31',
     ],
   );
   assert.equal(allocations.reduce((sum, allocation) => sum + allocation.peoHours, 0), 16);
   assert.equal(allocations.reduce((sum, allocation) => sum + allocation.cpcHours, 0), 72);
 });
 
+test('grila CO financiar nu suprapune CPC peste o zi PEO plina la norma CIM 8', () => {
+  const allocations = buildFinancialLeaveGridAllocations({
+    existingLeaveDates: [],
+    peoDates: ['2026-08-17', '2026-08-18'],
+    peoHours: 16,
+    cpcHours: 72,
+    peoDays: 2,
+    cpcDays: 9,
+  });
+
+  assert.deepEqual(
+    allocations.slice(0, 2).map((allocation) => ({
+      date: allocation.date,
+      peoHours: allocation.peoHours,
+      cpcHours: allocation.cpcHours,
+      totalHours: allocation.totalHours,
+    })),
+    [
+      { date: '2026-08-17', peoHours: 8, cpcHours: 0, totalHours: 8 },
+      { date: '2026-08-18', peoHours: 8, cpcHours: 0, totalHours: 8 },
+    ],
+  );
+  assert.equal(allocations.reduce((sum, allocation) => sum + allocation.cpcHours, 0), 72);
+  assert.ok(allocations.every((allocation) => allocation.peoHours + allocation.cpcHours <= 8));
+});
+
 test('perioada initiala din grila CO financiar afiseaza doar zilele cu CO PEO', () => {
   const leaves: LeaveEntry[] = [
-    { id: 'leave-peo', expertId: expert.id, date: '2026-08-17', month: 7, year: 2026, type: 'CO', totalHours: 8, peoHours: 8, cpcHours: 8, source: 'FINANCIAL', status: 'VALIDATED', lockedForExpert: true },
+    { id: 'leave-peo', expertId: expert.id, date: '2026-08-17', month: 7, year: 2026, type: 'CO', totalHours: 8, peoHours: 8, cpcHours: 0, source: 'FINANCIAL', status: 'VALIDATED', lockedForExpert: true },
     { id: 'leave-cpc', expertId: expert.id, date: '2026-08-19', month: 7, year: 2026, type: 'CO', totalHours: 8, peoHours: 0, cpcHours: 8, source: 'FINANCIAL', status: 'VALIDATED', lockedForExpert: true },
   ];
 
@@ -552,8 +584,8 @@ test('pontajele financiare afiseaza CO validat financiar peste orele raportate d
     projectCode: 'PEO',
   }));
   const leaveEntries: LeaveEntry[] = [
-    { id: 'leave-17', expertId: nida.id, date: '2026-08-17', month: 7, year: 2026, type: 'CO', totalHours: 8, peoHours: 8, cpcHours: 8, source: 'FINANCIAL', status: 'VALIDATED', lockedForExpert: true },
-    { id: 'leave-18', expertId: nida.id, date: '2026-08-18', month: 7, year: 2026, type: 'CO', totalHours: 8, peoHours: 8, cpcHours: 8, source: 'FINANCIAL', status: 'VALIDATED', lockedForExpert: true },
+    { id: 'leave-17', expertId: nida.id, date: '2026-08-17', month: 7, year: 2026, type: 'CO', totalHours: 8, peoHours: 8, cpcHours: 0, source: 'FINANCIAL', status: 'VALIDATED', lockedForExpert: true },
+    { id: 'leave-18', expertId: nida.id, date: '2026-08-18', month: 7, year: 2026, type: 'CO', totalHours: 8, peoHours: 8, cpcHours: 0, source: 'FINANCIAL', status: 'VALIDATED', lockedForExpert: true },
     { id: 'leave-19', expertId: nida.id, date: '2026-08-19', month: 7, year: 2026, type: 'CO', totalHours: 8, peoHours: 0, cpcHours: 8, source: 'FINANCIAL', status: 'VALIDATED', lockedForExpert: true },
     { id: 'leave-20', expertId: nida.id, date: '2026-08-20', month: 7, year: 2026, type: 'CO', totalHours: 8, peoHours: 0, cpcHours: 8, source: 'FINANCIAL', status: 'VALIDATED', lockedForExpert: true },
     { id: 'leave-21', expertId: nida.id, date: '2026-08-21', month: 7, year: 2026, type: 'CO', totalHours: 8, peoHours: 0, cpcHours: 8, source: 'FINANCIAL', status: 'VALIDATED', lockedForExpert: true },
@@ -561,6 +593,8 @@ test('pontajele financiare afiseaza CO validat financiar peste orele raportate d
     { id: 'leave-25', expertId: nida.id, date: '2026-08-25', month: 7, year: 2026, type: 'CO', totalHours: 8, peoHours: 0, cpcHours: 8, source: 'FINANCIAL', status: 'VALIDATED', lockedForExpert: true },
     { id: 'leave-26', expertId: nida.id, date: '2026-08-26', month: 7, year: 2026, type: 'CO', totalHours: 8, peoHours: 0, cpcHours: 8, source: 'FINANCIAL', status: 'VALIDATED', lockedForExpert: true },
     { id: 'leave-27', expertId: nida.id, date: '2026-08-27', month: 7, year: 2026, type: 'CO', totalHours: 8, peoHours: 0, cpcHours: 8, source: 'FINANCIAL', status: 'VALIDATED', lockedForExpert: true },
+    { id: 'leave-28', expertId: nida.id, date: '2026-08-28', month: 7, year: 2026, type: 'CO', totalHours: 8, peoHours: 0, cpcHours: 8, source: 'FINANCIAL', status: 'VALIDATED', lockedForExpert: true },
+    { id: 'leave-31', expertId: nida.id, date: '2026-08-31', month: 7, year: 2026, type: 'CO', totalHours: 8, peoHours: 0, cpcHours: 8, source: 'FINANCIAL', status: 'VALIDATED', lockedForExpert: true },
   ];
 
   const summary = buildFinancialReportingSummary({

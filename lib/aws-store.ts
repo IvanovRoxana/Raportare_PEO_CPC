@@ -5280,8 +5280,8 @@ function assertFinancialManualLeaveHours(entry: Pick<LeaveEntry, 'totalHours' | 
   if (totalHours < Math.max(peoHours, cpcHours)) {
     throw new Error('CO total trebuie sa acopere maximul zilnic dintre PEO si CPC.');
   }
-  if (peoHours + cpcHours > 0 && totalHours > peoHours + cpcHours) {
-    throw new Error('CO total nu poate depasi suma alocarilor PEO si CPC.');
+  if (peoHours + cpcHours > totalHours) {
+    throw new Error('CO PEO + CO CPC nu poate depasi norma CIM a zilei.');
   }
 }
 

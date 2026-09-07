@@ -46,11 +46,13 @@ test('calendarul PEO arata explicit zilele CO chiar daca PEO este zero', () => {
   assert.match(source, /isLeaveActivity \? activity\.dayType : `\$\{activity\.hours\}h`/);
 });
 
-test('backendul permite CO financiar cu PEO si CPC in aceeasi zi CIM', () => {
+test('backendul blocheaza CO financiar cu PEO si CPC peste aceeasi zi CIM', () => {
   const source = readFileSync('lib/aws-store.ts', 'utf8');
 
   assert.match(source, /function assertFinancialManualLeaveHours/);
   assert.match(source, /totalHours < Math\.max\(peoHours, cpcHours\)/);
+  assert.match(source, /peoHours \+ cpcHours > totalHours/);
+  assert.match(source, /CO PEO \+ CO CPC nu poate depasi norma CIM a zilei/);
   assert.doesNotMatch(source, /entry\.totalHours !== entry\.peoHours \+ entry\.cpcHours/);
   assert.match(source, /const lockedLeaveDates = getFinancialLockedLeaveDates\(expertLeaves\)/);
   assert.match(source, /!lockedLeaveDates\.has\(item\.date\)/);
