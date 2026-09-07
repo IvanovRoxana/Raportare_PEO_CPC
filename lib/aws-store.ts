@@ -5260,6 +5260,31 @@ export const financialPersonLinksService = {
   },
 };
 
+function isFinancialLockedLeave(leave: Pick<LeaveEntry, 'source' | 'status' | 'lockedForExpert'>) {
+  return leave.source === 'FINANCIAL' || leave.status === 'VALIDATED' || leave.lockedForExpert === true;
+}
+
+function getFinancialLockedLeaveDates(leaves: Array<Pick<LeaveEntry, 'date' | 'source' | 'status' | 'lockedForExpert'>>) {
+  return new Set(
+    leaves
+      .filter(isFinancialLockedLeave)
+      .map((leave) => leave.date)
+      .filter(Boolean),
+  );
+}
+
+function assertFinancialManualLeaveHours(entry: Pick<LeaveEntry, 'totalHours' | 'peoHours' | 'cpcHours'>) {
+  const totalHours = Number(entry.totalHours) || 0;
+  const peoHours = Number(entry.peoHours) || 0;
+  const cpcHours = Number(entry.cpcHours) || 0;
+  if (totalHours < Math.max(peoHours, cpcHours)) {
+    throw new Error('CO total trebuie sa acopere maximul zilnic dintre PEO si CPC.');
+  }
+  if (peoHours + cpcHours > 0 && totalHours > peoHours + cpcHours) {
+    throw new Error('CO total nu poate depasi suma alocarilor PEO si CPC.');
+  }
+}
+
 export const leaveEntriesService = {
   async getByMonth(month: number, year: number): Promise<LeaveEntry[]> {
     const client = getAwsDataClient() as any;
@@ -5327,7 +5352,7 @@ export const leaveEntriesService = {
     const scope = await getCurrentDataAccessScope(client);
     if (!scope.canAccessAllExperts) throw new Error(ACCESS_DENIED_MESSAGE);
     if (!entry.justification?.trim()) throw new Error('Justificarea este obligatorie pentru repartizarea manuala.');
-    if (entry.totalHours !== entry.peoHours + entry.cpcHours) throw new Error('CO total trebuie sa fie egal cu PEO + CPC.');
+    assertFinancialManualLeaveHours(entry);
     const expert = await expertsService.getById(entry.expertId);
     if (!expert) throw new Error('Expertul nu exista.');
     const [contracts, activities, projects, entries, leaves] = await Promise.all([
@@ -5352,13 +5377,15 @@ export const leaveEntriesService = {
       cimNormValue: contract.cimNormValue,
       cimDailyCap: contract.cimDailyCap,
     };
+    const expertLeaves = [...leaves.filter((item) => item.expertId === entry.expertId), candidate];
+    const lockedLeaveDates = getFinancialLockedLeaveDates(expertLeaves);
     assertCapacity(calculateCapacitySnapshot({
       expert,
       contracts: effectiveNormContracts,
-      activities: activities.filter((item) => item.expertId === entry.expertId),
+      activities: activities.filter((item) => item.expertId === entry.expertId && !lockedLeaveDates.has(item.date)),
       concurrentProjects: projects,
-      concurrentEntries: entries.filter((item) => item.expertId === entry.expertId),
-      leaveEntries: [...leaves.filter((item) => item.expertId === entry.expertId), candidate],
+      concurrentEntries: entries.filter((item) => item.expertId === entry.expertId && !lockedLeaveDates.has(item.date)),
+      leaveEntries: expertLeaves,
       month: entry.month,
       year: entry.year,
     }));
