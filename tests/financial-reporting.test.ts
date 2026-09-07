@@ -284,6 +284,27 @@ test('calculateLeaveAllocationForDay pastreaza split-ul financiar si muta non-PE
   assert.deepEqual(calculateLeaveAllocationForDay(leave, { peoScope: false })?.cpcHours, 8);
 });
 
+test('calculateLeaveAllocationForDay corecteaza CO istoric cu PEO si CPC peste CIM zilnic', () => {
+  const allocation = calculateLeaveAllocationForDay({
+    id: 'leave-overlap',
+    expertId: expert.id,
+    date: '2026-08-17',
+    month: 7,
+    year: 2026,
+    type: 'CO',
+    totalHours: 8,
+    peoHours: 8,
+    cpcHours: 8,
+    source: 'FINANCIAL',
+    status: 'VALIDATED',
+    lockedForExpert: true,
+  });
+
+  assert.equal(allocation?.peoHours, 8);
+  assert.equal(allocation?.cpcHours, 0);
+  assert.equal(allocation?.totalHours, 8);
+});
+
 test('aggregateLeaveAllocationsByDate foloseste doar CO financiar sau validat pentru export', () => {
   const allocations = aggregateLeaveAllocationsByDate([
     { id: 'financial', expertId: expert.id, date: '2026-08-17', month: 7, year: 2026, type: 'CO', totalHours: 8, peoHours: 6, cpcHours: 2, source: 'FINANCIAL', status: 'DRAFT', lockedForExpert: true },

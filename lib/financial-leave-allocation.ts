@@ -56,8 +56,8 @@ export function calculateLeaveAllocationForDay(
 
   const totalHours = roundHours(Number(leave.totalHours) || 0);
   const peoScope = options.peoScope !== false;
-  const peoHours = peoScope ? roundHours(Number(leave.peoHours) || 0) : 0;
-  const cpcHours = peoScope ? roundHours(Number(leave.cpcHours) || 0) : totalHours;
+  const peoHours = peoScope ? Math.min(roundHours(Number(leave.peoHours) || 0), totalHours) : 0;
+  const cpcHours = peoScope ? Math.min(roundHours(Number(leave.cpcHours) || 0), Math.max(0, totalHours - peoHours)) : totalHours;
 
   return {
     date: leave.date,
