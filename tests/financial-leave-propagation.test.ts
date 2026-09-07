@@ -23,3 +23,25 @@ test('exportul rapid din dashboardul expertului primeste alocarile financiare de
   assert.notEqual(exportEnd, -1);
   assert.match(exportSource, /leaveEntries: currentExpertLeaveEntries/);
 });
+
+test('CO financiar validat inlocuieste activitatile raportate in calendarele expertului', () => {
+  const expertHome = readFileSync('app/expert/page.tsx', 'utf8');
+  const peoPage = readFileSync('app/expert/peo/page.tsx', 'utf8');
+
+  for (const source of [expertHome, peoPage]) {
+    assert.match(source, /leave\.source === 'FINANCIAL' \|\| leave\.lockedForExpert/);
+    assert.match(source, /&& !financialLeaveDates\.has\(activity\.date\)/);
+    assert.match(source, /CO - Concediu de odihna/);
+    assert.match(source, /`\$\{leave\.type\} Financiar/);
+  }
+});
+
+test('calendarul PEO arata explicit zilele CO chiar daca PEO este zero', () => {
+  const source = readFileSync('app/expert/peo/page.tsx', 'utf8');
+
+  assert.match(source, /const dayLeaveActivities = dayActivities\.filter/);
+  assert.match(source, /const hasLeave = dayLeaveActivities\.length > 0/);
+  assert.match(source, /const isDayClosed = hasLeave \|\|/);
+  assert.match(source, /hasLeave \? 'CO' : `\$\{totalHours\}h \/ \$\{dailyLimit\}h`/);
+  assert.match(source, /isLeaveActivity \? activity\.dayType : `\$\{activity\.hours\}h`/);
+});

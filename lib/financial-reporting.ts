@@ -310,14 +310,24 @@ export function buildFinancialReportingSummary(input: {
       : inferredMatch?.expertId
         ? expertById.get(inferredMatch.expertId)
         : expertByName.get(normalizedName);
-    const activities = expert
+    const leaves = expert ? leaveByExpert.get(expert.id) ?? [] : [];
+    const lockedLeaveDates = new Set(
+      leaves
+        .filter((leave) => leave.source === 'FINANCIAL' || leave.status === 'VALIDATED')
+        .map((leave) => calculateLeaveAllocationForDay(leave)?.date)
+        .filter((date): date is string => Boolean(date)),
+    );
+    const rawActivities = expert
       ? activityByExpert.get(expert.id) ?? []
       : [...activityByExpert.values()].flat().filter((activity) => normalizeFinancialPersonName(activity.expertName) === normalizedName);
-    const entries = expert ? concurrentByExpert.get(expert.id) ?? [] : [];
+    const activities = rawActivities;
+    const rawEntries = expert ? concurrentByExpert.get(expert.id) ?? [] : [];
+    const entries = rawEntries;
+    const capacityActivities = rawActivities.filter((activity) => !lockedLeaveDates.has(activity.date));
+    const capacityEntries = rawEntries.filter((entry) => !lockedLeaveDates.has(entry.date));
     const expertProjects = expert ? projects.filter((project) => project.expertId === expert.id) : [];
     const basePosition = referencePosition(expert?.basePositionConcordia)
       ?? '-';
-    const leaves = expert ? leaveByExpert.get(expert.id) ?? [] : [];
     const goodworksProject = expertProjects.find((project) => projectBucket(project) === 'goodworks');
     const peoFunction = referencePosition(expert?.positionInProject)
       ?? expert?.role
@@ -337,14 +347,16 @@ export function buildFinancialReportingSummary(input: {
 
     for (const activity of activities) {
       const hours = Number(activity.hours) || 0;
+      if (activity.status === 'draft') draftHours += hours;
       if (activity.dayType === 'CO' || activity.dayType === 'CM') {
         leaveDates.add(activity.date);
         if (activity.dayType === 'CO') coLeaveDates.add(activity.date);
+      } else if (lockedLeaveDates.has(activity.date)) {
+        continue;
       } else {
         peoWorked += hours;
         dailyTotals.set(activity.date, (dailyTotals.get(activity.date) ?? 0) + hours);
       }
-      if (activity.status === 'draft') draftHours += hours;
     }
 
     let concurrentConcordiaWorked = 0;
@@ -356,6 +368,8 @@ export function buildFinancialReportingSummary(input: {
       if (entry.dayType === 'CO' || entry.dayType === 'CM') {
         leaveDates.add(entry.date);
         if (entry.dayType === 'CO') coLeaveDates.add(entry.date);
+      } else if (lockedLeaveDates.has(entry.date)) {
+        continue;
       } else if (bucket === 'goodworks') {
         goodworksWorked += hours;
         dailyTotals.set(entry.date, (dailyTotals.get(entry.date) ?? 0) + hours);
@@ -386,9 +400,9 @@ export function buildFinancialReportingSummary(input: {
     const capacity = expert ? calculateCapacitySnapshot({
       expert,
       contracts: effectiveNormContracts,
-      activities,
+      activities: capacityActivities,
       concurrentProjects: expertProjects,
-      concurrentEntries: entries,
+      concurrentEntries: capacityEntries,
       leaveEntries: leaves,
       month: input.month,
       year: input.year,

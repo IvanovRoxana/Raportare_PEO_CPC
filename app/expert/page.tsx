@@ -658,9 +658,13 @@ export default function ExpertHomeDashboard() {
   const peoActivities = useMemo(() => {
     if (!currentExpert || !selectedMonthHasAccess) return [];
     const expertLeaves = leaveEntries.filter((leave) => leave.expertId === currentExpert.id && leave.status !== 'REJECTED');
-    const financialLeaveDates = new Set(expertLeaves.map((leave) => leave.date));
+    const financialLeaveDates = new Set(
+      expertLeaves
+        .filter((leave) => leave.source === 'FINANCIAL' || leave.lockedForExpert)
+        .map((leave) => leave.date),
+    );
     const reportedActivities = monthActivities.filter((activity) => activity.expertId === currentExpert.id
-      && (!financialLeaveDates.has(activity.date) || (activity.dayType !== 'CO' && activity.dayType !== 'CM')));
+      && !financialLeaveDates.has(activity.date));
     const leaveActivities: Activity[] = expertLeaves
       .map((leave) => ({
         id: 'leave-entry:' + leave.id,
@@ -669,7 +673,7 @@ export default function ExpertHomeDashboard() {
         expertName: currentExpert.name,
         hours: Number(leave.peoHours) || 0,
         activityType: leave.type === 'CM' ? 'CM - Concediu medical' : 'CO - Concediu de odihna',
-        title: leave.type + ' (' + leave.peoHours + ' h PEO + ' + leave.cpcHours + ' h CPC)',
+        title: `${leave.type} Financiar (${leave.peoHours} h PEO + ${leave.cpcHours} h CPC)`,
         description: leave.source === 'FINANCIAL' ? 'Concediu introdus de Financiar.' : 'Concediu repartizat automat.',
         dayType: leave.type,
         status: leave.status === 'VALIDATED' ? 'approved' : 'draft',

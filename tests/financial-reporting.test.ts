@@ -479,6 +479,71 @@ test('orele CPC lucrate se calculeaza din norma CIM minus PEO, GOODWORKS si CO m
   assert.equal(summary.rows[0].totalMonth, 168);
 });
 
+test('pontajele financiare afiseaza CO validat financiar peste orele raportate de expert', () => {
+  const nida: Expert = {
+    id: 'nida',
+    name: 'Nida Halit',
+    role: 'Expert informare si comunicare',
+    positionInProject: 'Expert informare si comunicare',
+    jobDescriptionText: 'Expert informare si comunicare',
+    norma: 8,
+    oreZi: 8,
+  };
+  const activities: Activity[] = [
+    '2026-08-03',
+    '2026-08-04',
+    '2026-08-05',
+    '2026-08-06',
+    '2026-08-07',
+    '2026-08-10',
+    '2026-08-11',
+    '2026-08-12',
+    '2026-08-13',
+    '2026-08-14',
+    '2026-08-17',
+  ].map((date, index) => ({
+    id: `activity-${index}`,
+    expertId: nida.id,
+    expertName: nida.name,
+    date,
+    hours: 8,
+    activityType: 'Raportare',
+    title: 'Activitate PEO',
+    description: 'Activitate raportata inainte de validarea financiara',
+    dayType: 'lucratoare',
+    status: 'sent',
+    projectCode: 'PEO',
+  }));
+  const leaveEntries: LeaveEntry[] = [
+    { id: 'leave-17', expertId: nida.id, date: '2026-08-17', month: 7, year: 2026, type: 'CO', totalHours: 8, peoHours: 8, cpcHours: 8, source: 'FINANCIAL', status: 'VALIDATED', lockedForExpert: true },
+    { id: 'leave-18', expertId: nida.id, date: '2026-08-18', month: 7, year: 2026, type: 'CO', totalHours: 8, peoHours: 8, cpcHours: 8, source: 'FINANCIAL', status: 'VALIDATED', lockedForExpert: true },
+    { id: 'leave-19', expertId: nida.id, date: '2026-08-19', month: 7, year: 2026, type: 'CO', totalHours: 8, peoHours: 0, cpcHours: 8, source: 'FINANCIAL', status: 'VALIDATED', lockedForExpert: true },
+    { id: 'leave-20', expertId: nida.id, date: '2026-08-20', month: 7, year: 2026, type: 'CO', totalHours: 8, peoHours: 0, cpcHours: 8, source: 'FINANCIAL', status: 'VALIDATED', lockedForExpert: true },
+    { id: 'leave-21', expertId: nida.id, date: '2026-08-21', month: 7, year: 2026, type: 'CO', totalHours: 8, peoHours: 0, cpcHours: 8, source: 'FINANCIAL', status: 'VALIDATED', lockedForExpert: true },
+    { id: 'leave-24', expertId: nida.id, date: '2026-08-24', month: 7, year: 2026, type: 'CO', totalHours: 8, peoHours: 0, cpcHours: 8, source: 'FINANCIAL', status: 'VALIDATED', lockedForExpert: true },
+    { id: 'leave-25', expertId: nida.id, date: '2026-08-25', month: 7, year: 2026, type: 'CO', totalHours: 8, peoHours: 0, cpcHours: 8, source: 'FINANCIAL', status: 'VALIDATED', lockedForExpert: true },
+    { id: 'leave-26', expertId: nida.id, date: '2026-08-26', month: 7, year: 2026, type: 'CO', totalHours: 8, peoHours: 0, cpcHours: 8, source: 'FINANCIAL', status: 'VALIDATED', lockedForExpert: true },
+    { id: 'leave-27', expertId: nida.id, date: '2026-08-27', month: 7, year: 2026, type: 'CO', totalHours: 8, peoHours: 0, cpcHours: 8, source: 'FINANCIAL', status: 'VALIDATED', lockedForExpert: true },
+  ];
+
+  const summary = buildFinancialReportingSummary({
+    experts: [nida],
+    activities,
+    leaveEntries,
+    month: 7,
+    year: 2026,
+    referencePeople: [],
+  });
+
+  assert.equal(summary.rows[0].peoWorked, 80);
+  assert.equal(summary.rows[0].peoLeave, 16);
+  assert.equal(summary.rows[0].concordiaWorked, 0);
+  assert.equal(summary.rows[0].concordiaLeave, 72);
+  assert.equal(summary.rows[0].totalWorked, 80);
+  assert.equal(summary.rows[0].totalLeave, 88);
+  assert.equal(summary.rows[0].totalMonth, 168);
+});
+
 test('pentru angajatii fara PEO concediul financiar intra integral la Concordia', () => {
   const nonPeoExpert: Expert = {
     id: 'expert-non-peo',

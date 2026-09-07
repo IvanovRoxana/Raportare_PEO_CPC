@@ -523,10 +523,12 @@ function OutlookMonthCalendar({
           if (!day) return <div key={`empty-${index}`} className="border-b border-r bg-slate-50/50" />;
           const dayActivities = activitiesByDate.get(day.date) ?? [];
           const totalHours = getDayTotalHours(day.date);
+          const dayLeaveActivities = dayActivities.filter((activity) => activity.dayType === 'CO' || activity.dayType === 'CM');
+          const hasLeave = dayLeaveActivities.length > 0;
           const nonWorking = getNonWorkingDayInfo(day.nativeDate);
           const isWeekend = nonWorking.isWeekend;
           const isNonWorkingDay = nonWorking.isNonWorkingDay;
-          const isDayClosed = !isNonWorkingDay && dailyLimit > 0 && totalHours >= dailyLimit;
+          const isDayClosed = hasLeave || (!isNonWorkingDay && dailyLimit > 0 && totalHours >= dailyLimit);
           const isToday = day.nativeDate.toDateString() === today.toDateString();
           const isSelected = selectedDateSet.has(day.date);
           const visibleActivities = dayActivities.slice(0, 4);
@@ -534,8 +536,9 @@ function OutlookMonthCalendar({
           const dayClassName = cn(
             'min-h-[124px] border-b border-r p-2 text-left transition hover:bg-blue-50/60',
             isWeekend ? 'bg-slate-50/70' : 'bg-white',
+            hasLeave && 'border-blue-300 bg-blue-50/80',
             !isWeekend && dailyLimit > 0 && totalHours > 0 && totalHours < dailyLimit && 'bg-emerald-50/45',
-            !isWeekend && dailyLimit > 0 && totalHours === dailyLimit && 'bg-slate-100/80',
+            !hasLeave && !isWeekend && dailyLimit > 0 && totalHours === dailyLimit && 'bg-slate-100/80',
             !isWeekend && dailyLimit > 0 && totalHours > dailyLimit && 'bg-red-50/70',
             isDayClosed && !isSelected && 'cursor-not-allowed hover:bg-slate-100/80',
             isSelected && 'outline outline-2 -outline-offset-2 outline-blue-500',
@@ -565,19 +568,25 @@ function OutlookMonthCalendar({
                 <span className={cn('font-semibold text-slate-700', isToday && 'rounded-full bg-blue-600 px-1.5 py-0.5 text-white')}>
                   {day.day}
                 </span>
-                <span className="text-[11px] font-semibold text-slate-500">{totalHours}h / {dailyLimit}h</span>
+                <span className="text-[11px] font-semibold text-slate-500">{hasLeave ? 'CO' : `${totalHours}h / ${dailyLimit}h`}</span>
               </div>
               <div className="space-y-1">
                 {visibleActivities.map((activity) => {
                   const title = activity.title || activity.activityType || activity.description || 'Activitate';
                   const compactSummary = activity.activitySummary || title;
+                  const isLeaveActivity = activity.dayType === 'CO' || activity.dayType === 'CM';
                   return (
                     <div
                       key={activity.id}
                       role="button"
                       tabIndex={0}
                       title={compactSummary}
-                      className="group flex min-w-0 cursor-pointer items-center gap-1 rounded border-l-2 border-blue-500 bg-blue-100/80 px-1.5 py-1 text-[11px] leading-tight text-slate-800 hover:bg-blue-200"
+                      className={cn(
+                        'group flex min-w-0 cursor-pointer items-center gap-1 rounded border-l-2 px-1.5 py-1 text-[11px] leading-tight text-slate-800',
+                        isLeaveActivity
+                          ? 'border-blue-700 bg-blue-200/90 font-semibold hover:bg-blue-200'
+                          : 'border-blue-500 bg-blue-100/80 hover:bg-blue-200',
+                      )}
                       onClick={(event) => {
                         event.stopPropagation();
                         onEditActivity(activity);
@@ -589,7 +598,7 @@ function OutlookMonthCalendar({
                         }
                       }}
                     >
-                      <span className="shrink-0 font-semibold text-blue-700">{activity.hours}h</span>
+                      <span className="shrink-0 font-semibold text-blue-700">{isLeaveActivity ? activity.dayType : `${activity.hours}h`}</span>
                       <span className="truncate">{compactSummary}</span>
                     </div>
                   );
@@ -1207,9 +1216,13 @@ function ExpertDashboardContent() {
   const activities = useMemo(() => {
     if (!selectedExpertId) return [];
     const expertLeaves = leaveEntries.filter((leave) => leave.expertId === selectedExpertId && leave.status !== 'REJECTED');
-    const financialLeaveDates = new Set(expertLeaves.map((leave) => leave.date));
+    const financialLeaveDates = new Set(
+      expertLeaves
+        .filter((leave) => leave.source === 'FINANCIAL' || leave.lockedForExpert)
+        .map((leave) => leave.date),
+    );
     const reportedActivities = allMonthActivities.filter((activity) => activity.expertId === selectedExpertId
-      && (!financialLeaveDates.has(activity.date) || (activity.dayType !== 'CO' && activity.dayType !== 'CM')));
+      && !financialLeaveDates.has(activity.date));
     const leaveActivities: Activity[] = expertLeaves
       .map((leave) => ({
         id: 'leave-entry:' + leave.id,
@@ -1218,7 +1231,7 @@ function ExpertDashboardContent() {
         expertName: experts.find((expert) => expert.id === leave.expertId)?.name,
         hours: Number(leave.peoHours) || 0,
         activityType: leave.type === 'CM' ? 'CM - Concediu medical' : 'CO - Concediu de odihna',
-        title: leave.type + ' (' + leave.peoHours + ' h PEO + ' + leave.cpcHours + ' h CPC)',
+        title: `${leave.type} Financiar (${leave.peoHours} h PEO + ${leave.cpcHours} h CPC)`,
         description: leave.source === 'FINANCIAL' ? 'Concediu introdus de Financiar.' : 'Concediu repartizat automat.',
         dayType: leave.type,
         status: leave.status === 'VALIDATED' ? 'approved' : 'draft',
