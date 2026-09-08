@@ -1,5 +1,13 @@
 import type { Activity, Deliverable, DocumentMetadata, DeliverableEligibilityCheck } from './types.ts';
 
+function getPmUnlockActivityIds(document: DocumentMetadata) {
+  return [
+    document.sourceActivityId,
+    document.eligibilityCheck?.checkedActivityId,
+    document.eligibilityCheck?.suggestedSettings?.selectedActivityId,
+  ].filter((id): id is string => Boolean(id));
+}
+
 export function matchesPmUnlockDocument(deliverable: Pick<Deliverable, 'documentId' | 'id' | 's3Key' | 'fileHash' | 'firstPageTextHash' | 'contentFingerprint'>, document: DocumentMetadata) {
   return (
     deliverable.documentId === document.id
@@ -15,11 +23,10 @@ export function resolvePmUnlockActivityContext(document: DocumentMetadata, activ
   const activityWithMatchingDeliverable = activities.find((activity) => (
     (activity.deliverables ?? []).some((deliverable) => matchesPmUnlockDocument(deliverable, document))
   ));
+  const activityIds = getPmUnlockActivityIds(document);
 
   const sourceActivity = activityWithMatchingDeliverable
-    || (document.sourceActivityId
-      ? activities.find((activity) => activity.id === document.sourceActivityId)
-      : undefined)
+    || activities.find((activity) => activityIds.includes(activity.id))
     || activities.find((activity) => (
       activity.expertId === document.uploadedByExpertId
       && Boolean(document.activityDate)

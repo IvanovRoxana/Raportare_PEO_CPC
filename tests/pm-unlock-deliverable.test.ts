@@ -53,6 +53,67 @@ test('RAP-39 gaseste activitatea sursa chiar daca livrabilul nu este atasat in f
   assert.equal(context.sourceDeliverable, undefined);
 });
 
+test('RAP-39 foloseste activitatea verificata cand documentul nu are sourceActivityId', () => {
+  const activities: Activity[] = [{
+    id: 'activity-checked',
+    expertId: 'expert-1',
+    expertName: 'Expert Test',
+    title: 'Activitate verificata',
+    date: '2026-08-13',
+    activityType: 'SA3.5',
+    hours: 6,
+    description: 'Activitate salvata separat de document.',
+    deliverables: [],
+  }];
+
+  const context = resolvePmUnlockActivityContext({
+    ...document,
+    sourceActivityId: undefined,
+    activityDate: undefined,
+    saCode: undefined,
+    eligibilityCheck: {
+      ...approvedCheck,
+      checkedActivityId: 'activity-checked',
+    },
+  }, activities);
+
+  assert.equal(context.sourceActivity?.id, 'activity-checked');
+  assert.equal(context.sourceDeliverable, undefined);
+});
+
+test('RAP-39 foloseste activitatea sugerata cand legatura document-activitate este incompleta', () => {
+  const activities: Activity[] = [{
+    id: 'activity-suggested',
+    expertId: 'expert-1',
+    expertName: 'Expert Test',
+    title: 'Activitate sugerata',
+    date: '2026-08-14',
+    activityType: 'SA3.6',
+    hours: 4,
+    description: 'Activitate detectata de verificarea AI.',
+    deliverables: [],
+  }];
+
+  const context = resolvePmUnlockActivityContext({
+    ...document,
+    sourceActivityId: undefined,
+    activityDate: undefined,
+    saCode: undefined,
+    eligibilityCheck: {
+      ...approvedCheck,
+      suggestedSettings: {
+        selectedActivityId: 'activity-suggested',
+        confidence: 'high',
+        reason: 'Documentul a fost verificat pe aceasta activitate.',
+        changes: ['activity'],
+      },
+    },
+  }, activities);
+
+  assert.equal(context.sourceActivity?.id, 'activity-suggested');
+  assert.equal(context.sourceDeliverable, undefined);
+});
+
 test('RAP-39 construieste livrabil aprobat pentru activitatea sursa', () => {
   const activity = {
     id: 'activity-1',
