@@ -978,6 +978,15 @@ export function ActivityForm({
     return () => window.clearTimeout(timeoutId);
   }, [resolutionHint, resolutionTargetId]);
 
+  const duplicateReferenceDocuments = useMemo(() => {
+    const byKey = new Map<string, DocumentMetadata>();
+    [...documents, ...colleagueDocuments].forEach((document) => {
+      const key = document.id || document.s3Key;
+      if (key && !byKey.has(key)) byKey.set(key, document);
+    });
+    return Array.from(byKey.values());
+  }, [colleagueDocuments, documents]);
+
   const duplicateInfoByDeliverableId = useMemo(() => {
     const referenceMonthKey = (selectedActivityDates[0] || `${year}-${String(month + 1).padStart(2, '0')}-01`).slice(0, 7);
     const matches = new Map<string, DeliverableDuplicateInfo>();
@@ -985,7 +994,7 @@ export function ActivityForm({
     deliverables.forEach((deliverable) => {
       if (!deliverable.uploaded || deliverable.isPhoto) return;
       const documentId = deliverable.documentId || `doc_${deliverable.id}`;
-      const duplicateMatches = findDuplicateCandidates(documents, {
+      const duplicateMatches = findDuplicateCandidates(duplicateReferenceDocuments, {
         id: documentId,
         fileHash: deliverable.fileHash,
         firstPageTextHash: deliverable.firstPageTextHash,
@@ -1021,7 +1030,7 @@ export function ActivityForm({
     });
 
     return matches;
-  }, [deliverables, documents, expertId, month, selectedActivityDates, year]);
+  }, [deliverables, duplicateReferenceDocuments, expertId, month, selectedActivityDates, year]);
 
   useEffect(() => {
     if (duplicateInfoByDeliverableId.size === 0) return;

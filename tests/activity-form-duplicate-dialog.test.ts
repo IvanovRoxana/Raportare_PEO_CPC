@@ -25,3 +25,14 @@ test('handlerul revalideaza compatibilitatea inainte de grupare', () => {
     /const selectedDuplicateChoice = duplicateChoices\.find[\s\S]*if \(!selectedDuplicateChoice\?\.isCompatible\)/,
   );
 });
+
+test('observatiile de duplicat compara si documentele colegilor', () => {
+  assert.match(
+    activityFormSource,
+    /const duplicateReferenceDocuments = useMemo\(\(\) => \{[\s\S]*\[\.\.\.documents, \.\.\.colleagueDocuments\]/,
+  );
+  assert.match(
+    activityFormSource,
+    /findDuplicateCandidates\(duplicateReferenceDocuments,/,
+  );
+});

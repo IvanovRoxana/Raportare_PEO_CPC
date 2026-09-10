@@ -12,7 +12,16 @@ import { DELIVERABLE_ELIGIBILITY_UI_MESSAGE, isDeliverableEligibilityCheckEnable
 import { hasSufficientDeliverableEvidenceForEligibility } from '@/lib/deliverable-eligibility';
 import { mergeEligibilityCheckWithPmUnlockTracking } from '@/lib/pm-unlock-status';
 import { applyAutomaticTitleSuggestion, formatTitleFromFilename, isLikelyFilenameDerivedTitle, shouldUseAiTitleSuggestion, suggestTitleFromFirstPage, validateDeclaredTitleInDocumentText } from '@/lib/title-suggestion';
-import { getDocumentAuditTitle, hashFirstPageText, normalizeDocumentTextForFingerprint, sha256Hex, type DuplicateIssueType } from '@/lib/document-sharing';
+import {
+  getDocumentAuditTitle,
+  getDuplicateAlertGuidance,
+  getDuplicateAlertTitle,
+  getDuplicateIssueLabel,
+  hashFirstPageText,
+  normalizeDocumentTextForFingerprint,
+  sha256Hex,
+  type DuplicateIssueType,
+} from '@/lib/document-sharing';
 import { getSecureDocumentUrl } from '@/lib/document-retrieval';
 import type { ActivityCatalog } from '@/lib/types';
 
@@ -1134,6 +1143,16 @@ export function DeliverableItem({
     && deliverable.duplicateStatus !== 'fingerprinted'
     && deliverable.duplicateStatus !== 'pending_upload'
   ));
+  const duplicateAlertTitle = getDuplicateAlertTitle({
+    issues: duplicateInfo?.issues,
+    status: duplicateInfo?.status || deliverable.duplicateStatus,
+    isOtherExpert: duplicateInfo?.isOtherExpert,
+  });
+  const duplicateAlertGuidance = getDuplicateAlertGuidance({
+    issues: duplicateInfo?.issues,
+    status: duplicateInfo?.status || deliverable.duplicateStatus,
+    isOtherExpert: duplicateInfo?.isOtherExpert,
+  });
   const showCompactConfirmedTitle = deliverable.uploaded && effectiveTitleConfirmed && !isEditingConfirmedTitle;
   const hasSideNotes = renderInlineNotes && deliverable.uploaded && !deliverable.isPhoto && Boolean(
     (!effectiveTitleConfirmed && (deliverable.docText || deliverable.firstPageText || deliverable.suggestedTitle || deliverable.declaredTitle))
@@ -1431,7 +1450,7 @@ export function DeliverableItem({
         <div className="rounded border border-amber-300 bg-amber-50 p-2 text-[10px] text-amber-900 xl:col-start-2">
           <div className="flex flex-wrap items-center gap-1.5">
             <AlertTriangle className="h-3 w-3" />
-            <span className="font-semibold">Posibila reutilizare / document existent</span>
+            <span className="font-semibold">{duplicateAlertTitle}</span>
             {duplicateInfo?.isPreviousPeriod && (
               <Badge variant="outline" className="border-amber-300 bg-white text-[10px] text-amber-800">
                 luna anterioara
@@ -1451,10 +1470,12 @@ export function DeliverableItem({
                 {duplicateInfo.activityDate ? ` / ${duplicateInfo.activityDate}` : ''}
               </div>
               <div>Semnale: {duplicateInfo.issues.map(getDuplicateIssueLabel).join(', ')}</div>
+              <div>{duplicateAlertGuidance}</div>
             </div>
           ) : (
-            <div className="mt-1">
-              Document asociat: {deliverable.possibleDuplicateOfDocumentId || deliverable.duplicateStatus}
+            <div className="mt-1 space-y-0.5">
+              <div>Document asociat: {deliverable.possibleDuplicateOfDocumentId || deliverable.duplicateStatus}</div>
+              <div>{duplicateAlertGuidance}</div>
             </div>
           )}
         </div>
@@ -2024,17 +2045,6 @@ function getTitleSourceLabel(source: string) {
   if (source === 'admin_override') return 'suprascris admin';
   if (source === 'manual') return 'manual';
   return source;
-}
-
-function getDuplicateIssueLabel(issue: DuplicateIssueType) {
-  if (issue === 'same_file_hash') return 'fisier identic';
-  if (issue === 'same_first_page_hash') return 'prima pagina identica';
-  if (issue === 'similar_extracted_title') return 'titlu similar';
-  if (issue === 'similar_content_fingerprint') return 'continut similar';
-  if (issue === 'possible_common_unmarked') return 'posibil comun nemarcat';
-  if (issue === 'duplicate_detected') return 'duplicat detectat';
-  if (issue === 'possible_duplicate') return 'posibil duplicat';
-  return issue;
 }
 
 function getEligibilityLabel(status: string) {

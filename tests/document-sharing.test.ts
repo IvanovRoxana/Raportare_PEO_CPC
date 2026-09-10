@@ -13,6 +13,8 @@ import {
   filterPendingSharedDeliverablesNotCoveredByActivity,
   filterSharedRelationsForMonths,
   findDuplicateCandidates,
+  getDuplicateAlertGuidance,
+  getDuplicateAlertTitle,
   getSharedRelationReciprocalStatus,
   hashFirstPageText,
   isDeliverableIncludedInExpertExport,
@@ -185,6 +187,25 @@ test('detecteaza document existent dupa titlul confirmat normalizat', () => {
   assert.equal(matches.length, 1);
   assert.ok(matches[0].issues.includes('similar_extracted_title'));
   assert.ok(matches[0].issues.includes('possible_common_unmarked'));
+});
+
+test('mesajul de duplicat explica semnalul potrivit', () => {
+  assert.equal(
+    getDuplicateAlertTitle({ issues: ['same_file_hash'], isOtherExpert: true }),
+    'Document identic incarcat de alt expert',
+  );
+  assert.match(
+    getDuplicateAlertGuidance({ issues: ['same_file_hash'], isOtherExpert: true }),
+    /Acelasi fisier exista deja la un alt expert/,
+  );
+  assert.equal(
+    getDuplicateAlertTitle({ issues: ['similar_extracted_title', 'possible_common_unmarked'] }),
+    'Posibil document comun nemarcat',
+  );
+  assert.match(
+    getDuplicateAlertGuidance({ issues: ['similar_extracted_title'] }),
+    /Titlul coincide cu un document existent/,
+  );
 });
 
 test('creeaza alerta pentru expertul colaborator cand livrabilul este pending', () => {

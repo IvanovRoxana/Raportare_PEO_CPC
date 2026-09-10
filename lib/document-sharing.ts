@@ -18,6 +18,60 @@ export type DuplicateIssueType =
   | 'similar_extracted_title'
   | 'similar_content_fingerprint';
 
+export function getDuplicateIssueLabel(issue: string) {
+  if (issue === 'same_file_hash') return 'fisier identic';
+  if (issue === 'same_first_page_hash') return 'prima pagina identica';
+  if (issue === 'similar_extracted_title') return 'titlu similar';
+  if (issue === 'similar_content_fingerprint') return 'continut similar';
+  if (issue === 'possible_common_unmarked') return 'posibil comun nemarcat';
+  if (issue === 'duplicate_detected') return 'duplicat detectat';
+  if (issue === 'possible_duplicate') return 'posibil duplicat';
+  return issue;
+}
+
+export function getDuplicateAlertTitle(args: {
+  issues?: readonly string[];
+  status?: string;
+  isOtherExpert?: boolean;
+}) {
+  const issueSet = new Set([...(args.issues ?? []), args.status].filter((item): item is string => Boolean(item)));
+
+  if (issueSet.has('same_file_hash')) {
+    return args.isOtherExpert ? 'Document identic incarcat de alt expert' : 'Document identic deja incarcat';
+  }
+  if (issueSet.has('same_first_page_hash')) return 'Document cu prima pagina identica';
+  if (issueSet.has('similar_content_fingerprint')) return 'Document cu continut similar';
+  if (issueSet.has('similar_extracted_title') || issueSet.has('possible_common_unmarked')) {
+    return 'Posibil document comun nemarcat';
+  }
+  if (issueSet.has('possible_duplicate')) return 'Posibil duplicat de document';
+  return 'Posibila reutilizare / document existent';
+}
+
+export function getDuplicateAlertGuidance(args: {
+  issues?: readonly string[];
+  status?: string;
+  isOtherExpert?: boolean;
+}) {
+  const issueSet = new Set([...(args.issues ?? []), args.status].filter((item): item is string => Boolean(item)));
+
+  if (issueSet.has('same_file_hash')) {
+    return args.isOtherExpert
+      ? 'Acelasi fisier exista deja la un alt expert. Reutilizeaza documentul existent sau marcheaza-l ca document comun, dupa caz.'
+      : 'Acelasi fisier exista deja in raportare. Reutilizeaza documentul existent in loc sa il incarci din nou.';
+  }
+  if (issueSet.has('same_first_page_hash')) {
+    return 'Prima pagina este identica cu un document existent. Verifica daca este acelasi livrabil inainte de salvare.';
+  }
+  if (issueSet.has('similar_content_fingerprint')) {
+    return 'Continutul extras seamana cu un document existent. Verifica daca este o versiune reutilizata sau un livrabil comun.';
+  }
+  if (issueSet.has('similar_extracted_title') || issueSet.has('possible_common_unmarked')) {
+    return 'Titlul coincide cu un document existent. Daca este livrabil comun, marcheaza-l corespunzator inainte de salvare.';
+  }
+  return 'Exista un document asemanator in raportare. Verifica daca trebuie reutilizat sau incarcat separat.';
+}
+
 function bytesToHex(buffer: ArrayBuffer) {
   return [...new Uint8Array(buffer)]
     .map((byte) => byte.toString(16).padStart(2, '0'))

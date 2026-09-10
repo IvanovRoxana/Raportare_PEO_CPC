@@ -2,7 +2,13 @@
 
 import { useMemo } from 'react';
 import { DELIVERABLE_ELIGIBILITY_UI_MESSAGE } from '@/lib/feature-flags';
-import { getDocumentAuditTitle, type DuplicateIssueType } from '@/lib/document-sharing';
+import {
+  getDocumentAuditTitle,
+  getDuplicateAlertGuidance,
+  getDuplicateAlertTitle,
+  getDuplicateIssueLabel,
+  type DuplicateIssueType,
+} from '@/lib/document-sharing';
 import {
   buildExistingDeliverableSourceSuggestions,
   type ExistingDeliverableSourceContext,
@@ -79,17 +85,6 @@ interface UseObservationRailParams {
   existingDeliverableContexts?: ExistingDeliverableSourceContext[];
   resolutionHint?: ActivityResolutionHint;
   warnings: ObservationRailWarningContext;
-}
-
-function getRailDuplicateIssueLabel(issue: string) {
-  if (issue === 'same_file_hash') return 'fisier identic';
-  if (issue === 'same_first_page_hash') return 'prima pagina identica';
-  if (issue === 'similar_extracted_title') return 'titlu similar';
-  if (issue === 'similar_content_fingerprint') return 'continut similar';
-  if (issue === 'possible_common_unmarked') return 'posibil comun nemarcat';
-  if (issue === 'duplicate_detected') return 'duplicat detectat';
-  if (issue === 'possible_duplicate') return 'posibil duplicat';
-  return issue;
 }
 
 function getEligibilityRailTone(status?: string): ObservationTone {
@@ -277,18 +272,32 @@ export function useObservationRail({
       }
 
       if (hasDuplicateSignal) {
+        const duplicateAlertTitle = getDuplicateAlertTitle({
+          issues: duplicateInfo?.issues,
+          status: duplicateInfo?.status || deliverable.duplicateStatus,
+          isOtherExpert: duplicateInfo?.isOtherExpert,
+        });
+        const duplicateAlertGuidance = getDuplicateAlertGuidance({
+          issues: duplicateInfo?.issues,
+          status: duplicateInfo?.status || deliverable.duplicateStatus,
+          isOtherExpert: duplicateInfo?.isOtherExpert,
+        });
         const duplicateMeta = duplicateInfo
           ? [
               duplicateInfo.uploadedByExpertName || 'Expert necunoscut',
               duplicateInfo.activityDate,
-              `Semnale: ${duplicateInfo.issues.map(getRailDuplicateIssueLabel).join(', ')}`,
+              `Semnale: ${duplicateInfo.issues.map(getDuplicateIssueLabel).join(', ')}`,
+              duplicateAlertGuidance,
             ].filter((item): item is string => Boolean(item))
-          : [String(deliverable.possibleDuplicateOfDocumentId || deliverable.duplicateStatus || '')].filter(Boolean);
+          : [
+              String(deliverable.possibleDuplicateOfDocumentId || deliverable.duplicateStatus || ''),
+              duplicateAlertGuidance,
+            ].filter((item): item is string => Boolean(item));
         items.push({
           id: `deliverable-duplicate-${deliverable.id}`,
           group: 'deliverables',
           tone: 'warning',
-          title: 'Posibila reutilizare / document existent',
+          title: duplicateAlertTitle,
           detail: duplicateInfo?.title || notePrefix,
           meta: duplicateMeta,
         });

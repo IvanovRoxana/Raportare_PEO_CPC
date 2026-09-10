@@ -1067,8 +1067,11 @@ function mapGrupTinta(item: any): GrupTintaEntry {
 async function findExistingDocumentDuplicates(client: any, deliverable: Deliverable) {
   if (!client.models.Document) return [];
   const filters: Record<string, unknown>[] = [];
+  const extractedTitleNormalized = normalizeTitleForMatch(getDocumentAuditTitle(deliverable));
   if (deliverable.fileHash) filters.push({ fileHash: { eq: deliverable.fileHash } });
   if (deliverable.firstPageTextHash) filters.push({ firstPageTextHash: { eq: deliverable.firstPageTextHash } });
+  if (deliverable.contentFingerprint) filters.push({ contentFingerprint: { eq: deliverable.contentFingerprint } });
+  if (extractedTitleNormalized) filters.push({ extractedTitleNormalized: { eq: extractedTitleNormalized } });
 
   const candidates: DocumentMetadata[] = [];
   for (const filter of filters) {
@@ -1081,7 +1084,7 @@ async function findExistingDocumentDuplicates(client: any, deliverable: Delivera
     id: deliverable.documentId || '',
     fileHash: deliverable.fileHash,
     firstPageTextHash: deliverable.firstPageTextHash,
-    extractedTitleNormalized: normalizeTitleForMatch(getDocumentAuditTitle(deliverable)),
+    extractedTitleNormalized,
     contentFingerprint: deliverable.contentFingerprint,
     fileSize: deliverable.fileSize,
     mimeType: deliverable.fileType,
