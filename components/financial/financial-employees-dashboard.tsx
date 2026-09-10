@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
   useAllExpertNormContracts,
   useExpertMutations,
@@ -207,9 +208,6 @@ export function FinancialEmployeesDashboard() {
     });
     setContractForm(contractDefaults(undefined, undefined, undefined, isoDate(year, month, 1)));
     setMessage('');
-    window.setTimeout(() => {
-      document.getElementById('employee-editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 50);
   };
 
   useEffect(() => {
@@ -409,7 +407,7 @@ export function FinancialEmployeesDashboard() {
                     <td className="px-1.5 py-2"><FieldCompare label="CIM" check={row.cimNorm} /></td>
                     <td className="px-1.5 py-2">{rowBadge(row.status)}</td>
                     <td className="px-1.5 py-2 text-right">
-                      <Button size="sm" className="h-auto min-h-8 whitespace-normal px-2 py-1 text-[11px] leading-tight" variant={selectedRowId === row.id ? 'default' : 'outline'} onClick={() => selectRow(row)}>
+                      <Button type="button" size="sm" className="h-auto min-h-8 whitespace-normal px-2 py-1 text-[11px] leading-tight" variant={selectedRowId === row.id ? 'default' : 'outline'} onClick={() => selectRow(row)} aria-label={`${row.expertId ? 'Editeaza' : 'Creeaza salariat'} ${row.expert?.name ?? row.financialPersonName}`}>
                         {row.expertId ? 'Editeaza' : 'Creeaza salariat'}
                       </Button>
                     </td>
@@ -422,11 +420,21 @@ export function FinancialEmployeesDashboard() {
         </CardContent>
       </Card>
 
-      {employeeForm && contractForm ? (
-        <div className="grid gap-4 xl:grid-cols-2">
-          <Card id="employee-editor">
-            <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-sm"><Users className="h-4 w-4" />Profil salariat</CardTitle></CardHeader>
-            <CardContent className="grid gap-3 md:grid-cols-2">
+      <Dialog open={Boolean(employeeForm && contractForm)} onOpenChange={(open) => {
+        if (!open) {
+          setEmployeeForm(null);
+          setContractForm(null);
+        }
+      }}>
+        <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{employeeForm?.expertId ? 'Editeaza salariat' : 'Adauga salariat'}</DialogTitle>
+            <DialogDescription>Modifica profilul si norma CIM/PEO, apoi salveaza fiecare sectiune.</DialogDescription>
+          </DialogHeader>
+          {employeeForm && contractForm ? <div className="grid gap-4 xl:grid-cols-2">
+            <div className="rounded-lg border p-4">
+              <div className="mb-3 flex items-center gap-2 text-sm font-semibold"><Users className="h-4 w-4" />Profil salariat</div>
+              <div className="grid gap-3 md:grid-cols-2">
               <Input value={employeeForm.name} onChange={(event) => setEmployeeForm((current) => current ? { ...current, name: event.target.value } : current)} placeholder="Nume salariat" />
               <label className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
                 <input type="checkbox" checked={employeeForm.isActive} onChange={(event) => setEmployeeForm((current) => current ? { ...current, isActive: event.target.checked } : current)} />
@@ -447,12 +455,12 @@ export function FinancialEmployeesDashboard() {
                   </Button>
                 ) : null}
               </div>
-            </CardContent>
-          </Card>
+              </div>
+            </div>
 
-          <Card id="norma-editor">
-            <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-sm"><ShieldCheck className="h-4 w-4" />Norma CIM/PEO</CardTitle></CardHeader>
-            <CardContent className="grid gap-3 md:grid-cols-3">
+            <div className="rounded-lg border p-4">
+              <div className="mb-3 flex items-center gap-2 text-sm font-semibold"><ShieldCheck className="h-4 w-4" />Norma CIM/PEO</div>
+              <div className="grid gap-3 md:grid-cols-3">
               <Input type="date" value={contractForm.validFrom} onChange={(event) => setContractForm((current) => current ? { ...current, validFrom: event.target.value } : current)} aria-label="Valabil de la" />
               <select className="h-10 rounded-md border bg-background px-3 text-sm" value={contractForm.peoNormUnit} onChange={(event) => setContractForm((current) => current ? { ...current, peoNormUnit: event.target.value as NormUnit } : current)} aria-label="Unitate PEO">
                 <option value="HOURS_PER_DAY">PEO h/zi</option>
@@ -469,10 +477,11 @@ export function FinancialEmployeesDashboard() {
                 {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                 Salveaza norma
               </Button>
-            </CardContent>
-          </Card>
-        </div>
-      ) : null}
+              </div>
+            </div>
+          </div> : null}
+        </DialogContent>
+      </Dialog>
 
       {message ? <div className="rounded-md border bg-slate-50 px-3 py-2 text-sm text-slate-700">{message}</div> : null}
     </DashboardShell>
