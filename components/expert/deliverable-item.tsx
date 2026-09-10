@@ -311,6 +311,54 @@ function isEligibilityCheckObsoleteForCurrentActivity(
   return suggestedIdMatches || suggestedActivityMatches;
 }
 
+function getDeclaredTitleEligibilityIssue(deliverable: DeliverableSlot) {
+  if (!deliverable.uploaded || deliverable.isPhoto) return null;
+  const declaredTitle = (deliverable.declaredTitle || '').trim();
+  if (!declaredTitle) return 'Completeaza titlul declarat al documentului inainte de verificarea eligibilitatii.';
+
+  const validation = validateDeclaredTitleInDocumentText({
+    documentText: deliverable.firstPageText || deliverable.docText,
+    declaredTitle,
+    titleSource: deliverable.titleSource,
+  });
+  if (validation.titleCheckStatus === 'mismatch' || validation.titleCheckStatus === 'extraction_failed') {
+    return validation.titleCheckMessage;
+  }
+  if (isLikelyFilenameDerivedTitle(declaredTitle, deliverable.filename || deliverable.name)) {
+    return 'Titlul declarat pare preluat din numele fisierului, nu din prima pagina a documentului. Corecteaza titlul inainte de verificarea eligibilitatii.';
+  }
+  return null;
+}
+
+function buildTitleEligibilityFailure(reason: string, deliverable: DeliverableSlot, context: {
+  subActivity: string;
+  activityTitle: string;
+  selectedActivityId?: string;
+  expertName?: string;
+}) {
+  return mergeEligibilityCheckWithPmUnlockTracking(deliverable.eligibilityCheck, {
+    status: 'neconcludent',
+    score: 0,
+    summary: reason,
+    checks: [
+      {
+        criterion: 'Titlu declarat',
+        status: 'fail',
+        explanation: reason,
+      },
+    ],
+    missingElements: ['Titlu declarat regasit in prima pagina'],
+    recommendations: ['Corecteaza titlul declarat sau solicita suprascriere de administrator, apoi reia verificarea eligibilitatii.'],
+    riskFlags: ['Verificarea eligibilitatii este blocata de validarea titlului.'],
+    checkedAt: new Date().toISOString(),
+    checkedBy: context.expertName,
+    checkedActivityId: context.selectedActivityId || context.subActivity,
+    checkedSaCode: context.subActivity,
+    checkedActivityName: context.activityTitle,
+    checkedDeliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
+  });
+}
+
 interface DeliverableItemProps {
   deliverable: DeliverableSlot;
   subActivity: string;
@@ -1065,8 +1113,10 @@ export function DeliverableItem({
   const step2ok = deliverable.isPhoto || (deliverable.uploaded && effectiveTitleConfirmed);
   const step3ok = deliverable.isPhoto || (deliverable.uploaded && !!deliverable.stadiu);
   const step4ok = deliverable.isPhoto || !eligibilityCheckEnabled || (deliverable.uploaded && !!deliverable.aiCheck);
+  const titleEligibilityIssue = visibleEligibilityCheck ? null : getDeclaredTitleEligibilityIssue(deliverable);
   const textExtractionGateReason = visibleEligibilityCheck ? null : getTextExtractionGateReason(deliverable, undefined, expertCategory);
-  const eligibilityGateReason = textExtractionGateReason
+  const eligibilityGateReason = titleEligibilityIssue
+    || textExtractionGateReason
     || (!deliverable.stadiu
       ? 'Selecteaza stadiul documentului inainte de verificarea eligibilitatii.'
       : eligibilityBlockedReason);
@@ -1686,7 +1736,9 @@ export function DeliverableEligibilityControl({
   if (!deliverable.uploaded || deliverable.isPhoto) return null;
 
   const textExtractionGateReason = visibleEligibilityCheck ? null : getTextExtractionGateReason(deliverable, relatedDeliverables, expertCategory);
-  const eligibilityGateReason = textExtractionGateReason
+  const titleEligibilityIssue = visibleEligibilityCheck ? null : getDeclaredTitleEligibilityIssue(deliverable);
+  const eligibilityGateReason = titleEligibilityIssue
+    || textExtractionGateReason
     || (!deliverable.stadiu
       ? 'Selecteaza stadiul documentului inainte de verificarea eligibilitatii.'
       : eligibilityBlockedReason);
@@ -1694,6 +1746,26 @@ export function DeliverableEligibilityControl({
 
   const handleAiCheck = async () => {
     if (!eligibilityCheckEnabled) return;
+
+    const titleIssue = getDeclaredTitleEligibilityIssue(deliverable);
+    if (titleIssue) {
+      const nextEligibilityCheck = buildTitleEligibilityFailure(titleIssue, deliverable, {
+        subActivity,
+        activityTitle,
+        selectedActivityId,
+        expertName,
+      });
+      onUpdate({
+        eligibilityCheck: nextEligibilityCheck,
+        aiStatus: 'review',
+        aiCheck: {
+          eligible: null,
+          reason: titleIssue,
+          issues: ['Titlul declarat trebuie corectat inainte de verificarea eligibilitatii.'],
+        },
+      });
+      return;
+    }
 
     setAiLoading(true);
     const pendingEligibilityCheck = mergeEligibilityCheckWithPmUnlockTracking(deliverable.eligibilityCheck, {

@@ -43,6 +43,7 @@ const peoPageSource = readFileSync(new URL('../app/expert/peo/page.tsx', import.
 const eligibilityRouteSource = readFileSync(new URL('../app/api/ai/check-deliverable-eligibility/route.ts', import.meta.url), 'utf8');
 const eventReportRouteSource = readFileSync(new URL('../app/api/ai/generate-event-report/route.ts', import.meta.url), 'utf8');
 const deliverableTypesSource = readFileSync(new URL('../lib/deliverable-types.ts', import.meta.url), 'utf8');
+const titleSuggestionSource = readFileSync(new URL('../lib/title-suggestion.ts', import.meta.url), 'utf8');
 const pmDossierModalSource = readFileSync(new URL('../components/pm/dosar-expert-modal.tsx', import.meta.url), 'utf8');
 const pmAlertsPanelSource = readFileSync(new URL('../components/pm/pm-alerts-panel.tsx', import.meta.url), 'utf8');
 const backendDataHooksSource = readFileSync(new URL('../hooks/use-backend-data.ts', import.meta.url), 'utf8');
@@ -571,6 +572,14 @@ test('poarta de text pentru eligibilitate verifica toate livrabilele grupului ac
   assert.match(eligibilityRouteSource, /const hasSufficientExtractedEvidence = eligibilityDocuments\.some/);
   assert.match(eligibilityRouteSource, /hasSufficientDeliverableEvidenceForEligibility\(\{/);
   assert.doesNotMatch(eligibilityRouteSource, /if \(trimmedExtractedText\.length < 80\)/);
+});
+
+test('eligibilitatea afiseaza direct eroarea de titlu declarat', () => {
+  assert.match(titleSuggestionSource, /Titlul declarat nu se regaseste in prima pagina a documentului/);
+  assert.match(deliverableItemSource, /function getDeclaredTitleEligibilityIssue\(deliverable: DeliverableSlot\)/);
+  assert.match(deliverableItemSource, /const titleEligibilityIssue = visibleEligibilityCheck \? null : getDeclaredTitleEligibilityIssue\(deliverable\)/);
+  assert.match(deliverableItemSource, /function buildTitleEligibilityFailure/);
+  assert.match(deliverableItemSource, /Titlul declarat trebuie corectat inainte de verificarea eligibilitatii/);
 });
 
 test('verificarea eligibilitatii reciteste fisierul cand textul lipseste din slot', () => {

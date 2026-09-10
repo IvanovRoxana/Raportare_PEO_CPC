@@ -508,8 +508,8 @@ export function validateDeclaredTitleInDocumentText(args: {
     titleMatch: matched,
     titleCheckStatus: matched ? 'matched' : 'mismatch',
     titleCheckMessage: matched
-      ? 'Titlul se regaseste in document.'
-      : 'Titlul final nu se regaseste in document. Validarea este blocata pana la corectare sau suprascriere de administrator.',
+      ? 'Titlul se regaseste in prima pagina a documentului.'
+      : 'Titlul declarat nu se regaseste in prima pagina a documentului. Corecteaza titlul sau solicita suprascriere de administrator.',
   };
 }
 
