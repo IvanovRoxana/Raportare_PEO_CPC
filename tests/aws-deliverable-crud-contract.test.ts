@@ -50,6 +50,24 @@ test('payloadurile Document si Deliverable omit campurile undefined la scriere',
   assert.match(deliverablePayloadSource, /return omitUndefinedFields\(withSupportedDeliverableFields\(\{/);
 });
 
+test('payloadurile Document si Deliverable limiteaza textul extras persistat', () => {
+  const documentMetadataSource = getActivityMethodSource(
+    'async function createDocumentMetadataForDeliverable(',
+    'function mapBusinessHubEntityDirectoryEntry',
+  );
+  const deliverableFieldsSource = getActivityMethodSource(
+    'function withSupportedDeliverableFields(',
+    'function buildDeliverableWritePayload(',
+  );
+
+  assert.match(awsStoreSource, /const MAX_PERSISTED_DOCUMENT_TEXT_CHARS = 12000/);
+  assert.match(awsStoreSource, /const MAX_PERSISTED_FIRST_PAGE_TEXT_CHARS = 5000/);
+  assert.match(documentMetadataSource, /docText: trimPersistedDocumentText\(deliverable\.docText\)/);
+  assert.match(documentMetadataSource, /firstPageText: trimPersistedDocumentText\(deliverable\.firstPageText, MAX_PERSISTED_FIRST_PAGE_TEXT_CHARS\)/);
+  assert.match(deliverableFieldsSource, /docText: trimPersistedDocumentText\(deliverable\.docText\)/);
+  assert.match(deliverableFieldsSource, /firstPageText: trimPersistedDocumentText\(deliverable\.firstPageText, MAX_PERSISTED_FIRST_PAGE_TEXT_CHARS\)/);
+});
+
 test('diagnosticul pentru upload pending este persistat pe livrabil', () => {
   const deliverableFieldsSource = getActivityMethodSource(
     'function withSupportedDeliverableFields(',

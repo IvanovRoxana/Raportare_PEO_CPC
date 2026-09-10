@@ -139,10 +139,19 @@ export {
 type ModelResult<T> = { data?: T | null; errors?: unknown };
 type ModelListResult<T> = { data?: T[] | null; errors?: unknown; nextToken?: string | null };
 
+const MAX_PERSISTED_DOCUMENT_TEXT_CHARS = 12000;
+const MAX_PERSISTED_FIRST_PAGE_TEXT_CHARS = 5000;
+
 function assertNoErrors<T>(result: ModelResult<T> | ModelListResult<T>, action: string) {
   if (result.errors) {
     throw new Error(`${action} failed: ${JSON.stringify(result.errors)}`);
   }
+}
+
+function trimPersistedDocumentText(value?: string | null, maxChars = MAX_PERSISTED_DOCUMENT_TEXT_CHARS) {
+  if (!value) return value ?? undefined;
+  if (value.length <= maxChars) return value;
+  return `${value.slice(0, maxChars)}\n[truncated ${value.length - maxChars} chars]`;
 }
 
 function isAwsThrottlingError(error: unknown) {
@@ -416,12 +425,12 @@ function withSupportedExpertFields(payload: Record<string, unknown>, expert: Par
 
 function withSupportedDeliverableFields(payload: Record<string, unknown>, deliverable: Partial<Deliverable>) {
   const extendedFields: Record<string, unknown> = {
-    docText: deliverable.docText,
+    docText: trimPersistedDocumentText(deliverable.docText),
     suggestedTitle: deliverable.suggestedTitle,
     titleSuggestionConfidence: deliverable.titleSuggestionConfidence,
     titleSuggestionAlternatives: deliverable.titleSuggestionAlternatives,
     titleSuggestionReason: deliverable.titleSuggestionReason,
-    firstPageText: deliverable.firstPageText,
+    firstPageText: trimPersistedDocumentText(deliverable.firstPageText, MAX_PERSISTED_FIRST_PAGE_TEXT_CHARS),
     titleSource: deliverable.titleSource,
     titleConfirmed: deliverable.titleConfirmed,
     titleCheckStatus: deliverable.titleCheckStatus,
@@ -1137,8 +1146,8 @@ async function createDocumentMetadataForDeliverable(
     deliverableType: deliverable.deliverableType,
     declaredTitle: deliverable.declaredTitle,
     suggestedTitle: deliverable.suggestedTitle,
-    docText: deliverable.docText,
-    firstPageText: deliverable.firstPageText,
+    docText: trimPersistedDocumentText(deliverable.docText),
+    firstPageText: trimPersistedDocumentText(deliverable.firstPageText, MAX_PERSISTED_FIRST_PAGE_TEXT_CHARS),
     extractedTitle: deliverable.docTitle,
     extractedTitleNormalized: normalizeTitleForMatch(getDocumentAuditTitle(deliverable)),
     titleSource: deliverable.titleSource,
