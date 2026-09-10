@@ -3,6 +3,7 @@ import {
   OUTLOOK_TOKEN_COOKIE,
   getOutlookCalendarEvents,
   getOutlookGraphConfig,
+  getPublicRequestOrigin,
   normalizeOutlookEmail,
   readOutlookToken,
   refreshOutlookToken,
@@ -36,7 +37,7 @@ function monthRange(month: number, year: number) {
 }
 
 export async function GET(request: NextRequest) {
-  const origin = request.nextUrl.origin;
+  const origin = getPublicRequestOrigin(request);
   const expertEmail = normalizeOutlookEmail(request.nextUrl.searchParams.get('expertEmail'));
   const month = Number(request.nextUrl.searchParams.get('month'));
   const year = Number(request.nextUrl.searchParams.get('year'));

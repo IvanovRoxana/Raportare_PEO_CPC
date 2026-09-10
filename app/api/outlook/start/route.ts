@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   OUTLOOK_STATE_COOKIE,
   buildOutlookAuthorizeUrl,
+  getPublicRequestOrigin,
   normalizeOutlookEmail,
   setEncryptedCookie,
 } from '@/lib/outlook-graph';
@@ -16,7 +17,7 @@ function redirectBack(origin: string, returnTo: string, status: string) {
 }
 
 export async function GET(request: NextRequest) {
-  const origin = request.nextUrl.origin;
+  const origin = getPublicRequestOrigin(request);
   const expertEmail = normalizeOutlookEmail(request.nextUrl.searchParams.get('expertEmail'));
   const returnTo = request.nextUrl.searchParams.get('returnTo') || '/expert/peo#outlook';
 

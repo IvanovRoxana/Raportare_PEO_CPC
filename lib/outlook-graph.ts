@@ -57,6 +57,44 @@ export function normalizeOutlookEmail(value?: string | null) {
   return String(value || '').trim().toLowerCase();
 }
 
+function firstHeaderValue(value: string | null) {
+  return value?.split(',')[0]?.trim() || '';
+}
+
+function originFromUrl(value?: string | null) {
+  if (!value) return '';
+  try {
+    return new URL(value).origin;
+  } catch {
+    return '';
+  }
+}
+
+function isLocalhostHost(host: string) {
+  return host === 'localhost' || host.startsWith('localhost:') || host === '127.0.0.1' || host.startsWith('127.0.0.1:');
+}
+
+export function getPublicRequestOrigin(request: NextRequest) {
+  const forwardedHost = firstHeaderValue(request.headers.get('x-forwarded-host'));
+  if (forwardedHost && !isLocalhostHost(forwardedHost)) {
+    const forwardedProto = firstHeaderValue(request.headers.get('x-forwarded-proto')) || 'https';
+    return `${forwardedProto}://${forwardedHost}`;
+  }
+
+  const host = firstHeaderValue(request.headers.get('host'));
+  if (host && !isLocalhostHost(host)) {
+    const forwardedProto = firstHeaderValue(request.headers.get('x-forwarded-proto')) || request.nextUrl.protocol.replace(':', '') || 'https';
+    return `${forwardedProto}://${host}`;
+  }
+
+  const configuredOrigin = originFromUrl(process.env.NEXT_PUBLIC_APP_URL)
+    || originFromUrl(process.env.APP_URL)
+    || originFromUrl(process.env.OUTLOOK_REDIRECT_URI);
+  if (configuredOrigin) return configuredOrigin;
+
+  return request.nextUrl.origin;
+}
+
 export function getOutlookGraphConfig(origin: string) {
   const clientId = process.env.OUTLOOK_CLIENT_ID || process.env.MICROSOFT_GRAPH_CLIENT_ID || '';
   const clientSecret = process.env.OUTLOOK_CLIENT_SECRET || process.env.MICROSOFT_GRAPH_CLIENT_SECRET || '';

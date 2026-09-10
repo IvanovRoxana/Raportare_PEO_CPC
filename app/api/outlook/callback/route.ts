@@ -5,6 +5,7 @@ import {
   clearOutlookCookie,
   exchangeOutlookCode,
   getOutlookGraphConfig,
+  getPublicRequestOrigin,
   getOutlookUserEmail,
   normalizeOutlookEmail,
   readOutlookState,
@@ -21,7 +22,7 @@ function redirectWithStatus(origin: string, returnTo: string, status: string) {
 }
 
 export async function GET(request: NextRequest) {
-  const origin = request.nextUrl.origin;
+  const origin = getPublicRequestOrigin(request);
   const config = getOutlookGraphConfig(origin);
   const state = request.nextUrl.searchParams.get('state') || '';
   const code = request.nextUrl.searchParams.get('code') || '';

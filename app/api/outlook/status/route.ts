@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
+  getPublicRequestOrigin,
   getOutlookGraphConfig,
   normalizeOutlookEmail,
   readOutlookToken,
@@ -22,7 +23,7 @@ function outlookStatusResponse(body: unknown, init?: ResponseInit) {
 }
 
 export async function GET(request: NextRequest) {
-  const origin = request.nextUrl.origin;
+  const origin = getPublicRequestOrigin(request);
   const expertEmail = normalizeOutlookEmail(request.nextUrl.searchParams.get('expertEmail'));
   const config = getOutlookGraphConfig(origin);
   const token = config.isConfigured ? readOutlookToken(request, config.encryptionSecret) : null;
