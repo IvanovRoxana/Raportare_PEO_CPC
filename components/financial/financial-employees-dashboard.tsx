@@ -99,9 +99,9 @@ function FieldCompare({ label, check }: { label: string; check: FinancialHrField
         <span className="text-[10px] font-semibold uppercase text-muted-foreground">{label}</span>
         {fieldBadge(check.status)}
       </div>
-      <div className="min-w-0 rounded border bg-white px-2 py-1">
-        <div className="truncate text-xs font-medium" title={check.appValue}>Aplicatie: {check.appValue}</div>
-        <div className="truncate text-[11px] text-muted-foreground" title={check.excelValue}>Excel: {check.excelValue}</div>
+      <div className="min-w-0 rounded border bg-white px-1.5 py-1 leading-snug">
+        <div className="break-words text-[11px] font-medium" title={check.appValue}>Aplicatie: {check.appValue}</div>
+        <div className="break-words text-[10px] text-muted-foreground" title={check.excelValue}>Excel: {check.excelValue}</div>
       </div>
     </div>
   );
@@ -367,39 +367,49 @@ export function FinancialEmployeesDashboard() {
             <Button variant={onlyIssues ? 'default' : 'outline'} onClick={() => setOnlyIssues((value) => !value)}>Doar probleme</Button>
           </div>
         </CardHeader>
-        <CardContent className="overflow-x-auto overscroll-x-contain px-2 pb-3 sm:px-3">
+        <CardContent className="px-2 pb-3 sm:px-3">
           {isLoading ? (
             <div className="flex items-center justify-center py-16 text-muted-foreground"><Loader2 className="mr-2 h-5 w-5 animate-spin" />Se incarca salariații...</div>
           ) : (
-            <table className="w-full min-w-[1380px] border-collapse text-xs">
+            <table className="w-full table-fixed border-collapse text-[11px]">
+              <colgroup>
+                <col className="w-[13%]" />
+                <col className="w-[19%]" />
+                <col className="w-[20%]" />
+                <col className="w-[10%]" />
+                <col className="w-[15%]" />
+                <col className="w-[9%]" />
+                <col className="w-[7%]" />
+                <col className="w-[7%]" />
+              </colgroup>
               <thead>
                 <tr className="border-b bg-slate-50 text-left text-[11px] uppercase text-muted-foreground">
-                  <th className="p-2">Salariat</th>
-                  <th className="p-2">Pozitia de baza Concordia</th>
-                  <th className="p-2">Functie PEO</th>
-                  <th className="p-2">Norma PEO</th>
-                  <th className="p-2">Functie Goodworks4All</th>
-                  <th className="p-2">Norma CIM</th>
-                  <th className="p-2">Status</th>
-                  <th className="p-2 text-right">Actiuni</th>
+                  <th className="px-1.5 py-2">Salariat</th>
+                  <th className="px-1.5 py-2">Pozitia de baza Concordia</th>
+                  <th className="px-1.5 py-2">Functie PEO</th>
+                  <th className="px-1.5 py-2">Norma PEO</th>
+                  <th className="px-1.5 py-2">Functie Goodworks4All</th>
+                  <th className="px-1.5 py-2">Norma CIM</th>
+                  <th className="px-1.5 py-2">Status</th>
+                  <th className="px-1.5 py-2 text-right">Actiuni</th>
                 </tr>
               </thead>
               <tbody>
                 {visibleRows.map((row) => (
                   <tr key={row.id} className="border-b align-top hover:bg-slate-50/70">
-                    <td className="p-2">
-                      <div className="font-medium">{row.expert?.name ?? row.financialPersonName}</div>
-                      <div className="text-[11px] text-muted-foreground">Excel: {row.financialPersonName}</div>
-                      {row.matchSuggestions[0] ? <div className="mt-1 text-[11px] text-amber-700">Sugestie: {row.matchSuggestions[0].expertName} ({Math.round(row.matchSuggestions[0].score * 100)}%)</div> : null}
+                    <td className="px-1.5 py-2">
+                      <div className="break-words font-medium leading-snug">{row.expert?.name ?? row.financialPersonName}</div>
+                      <div className="break-words text-[10px] leading-snug text-muted-foreground">Excel: {row.financialPersonName}</div>
+                      {row.matchSuggestions[0] ? <div className="mt-1 break-words text-[10px] leading-snug text-amber-700">Sugestie: {row.matchSuggestions[0].expertName} ({Math.round(row.matchSuggestions[0].score * 100)}%)</div> : null}
                     </td>
-                    <td className="p-2"><FieldCompare label="Pozitie" check={row.basePosition} /></td>
-                    <td className="p-2"><FieldCompare label="PEO" check={row.peoFunction} /></td>
-                    <td className="p-2"><FieldCompare label="Norma PEO" check={row.peoNorm} /></td>
-                    <td className="p-2"><FieldCompare label="Goodworks" check={row.goodworksFunction} /></td>
-                    <td className="p-2"><FieldCompare label="CIM" check={row.cimNorm} /></td>
-                    <td className="p-2">{rowBadge(row.status)}</td>
-                    <td className="p-2 text-right">
-                      <Button size="sm" variant={selectedRowId === row.id ? 'default' : 'outline'} onClick={() => selectRow(row)}>
+                    <td className="px-1.5 py-2"><FieldCompare label="Pozitie" check={row.basePosition} /></td>
+                    <td className="px-1.5 py-2"><FieldCompare label="PEO" check={row.peoFunction} /></td>
+                    <td className="px-1.5 py-2"><FieldCompare label="Norma PEO" check={row.peoNorm} /></td>
+                    <td className="px-1.5 py-2"><FieldCompare label="Goodworks" check={row.goodworksFunction} /></td>
+                    <td className="px-1.5 py-2"><FieldCompare label="CIM" check={row.cimNorm} /></td>
+                    <td className="px-1.5 py-2">{rowBadge(row.status)}</td>
+                    <td className="px-1.5 py-2 text-right">
+                      <Button size="sm" className="h-auto min-h-8 whitespace-normal px-2 py-1 text-[11px] leading-tight" variant={selectedRowId === row.id ? 'default' : 'outline'} onClick={() => selectRow(row)}>
                         {row.expertId ? 'Editeaza' : 'Creeaza salariat'}
                       </Button>
                     </td>
