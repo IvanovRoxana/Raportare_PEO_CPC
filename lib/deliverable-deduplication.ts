@@ -48,31 +48,34 @@ export function areActivitiesCompatibleForDeliverableGroup(
   );
 }
 
-export function getDeliverableDocumentSignature(deliverable: Pick<
+type DeliverableDocumentIdentity = Pick<
   Deliverable,
   'documentId' | 'fileHash' | 'firstPageTextHash' | 'contentFingerprint' | 'fileName' | 'originalFileName' | 'fileSize' | 'fileType' | 'fileData'
->) {
+>;
+
+export function getDeliverableDocumentSignatures(deliverable: DeliverableDocumentIdentity) {
+  const signatures: string[] = [];
   const hasFreshFileUpload = isPresent(deliverable.fileData);
   const documentId = hasFreshFileUpload ? '' : normalizeSignaturePart(deliverable.documentId);
-  if (documentId) return `document:${documentId}`;
+  if (documentId) signatures.push(`document:${documentId}`);
 
   const fileHash = normalizeSignaturePart(deliverable.fileHash);
-  if (fileHash) return `file_hash:${fileHash}`;
+  if (fileHash) signatures.push(`file_hash:${fileHash}`);
 
-  const firstPageTextHash = normalizeSignaturePart(deliverable.firstPageTextHash);
-  if (firstPageTextHash) return `first_page:${firstPageTextHash}`;
+  // Cover text, extracted content and file metadata are similarity signals, not identity.
+  return signatures;
+}
 
-  const contentFingerprint = normalizeSignaturePart(deliverable.contentFingerprint);
-  if (contentFingerprint) return `content:${contentFingerprint}`;
+export function getDeliverableDocumentSignature(deliverable: DeliverableDocumentIdentity) {
+  return getDeliverableDocumentSignatures(deliverable)[0] ?? null;
+}
 
-  const fileName = normalizeSignaturePart(deliverable.originalFileName || deliverable.fileName);
-  const fileType = normalizeSignaturePart(deliverable.fileType);
-  const fileSize = Number(deliverable.fileSize) || 0;
-  if (fileName && fileType && fileSize > 0) {
-    return `file_meta:${fileName}:${fileSize}:${fileType}`;
-  }
-
-  return null;
+export function hasSameDeliverableDocument(
+  deliverable: DeliverableDocumentIdentity,
+  candidate: DeliverableDocumentIdentity,
+) {
+  const signatures = getDeliverableDocumentSignatures(deliverable);
+  return getDeliverableDocumentSignatures(candidate).some((signature) => signatures.includes(signature));
 }
 
 export function mergeDeliverableMetadata<T extends Deliverable>(primary: T, duplicate: T): T {
@@ -88,27 +91,15 @@ export function mergeDeliverableMetadata<T extends Deliverable>(primary: T, dupl
 }
 
 export function dedupeDeliverablesBySignature<T extends Deliverable>(deliverables: T[]) {
-  const bySignature = new Map<string, T>();
   const result: T[] = [];
 
   deliverables.forEach((deliverable) => {
-    const signature = getDeliverableDocumentSignature(deliverable);
-    if (!signature) {
+    const existingIndex = result.findIndex((existing) => hasSameDeliverableDocument(existing, deliverable));
+    if (existingIndex >= 0) {
+      result[existingIndex] = mergeDeliverableMetadata(result[existingIndex], deliverable);
+    } else {
       result.push(deliverable);
-      return;
     }
-
-    const existing = bySignature.get(signature);
-    if (existing) {
-      const merged = mergeDeliverableMetadata(existing, deliverable);
-      const index = result.indexOf(existing);
-      if (index >= 0) result[index] = merged;
-      bySignature.set(signature, merged);
-      return;
-    }
-
-    bySignature.set(signature, deliverable);
-    result.push(deliverable);
   });
 
   return result;
@@ -122,7 +113,7 @@ export function findActivityOwningDeliverableSignature<T extends ActivityWithDel
   if (!signature) return undefined;
 
   const ownsDeliverable = (activity: T) => activity.deliverables?.some((deliverable) => (
-    getDeliverableDocumentSignature(deliverable) === signature
+    getDeliverableDocumentSignatures(deliverable).includes(signature)
   ));
   const preferredActivity = preferredActivityId
     ? activities.find((activity) => activity.id === preferredActivityId && ownsDeliverable(activity))
@@ -147,9 +138,9 @@ export function findMonthlyDeliverableDuplicate(args: {
     if (activity.expertId !== args.expertId || !isActivityInMonth(activity.date, args.month, args.year)) continue;
 
     for (const deliverable of activity.deliverables ?? []) {
-      const signature = getDeliverableDocumentSignature(deliverable);
-      if (!signature) continue;
-      if (!seen.has(signature)) seen.set(signature, { deliverable, activity });
+      for (const signature of getDeliverableDocumentSignatures(deliverable)) {
+        if (!seen.has(signature)) seen.set(signature, { deliverable, activity });
+      }
     }
   }
 
@@ -157,10 +148,11 @@ export function findMonthlyDeliverableDuplicate(args: {
     if (activity.expertId !== args.expertId || !isActivityInMonth(activity.date, args.month, args.year)) continue;
 
     for (const deliverable of activity.deliverables ?? []) {
-      const signature = getDeliverableDocumentSignature(deliverable);
+      const signatures = getDeliverableDocumentSignatures(deliverable);
+      const signature = signatures[0];
       if (!signature) continue;
 
-      const existing = seen.get(signature);
+      const existing = signatures.map((key) => seen.get(key)).find((match) => match !== undefined);
       if (existing) {
         return {
           signature,
@@ -171,7 +163,7 @@ export function findMonthlyDeliverableDuplicate(args: {
         };
       }
 
-      seen.set(signature, { deliverable, activity });
+      signatures.forEach((key) => seen.set(key, { deliverable, activity }));
     }
   }
 

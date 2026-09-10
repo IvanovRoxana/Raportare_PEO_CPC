@@ -16,7 +16,10 @@ import {
   protectConcordiaPublicationEligibility,
   validateEligibilitySuggestedSettings,
 } from '../lib/deliverable-eligibility.ts';
-import { extractEventDate } from '../lib/deliverable-types.ts';
+import { extractEventDate, type DeliverableSlot } from '../lib/deliverable-types.ts';
+import { getDeclaredTitleEligibilityIssue, isReusableEligibilityCheck } from '../lib/deliverable-check-state.ts';
+import { buildEligibilityAssessmentPrompt, validateEligibilityAssessmentInput, type EligibilityAssessmentInput } from '../lib/eligibility-assessment.ts';
+import type { EligibilityContextResult } from '../lib/rag/eligibility-context.ts';
 
 const activityCatalogCandidates = [
   {
@@ -37,6 +40,20 @@ const deliverableOptions = [
   'Material prezentare / suport eveniment',
   'Minute intalnire / MOM',
 ];
+
+const assessmentPromptContext: EligibilityContextResult = {
+  promptContext: '', sources: [],
+  coverage: { project: false, subactivity: false, job_description: false },
+  missingRequiredSources: ['project', 'subactivity', 'job_description'], warnings: [],
+};
+
+function assessmentPromptInput(deliverableType = 'Analiza acte normative'): EligibilityAssessmentInput {
+  return {
+    documents: [{ id: 'doc-1', isPrimary: true, deliverableType, extractedText: 'Documentul prezinta analiza informatiilor relevante pentru pregatirea materialelor de suport ale evenimentului.' }],
+    candidates: activityCatalogCandidates.map((candidate) => ({ ...candidate, category: 'com' })),
+    category: 'com', saCode: 'SA3.4', selectedActivityId: 'cat-1', classificationMode: 'manual',
+  };
+}
 const deliverableItemSource = readFileSync(new URL('../components/expert/deliverable-item.tsx', import.meta.url), 'utf8');
 const activityFormSource = readFileSync(new URL('../components/expert/activity-form.tsx', import.meta.url), 'utf8');
 const peoPageSource = readFileSync(new URL('../app/expert/peo/page.tsx', import.meta.url), 'utf8');
@@ -292,11 +309,11 @@ test('recunoaste tipul Articole tematice publicate pe concordia.ro', () => {
 });
 
 test('promptul include regulile Concordia doar pentru livrabile de publicare', () => {
-  assert.match(eligibilityRouteSource, /isConcordiaPublishedDeliverableType\(currentDeliverableType\)/);
-  assert.match(eligibilityRouteSource, /const concordiaPublicationPromptRules =/);
-  assert.match(eligibilityRouteSource, /\$\{concordiaPublicationPromptRules\}/);
-  assert.doesNotMatch(eligibilityRouteSource, /\$\{CONCORDIA_PUBLICATION_ELIGIBILITY_PROMPT_RULES\}/);
-  assert.equal(isConcordiaPublishedDeliverableType('Analiza acte normative'), false);
+  const publicationPrompt = buildEligibilityAssessmentPrompt(assessmentPromptInput('Articole tematice publicate pe concordia.ro'), assessmentPromptContext);
+  const otherPrompt = buildEligibilityAssessmentPrompt(assessmentPromptInput(), assessmentPromptContext);
+  assert.ok(publicationPrompt.system.includes(CONCORDIA_PUBLICATION_ELIGIBILITY_PROMPT_RULES));
+  assert.equal(otherPrompt.system.includes(CONCORDIA_PUBLICATION_ELIGIBILITY_PROMPT_RULES), false);
+  assert.match(eligibilityRouteSource, /buildEligibilityAssessmentPrompt\(input, context\)/);
 });
 
 test('nu foloseste titlul confirmat ca substitut pentru text extras suficient', () => {
@@ -567,19 +584,33 @@ test('poarta de text pentru eligibilitate verifica toate livrabilele grupului ac
   assert.match(deliverableItemSource, /eligibilityDeliverables\.some\(canAttemptTextExtractionFromStoredFile\)/);
   assert.match(deliverableItemSource, /const eligibilityDeliverables = getEligibilityDeliverables\(deliverable, relatedDeliverables\)/);
   assert.match(deliverableItemSource, /Textul extras din livrabilele incarcate pentru grupul activitatii/);
-  assert.match(deliverableItemSource, /function isTextInsufficientEligibilityCheck/);
-  assert.match(deliverableItemSource, /visibleEligibilityCheck && !isTextInsufficientEligibilityCheck\(visibleEligibilityCheck\)/);
-  assert.match(eligibilityRouteSource, /const hasSufficientExtractedEvidence = eligibilityDocuments\.some/);
-  assert.match(eligibilityRouteSource, /hasSufficientDeliverableEvidenceForEligibility\(\{/);
-  assert.doesNotMatch(eligibilityRouteSource, /if \(trimmedExtractedText\.length < 80\)/);
+  assert.match(deliverableItemSource, /isReusableEligibilityCheck\(visibleEligibilityCheck\)/);
+  assert.equal(isReusableEligibilityCheck(normalizeDeliverableEligibilityCheck({ status: 'neconcludent', summary: 'Textul extras este prea scurt.' })), false);
+  const validGroup = assessmentPromptInput();
+  assert.doesNotThrow(() => validateEligibilityAssessmentInput(validGroup));
+  assert.throws(() => validateEligibilityAssessmentInput({
+    ...validGroup,
+    documents: [...validGroup.documents, { id: 'unreadable-annex', extractedText: 'Text scurt' }],
+  }), /Un livrabil nu are suficient text lizibil/);
+  assert.match(eligibilityRouteSource, /validateEligibilityAssessmentInput\(input\)/);
+  assert.match(eligibilityRouteSource, /eligibilityDocuments\.length !== parsedDocuments\.data\.length/);
 });
 
 test('eligibilitatea afiseaza direct eroarea de titlu declarat', () => {
   assert.match(titleSuggestionSource, /Titlul declarat nu se regaseste in prima pagina a documentului/);
-  assert.match(deliverableItemSource, /function getDeclaredTitleEligibilityIssue\(deliverable: DeliverableSlot\)/);
-  assert.match(deliverableItemSource, /const titleEligibilityIssue = visibleEligibilityCheck \? null : getDeclaredTitleEligibilityIssue\(deliverable\)/);
+  const deliverable: DeliverableSlot = {
+    id: 'title-test', slotType: 'main', uploaded: true, isPhoto: false,
+    docTitle: null, docText: 'Raport de activitate', firstPageText: 'Raport de activitate',
+    declaredTitle: 'Ghid de lucru pentru experti', titleMatch: false, titleConfirmed: false,
+    stadiu: 'final', aiCheck: null, isPendingConfirm: false,
+  };
+  assert.match(getDeclaredTitleEligibilityIssue(deliverable) || '', /nu se regaseste in prima pagina/);
+  assert.equal(getDeclaredTitleEligibilityIssue({ ...deliverable, firstPageText: null }, true), null);
+  assert.match(deliverableItemSource, /const titleEligibilityIssue = hasReusableEligibilityCheck \? null : getDeclaredTitleEligibilityIssue\(deliverable, canAttemptTextExtractionFromStoredFile\(deliverable\)\)/);
+  assert.match(deliverableItemSource, /getDeclaredTitleEligibilityIssue\(eligibilityDeliverable\)/);
+  assert.match(deliverableItemSource, /getDeclaredTitleEligibilityIssue\(primaryEligibilityDeliverable\)/);
   assert.match(deliverableItemSource, /function buildTitleEligibilityFailure/);
-  assert.match(deliverableItemSource, /Titlul declarat trebuie corectat inainte de verificarea eligibilitatii/);
+  assert.match(deliverableItemSource, /aiCheck: \{ eligible: null, reason: titleIssue, issues: \[titleIssue\] \}/);
 });
 
 test('verificarea eligibilitatii reciteste fisierul cand textul lipseste din slot', () => {
@@ -594,8 +625,14 @@ test('verificarea eligibilitatii reciteste fisierul cand textul lipseste din slo
 });
 
 test('rezultatul eligibilitatii pastreaza metadatele livrabilelor analizate', () => {
-  assert.match(eligibilityRouteSource, /analyzedDeliverables: eligibilityDocuments\.map/);
-  assert.match(eligibilityRouteSource, /isPrimary: deliverable\.isPrimary/);
+  const documents = normalizeDeliverableEligibilityDocuments({
+    deliverables: [{ id: 'doc-metadata', fileName: 'raport.pdf', documentTitle: 'Raport de analiza', deliverableType: 'Raport', fileHash: 'hash-original', extractedText: 'Continutul documentului', isPrimary: true }],
+  });
+  assert.equal(documents[0].id, 'doc-metadata');
+  assert.equal(documents[0].isPrimary, true);
+  assert.equal(documents[0].fileHash, 'hash-original');
+  assert.equal(documents[0].documentTitle, 'Raport de analiza');
+  assert.match(eligibilityRouteSource, /analyzedDeliverables: input\.documents\.map\(\(\{ extractedText: _text, \.\.\.document \}\) => document\)/);
   assert.match(deliverableItemSource, /analyzedDeliverables: result\.analyzedDeliverables/);
   assert.match(deliverableTypesSource, /analyzedDeliverables\?: Array<\{/);
 });
@@ -676,14 +713,17 @@ test('construieste audit semantic cu context expert, rubrici si risc duplicat', 
   assert.equal(audit.documentsRead[0].duplicateStatus, 'possible_common_unmarked');
 });
 
-test('ruta de eligibilitate include audit semantic si context explicit in raspuns', () => {
-  assert.match(eligibilityRouteSource, /buildDeliverableEligibilitySemanticAudit/);
-  assert.match(eligibilityRouteSource, /expertCategory/);
-  assert.match(eligibilityRouteSource, /workingGroupActivities/);
-  assert.match(eligibilityRouteSource, /ruleVersionId/);
-  assert.match(eligibilityRouteSource, /semanticAudit/);
-  assert.match(eligibilityRouteSource, /rubricScores/);
+test('ruta leaga evaluarea LLM de catalogul autorizat, sursele oficiale si auditul raspunsului', () => {
+  assert.match(eligibilityRouteSource, /loadEligibilityCatalog\(/);
+  assert.match(eligibilityRouteSource, /candidates: catalog\.candidates/);
+  assert.match(eligibilityRouteSource, /category: catalog\.expert\.category/);
+  assert.match(eligibilityRouteSource, /retrieveEligibilityContext\(/);
+  assert.match(eligibilityRouteSource, /const prompt = buildEligibilityAssessmentPrompt\(input, context\)/);
+  assert.match(eligibilityRouteSource, /const assessment = finalizeEligibilityAssessment\(input, context, result\.output\)/);
+  assert.match(eligibilityRouteSource, /NextResponse\.json\(\{\s*\.\.\.assessment,/);
   assert.match(eligibilityRouteSource, /categoryContextUsed/);
+  assert.match(eligibilityRouteSource, /modelAuditId: result\.auditId/);
+  assert.doesNotMatch(eligibilityRouteSource, /buildDeliverableEligibilitySemanticAudit|semanticAudit\.normalizedScore|rubricScores/);
 });
 
 test('controlul eligibilitatii trimite context expert, catalog si working group', () => {
@@ -706,9 +746,12 @@ test('schema AWS are fundatia pentru ruleseturi AI versionate', () => {
   assert.match(amplifyDataResourceSource, /allow\.groups\(\["pm", "admin"\]\)\.to\(\["create", "read", "update", "delete"\]\)/);
 });
 
-test('ruta de eligibilitate foloseste rulesetul activ cand requestul nu trimite ruleVersionId', () => {
-  assert.match(eligibilityRouteSource, /getActiveAiEligibilityRuleset/);
-  assert.match(eligibilityRouteSource, /effectiveRuleVersionId/);
-  assert.match(eligibilityRouteSource, /activeRulesetContext/);
-  assert.match(eligibilityRouteSource, /ruleVersionId: effectiveRuleVersionId/);
+test('ruta foloseste rulesetul activ autorizat si stabileste versiunea pe server', () => {
+  const rulesContext = JSON.stringify({ mandatoryEvidence: 'Verifica rezultatele documentate.' });
+  const prompt = buildEligibilityAssessmentPrompt({ ...assessmentPromptInput(), rulesContext }, assessmentPromptContext);
+  assert.equal(JSON.parse(prompt.prompt).administeredRules, rulesContext);
+  assert.match(eligibilityRouteSource, /getActiveAiEligibilityRuleset\(\{ authToken/);
+  assert.match(eligibilityRouteSource, /input\.rulesContext = activeRuleset\?\.rulesJson \? JSON\.stringify\(activeRuleset\.rulesJson\)/);
+  assert.match(eligibilityRouteSource, /ruleVersionId: activeRuleset \? `\$\{activeRuleset\.id\}:v\$\{activeRuleset\.version\}` : ELIGIBILITY_ASSESSMENT_VERSION/);
+  assert.doesNotMatch(eligibilityRouteSource, /body\.ruleVersionId/);
 });

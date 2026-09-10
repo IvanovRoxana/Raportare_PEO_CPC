@@ -1,5 +1,6 @@
 import { tool } from 'ai';
 import { z } from 'zod';
+import { getActivityAutofillVerifiedAnalysisEvidence } from '../activity-autofill.ts';
 import { buildCompactActivityAutofillRagContext } from '../rag/activity-autofill-rag.ts';
 import { retrieveActivityAutofillContext, retrieveSaPurposeContext } from '../rag/retrieval.ts';
 import type { RagAuthContext } from '../rag/types.ts';
@@ -92,10 +93,7 @@ function toRagRequest(request: ActivityAgentRequest) {
   return {
     deliverables: request.deliverables
       .map((deliverable) => ({
-        id: deliverable.id,
-        documentTitle: deliverable.documentTitle,
-        deliverableType: deliverable.deliverableType,
-        eligibilitySummary: deliverable.eligibilitySummary,
+        ...deliverable,
         extractedText: trimText(deliverable.extractedText, 6000) || deliverable.documentTitle,
       }))
       .filter((deliverable) => deliverable.extractedText),
@@ -237,6 +235,7 @@ function buildFactualText(request: ActivityAgentRequest) {
       deliverable.documentTitle,
       deliverable.deliverableType,
       deliverable.eligibilitySummary,
+      ...getActivityAutofillVerifiedAnalysisEvidence({ ...deliverable, extractedText: deliverable.extractedText || '' }),
       deliverable.extractedText,
     ].filter(Boolean).join(' ')),
   ].filter(Boolean).join(' ');
@@ -297,6 +296,8 @@ export function buildActivityFactSheetValue(input: {
         deliverable.documentTitle ? `Livrabil: ${deliverable.documentTitle}` : '',
         deliverable.deliverableType ? `Tip livrabil: ${deliverable.deliverableType}` : '',
         deliverable.eligibilitySummary ? `Eligibilitate: ${trimText(deliverable.eligibilitySummary)}` : '',
+        ...getActivityAutofillVerifiedAnalysisEvidence({ ...deliverable, extractedText: deliverable.extractedText || '' })
+          .map((quote) => `Fragment verificat din livrabil: ${trimText(quote)}`),
         deliverable.extractedText ? `Text livrabil: ${trimText(deliverable.extractedText)}` : '',
       ]),
     ]).slice(0, 16),

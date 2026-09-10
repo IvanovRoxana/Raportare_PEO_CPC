@@ -484,6 +484,37 @@ export interface DashboardComplianceRow {
 }
 
 export interface DeliverableEligibilityCheck {
+  assessmentVersion?: string;
+  executionStatus?: 'pending' | 'completed' | 'failed';
+  classification?: {
+    activityId: string;
+    activityName: string;
+    saCode: string;
+    confidence: 'high' | 'medium' | 'low';
+    reason: string;
+    autoApply: boolean;
+    requiresSaConfirmation: boolean;
+    appliedBy?: 'ai' | 'expert';
+    appliedAt?: string;
+    alternatives: Array<{ activityId: string; activityName: string; saCode: string; reason: string }>;
+  };
+  documentSummaries?: Array<{
+    id: string;
+    fileHash?: string;
+    summary: string;
+    evidence: string[];
+    extractedTextLength: number;
+  }>;
+  sourceEvidence?: Array<{
+    chunkId: string;
+    documentId: string;
+    sourceType: string;
+    coverage: 'project' | 'subactivity' | 'job_description';
+    quote: string;
+    criterion: string;
+  }>;
+  referenceCoverage?: Record<'project' | 'subactivity' | 'job_description', boolean>;
+  referenceSources?: Array<{ chunkId: string; documentId: string; sourceType: string; coverage: string }>;
   status: 'eligibil' | 'eligibil_cu_observatii' | 'neeligibil' | 'neconcludent' | string;
   score: number;
   summary: string;

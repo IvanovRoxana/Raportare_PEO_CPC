@@ -1,6 +1,7 @@
 'use client';
 
 import type { TitleCheckStatus, TitleSource, TitleSuggestionConfidence } from './title-suggestion.ts';
+import type { DeliverableEligibilityCheck as SharedEligibilityCheck } from './types.ts';
 import { titleExistsInDocumentText } from './title-suggestion.ts';
 
 // All deliverable types available in the system
@@ -124,7 +125,9 @@ export type DeliverableSlotType =
   | 'event_proof'    // Photo / Attendance list
   | 'justificativ';  // Supporting documents
 
-export interface DeliverableEligibilityCheck {
+export interface DeliverableEligibilityCheck extends Pick<SharedEligibilityCheck,
+  'assessmentVersion' | 'executionStatus' | 'classification' | 'documentSummaries'
+  | 'sourceEvidence' | 'referenceCoverage' | 'referenceSources'> {
   status: 'eligibil' | 'eligibil_cu_observatii' | 'neeligibil' | 'neconcludent' | string;
   score: number;
   summary: string;
@@ -173,6 +176,8 @@ export interface DeliverableEligibilityCheck {
 }
 
 export interface DeliverableSlot {
+  // Session-only: persisted previews are reread from the original file before a complete assessment.
+  textExtractionScope?: 'full_document' | 'first_page' | 'unknown';
   id: string;
   slotType: DeliverableSlotType;
   type?: string; // Deliverable type from ALL_DELIVERABLE_TYPES

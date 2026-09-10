@@ -134,7 +134,7 @@ test('accepts suggested title and validates when it exists in the document text'
   }), {
     titleMatch: true,
     titleCheckStatus: 'matched',
-    titleCheckMessage: 'Titlul se regaseste in document.',
+    titleCheckMessage: 'Titlul se regaseste in prima pagina a documentului.',
   });
 });
 
@@ -163,7 +163,7 @@ test('matches titles when ampersand is extracted as the word and', () => {
   }), {
     titleMatch: true,
     titleCheckStatus: 'matched',
-    titleCheckMessage: 'Titlul se regaseste in document.',
+    titleCheckMessage: 'Titlul se regaseste in prima pagina a documentului.',
   });
 });
 

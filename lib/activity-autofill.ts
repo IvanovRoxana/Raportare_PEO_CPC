@@ -1,9 +1,11 @@
 import { z } from 'zod';
 import type { ActivityAgentResponse } from './agents/activity-agent-schema';
+import type { DeliverableEligibilityCheck } from './types.ts';
 
 const MAX_DELIVERABLE_TEXT_CHARS = 6000;
 const MAX_PROMPT_DELIVERABLES = 8;
 const DEFAULT_MAX_CATALOG_CANDIDATES_FOR_PROMPT = 10;
+const REUSABLE_ANALYSIS_VERSION = 'llm-eligibility-v2';
 
 export const activityAutofillDeliverableSchema = z.object({
   id: z.string().optional(),
@@ -13,6 +15,11 @@ export const activityAutofillDeliverableSchema = z.object({
   stadiu: z.string().optional(),
   eligibilityStatus: z.string().optional(),
   eligibilitySummary: z.string().optional(),
+  fileHash: z.string().optional(),
+  analysisVersion: z.string().optional(),
+  analysisFileHash: z.string().optional(),
+  analysisSummary: z.string().optional(),
+  analysisEvidence: z.array(z.string()).optional(),
   extractedText: z.string().min(1),
   textScope: z.string().optional(),
 });
@@ -137,6 +144,8 @@ export type ActivityAutofillDeliverableDraft = {
   firstPageText?: string | null;
   eligibilityStatus?: string;
   eligibilitySummary?: string;
+  fileHash?: string;
+  eligibilityCheck?: Pick<DeliverableEligibilityCheck, 'assessmentVersion' | 'executionStatus' | 'documentSummaries' | 'status' | 'summary'> | null;
 };
 
 export type ActivityAutofillStepState = {
@@ -264,7 +273,7 @@ function getRequestSearchText(input: ActivityAutofillRequest) {
       deliverable.deliverableType,
       deliverable.stadiu,
       deliverable.eligibilitySummary,
-      deliverable.extractedText,
+      getActivityAutofillDeliverableEvidenceText(deliverable),
     ]),
   ].filter(Boolean).join(' ');
 }
@@ -421,6 +430,58 @@ export function buildFallbackActivityAutofillSuggestion(input: ActivityAutofillR
   };
 }
 
+function getVerifiedDocumentSummary(deliverable: ActivityAutofillDeliverableDraft) {
+  const check = deliverable.eligibilityCheck;
+  if (
+    check?.assessmentVersion !== REUSABLE_ANALYSIS_VERSION
+    || check.executionStatus !== 'completed'
+    || !deliverable.id
+    || !deliverable.fileHash
+  ) return null;
+  const documentSummary = check.documentSummaries?.find((item) => (
+    item.id === deliverable.id
+    && item.fileHash === deliverable.fileHash
+    && item.extractedTextLength > 0
+    && typeof item.summary === 'string'
+    && item.summary.trim()
+    && Array.isArray(item.evidence)
+    && item.evidence.some((quote) => typeof quote === 'string' && quote.trim())
+  ));
+  if (!documentSummary) return null;
+  return {
+    analysisVersion: REUSABLE_ANALYSIS_VERSION,
+    analysisFileHash: documentSummary.fileHash,
+    analysisSummary: trimText(documentSummary.summary, 2400),
+    analysisEvidence: documentSummary.evidence.map((quote) => trimText(quote, 1200)).filter(Boolean).slice(0, 8),
+  };
+}
+
+function normalizeAnalysisEvidence(deliverable: ActivityAutofillDeliverable) {
+  const analysisSummary = trimText(deliverable.analysisSummary, 2400);
+  const analysisEvidence = (deliverable.analysisEvidence || []).map((quote) => trimText(quote, 1200)).filter(Boolean).slice(0, 8);
+  if (
+    deliverable.analysisVersion !== REUSABLE_ANALYSIS_VERSION
+    || !deliverable.fileHash
+    || deliverable.analysisFileHash !== deliverable.fileHash
+    || !analysisSummary
+    || analysisEvidence.length === 0
+  ) return { analysisSummary: undefined, analysisEvidence: undefined, analysisVersion: undefined, analysisFileHash: undefined };
+  return { analysisSummary, analysisEvidence, analysisVersion: REUSABLE_ANALYSIS_VERSION, analysisFileHash: deliverable.analysisFileHash };
+}
+
+export function getActivityAutofillVerifiedAnalysisEvidence(deliverable: ActivityAutofillDeliverable) {
+  return normalizeAnalysisEvidence(deliverable).analysisEvidence || [];
+}
+
+export function getActivityAutofillDeliverableEvidenceText(deliverable: ActivityAutofillDeliverable) {
+  const analysis = normalizeAnalysisEvidence(deliverable);
+  return [
+    analysis.analysisSummary ? `Rezumat verificat al documentului: ${analysis.analysisSummary}` : '',
+    analysis.analysisEvidence?.length ? `Fragmente din document: ${analysis.analysisEvidence.join(' ')}` : '',
+    deliverable.extractedText,
+  ].filter(Boolean).join('\n');
+}
+
 export function buildActivityAutofillDeliverablesPayload(
   deliverables: ActivityAutofillDeliverableDraft[],
 ): ActivityAutofillDeliverable[] {
@@ -428,13 +489,16 @@ export function buildActivityAutofillDeliverablesPayload(
     .map((deliverable): ActivityAutofillDeliverable | null => {
       const docText = trimText(deliverable.docText);
       const firstPageText = trimText(deliverable.firstPageText);
-      const extractedText = docText || firstPageText;
+      const analysis = getVerifiedDocumentSummary(deliverable);
+      const extractedText = docText || firstPageText || analysis?.analysisEvidence.join(' ') || '';
 
       if (!extractedText) return null;
 
       const payload: ActivityAutofillDeliverable = {
         extractedText,
-        textScope: docText && docText !== firstPageText
+        textScope: !docText && !firstPageText && analysis
+          ? 'Fragmente din document verificate in analiza eligibilitatii'
+          : docText && docText !== firstPageText
           ? 'Text extras disponibil din document'
           : 'Prima pagina / inceputul documentului',
       };
@@ -444,8 +508,14 @@ export function buildActivityAutofillDeliverablesPayload(
       if (deliverable.documentTitle) payload.documentTitle = deliverable.documentTitle;
       if (deliverable.deliverableType) payload.deliverableType = deliverable.deliverableType;
       if (deliverable.stadiu) payload.stadiu = deliverable.stadiu;
+      if (deliverable.fileHash) payload.fileHash = deliverable.fileHash;
       if (deliverable.eligibilityStatus) payload.eligibilityStatus = deliverable.eligibilityStatus;
       if (deliverable.eligibilitySummary) payload.eligibilitySummary = deliverable.eligibilitySummary;
+      if (analysis) {
+        Object.assign(payload, analysis);
+        payload.eligibilityStatus = deliverable.eligibilityCheck?.status || payload.eligibilityStatus;
+        payload.eligibilitySummary = deliverable.eligibilityCheck?.summary || payload.eligibilitySummary;
+      }
 
       return payload;
     })
@@ -460,6 +530,7 @@ export function normalizeActivityAutofillRequest(input: ActivityAutofillRequest)
     deliverables: input.deliverables
       .map((deliverable) => ({
         ...deliverable,
+        ...normalizeAnalysisEvidence(deliverable),
         extractedText: trimText(deliverable.extractedText),
       }))
       .filter((deliverable) => deliverable.extractedText.length > 0)
@@ -554,6 +625,9 @@ Reguli obligatorii pentru fiecare camp:
   * eligibilityStatus "neeligibil": nu prezenta livrabilul ca rezultat valid al activitatii;
   * eligibilityStatus "neconcludent" sau lipsa status: foloseste doar fapte neutre din continut si seteaza confidence "low" sau "medium", dupa caz.
 - Daca eligibilitySummary indica nepotrivire de activitate, SA sau tip livrabil, nu acoperi nepotrivirea printr-un text frumos; marcheaza riscul in warnings.
+- analysisSummary este rezumatul documentului din analiza finalizata pentru acelasi fisier; reutilizeaza-l impreuna cu analysisEvidence ca baza documentara pentru naratiune, fara a reface evaluarea eligibilitatii.
+- Rezumatul nu dovedeste singur actiuni ale expertului. Pastreaza doar faptele sustinute de analysisEvidence, textul extras si currentDescription; la contradictii foloseste fragmentele documentului si semnaleaza problema in warnings.
+- Pastreaza avertismentele si limitarile din eligibilityStatus si eligibilitySummary inclusiv cand exista analysisSummary. Nu inventa zile sau ore pe baza rezumatului si nu inlocui instructiunile expertului din currentDescription.
 - Daca sursele RAG contrazic orice element din catalog, catalogul are prioritate.
 - Daca scopul oficial al SA contrazice o sursa RAG de stil sau istoric, scopul oficial si catalogul activitatii au prioritate.
 - Poti inspira stilul descrierii din raportari aprobate, dar nu copia mecanic fragmente lungi.
@@ -662,6 +736,7 @@ function collectAllowedNumericFacts(request: ActivityAutofillRequest, catalogCan
       deliverable.deliverableType,
       deliverable.stadiu,
       deliverable.extractedText,
+      ...(normalizeAnalysisEvidence(deliverable).analysisEvidence || []),
       deliverable.eligibilityStatus,
       deliverable.eligibilitySummary,
     ].join(' ')),

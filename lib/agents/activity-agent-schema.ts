@@ -1,11 +1,21 @@
 import { z } from 'zod';
+import { activityAutofillDeliverableSchema, getActivityAutofillVerifiedAnalysisEvidence } from '../activity-autofill.ts';
 
-export const activityAgentDeliverableSchema = z.object({
-  id: z.string().optional(),
+export const activityAgentDeliverableSchema = activityAutofillDeliverableSchema.extend({
   documentTitle: z.string().min(1),
-  deliverableType: z.string().optional(),
   extractedText: z.string().optional(),
-  eligibilitySummary: z.string().optional(),
+}).transform((deliverable) => {
+  const evidence = getActivityAutofillVerifiedAnalysisEvidence({ ...deliverable, extractedText: deliverable.extractedText || '' });
+  const normalized = { ...deliverable };
+  if (evidence.length) {
+    normalized.analysisEvidence = evidence;
+  } else {
+    delete normalized.analysisVersion;
+    delete normalized.analysisFileHash;
+    delete normalized.analysisSummary;
+    delete normalized.analysisEvidence;
+  }
+  return normalized;
 });
 
 export const activityAgentCatalogCandidateSchema = z.object({

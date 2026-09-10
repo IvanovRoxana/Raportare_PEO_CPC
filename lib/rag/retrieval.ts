@@ -5,6 +5,7 @@ import {
   isActivityAutofillRagPaOnly,
 } from '../feature-flags.ts';
 import { normalizePeoCategory } from '../peo-category.ts';
+import { getActivityAutofillDeliverableEvidenceText } from '../activity-autofill.ts';
 import type { KnowledgeChunk } from '../types.ts';
 import { normalizeRagText } from './chunking.ts';
 import { cosineSimilarity, generateEmbedding, getRagEmbeddingModelName, parseEmbedding } from './embeddings.ts';
@@ -75,7 +76,7 @@ export function buildActivityAutofillRagQuery(request: RagRetrievalRequest) {
       deliverable.documentTitle,
       deliverable.deliverableType,
       deliverable.eligibilitySummary,
-      deliverable.extractedText,
+      getActivityAutofillDeliverableEvidenceText(deliverable),
     ].filter(Boolean).join('\n'))
     .join('\n\n');
 

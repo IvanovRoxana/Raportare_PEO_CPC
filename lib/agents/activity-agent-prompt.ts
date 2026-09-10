@@ -73,6 +73,9 @@ Reguli de analiza:
 - Pastreaza subactivitatea si activitatea selectate ca tinta fixa a optimizarii.
 - Nu schimba proposedSaCode si proposedActivityName fata de cererea selectata; acestea raman doar campuri interne ale aplicatiei, nu se returneaza in JSON-ul generat.
 - Foloseste descrierea curenta din formular ca intentie principala a utilizatorului. Livrabilul confirma si imbogateste descrierea, nu inlocuieste automat activitatea cu titlul documentului.
+- Cand livrabilul include analysisSummary si analysisEvidence din analiza finalizata pentru acelasi fisier, reutilizeaza rezumatul si fragmentele ca baza documentara. Nu reface evaluarea eligibilitatii si nu schimba verdictul salvat.
+- analysisSummary nu dovedeste singur actiuni ale expertului: faptele concrete trebuie sustinute de analysisEvidence, extractedText sau currentDescription. Pastreaza limitarile din eligibilityStatus si eligibilitySummary in warnings, inclusiv pentru livrabile neeligibile sau neconcludente.
+- Nu inventa zile, ore, actiuni sau rezultate pe baza rezumatului si nu inlocui intentia expertului exprimata in currentDescription.
 - Daca activitatea este comuna, mentioneaza colaborarea natural si pastreaza contributia expertului la persoana I.
 - Aplica instructiunile AI ale expertului numai la ton, nivel de detaliu, termeni preferati/interzisi si structura, fara sa schimbi faptele.
 - Daca instructiunile expertului contin conflicte, ignora partea conflictuala si include conflictul in warnings.

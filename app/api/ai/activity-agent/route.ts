@@ -8,6 +8,7 @@ import {
 } from '@/lib/agents/activity-agent';
 import { activityAgentRequestSchema } from '@/lib/agents/activity-agent-schema';
 import {
+  normalizeActivityAutofillRequest,
   validateActivityAutofillSuggestionAgainstCatalog,
   type ActivityAutofillCatalogCandidate,
   type ActivityAutofillRequest,
@@ -60,7 +61,7 @@ export async function POST(req: Request) {
           saCode: candidate.saCode || parsed.data.saCode || agentResponse.proposedSaCode || '',
         }))
         .filter((candidate) => Boolean(candidate.saCode));
-      const validationRequest: ActivityAutofillRequest = {
+      const validationRequest: ActivityAutofillRequest = normalizeActivityAutofillRequest({
         ...parsed.data,
         saCode: parsed.data.saCode || agentResponse.proposedSaCode || '',
         activityName: parsed.data.activityName || agentResponse.proposedActivityName || '',
@@ -71,7 +72,7 @@ export async function POST(req: Request) {
           }))
           .filter(hasExtractedText),
         catalogCandidates: validationCatalogCandidates,
-      };
+      });
       const validation = validateActivityAutofillSuggestionAgainstCatalog(
         suggestion,
         validationCatalogCandidates,

@@ -189,6 +189,39 @@ test('detecteaza document existent dupa titlul confirmat normalizat', () => {
   assert.ok(matches[0].issues.includes('possible_common_unmarked'));
 });
 
+test('ordoneaza duplicatele dupa hash exact apoi coperta continut si titlu', () => {
+  const metadata = {
+    s3Key: 'documents/raport.pdf',
+    originalFileName: 'raport.pdf',
+    mimeType: 'application/pdf',
+    fileSize: 1024,
+    uploadedByExpertId: 'expert-1',
+    uploadDate: '2026-06-03T00:00:00.000Z',
+  };
+  const existing = [
+    { ...metadata, id: 'title', extractedTitleNormalized: 'raport lunar' },
+    { ...metadata, id: 'content', contentFingerprint: 'same-content' },
+    { ...metadata, id: 'cover', firstPageTextHash: 'same-cover', fileHash: 'different-bytes' },
+    { ...metadata, id: 'exact', fileHash: 'same-bytes' },
+    { ...metadata, id: 'another-title', extractedTitleNormalized: 'raport lunar' },
+  ];
+  const matches = findDuplicateCandidates(existing, {
+    id: 'candidate',
+    fileHash: 'same-bytes',
+    firstPageTextHash: 'same-cover',
+    contentFingerprint: 'same-content',
+    extractedTitleNormalized: 'raport lunar',
+    fileSize: 1024,
+    mimeType: 'application/pdf',
+  });
+
+  assert.deepEqual(matches.map((match) => match.document.id), ['exact', 'cover', 'content', 'title', 'another-title']);
+  assert.ok(matches[0].issues.includes('duplicate_detected'));
+  assert.ok(matches[1].issues.includes('same_first_page_hash'));
+  assert.equal(matches[1].issues.includes('duplicate_detected'), false);
+  assert.deepEqual(existing.map((document) => document.id), ['title', 'content', 'cover', 'exact', 'another-title']);
+});
+
 test('mesajul de duplicat explica semnalul potrivit', () => {
   assert.equal(
     getDuplicateAlertTitle({ issues: ['same_file_hash'], isOtherExpert: true }),

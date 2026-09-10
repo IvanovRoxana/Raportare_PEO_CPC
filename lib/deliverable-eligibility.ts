@@ -76,6 +76,7 @@ export const deliverableEligibilityDocumentSchema = z.object({
   extractedText: z.string().optional(),
   deliverableType: z.string().optional(),
   textScope: z.string().optional(),
+  fileHash: z.string().optional(),
   duplicateStatus: z.string().optional(),
   possibleDuplicateOfDocumentId: z.string().optional(),
 });
@@ -420,6 +421,7 @@ export function normalizeDeliverableEligibilityDocuments(input: {
   extractedText?: unknown;
   deliverableType?: unknown;
   textScope?: unknown;
+  maxTextChars?: number;
 }) {
   const parsed = z.array(deliverableEligibilityDocumentSchema).safeParse(input.deliverables);
   const requestedActivityGroupId = String(input.activityGroupId || '').trim();
@@ -458,7 +460,7 @@ export function normalizeDeliverableEligibilityDocuments(input: {
       titleCheckStatus: String(deliverable.titleCheckStatus || '').trim(),
       titleCheckMessage: String(deliverable.titleCheckMessage || '').trim(),
       fileName: String(deliverable.fileName || '').trim(),
-      extractedText: String(deliverable.extractedText || '').slice(0, 12000),
+      extractedText: String(deliverable.extractedText || '').slice(0, input.maxTextChars ?? 12000),
       deliverableType: String(deliverable.deliverableType || '').trim(),
       textScope: String(deliverable.textScope || '').trim(),
       isPrimary: Boolean(
@@ -593,7 +595,8 @@ export function buildDeliverableEligibilitySemanticAudit(input: {
   ]);
   const hasAuthor = hasTextEvidence(combinedText, [/\bautor\b/, /\bde\s+[a-z]+(?:\s+[a-z]+){1,3}\b/]);
   const hasLink = hasTextEvidence(combinedText, [/https?:\/\//, /\bwww\./, /\.ro\b/, /\blink\b/, /\burl\b/]);
-  const duplicateDocuments = documents.filter((document) => document.duplicateStatus);
+  const duplicateDocuments = documents.filter((document) => document.duplicateStatus
+    && !['fingerprinted', 'pending_upload'].includes(document.duplicateStatus));
   const collaborators = Array.isArray(input.collaborators) ? input.collaborators : [];
   const workingGroupActivities = Array.isArray(input.workingGroupActivities) ? input.workingGroupActivities : [];
 

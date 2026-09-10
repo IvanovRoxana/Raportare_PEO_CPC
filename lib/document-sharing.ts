@@ -342,6 +342,13 @@ export function findDuplicateCandidates(
   existingDocuments: DocumentMetadata[],
   candidate: Pick<DocumentMetadata, 'id' | 'fileHash' | 'firstPageTextHash' | 'extractedTitleNormalized' | 'contentFingerprint' | 'fileSize' | 'mimeType'>,
 ) {
+  const matchStrength = (issues: DuplicateIssueType[]) => {
+    if (issues.includes('same_file_hash')) return 4;
+    if (issues.includes('same_first_page_hash')) return 3;
+    if (issues.includes('similar_content_fingerprint')) return 2;
+    return 1;
+  };
+
   return existingDocuments
     .filter((document) => document.id !== candidate.id)
     .map((document) => {
@@ -372,7 +379,8 @@ export function findDuplicateCandidates(
         issues: [...new Set(issues)],
       };
     })
-    .filter((candidateMatch) => candidateMatch.issues.length > 0);
+    .filter((candidateMatch) => candidateMatch.issues.length > 0)
+    .sort((left, right) => matchStrength(right.issues) - matchStrength(left.issues));
 }
 
 export function isDeliverableIncludedInExpertExport(args: {

@@ -15,7 +15,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Mic, Loader2, Download, Check, AlertTriangle, Plus } from 'lucide-react';
-import { DeliverableItem } from './deliverable-item';
+import { DeliverableItem, type DeliverableEligibilityControlProps } from './deliverable-item';
 import { type DeliverableSlot, extractEventDate, createDeliverableSlot } from '@/lib/deliverable-types';
 import { generateDocx, downloadBlob } from '@/lib/document-utils';
 import type { Expert } from '@/lib/types';
@@ -40,6 +40,10 @@ interface EventDocsPanelProps {
   expertName?: string;
   allExperts?: Expert[];
   currentExpertId?: string;
+  eligibilityContext?: Pick<DeliverableEligibilityControlProps,
+    'expertId' | 'expertCategory' | 'expertFunction' | 'expertProjectRole' | 'projectCode'
+    | 'selectedActivityId' | 'activityCatalogCandidates' | 'currentDescription' | 'classificationMode' | 'month' | 'year'
+  >;
   onUpdateDeliverable: (id: string, patch: Partial<DeliverableSlot>) => void;
   onAddEventProof: () => void;
   onRemoveDeliverable: (id: string) => void;
@@ -58,6 +62,7 @@ export function EventDocsPanel({
   expertName,
   allExperts = [],
   currentExpertId,
+  eligibilityContext,
   onUpdateDeliverable,
   onAddEventProof,
   onRemoveDeliverable,
@@ -308,6 +313,9 @@ export function EventDocsPanel({
           {/* Upload direct */}
           {hasMOM && (
             <DeliverableItem
+              {...eligibilityContext}
+              expertId={eligibilityContext?.expertId || currentExpertId}
+              classificationMode="manual"
               deliverable={eventMOM || createDeliverableSlot('event_mom', 'Minute intalnire / MOM')}
               subActivity={subActivity}
               activityTitle={activityTitle}
@@ -521,6 +529,9 @@ export function EventDocsPanel({
               <div className="space-y-2">
                 {(localEventProofs.length > 0 ? localEventProofs : [createDeliverableSlot('event_proof', 'Fotografii eveniment')]).map((proof, index) => (
                   <DeliverableItem
+                    {...eligibilityContext}
+                    expertId={eligibilityContext?.expertId || currentExpertId}
+                    classificationMode="manual"
                     key={proof.id}
                     deliverable={proof}
                     subActivity={subActivity}

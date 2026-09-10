@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { fetchAuthSession } from 'aws-amplify/auth';
 import { AlertTriangle, Check, FileText, Image, Loader2, Sparkles, Upload, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -11,7 +12,9 @@ import { extractDocxFirstPageText, extractDocxTextWithSource, extractHtmlTextWit
 import { DELIVERABLE_ELIGIBILITY_UI_MESSAGE, isDeliverableEligibilityCheckEnabledClient } from '@/lib/feature-flags';
 import { hasSufficientDeliverableEvidenceForEligibility } from '@/lib/deliverable-eligibility';
 import { mergeEligibilityCheckWithPmUnlockTracking } from '@/lib/pm-unlock-status';
-import { applyAutomaticTitleSuggestion, formatTitleFromFilename, isLikelyFilenameDerivedTitle, shouldUseAiTitleSuggestion, suggestTitleFromFirstPage, validateDeclaredTitleInDocumentText } from '@/lib/title-suggestion';
+import { applyAutomaticTitleSuggestion, formatTitleFromFilename, shouldUseAiTitleSuggestion, suggestTitleFromFirstPage, validateDeclaredTitleInDocumentText } from '@/lib/title-suggestion';
+import { EligibilityAttemptError, getDeclaredTitleEligibilityIssue, getDisplayEligibilityScore, getEligibilityAttemptState, getEligibilityFailureSummary, isReusableEligibilityCheck, type EligibilityFailurePhase } from '@/lib/deliverable-check-state';
+import { buildDeliverableGroupAssessmentPatches } from '@/lib/deliverable-group-state';
 import {
   getDocumentAuditTitle,
   getDuplicateAlertGuidance,
@@ -24,6 +27,7 @@ import {
 } from '@/lib/document-sharing';
 import { getSecureDocumentUrl } from '@/lib/document-retrieval';
 import type { ActivityCatalog } from '@/lib/types';
+import { EligibilityAssessmentDetails } from './eligibility-assessment-details';
 
 export interface DeliverableDuplicateInfo {
   documentId: string;
@@ -40,6 +44,60 @@ type EligibilitySuggestedSettings = NonNullable<NonNullable<DeliverableSlot['eli
 type EligibilitySuggestedSettingsChange = 'activity' | 'deliverableType';
 
 const ELIGIBILITY_CHECK_WAITING_MESSAGE = 'Verificarea eligibilitatii dureaza putin, te rugam sa astepti.';
+const ELIGIBILITY_REQUEST_TIMEOUT_MS = 90000;
+
+async function requestDeliverableEligibility(body: string) {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  try {
+    const token = (await fetchAuthSession()).tokens?.accessToken?.toString();
+    if (token) headers.Authorization = `Bearer ${token}`;
+  } catch {
+    // The server decides whether the current session permits evaluation.
+  }
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), ELIGIBILITY_REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch('/api/ai/check-deliverable-eligibility', {
+      method: 'POST',
+      headers,
+      body,
+      signal: controller.signal,
+    });
+    const result = await response.json().catch(() => null);
+    if (!response.ok) {
+      throw new Error(result?.error || `Serviciul de evaluare a raspuns cu eroarea HTTP ${response.status}`);
+    }
+    if (!result || typeof result.status !== 'string' || typeof result.summary !== 'string') {
+      throw new Error('Serviciul de evaluare a returnat un raspuns incomplet');
+    }
+    return result;
+  } catch (error) {
+    throw new EligibilityAttemptError('evaluation', controller.signal.aborted
+      ? 'Serviciul nu a raspuns in 90 de secunde'
+      : error instanceof Error ? error.message : 'Serviciul de evaluare nu a raspuns');
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+// Discard late responses after a document, activity, scope or expert edit.
+function useEligibilityAttemptGuard(context: unknown[]) {
+  const key = JSON.stringify(context);
+  const latest = useRef({ key, version: 0 });
+  if (latest.current.key !== key) latest.current = { key, version: latest.current.version + 1 };
+  useEffect(() => () => { latest.current.version += 1; }, []);
+  return () => {
+    const version = ++latest.current.version;
+    return () => latest.current.key === key && latest.current.version === version;
+  };
+}
+
+function getEligibilityDocumentContext(deliverable: DeliverableSlot) {
+  return [deliverable.id, deliverable.fileHash, deliverable.s3Key, deliverable.filename,
+    deliverable.fileHash ? undefined : deliverable.fileData, deliverable.documentId,
+    deliverable.declaredTitle, deliverable.type, deliverable.deliverableType, deliverable.slotType,
+    deliverable.stadiu, deliverable.uploaded];
+}
 
 function getAiStatusForEligibilityResult(status: string | undefined) {
   if (status === 'eligibil' || status === 'eligibil_cu_observatii') return 'eligible';
@@ -155,20 +213,33 @@ async function getDeliverableFileForTextExtraction(deliverable: DeliverableSlot)
 
   if (!deliverable.s3Key) return null;
 
-  const secureDocument = await getSecureDocumentUrl({
-    s3Key: deliverable.s3Key,
-    originalFileName: fileName,
-  });
-  const response = await fetch(secureDocument.url);
-  if (!response.ok) {
-    throw new Error(`Nu am putut descarca livrabilul pentru citire (${response.status}).`);
+  try {
+    const secureDocument = await getSecureDocumentUrl({
+      s3Key: deliverable.s3Key,
+      originalFileName: fileName,
+    });
+    const response = await fetch(secureDocument.url, { signal: AbortSignal.timeout(60000) });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    return new File([await response.blob()], fileName, { type: fileType });
+  } catch (error) {
+    throw new EligibilityAttemptError('download', `${fileName}: ${error instanceof Error ? error.message : 'Descarcare nereusita'}`);
   }
-
-  return new File([await response.blob()], fileName, { type: fileType });
 }
 
 async function extractDeliverableTextForEligibility(deliverable: DeliverableSlot, expertCategory?: string): Promise<Partial<DeliverableSlot> | null> {
-  if (hasEnoughExtractedTextForEligibility(deliverable, expertCategory)) return null;
+  try {
+    return await readDeliverableTextForEligibility(deliverable, expertCategory);
+  } catch (error) {
+    if (error instanceof EligibilityAttemptError) throw error;
+    const fileName = deliverable.filename || deliverable.name || deliverable.id;
+    throw new EligibilityAttemptError('extraction', `${fileName}: ${error instanceof Error ? error.message : 'Citire nereusita'}`);
+  }
+}
+
+async function readDeliverableTextForEligibility(deliverable: DeliverableSlot, expertCategory?: string): Promise<Partial<DeliverableSlot> | null> {
+  if (deliverable.textExtractionScope === 'full_document' && hasEnoughExtractedTextForEligibility(deliverable, expertCategory) && deliverable.firstPageText?.trim()) return null;
 
   const file = await getDeliverableFileForTextExtraction(deliverable);
   if (!file) return null;
@@ -184,33 +255,39 @@ async function extractDeliverableTextForEligibility(deliverable: DeliverableSlot
   let docText: string | null = null;
   let firstPageText: string | null = null;
   let textExtractionSource: DeliverableSlot['textExtractionSource'];
+  let fullDocumentRead = false;
 
   if (isPhoto) {
     const ocrResult = await extractImageTextWithSource(file);
     firstPageText = ocrResult.text;
     docText = ocrResult.text;
     textExtractionSource = ocrResult.source;
+    fullDocumentRead = Boolean(ocrResult.text);
   } else if (isWordDocument) {
     firstPageText = await extractDocxFirstPageText(file);
     const docxResult = await extractDocxTextWithSource(file);
     docText = docxResult.text || firstPageText;
     textExtractionSource = docxResult.source || (firstPageText ? 'native' : undefined);
+    fullDocumentRead = Boolean(docxResult.text) && docxResult.complete !== false;
   } else if (isPdf) {
     const pdfResult = await extractPdfFirstPageTextWithSource(file);
-    const fullPdfResult = await extractPdfTextWithSource(file);
-    firstPageText = pdfResult.text || fullPdfResult.text?.slice(0, 5000) || null;
+    const fullPdfResult = await extractPdfTextWithSource(file, { requireComplete: true });
+    firstPageText = pdfResult.text || null;
     docText = fullPdfResult.text || firstPageText;
     textExtractionSource = fullPdfResult.source || pdfResult.source;
+    fullDocumentRead = Boolean(fullPdfResult.text) && fullPdfResult.complete !== false;
   } else if (isSpreadsheet) {
     const spreadsheetResult = await extractXlsxTextWithSource(file);
     firstPageText = spreadsheetResult.text?.slice(0, 5000) || null;
     docText = spreadsheetResult.text;
     textExtractionSource = spreadsheetResult.source;
+    fullDocumentRead = Boolean(spreadsheetResult.text);
   } else if (isHtml) {
     const htmlResult = await extractHtmlTextWithSource(file);
     firstPageText = htmlResult.text?.slice(0, 5000) || null;
     docText = htmlResult.text;
     textExtractionSource = htmlResult.source;
+    fullDocumentRead = Boolean(htmlResult.text);
   }
 
   const readableText = firstPageText || docText;
@@ -220,6 +297,7 @@ async function extractDeliverableTextForEligibility(deliverable: DeliverableSlot
     docText,
     firstPageText,
     textExtractionSource,
+    textExtractionScope: fullDocumentRead ? 'full_document' : 'first_page',
     firstPageTextHash: await hashFirstPageText(readableText),
     contentFingerprint: normalizeDocumentTextForFingerprint(readableText).slice(0, 500),
     duplicateStatus: 'fingerprinted',
@@ -237,43 +315,19 @@ function buildEligibilityDocumentPayload(deliverable: DeliverableSlot, activityG
       originalFileName: deliverable.filename || deliverable.name,
     }),
     fileName: deliverable.filename || deliverable.name,
-    extractedText: (deliverable.docText || deliverable.firstPageText || '').slice(0, 12000),
+    extractedText: deliverable.docText || deliverable.firstPageText || '',
+    fileHash: deliverable.fileHash,
     deliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
     duplicateStatus: deliverable.duplicateStatus,
     possibleDuplicateOfDocumentId: deliverable.possibleDuplicateOfDocumentId,
-    textScope: deliverable.docText && deliverable.docText !== deliverable.firstPageText
-      ? 'Text extras disponibil din document'
-      : 'Prima pagina / inceputul documentului',
+    textScope: deliverable.textExtractionScope === 'full_document'
+      ? 'Text integral extras'
+      : 'Text partial / completitudine necunoscuta',
   };
 }
 
 function normalizeEligibilityContextValue(value?: string | null) {
   return String(value ?? '').trim().toLowerCase();
-}
-
-function normalizeEligibilityResultText(value: unknown) {
-  return String(value ?? '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase();
-}
-
-function isTextInsufficientEligibilityCheck(check: DeliverableSlot['eligibilityCheck'] | undefined | null) {
-  if (!check || check.status !== 'neconcludent') return false;
-
-  const checkText = normalizeEligibilityResultText([
-    check.summary,
-    ...(check.checks || []).map((item) => `${item.criterion} ${item.explanation}`),
-    ...(check.missingElements || []),
-    ...(check.recommendations || []),
-    ...(check.riskFlags || []),
-  ].filter(Boolean).join(' '));
-
-  return checkText.includes('text') && (
-    checkText.includes('insuficient')
-    || checkText.includes('prea scurt')
-    || checkText.includes('nu a putut citi')
-  );
 }
 
 function isEligibilityCheckObsoleteForCurrentActivity(
@@ -320,25 +374,6 @@ function isEligibilityCheckObsoleteForCurrentActivity(
   return suggestedIdMatches || suggestedActivityMatches;
 }
 
-function getDeclaredTitleEligibilityIssue(deliverable: DeliverableSlot) {
-  if (!deliverable.uploaded || deliverable.isPhoto) return null;
-  const declaredTitle = (deliverable.declaredTitle || '').trim();
-  if (!declaredTitle) return 'Completeaza titlul declarat al documentului inainte de verificarea eligibilitatii.';
-
-  const validation = validateDeclaredTitleInDocumentText({
-    documentText: deliverable.firstPageText || deliverable.docText,
-    declaredTitle,
-    titleSource: deliverable.titleSource,
-  });
-  if (validation.titleCheckStatus === 'mismatch' || validation.titleCheckStatus === 'extraction_failed') {
-    return validation.titleCheckMessage;
-  }
-  if (isLikelyFilenameDerivedTitle(declaredTitle, deliverable.filename || deliverable.name)) {
-    return 'Titlul declarat pare preluat din numele fisierului, nu din prima pagina a documentului. Corecteaza titlul inainte de verificarea eligibilitatii.';
-  }
-  return null;
-}
-
 function buildTitleEligibilityFailure(reason: string, deliverable: DeliverableSlot, context: {
   subActivity: string;
   activityTitle: string;
@@ -372,6 +407,8 @@ interface DeliverableItemProps {
   deliverable: DeliverableSlot;
   subActivity: string;
   activityTitle: string;
+  classificationMode?: 'automatic' | 'manual';
+  currentDescription?: string;
   selectedActivityId?: string;
   catalogDescription?: string;
   catalogObjectives?: string;
@@ -433,6 +470,8 @@ export function DeliverableItem({
   deliverable,
   subActivity,
   activityTitle,
+  classificationMode = 'manual',
+  currentDescription,
   selectedActivityId,
   catalogDescription,
   catalogObjectives,
@@ -477,6 +516,7 @@ export function DeliverableItem({
   const fileRef = useRef<HTMLInputElement>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [extractingText, setExtractingText] = useState(false);
+  const startEligibilityAttempt = useEligibilityAttemptGuard([subActivity, selectedActivityId, activityTitle, classificationMode, currentDescription, expertId, expertCategory, workBlockId, getEligibilityDocumentContext(deliverable)]);
   const [isEditingConfirmedTitle, setIsEditingConfirmedTitle] = useState(false);
   const hydratedTitleSuggestionRef = useRef<string | null>(null);
   const eligibilityCheckEnabled = isDeliverableEligibilityCheckEnabledClient();
@@ -486,7 +526,7 @@ export function DeliverableItem({
     selectedActivityId,
     deliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
   }) ? null : deliverable.eligibilityCheck;
-  const hasReusableEligibilityCheck = Boolean(visibleEligibilityCheck && !isTextInsufficientEligibilityCheck(visibleEligibilityCheck));
+  const hasReusableEligibilityCheck = isReusableEligibilityCheck(visibleEligibilityCheck);
   const metadataLocked = Boolean(deliverable.lockedExistingMetadata);
 
   const readFileAsDataUrl = (file: File) =>
@@ -500,7 +540,7 @@ export function DeliverableItem({
   useEffect(() => {
     if (!deliverable.uploaded || deliverable.isPhoto || deliverable.suggestedTitle) return;
 
-    const titleText = deliverable.firstPageText || deliverable.docText;
+    const titleText = deliverable.firstPageText;
     if (!titleText || titleText.trim().length < 20) return;
 
     const fileName = deliverable.filename || deliverable.name || '';
@@ -658,9 +698,6 @@ export function DeliverableItem({
         const pdfResult = await extractPdfFirstPageTextWithSource(file);
         const fullPdfResult = await extractPdfTextWithSource(file);
         firstPageText = pdfResult.text;
-        if (!firstPageText && fullPdfResult.text) {
-          firstPageText = fullPdfResult.text.slice(0, 5000);
-        }
         titleSuggestion = suggestTitleFromFirstPage(firstPageText);
         docTitle = titleSuggestion.suggestedTitle;
         docText = fullPdfResult.text || firstPageText;
@@ -677,12 +714,12 @@ export function DeliverableItem({
         textExtractionSource = htmlResult.source;
       }
 
-      if (!titleSuggestion.suggestedTitle && docText) {
-        titleSuggestion = suggestTitleFromFirstPage(docText.slice(0, 8000));
+      if (!titleSuggestion.suggestedTitle && firstPageText) {
+        titleSuggestion = suggestTitleFromFirstPage(firstPageText);
         docTitle = titleSuggestion.suggestedTitle;
       }
 
-      const titleText = firstPageText || docText;
+      const titleText = firstPageText;
       if (shouldUseAiTitleSuggestion({ text: titleText, suggestion: titleSuggestion })) {
         try {
           const response = await fetch('/api/ai/suggest-document-title', {
@@ -738,13 +775,13 @@ export function DeliverableItem({
         currentTitleSource: deliverable.titleSource,
         suggestedTitle: docTitle,
         confidence: titleSuggestion.confidence,
-        documentText: firstPageText || docText,
+        documentText: firstPageText,
         fileName: file.name || deliverable.filename || deliverable.name,
       });
       const validation = isPhoto || !titleSuggestionPatch.declaredTitle
         ? null
         : validateDeclaredTitleInDocumentText({
-            documentText: firstPageText || docText,
+            documentText: firstPageText,
             declaredTitle: titleSuggestionPatch.declaredTitle,
             titleSource: titleSuggestionPatch.titleSource,
           });
@@ -770,6 +807,7 @@ export function DeliverableItem({
         docText,
         firstPageText,
         textExtractionSource,
+        textExtractionScope: 'unknown',
         fileHash,
         firstPageTextHash,
         contentFingerprint,
@@ -829,11 +867,13 @@ export function DeliverableItem({
 
   const handleAiCheck = async () => {
     if (!eligibilityCheckEnabled) return;
+    const isCurrentAttempt = startEligibilityAttempt();
 
     setAiLoading(true);
     const pendingEligibilityCheck = mergeEligibilityCheckWithPmUnlockTracking(deliverable.eligibilityCheck, {
       status: 'neconcludent',
       score: 0,
+      executionStatus: 'pending' as const,
       summary: 'Verificarea eligibilitatii a fost pornita. Daca AI nu raspunde, continua cu introducere manuala si verificare PM.',
       checks: [],
       missingElements: [],
@@ -855,17 +895,26 @@ export function DeliverableItem({
         issues: ['Verificare automata in curs sau indisponibila.'],
       },
     });
+    let failurePhase: EligibilityFailurePhase = 'extraction';
     try {
       const extractionPatch = await extractDeliverableTextForEligibility(deliverable, expertCategory);
+      if (!isCurrentAttempt()) return;
       const eligibilityDeliverable = extractionPatch ? { ...deliverable, ...extractionPatch } : deliverable;
       if (extractionPatch) {
         onUpdate(extractionPatch);
       }
-      const extractedText = (eligibilityDeliverable.docText || eligibilityDeliverable.firstPageText || '').slice(0, 12000);
-      const response = await fetch('/api/ai/check-deliverable-eligibility', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const titleIssue = getDeclaredTitleEligibilityIssue(eligibilityDeliverable);
+      if (titleIssue) {
+        onUpdate({
+          eligibilityCheck: buildTitleEligibilityFailure(titleIssue, eligibilityDeliverable, { subActivity, activityTitle, selectedActivityId, expertName }),
+          aiStatus: 'review',
+          aiCheck: { eligible: null, reason: titleIssue, issues: [titleIssue] },
+        });
+        return;
+      }
+      const extractedText = eligibilityDeliverable.docText || eligibilityDeliverable.firstPageText || '';
+      failurePhase = 'evaluation';
+      const result = await requestDeliverableEligibility(JSON.stringify({
           documentTitle: getDocumentAuditTitle({
             ...eligibilityDeliverable,
             fileName: eligibilityDeliverable.filename || eligibilityDeliverable.name,
@@ -883,8 +932,10 @@ export function DeliverableItem({
           workBlockId,
           workingGroupActivities,
           collaborators,
-          selectedActivityId: selectedActivityId || subActivity,
+          selectedActivityId,
           currentSaCode: subActivity,
+          classificationMode,
+          currentDescription,
           selectedActivityName: activityTitle,
           deliverableType: eligibilityDeliverable.type || eligibilityDeliverable.deliverableType || eligibilityDeliverable.slotType,
           activityCatalogCandidates,
@@ -906,22 +957,17 @@ export function DeliverableItem({
           catalogSource,
           ruleVersionId,
           expertName,
-          textScope: eligibilityDeliverable.docText && eligibilityDeliverable.docText !== eligibilityDeliverable.firstPageText
-            ? 'Text extras disponibil din document'
-            : 'Prima pagină / începutul documentului',
-        }),
-      });
+          textScope: buildEligibilityDocumentPayload(eligibilityDeliverable, selectedActivityId || subActivity, true).textScope,
+      }));
 
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Verificarea eligibilității a eșuat');
-
+      if (!isCurrentAttempt()) return;
       const nextEligibilityCheck = mergeEligibilityCheckWithPmUnlockTracking(deliverable.eligibilityCheck, {
         ...result,
         checkedAt: new Date().toISOString(),
         checkedBy: expertName,
-        checkedActivityId: selectedActivityId || subActivity,
+        checkedActivityId: result.checkedActivityId || selectedActivityId || subActivity,
         checkedSaCode: subActivity,
-        checkedActivityName: activityTitle,
+        checkedActivityName: result.checkedActivityName || activityTitle,
         checkedDeliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
         modelAuditId: result.modelAuditId,
         analyzedDeliverables: result.analyzedDeliverables,
@@ -941,15 +987,18 @@ export function DeliverableItem({
         },
       });
     } catch (error) {
+      if (!isCurrentAttempt()) return;
+      const failureSummary = getEligibilityFailureSummary(error, failurePhase);
       onUpdate({
         eligibilityCheck: mergeEligibilityCheckWithPmUnlockTracking(deliverable.eligibilityCheck, {
           status: 'neconcludent',
           score: 0,
-          summary: 'Eroare: ' + (error instanceof Error ? error.message : 'Eroare necunoscută'),
+          executionStatus: 'failed' as const,
+          summary: failureSummary,
           checks: [],
           missingElements: [],
           recommendations: ['Reîncearcă verificarea sau validează manual livrabilul.'],
-          riskFlags: ['Verificarea API nu a putut fi finalizată.'],
+          riskFlags: ['Eroare tehnica; nu reprezinta o evaluare a eligibilitatii.'],
           checkedAt: new Date().toISOString(),
           checkedBy: expertName,
           checkedActivityId: selectedActivityId || subActivity,
@@ -958,6 +1007,7 @@ export function DeliverableItem({
           checkedDeliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
         }),
         aiStatus: 'review',
+        aiCheck: { eligible: null, reason: failureSummary, issues: ['Verificare nefinalizata. Reincearca.'] },
       });
     } finally {
       setAiLoading(false);
@@ -997,14 +1047,14 @@ export function DeliverableItem({
 
   const validateTitle = (title: string, source: DeliverableSlot['titleSource']) =>
     validateDeclaredTitleInDocumentText({
-      documentText: deliverable.firstPageText || deliverable.docText,
+      documentText: deliverable.firstPageText,
       declaredTitle: title,
       titleSource: source,
     });
 
   const validateTitleForConfirmation = (title: string, source: DeliverableSlot['titleSource']) =>
     validateDeclaredTitleInDocumentText({
-      documentText: deliverable.firstPageText || deliverable.docText,
+      documentText: deliverable.firstPageText,
       declaredTitle: title,
       titleSource: source,
       allowManualConfirmationWithoutExtractedText: true,
@@ -1095,7 +1145,7 @@ export function DeliverableItem({
   const step1ok = deliverable.uploaded && !hasPendingUpload;
   const currentTitleValidation = deliverable.uploaded && !deliverable.isPhoto && deliverable.declaredTitle
     ? validateDeclaredTitleInDocumentText({
-        documentText: deliverable.firstPageText || deliverable.docText,
+        documentText: deliverable.firstPageText,
         declaredTitle: deliverable.declaredTitle,
         titleSource: deliverable.titleSource,
       })
@@ -1106,7 +1156,6 @@ export function DeliverableItem({
     && (
       currentTitleValidation?.titleCheckStatus === 'mismatch'
       || currentTitleValidation?.titleCheckStatus === 'extraction_failed'
-      || isLikelyFilenameDerivedTitle(deliverable.declaredTitle, deliverable.filename || deliverable.name)
     ),
   );
   const effectiveTitleConfirmed = Boolean(deliverable.titleConfirmed && !hasInvalidConfirmedTitle);
@@ -1121,8 +1170,8 @@ export function DeliverableItem({
     && effectiveTitleCheckStatus !== 'extraction_failed';
   const step2ok = deliverable.isPhoto || (deliverable.uploaded && effectiveTitleConfirmed);
   const step3ok = deliverable.isPhoto || (deliverable.uploaded && !!deliverable.stadiu);
-  const step4ok = deliverable.isPhoto || !eligibilityCheckEnabled || (deliverable.uploaded && !!deliverable.aiCheck);
-  const titleEligibilityIssue = visibleEligibilityCheck ? null : getDeclaredTitleEligibilityIssue(deliverable);
+  const step4ok = deliverable.isPhoto || !eligibilityCheckEnabled || (deliverable.uploaded && Boolean(deliverable.aiCheck) && (!visibleEligibilityCheck || hasReusableEligibilityCheck));
+  const titleEligibilityIssue = hasReusableEligibilityCheck ? null : getDeclaredTitleEligibilityIssue(deliverable, canAttemptTextExtractionFromStoredFile(deliverable));
   const textExtractionGateReason = visibleEligibilityCheck ? null : getTextExtractionGateReason(deliverable, undefined, expertCategory);
   const eligibilityGateReason = titleEligibilityIssue
     || textExtractionGateReason
@@ -1590,8 +1639,10 @@ export function DeliverableItem({
           {visibleEligibilityCheck && (
             <EligibilityResultCard
               check={visibleEligibilityCheck}
+              isLoading={aiLoading}
               onApplySuggestedSettings={handleApplyEligibilitySuggestion}
               onRequestPmUnlock={handleRequestPmUnlock}
+              onRecheck={eligibilityCheckEnabled && canCheckEligibility ? handleAiCheck : undefined}
             />
           )}
         </div>
@@ -1645,8 +1696,10 @@ export function DeliverableItem({
       {showEligibilityControl && !renderInlineNotes && deliverable.uploaded && !deliverable.isPhoto && visibleEligibilityCheck && (
         <EligibilityResultCard
           check={visibleEligibilityCheck}
+          isLoading={aiLoading}
           onApplySuggestedSettings={handleApplyEligibilitySuggestion}
           onRequestPmUnlock={handleRequestPmUnlock}
+              onRecheck={eligibilityCheckEnabled && canCheckEligibility ? handleAiCheck : undefined}
         />
       )}
     </div>
@@ -1658,6 +1711,8 @@ export interface DeliverableEligibilityControlProps {
   relatedDeliverables?: DeliverableSlot[];
   subActivity: string;
   activityTitle: string;
+  classificationMode?: 'automatic' | 'manual';
+  currentDescription?: string;
   selectedActivityId?: string;
   catalogDescription?: string;
   catalogObjectives?: string;
@@ -1695,6 +1750,7 @@ export interface DeliverableEligibilityControlProps {
   ruleVersionId?: string;
   expertName?: string;
   onUpdate: (patch: Partial<DeliverableSlot>) => void;
+  onUpdateRelatedDeliverable?: (id: string, patch: Partial<DeliverableSlot>) => void;
   deliverableOptions?: string[];
   activityCatalogCandidates?: ActivityCatalog[];
   canCheckEligibility?: boolean;
@@ -1712,6 +1768,8 @@ export function DeliverableEligibilityControl({
   relatedDeliverables,
   subActivity,
   activityTitle,
+  classificationMode = 'manual',
+  currentDescription,
   selectedActivityId,
   catalogDescription,
   catalogObjectives,
@@ -1736,6 +1794,7 @@ export function DeliverableEligibilityControl({
   ruleVersionId,
   expertName,
   onUpdate,
+  onUpdateRelatedDeliverable,
   deliverableOptions,
   activityCatalogCandidates = [],
   canCheckEligibility = true,
@@ -1744,6 +1803,7 @@ export function DeliverableEligibilityControl({
   className = 'space-y-2',
 }: DeliverableEligibilityControlProps) {
   const [aiLoading, setAiLoading] = useState(false);
+  const startEligibilityAttempt = useEligibilityAttemptGuard([subActivity, selectedActivityId, activityTitle, classificationMode, currentDescription, expertId, expertCategory, workBlockId, getEligibilityDocumentContext(deliverable), getEligibilityDeliverables(deliverable, relatedDeliverables).map(getEligibilityDocumentContext)]);
   const eligibilityCheckEnabled = isDeliverableEligibilityCheckEnabledClient();
   const typeOptions = deliverableOptions || ALL_DELIVERABLE_TYPES;
   const visibleEligibilityCheck = isEligibilityCheckObsoleteForCurrentActivity(deliverable.eligibilityCheck, {
@@ -1752,12 +1812,12 @@ export function DeliverableEligibilityControl({
     selectedActivityId,
     deliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
   }) ? null : deliverable.eligibilityCheck;
-  const hasReusableEligibilityCheck = Boolean(visibleEligibilityCheck && !isTextInsufficientEligibilityCheck(visibleEligibilityCheck));
+  const hasReusableEligibilityCheck = isReusableEligibilityCheck(visibleEligibilityCheck);
 
   if (!deliverable.uploaded || deliverable.isPhoto) return null;
 
   const textExtractionGateReason = visibleEligibilityCheck ? null : getTextExtractionGateReason(deliverable, relatedDeliverables, expertCategory);
-  const titleEligibilityIssue = visibleEligibilityCheck ? null : getDeclaredTitleEligibilityIssue(deliverable);
+  const titleEligibilityIssue = hasReusableEligibilityCheck ? null : getDeclaredTitleEligibilityIssue(deliverable, canAttemptTextExtractionFromStoredFile(deliverable));
   const eligibilityGateReason = titleEligibilityIssue
     || textExtractionGateReason
     || (!deliverable.stadiu
@@ -1767,31 +1827,13 @@ export function DeliverableEligibilityControl({
 
   const handleAiCheck = async () => {
     if (!eligibilityCheckEnabled) return;
-
-    const titleIssue = getDeclaredTitleEligibilityIssue(deliverable);
-    if (titleIssue) {
-      const nextEligibilityCheck = buildTitleEligibilityFailure(titleIssue, deliverable, {
-        subActivity,
-        activityTitle,
-        selectedActivityId,
-        expertName,
-      });
-      onUpdate({
-        eligibilityCheck: nextEligibilityCheck,
-        aiStatus: 'review',
-        aiCheck: {
-          eligible: null,
-          reason: titleIssue,
-          issues: ['Titlul declarat trebuie corectat inainte de verificarea eligibilitatii.'],
-        },
-      });
-      return;
-    }
+    const isCurrentAttempt = startEligibilityAttempt();
 
     setAiLoading(true);
     const pendingEligibilityCheck = mergeEligibilityCheckWithPmUnlockTracking(deliverable.eligibilityCheck, {
       status: 'neconcludent',
       score: 0,
+      executionStatus: 'pending' as const,
       summary: 'Verificarea eligibilitatii a fost pornita. Daca AI nu raspunde, continua cu introducere manuala si verificare PM.',
       checks: [],
       missingElements: [],
@@ -1813,24 +1855,35 @@ export function DeliverableEligibilityControl({
         issues: ['Verificare automata in curs sau indisponibila.'],
       },
     });
+    let failurePhase: EligibilityFailurePhase = 'extraction';
     try {
       const activityGroupId = selectedActivityId || subActivity;
       const eligibilityDeliverables = await Promise.all(
         getEligibilityDeliverables(deliverable, relatedDeliverables).map(async (item) => {
           const extractionPatch = await extractDeliverableTextForEligibility(item, expertCategory);
           const nextItem = extractionPatch ? { ...item, ...extractionPatch } : item;
-          if (item.id === deliverable.id && extractionPatch) {
-            onUpdate(extractionPatch);
+          if (!isCurrentAttempt()) throw new Error('Contextul verificarii s-a schimbat');
+          if (extractionPatch) {
+            if (item.id === deliverable.id) onUpdate(extractionPatch);
+            else onUpdateRelatedDeliverable?.(item.id, extractionPatch);
           }
           return nextItem;
         }),
       );
+      if (!isCurrentAttempt()) return;
       const primaryEligibilityDeliverable = eligibilityDeliverables.find((item) => item.id === deliverable.id) || deliverable;
-      const extractedText = (primaryEligibilityDeliverable.docText || primaryEligibilityDeliverable.firstPageText || '').slice(0, 12000);
-      const response = await fetch('/api/ai/check-deliverable-eligibility', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const titleIssue = getDeclaredTitleEligibilityIssue(primaryEligibilityDeliverable);
+      if (titleIssue) {
+        onUpdate({
+          eligibilityCheck: buildTitleEligibilityFailure(titleIssue, primaryEligibilityDeliverable, { subActivity, activityTitle, selectedActivityId, expertName }),
+          aiStatus: 'review',
+          aiCheck: { eligible: null, reason: titleIssue, issues: [titleIssue] },
+        });
+        return;
+      }
+      const extractedText = primaryEligibilityDeliverable.docText || primaryEligibilityDeliverable.firstPageText || '';
+      failurePhase = 'evaluation';
+      const result = await requestDeliverableEligibility(JSON.stringify({
           deliverables: eligibilityDeliverables.map((item) => (
             buildEligibilityDocumentPayload(item, activityGroupId, item.id === deliverable.id)
           )),
@@ -1848,8 +1901,10 @@ export function DeliverableEligibilityControl({
           }),
           fileName: primaryEligibilityDeliverable.filename || primaryEligibilityDeliverable.name,
           extractedText,
-          selectedActivityId: selectedActivityId || subActivity,
+          selectedActivityId,
           currentSaCode: subActivity,
+          classificationMode,
+          currentDescription,
           selectedActivityName: activityTitle,
           deliverableType: primaryEligibilityDeliverable.type || primaryEligibilityDeliverable.deliverableType || primaryEligibilityDeliverable.slotType,
           activityCatalogCandidates,
@@ -1871,50 +1926,37 @@ export function DeliverableEligibilityControl({
           catalogSource,
           ruleVersionId,
           expertName,
-          textScope: primaryEligibilityDeliverable.docText && primaryEligibilityDeliverable.docText !== primaryEligibilityDeliverable.firstPageText
-            ? 'Text extras disponibil din document'
-            : 'Prima pagina / inceputul documentului',
-        }),
-      });
+          textScope: buildEligibilityDocumentPayload(primaryEligibilityDeliverable, activityGroupId, true).textScope,
+      }));
 
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Verificarea eligibilitatii a esuat');
-
-      const nextEligibilityCheck = mergeEligibilityCheckWithPmUnlockTracking(deliverable.eligibilityCheck, {
-        ...result,
+      if (!isCurrentAttempt()) return;
+      const assessmentPatches = buildDeliverableGroupAssessmentPatches({
+        deliverables: eligibilityDeliverables,
+        result,
         checkedAt: new Date().toISOString(),
         checkedBy: expertName,
-        checkedActivityId: selectedActivityId || subActivity,
-        checkedSaCode: subActivity,
-        checkedActivityName: activityTitle,
-        checkedDeliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
-        modelAuditId: result.modelAuditId,
-        analyzedDeliverables: result.analyzedDeliverables,
+        selectedActivityId,
+        saCode: subActivity,
+        activityTitle,
       });
-      onUpdate({
-        eligibilityCheck: nextEligibilityCheck,
-        stadiu: inferDeliverableStadiuFromEligibility(deliverable.stadiu, nextEligibilityCheck),
-        aiStatus: getAiStatusForEligibilityResult(result.status),
-        aiCheck: {
-          eligible: result.status === 'eligibil' || result.status === 'eligibil_cu_observatii'
-            ? true
-            : result.status === 'neeligibil'
-              ? false
-              : null,
-          reason: result.summary || 'Verificare eligibilitate finalizata.',
-          issues: [...(result.missingElements || []), ...(result.riskFlags || [])],
-        },
-      });
+      for (const update of assessmentPatches) {
+        if (!isCurrentAttempt()) return;
+        if (update.id === deliverable.id) onUpdate(update.patch);
+        else onUpdateRelatedDeliverable?.(update.id, update.patch);
+      }
     } catch (error) {
+      if (!isCurrentAttempt()) return;
+      const failureSummary = getEligibilityFailureSummary(error, failurePhase);
       onUpdate({
         eligibilityCheck: mergeEligibilityCheckWithPmUnlockTracking(deliverable.eligibilityCheck, {
           status: 'neconcludent',
           score: 0,
-          summary: 'Eroare: ' + (error instanceof Error ? error.message : 'Eroare necunoscuta'),
+          executionStatus: 'failed' as const,
+          summary: failureSummary,
           checks: [],
           missingElements: [],
           recommendations: ['Reincearca verificarea sau valideaza manual livrabilul.'],
-          riskFlags: ['Verificarea API nu a putut fi finalizata.'],
+          riskFlags: ['Eroare tehnica; nu reprezinta o evaluare a eligibilitatii.'],
           checkedAt: new Date().toISOString(),
           checkedBy: expertName,
           checkedActivityId: selectedActivityId || subActivity,
@@ -1923,6 +1965,7 @@ export function DeliverableEligibilityControl({
           checkedDeliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
         }),
         aiStatus: 'review',
+        aiCheck: { eligible: null, reason: failureSummary, issues: ['Verificare nefinalizata. Reincearca.'] },
       });
     } finally {
       setAiLoading(false);
@@ -2017,8 +2060,10 @@ export function DeliverableEligibilityControl({
       {visibleEligibilityCheck && (
         <EligibilityResultCard
           check={visibleEligibilityCheck}
+          isLoading={aiLoading}
           onApplySuggestedSettings={handleApplyEligibilitySuggestion}
           onRequestPmUnlock={handleRequestPmUnlock}
+              onRecheck={eligibilityCheckEnabled && canCheckEligibility ? handleAiCheck : undefined}
         />
       )}
     </div>
@@ -2063,23 +2108,27 @@ function getEligibilityClass(status: string) {
 
 function EligibilityResultCard({
   check,
+  isLoading = false,
   onApplySuggestedSettings,
   onRequestPmUnlock,
+  onRecheck,
 }: {
   check: NonNullable<DeliverableSlot['eligibilityCheck']>;
+  isLoading?: boolean;
   onApplySuggestedSettings?: (
     settings: EligibilitySuggestedSettings,
     change: EligibilitySuggestedSettingsChange,
   ) => void;
   onRequestPmUnlock?: () => void;
+  onRecheck?: () => void;
 }) {
   const warning = check.status === 'neeligibil' || check.status === 'neconcludent';
   const isNeeligibil = check.status === 'neeligibil';
   const isNeconcludent = check.status === 'neconcludent';
-  const isCheckingInProgress = isNeconcludent && (
-    check.summary.toLowerCase().includes('a fost pornita')
-    || check.riskFlags.some((flag) => flag.toLowerCase().includes('in curs'))
-  );
+  const attemptState = getEligibilityAttemptState(check);
+  const displayScore = getDisplayEligibilityScore(check);
+  const isCheckingInProgress = isLoading && attemptState === 'pending';
+  const isUnfinishedAttempt = attemptState !== 'result';
   const pmUnlockRequested = Boolean(check.pmUnlockRequested);
   const suggestedSettings = check.suggestedSettings;
   const canApplyActivity = Boolean(
@@ -2097,10 +2146,16 @@ function EligibilityResultCard({
   return (
     <div className={`rounded border p-2 text-[10px] ${getEligibilityClass(check.status)}`}>
       <div className="flex items-center justify-between gap-2">
-        <div className="font-semibold">{getEligibilityLabel(check.status)}</div>
-        <div className="font-medium">Scor: {check.score}/100</div>
+        <div className="font-semibold">{isCheckingInProgress ? 'Verificare in curs' : isUnfinishedAttempt ? 'Verificare nefinalizata' : getEligibilityLabel(check.status)}</div>
+        {displayScore !== null && <div className="font-medium">Scor: {displayScore}/100</div>}
       </div>
+      {onRecheck && !isUnfinishedAttempt && (
+        <Button type="button" variant="outline" size="sm" disabled={isLoading} onClick={onRecheck} className="mt-2 h-7 text-xs">
+          Reevalueaza cu documentele si contextul actual
+        </Button>
+      )}
       <div className="mt-1">{check.summary}</div>
+      <EligibilityAssessmentDetails check={check} />
       {check.analyzedDeliverables && check.analyzedDeliverables.length > 0 && (
         <div className="mt-1">
           <span className="font-medium">Livrabile analizate:</span>{' '}
@@ -2109,7 +2164,7 @@ function EligibilityResultCard({
           )).join('; ')}
         </div>
       )}
-      {warning && !isCheckingInProgress && (
+      {warning && !isUnfinishedAttempt && (
         <div className="mt-1 font-medium">
           Verifică manual livrabilul înainte de validare.
         </div>
@@ -2120,7 +2175,9 @@ function EligibilityResultCard({
         </div>
       ) : isNeconcludent && (
         <div className="mt-1 rounded border border-amber-200 bg-white/80 p-2 text-slate-800">
-          Verificarea automata nu a putut citi/analiza livrabilul. Continua cu introducere manuala si verificare PM.
+          {isUnfinishedAttempt
+            ? 'Nu exista un rezultat final al evaluarii. Corecteaza problema indicata si reincearca verificarea.'
+            : 'Rezultatul este neconcludent. Verifica observatiile evaluarii si completeaza documentatia necesara.'}
         </div>
       )}
       {isNeeligibil && !pmUnlockRequested && onRequestPmUnlock && (
@@ -2171,7 +2228,7 @@ function EligibilityResultCard({
                 className="h-7 border-indigo-300 px-2 text-[10px] text-indigo-700 hover:bg-indigo-50"
                 onClick={() => onApplySuggestedSettings?.(suggestedSettings, 'activity')}
               >
-                Aplica activitatea sugerata ({suggestedSettings.saCode})
+                {check.classification?.requiresSaConfirmation ? 'Confirma schimbarea SA si activitatii' : 'Aplica activitatea sugerata'} ({suggestedSettings.saCode})
               </Button>
             )}
             {canApplyDeliverableType && (

@@ -1,6 +1,7 @@
 'use client';
 
 import { detectSuggestedTitleFromText } from './title-suggestion';
+import { createBoundedOcrSession } from './bounded-ocr-session.ts';
 
 type PdfTextItem = {
   str: string;
@@ -23,6 +24,7 @@ export type DocumentTextExtractionSource = 'native' | 'ocr';
 export type DocumentTextExtractionResult = {
   text: string | null;
   source?: DocumentTextExtractionSource;
+  complete?: boolean;
 };
 
 type PdfJsModule = typeof import('pdfjs-dist');
@@ -226,39 +228,25 @@ async function extractDocxXmlText(file: File): Promise<DocumentTextExtractionRes
   }
 }
 
-async function createOcrWorker() {
-  const Tesseract = await import('tesseract.js');
-  const worker = await Tesseract.createWorker(['ron', 'eng']);
-  await worker.setParameters({
-    preserve_interword_spaces: '1',
-    tessedit_pageseg_mode: Tesseract.PSM.AUTO,
+function createDocumentOcrSession() {
+  return createBoundedOcrSession<import('tesseract.js').ImageLike, import('tesseract.js').Worker>({
+    createWorker: async () => (await import('tesseract.js')).createWorker(['ron', 'eng']),
+    initializeWorker: async (worker) => worker.setParameters({
+      preserve_interword_spaces: '1',
+      tessedit_pageseg_mode: (await import('tesseract.js')).PSM.AUTO,
+    }),
   });
-  return worker;
 }
 
-async function recognizeCanvasText(canvas: HTMLCanvasElement) {
-  const worker = await createOcrWorker();
-  try {
-    const result = await worker.recognize(canvas);
-    return normalizeExtractedText(result.data.text) || null;
-  } catch (error) {
-    console.error('Error running OCR:', error);
-    return null;
-  } finally {
-    await worker.terminate();
-  }
-}
+type DocumentOcrSession = ReturnType<typeof createDocumentOcrSession>;
 
-async function recognizeBlobText(blob: Blob) {
-  const worker = await createOcrWorker();
+async function recognizeImageText(image: Blob | HTMLCanvasElement, session?: DocumentOcrSession) {
+  const activeSession = session ?? createDocumentOcrSession();
   try {
-    const result = await worker.recognize(blob);
-    return normalizeExtractedText(result.data.text) || null;
-  } catch (error) {
-    console.error('Error running image OCR:', error);
-    return null;
+    const result = await activeSession.recognize(image);
+    return { ...result, text: normalizeExtractedText(result.text) || null };
   } finally {
-    await worker.terminate();
+    if (!session) await activeSession.close();
   }
 }
 
@@ -277,45 +265,43 @@ async function renderPdfPageToCanvas(page: PdfPage) {
   return canvas;
 }
 
-async function extractPdfPageTextWithOcr(page: PdfPage, options: { forceOcr?: boolean } = {}) {
+async function extractPdfPageTextWithOcr(page: PdfPage, options: {
+  forceOcr?: boolean;
+  session?: DocumentOcrSession;
+  onNativeText?: (text: string) => void;
+} = {}) {
   const textContent = await page.getTextContent();
   const nativeText = pdfTextItemsToLines(textContent.items);
+  if (nativeText) options.onNativeText?.(nativeText);
   if (hasUsefulText(nativeText) && !options.forceOcr) {
-    return { text: nativeText, source: 'native' as const };
+    return { text: nativeText, source: 'native' as const, complete: true };
   }
 
-  const canvas = await renderPdfPageToCanvas(page);
-  const ocrText = canvas ? await recognizeCanvasText(canvas) : null;
-  if (ocrText) {
-    return {
-      text: joinDistinctTextSegments([nativeText, `Text OCR din imagine/pagina scanata: ${ocrText}`]),
-      source: 'ocr' as const,
-    };
+  let ocrResult = { text: null as string | null, complete: false };
+  try {
+    const canvas = await renderPdfPageToCanvas(page);
+    if (canvas) ocrResult = await recognizeImageText(canvas, options.session);
+  } catch (error) {
+    console.error('Error extracting PDF page OCR text:', error);
   }
-
+  const text = joinDistinctTextSegments([
+    nativeText,
+    ocrResult.text ? `Text OCR din imagine/pagina scanata: ${ocrResult.text}` : null,
+  ]);
   return {
-    text: nativeText || null,
-    source: nativeText ? 'native' as const : undefined,
+    text: text || null,
+    source: ocrResult.text ? 'ocr' as const : nativeText ? 'native' as const : undefined,
+    complete: ocrResult.complete && Boolean(text),
   };
-}
-
-async function extractPdfPageTextWithOcrFallback(page: PdfPage) {
-  return extractPdfPageTextWithOcr(page);
 }
 
 export async function extractImageTextWithSource(file: File): Promise<DocumentTextExtractionResult> {
   try {
-    const worker = await createOcrWorker();
-    try {
-      const result = await worker.recognize(file);
-      const text = normalizeExtractedText(result.data.text) || null;
-      return { text, source: text ? 'ocr' : undefined };
-    } finally {
-      await worker.terminate();
-    }
+    const result = await recognizeImageText(file);
+    return { ...result, source: result.text ? 'ocr' : undefined };
   } catch (error) {
     console.error('Error extracting image text with OCR:', error);
-    return { text: null };
+    return { text: null, complete: false };
   }
 }
 
@@ -406,62 +392,88 @@ type MammothWithImages = {
   };
 };
 
-async function extractDocxEmbeddedImageText(file: File): Promise<DocumentTextExtractionResult> {
+async function extractDocxEmbeddedImageText(file: File, session = createDocumentOcrSession()): Promise<DocumentTextExtractionResult> {
+  const imageTexts: string[] = [];
+  let imageIndex = 0;
+  let processedImageCount = 0;
+  let allImagesComplete = true;
   try {
-    const mammoth = await import('mammoth') as unknown as MammothWithImages;
-    if (!mammoth.images?.imgElement) return { text: null };
+    const mammoth = await session.runTask(() => import('mammoth')) as unknown as MammothWithImages;
+    if (!mammoth.images?.imgElement) return { text: null, complete: false };
 
-    const arrayBuffer = await file.arrayBuffer();
-    const imageTexts: string[] = [];
-    let imageIndex = 0;
-    let processedImageCount = 0;
+    const arrayBuffer = await session.runTask(() => file.arrayBuffer());
 
     const convertImage = mammoth.images.imgElement(async (image) => {
       imageIndex += 1;
-      if (imageIndex > MAX_DOCX_OCR_IMAGES) return { src: EMPTY_IMAGE_DATA_URL };
-
-      processedImageCount += 1;
-      const base64 = await image.read('base64');
-      const response = await fetch(`data:${image.contentType};base64,${base64}`);
-      const blob = await response.blob();
-      const ocrText = await recognizeBlobText(blob);
-      if (ocrText) {
-        imageTexts.push(`Text OCR imagine DOCX ${imageIndex}: ${ocrText}`);
+      const currentImageIndex = imageIndex;
+      if (imageIndex > MAX_DOCX_OCR_IMAGES || session.isStopped()) {
+        allImagesComplete = false;
+        return { src: EMPTY_IMAGE_DATA_URL };
       }
-      return { src: `data:${image.contentType};base64,${base64}` };
+
+      try {
+        const { base64, blob } = await session.runTask(async () => {
+          const base64 = await image.read('base64');
+          const response = await fetch(`data:${image.contentType};base64,${base64}`);
+          return { base64, blob: await response.blob() };
+        });
+        const ocrResult = await recognizeImageText(blob, session);
+        if (!ocrResult.complete) allImagesComplete = false;
+        else processedImageCount += 1;
+        if (ocrResult.text) {
+          imageTexts.push(`Text OCR imagine DOCX ${currentImageIndex}: ${ocrResult.text}`);
+        }
+        return { src: `data:${image.contentType};base64,${base64}` };
+      } catch (error) {
+        allImagesComplete = false;
+        console.error('Error extracting DOCX embedded image:', error);
+        return { src: EMPTY_IMAGE_DATA_URL };
+      }
     });
 
-    await mammoth.convertToHtml({ arrayBuffer }, { convertImage });
-
-    const summary = imageIndex > 0
-      ? `Documentul DOCX contine ${imageIndex} imagine/imagini incorporate; OCR procesat pentru ${processedImageCount} imagine/imagini.`
-      : null;
-    const text = joinDistinctTextSegments([summary, ...imageTexts]).slice(0, MAX_EMBEDDED_OCR_TEXT_CHARS);
-    return { text: text || null, source: text ? 'ocr' : undefined };
+    await session.runTask(() => mammoth.convertToHtml({ arrayBuffer }, { convertImage }), 120_000);
+    if (session.isStopped()) allImagesComplete = false;
   } catch (error) {
+    allImagesComplete = false;
     console.error('Error extracting DOCX embedded image text:', error);
-    return { text: null };
+  } finally {
+    await session.close();
   }
+  const summary = imageIndex > 0
+    ? `Documentul DOCX contine ${imageIndex} imagine/imagini incorporate; OCR procesat pentru ${processedImageCount} imagine/imagini.`
+    : null;
+  const fullText = joinDistinctTextSegments([summary, ...imageTexts]);
+  const text = fullText.slice(0, MAX_EMBEDDED_OCR_TEXT_CHARS);
+  return { text: text || null, source: text ? 'ocr' : undefined,
+    complete: allImagesComplete && imageIndex <= MAX_DOCX_OCR_IMAGES && fullText.length <= MAX_EMBEDDED_OCR_TEXT_CHARS };
 }
 
 export async function extractDocxTextWithSource(file: File): Promise<DocumentTextExtractionResult> {
+  const session = createDocumentOcrSession();
   let rawText: string | null = null;
   let htmlText: string | null = null;
+  let xmlResult: DocumentTextExtractionResult = { text: null };
+  let embeddedImageText: DocumentTextExtractionResult = { text: null, complete: false };
   try {
-    const mammoth = await import('mammoth');
-    const arrayBuffer = await file.arrayBuffer();
-    const [rawResult, htmlResult] = await Promise.all([
-      mammoth.extractRawText({ arrayBuffer }),
-      mammoth.convertToHtml({ arrayBuffer }).catch(() => ({ value: '' })),
-    ]);
-    rawText = rawResult.value || null;
-    htmlText = htmlToText(htmlResult.value);
+    try {
+      await session.runTask(async () => {
+        const mammoth = await import('mammoth');
+        const arrayBuffer = await file.arrayBuffer();
+        await Promise.all([
+          mammoth.extractRawText({ arrayBuffer }).then((result) => { rawText = result.value || null; }),
+          mammoth.convertToHtml({ arrayBuffer }).then((result) => { htmlText = htmlToText(result.value); }).catch(() => {}),
+        ]);
+      });
+    } catch (error) {
+      console.error('Error extracting DOCX native text:', error);
+    }
+    xmlResult = await session.runTask(() => extractDocxXmlText(file));
+    embeddedImageText = await extractDocxEmbeddedImageText(file, session);
   } catch (error) {
     console.error('Error extracting DOCX text:', error);
+  } finally {
+    await session.close();
   }
-
-  const xmlResult = await extractDocxXmlText(file);
-  const embeddedImageText = await extractDocxEmbeddedImageText(file);
   const text = joinDistinctTextSegments([
     rawText,
     htmlText,
@@ -471,6 +483,7 @@ export async function extractDocxTextWithSource(file: File): Promise<DocumentTex
   return {
     text: text || null,
     source: embeddedImageText.text ? 'ocr' : text ? 'native' : undefined,
+    complete: embeddedImageText.complete !== false,
   };
 }
 
@@ -487,16 +500,29 @@ export async function extractPdfTitle(file: File): Promise<string | null> {
 
 // Extract text from the first PDF page only.
 export async function extractPdfFirstPageTextWithSource(file: File): Promise<DocumentTextExtractionResult> {
+  const session = createDocumentOcrSession();
+  let loadingTask: ReturnType<PdfJsModule['getDocument']> | undefined;
+  let recoveredNativeText: string | null = null;
   try {
-    const pdfjsLib = await loadPdfJs();
-
-    const arrayBuffer = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
-    const page = await pdf.getPage(1);
-    return extractPdfPageTextWithOcrFallback(page as unknown as PdfPage);
+    return await session.runTask(async () => {
+      const pdfjsLib = await loadPdfJs();
+      const arrayBuffer = await file.arrayBuffer();
+      if (session.isStopped()) throw new Error('PDF extraction deadline reached.');
+      loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
+      const pdf = await loadingTask.promise;
+      const page = await pdf.getPage(1);
+      return extractPdfPageTextWithOcr(page as unknown as PdfPage, {
+        session, onNativeText: (text) => { recoveredNativeText = text; },
+      });
+    });
   } catch (error) {
     console.error('Error extracting PDF first page text:', error);
-    return { text: null };
+    return { text: recoveredNativeText, source: recoveredNativeText ? 'native' : undefined, complete: false };
+  } finally {
+    await Promise.all([
+      session.close(),
+      ...(loadingTask ? [session.cleanupTask(() => loadingTask!.destroy())] : []),
+    ]);
   }
 }
 
@@ -505,34 +531,54 @@ export async function extractPdfFirstPageText(file: File): Promise<string | null
 }
 
 // Extract text from PDF file, with OCR fallback for scanned pages.
-export async function extractPdfTextWithSource(file: File): Promise<DocumentTextExtractionResult> {
+export async function extractPdfTextWithSource(file: File, options: { requireComplete?: boolean } = {}): Promise<DocumentTextExtractionResult> {
+  const session = createDocumentOcrSession();
+  const pageTexts: string[] = [];
+  let usedOcr = false;
+  let complete = false;
+  let loadingTask: ReturnType<PdfJsModule['getDocument']> | undefined;
   try {
-    const pdfjsLib = await loadPdfJs();
-    
-    const arrayBuffer = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
-    
-    const pageTexts: string[] = [];
-    let usedOcr = false;
+    const pdf = await session.runTask(async () => {
+      const pdfjsLib = await loadPdfJs();
+      const arrayBuffer = await file.arrayBuffer();
+      if (session.isStopped()) throw new Error('PDF extraction deadline reached.');
+      loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
+      return loadingTask.promise;
+    });
+    complete = pdf.numPages > 0;
     for (let i = 1; i <= pdf.numPages; i++) {
-      const page = await pdf.getPage(i);
-      const pageText = i <= MAX_OCR_PDF_PAGES
-        ? await extractPdfPageTextWithOcr(page as unknown as PdfPage, { forceOcr: true })
-        : await extractPdfPageTextWithOcrFallback(page as unknown as PdfPage);
-      if (pageText.text) pageTexts.push(pageText.text);
-      if (pageText.source === 'ocr') usedOcr = true;
+      if (session.isStopped()) { complete = false; break; }
+      let recoveredNativeText: string | null = null;
+      try {
+        const pageText = await session.runTask(async () => {
+          const page = await pdf.getPage(i);
+          return extractPdfPageTextWithOcr(page as unknown as PdfPage, {
+            forceOcr: options.requireComplete || i <= MAX_OCR_PDF_PAGES,
+            session,
+            onNativeText: (text) => { recoveredNativeText = text; },
+          });
+        });
+        if (pageText.text) pageTexts.push(pageText.text);
+        if (pageText.source === 'ocr') usedOcr = true;
+        if (!pageText.text || pageText.complete === false) complete = false;
+      } catch (error) {
+        complete = false;
+        if (recoveredNativeText) pageTexts.push(recoveredNativeText);
+        console.error(`Error extracting PDF page ${i}:`, error);
+      }
     }
 
-    const fullText = pageTexts.join('\n\n').trim();
-    if (hasUsefulText(fullText)) {
-      return { text: fullText, source: usedOcr ? 'ocr' : 'native' };
-    }
-    
-    return { text: fullText || null, source: fullText ? (usedOcr ? 'ocr' : 'native') : undefined };
   } catch (error) {
+    complete = false;
     console.error('Error extracting PDF text:', error);
-    return { text: null };
+  } finally {
+    await Promise.all([
+      session.close(),
+      ...(loadingTask ? [session.cleanupTask(() => loadingTask!.destroy())] : []),
+    ]);
   }
+  const fullText = pageTexts.join('\n\n').trim();
+  return { text: fullText || null, source: fullText ? (usedOcr ? 'ocr' : 'native') : undefined, complete: complete && Boolean(fullText) };
 }
 
 export async function extractPdfText(file: File): Promise<string | null> {

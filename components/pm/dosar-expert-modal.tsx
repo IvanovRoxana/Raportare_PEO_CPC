@@ -10,6 +10,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { EligibilityAssessmentDetails } from '@/components/expert/eligibility-assessment-details';
 import {
   useActivityCatalog,
   useActivityMutations,
@@ -58,6 +59,7 @@ import { generateOpisDocument, downloadOpis } from '@/lib/opis-generator';
 import { getSecureDocumentUrl } from '@/lib/document-retrieval';
 import { getDocumentAuditTitle } from '@/lib/document-sharing';
 import { dedupeDeliverablesBySignature } from '@/lib/deliverable-deduplication';
+import { getDisplayEligibilityScore } from '@/lib/deliverable-check-state';
 import { GDPR_CONCLUSION_OPTIONS, getGdprDeliverableRequirementLabel, getGdprMinimumEvidenceLabels, getGdprTemplate, parseGdprMetaJson, validateGdprActivityDraft } from '@/lib/gdpr-reporting';
 import { ANEXA10_EXPORT_SETTINGS, buildAnexa10ReportModel } from '@/lib/activity-report/build-report-model';
 import { buildAnexa10DocxBlob, buildAnexa10DocxFilename } from '@/lib/activity-report/docx-export';
@@ -496,6 +498,7 @@ export function DosarExpertModal({
     focusedDocument?.eligibilityCheck,
     focusedDeliverable?.eligibilityCheck,
   );
+  const focusedEligibilityScore = focusedEligibilityCheck ? getDisplayEligibilityScore(focusedEligibilityCheck) : null;
   const focusedSourceActivity = useMemo(() => {
     if (focusedDeliverable?.activityId) {
       const directActivity = activities.find((activity) => activity.id === focusedDeliverable.activityId);
@@ -1363,13 +1366,14 @@ export function DosarExpertModal({
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm">Verificare AI</CardTitle>
                     <CardDescription className="text-xs">
-                      Scor {focusedEligibilityCheck?.score ?? 0}/100
+                      {focusedEligibilityScore === null ? 'Evaluarea nu a fost finalizată.' : `Scor ${focusedEligibilityScore}/100`}
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-3 text-xs">
                     <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-amber-900">
                       {focusedEligibilityCheck?.summary || 'Nu există sumar AI pentru acest livrabil.'}
                     </div>
+                    {focusedEligibilityCheck ? <EligibilityAssessmentDetails check={focusedEligibilityCheck} /> : null}
                     {(focusedEligibilityCheck?.missingElements || []).length > 0 ? (
                       <div>
                         <div className="mb-1 font-semibold text-slate-800">Elemente lipsă</div>

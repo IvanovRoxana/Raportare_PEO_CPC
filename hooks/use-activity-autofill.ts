@@ -150,6 +150,8 @@ export function useActivityAutofill({
   const autofillDeliverables = useMemo(() => (
     buildActivityAutofillDeliverablesPayload(deliverables.map((deliverable) => ({
       id: deliverable.id,
+      fileHash: deliverable.fileHash,
+      eligibilityCheck: deliverable.eligibilityCheck,
       fileName: deliverable.filename || deliverable.name,
       documentTitle: getDocumentAuditTitle({
         ...deliverable,
@@ -207,6 +209,8 @@ export function useActivityAutofill({
     const requestDeliverables = deliverablesOverride
       ? buildActivityAutofillDeliverablesPayload(deliverablesOverride.map((deliverable) => ({
         id: deliverable.id,
+        fileHash: deliverable.fileHash,
+        eligibilityCheck: deliverable.eligibilityCheck,
         fileName: deliverable.filename || deliverable.name,
         documentTitle: getDocumentAuditTitle({
           ...deliverable,

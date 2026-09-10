@@ -88,7 +88,7 @@ import { buildDefaultConcurrentProjects, mergeConcurrentProjectsWithDefaults } f
 import { normalizeTitleForMatch } from './title-suggestion';
 import { parseAwsJsonField, serializeAwsJsonField } from './aws-json';
 import { planDeliverableSync } from './activity-deliverable-sync';
-import { areActivitiesCompatibleForDeliverableGroup, dedupeDeliverablesBySignature, findMonthlyDeliverableDuplicate, getDeliverableDocumentSignature } from './deliverable-deduplication';
+import { areActivitiesCompatibleForDeliverableGroup, dedupeDeliverablesBySignature, findMonthlyDeliverableDuplicate, getDeliverableDocumentSignature, hasSameDeliverableDocument } from './deliverable-deduplication';
 import { buildPersistedWorkBlockBundles } from './activity-report/persisted-work-blocks';
 import {
   prepareDraftWorkBlockBundle,
@@ -1910,7 +1910,7 @@ async function validateActivityBatchForWrite(
         const duplicateActivity = groupActivities.find((activity) => activity === duplicate.activity);
         if (!duplicateActivity) break;
         duplicateActivity.deliverables = (duplicateActivity.deliverables ?? []).filter((deliverable) => (
-          getDeliverableDocumentSignature(deliverable) !== duplicate.signature
+          !hasSameDeliverableDocument(deliverable, duplicate.deliverable)
         ));
         monthlyDuplicate = findMonthlyDeliverableDuplicate({
           existingActivities: existingActivitiesForDeliverableValidation,
@@ -1949,7 +1949,7 @@ async function validateActivityBatchForWrite(
         duplicateActivity.periodGroupId = periodGroupId;
         duplicateActivity.workingGroupId = periodGroupId;
         duplicateActivity.deliverables = (duplicateActivity.deliverables ?? []).filter((deliverable) => (
-          getDeliverableDocumentSignature(deliverable) !== duplicate.signature
+          !hasSameDeliverableDocument(deliverable, duplicate.deliverable)
         ));
         monthlyDuplicate = findMonthlyDeliverableDuplicate({
           existingActivities: existingActivitiesForDeliverableValidation,
@@ -2011,14 +2011,15 @@ async function attachActivitiesToExistingDeliverableGroups(
     return existingActivities;
   };
 
-  const findExistingActivityByDeliverableSignature = async (
+  const findExistingActivityByDeliverable = async (
     activity: Omit<Activity, 'id' | 'createdAt' | 'updatedAt'>,
-    signature: string,
+    candidate: Deliverable,
   ) => {
     const existingActivities = await getExistingActivitiesForMonth(activity);
     return existingActivities.find((existingActivity) => (
-      existingActivity.deliverables?.some((deliverable) => (
-        getDeliverableDocumentSignature(deliverable) === signature
+      areActivitiesCompatibleForDeliverableGroup(activity, existingActivity)
+      && existingActivity.deliverables?.some((deliverable) => (
+        hasSameDeliverableDocument(deliverable, candidate)
       ))
     )) ?? null;
   };
@@ -2058,7 +2059,7 @@ async function attachActivitiesToExistingDeliverableGroups(
       ...activity,
       deliverables,
     };
-    const signaturesToSkip = new Set<string>();
+    const deliverablesToSkip = new Set<Deliverable>();
 
     for (const deliverable of deliverables) {
       const signature = getDeliverableDocumentSignature(deliverable);
@@ -2066,10 +2067,10 @@ async function attachActivitiesToExistingDeliverableGroups(
 
       const sourceActivity = deliverable.sourceActivityId
         ? await getSourceActivity(deliverable.sourceActivityId)
-        : await findExistingActivityByDeliverableSignature(nextActivity, signature);
+        : await findExistingActivityByDeliverable(nextActivity, deliverable);
       const sourceWasExplicitlySelected = Boolean(deliverable.sourceActivityId);
       const sourceHasDeliverable = sourceActivity?.deliverables?.some((sourceDeliverable) => (
-        getDeliverableDocumentSignature(sourceDeliverable) === signature
+        hasSameDeliverableDocument(sourceDeliverable, deliverable)
       ));
       if (!sourceActivity || !sourceHasDeliverable) continue;
       if (
@@ -2086,17 +2087,14 @@ async function attachActivitiesToExistingDeliverableGroups(
       }
 
       nextActivity = await attachToSourceActivity(nextActivity, sourceActivity);
-      signaturesToSkip.add(signature);
+      deliverablesToSkip.add(deliverable);
     }
 
-    if (signaturesToSkip.size === 0) return nextActivity;
+    if (deliverablesToSkip.size === 0) return nextActivity;
 
     return {
       ...nextActivity,
-      deliverables: deliverables.filter((deliverable) => {
-        const signature = getDeliverableDocumentSignature(deliverable);
-        return !signature || !signaturesToSkip.has(signature);
-      }),
+      deliverables: deliverables.filter((deliverable) => !deliverablesToSkip.has(deliverable)),
     };
   }));
 }
