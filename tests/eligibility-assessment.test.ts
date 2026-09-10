@@ -58,8 +58,37 @@ test('positive verdicts without explained criteria or with failed criteria canno
   const failed = { ...output(), checks: [{ criterion: 'Fisa postului', status: 'fail', explanation: 'Atributia nu este prevazuta.' }] };
   const result = finalizeEligibilityAssessment(input(), context, failed);
   assert.equal(result.status, 'neconcludent');
-  assert.equal(result.classification.autoApply, false);
+  assert.equal(result.classification.autoApply, true);
   assert.equal(result.score, failed.score);
+});
+
+test('a clearly classified ineligible deliverable is assigned without approving eligibility', () => {
+  const raw = { ...output(), status: 'neeligibil', score: 24,
+    checks: [{ criterion: 'Rezultatul cerut', status: 'fail', explanation: 'Documentul identifica activitatea, dar lipseste rezultatul cerut.' }] };
+  const result = finalizeEligibilityAssessment(input(), context, raw);
+  assert.equal(result.classification.autoApply, true);
+  assert.equal(result.classification.activityId, 'same-sa');
+  assert.equal(result.status, 'neeligibil');
+  assert.equal(result.score, 24);
+});
+
+test('missing official sources block eligibility but preserve supported catalog classification', () => {
+  const incompleteContext = { ...context, sources: [], coverage: { project: false, subactivity: false, job_description: false },
+    missingRequiredSources: ['project', 'subactivity', 'job_description'] as EligibilityContextResult['missingRequiredSources'] };
+  const result = finalizeEligibilityAssessment(input({ catalogSource: 'backend' }), incompleteContext, output());
+  assert.equal(result.classification.autoApply, true);
+  assert.equal(result.status, 'neconcludent');
+  assert.equal(result.sourceEvidence.length, 0);
+  assert.equal(result.fallbackFlags.length, 3);
+});
+
+test('catalog failures, unverified document summaries, or missing rationale cannot assign activity', () => {
+  assert.equal(finalizeEligibilityAssessment(input({ catalogWarnings: ['Catalog indisponibil'] }), context, output()).classification.autoApply, false);
+  const noSummary = { ...output(), documentSummaries: [] };
+  assert.equal(finalizeEligibilityAssessment(input(), context, noSummary).classification.autoApply, false);
+  const noReason = output();
+  noReason.classification.reason = ' ';
+  assert.equal(finalizeEligibilityAssessment(input(), context, noReason).classification.autoApply, false);
 });
 
 test('medium-confidence automatic classification remains visible and requires applying the candidate', () => {
@@ -222,11 +251,12 @@ test('hallucinated activity and deliverable suggestions are removed even when cl
   assert.notEqual(result.suggestedSettings?.deliverableType, 'Tip inventat');
 });
 
-test('partial first-page text cannot approve, including Romanian text with diacritics', () => {
-  for (const textScope of ['Prima pagina', 'Numai prima pagină', 'Inceputul documentului']) {
+test('partial or unknown text completeness cannot classify or approve, including Romanian diacritics', () => {
+  for (const textScope of [undefined, '', 'Prima pagina', 'Numai prima pagină', 'Inceputul documentului']) {
     const request = input({ documents: [{ ...input().documents[0], textScope }] });
     const result = finalizeEligibilityAssessment(request, context, output());
     assert.equal(result.status, 'neconcludent');
+    assert.equal(result.classification.autoApply, false);
     assert.ok(result.fallbackFlags.includes('partial_document_text'));
   }
 });

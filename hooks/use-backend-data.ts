@@ -361,8 +361,12 @@ export function useActivityMutations() {
   };
 
   const update = async (id: string, updates: Partial<Activity>) => {
-    await activitiesService.update(id, updates);
-    mutate((key: string) => typeof key === 'string' && key.startsWith('activities'), undefined, { revalidate: true });
+    try {
+      await activitiesService.update(id, updates);
+    } finally {
+      // A partial write must also refresh the dossier and expose any stale report guard.
+      mutate((key: string) => typeof key === 'string' && (key.startsWith('activities') || key.startsWith('reporting-work-block-bundles-')), undefined, { revalidate: true });
+    }
   };
 
   const remove = async (id: string) => {

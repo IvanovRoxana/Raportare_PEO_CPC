@@ -1,5 +1,6 @@
 import type { Activity, Deliverable } from './types';
 import { areComCommunicationMultiGroupActivities } from './activity-multigroup-rules.ts';
+import { isActivityClassificationPending } from './activity-classification.ts';
 
 type ActivityWithDeliverables = Pick<
   Activity,
@@ -22,10 +23,18 @@ function isActivityInMonth(date: string, month: number, year: number) {
 }
 
 export function areActivitiesCompatibleForDeliverableGroup(
-  activity: Pick<Activity, 'expertId' | 'saCode' | 'catalogActivityId' | 'activityType' | 'title'>,
-  candidate: Pick<Activity, 'expertId' | 'saCode' | 'catalogActivityId' | 'activityType' | 'title'>,
+  activity: Pick<Activity, 'expertId' | 'saCode' | 'catalogActivityId' | 'activityType' | 'title' | 'periodGroupId' | 'workingGroupId'>,
+  candidate: Pick<Activity, 'expertId' | 'saCode' | 'catalogActivityId' | 'activityType' | 'title' | 'periodGroupId' | 'workingGroupId'>,
 ) {
   if (activity.expertId && candidate.expertId && activity.expertId !== candidate.expertId) return false;
+
+  if (isActivityClassificationPending(activity) || isActivityClassificationPending(candidate)) {
+    const groupId = activity.periodGroupId || (activity.workingGroupId?.startsWith('activity-period:') ? activity.workingGroupId : undefined);
+    const candidateGroupId = candidate.periodGroupId || (candidate.workingGroupId?.startsWith('activity-period:') ? candidate.workingGroupId : undefined);
+    return Boolean(isActivityClassificationPending(activity) && isActivityClassificationPending(candidate)
+      && groupId && groupId === candidateGroupId
+      && normalizeSignaturePart(activity.saCode) === normalizeSignaturePart(candidate.saCode));
+  }
 
   if (areComCommunicationMultiGroupActivities(activity, candidate)) return true;
 

@@ -68,6 +68,9 @@ import { buildPontajExportPayload } from '@/lib/pontaj-export-payload';
 import { buildOpisXlsxBlob, buildOpisXlsxFilename } from '@/lib/opis-xls-export';
 import { buildPmDossierPdfBlob, buildPmDossierPdfFilename } from '@/lib/pm-dossier-export';
 import { clarificationStatusLabel } from '@/lib/pm-clarification-flow';
+import { isActivityClassificationPending } from '@/lib/activity-classification';
+import { buildPmActivityAssignmentPatch, buildPmReassignmentCheck } from '@/lib/pm-activity-assignment';
+import { normalizePeoCategory } from '@/lib/peo-category';
 
 interface DosarExpertModalProps {
   open: boolean;
@@ -321,6 +324,9 @@ export function DosarExpertModal({
   const [eligibilityNotes, setEligibilityNotes] = useState('');
   const [isSavingEligibilityAssignment, setIsSavingEligibilityAssignment] = useState(false);
   const [eligibilityAssignmentMessage, setEligibilityAssignmentMessage] = useState<string | null>(null);
+  const [pendingCatalogSelections, setPendingCatalogSelections] = useState<Record<string, string>>({});
+  const [pendingAssignmentMessage, setPendingAssignmentMessage] = useState<string | null>(null);
+  const [pendingAssignmentGroup, setPendingAssignmentGroup] = useState<string | null>(null);
   const { catalog: backendActivityCatalog } = useActivityCatalog();
   const { update: updateActivity } = useActivityMutations();
   const { update: updateDocument } = useDocumentMutations();
@@ -426,7 +432,9 @@ export function DosarExpertModal({
 
     displayActivities.forEach(act => {
       const type = getActivitySaLabel(act);
-      const groupIdentity = act.periodGroupId
+      const groupIdentity = isActivityClassificationPending(act)
+        ? act.periodGroupId || (act.workingGroupId?.startsWith('activity-period:') ? act.workingGroupId : undefined) || act.id
+        : act.periodGroupId
         || act.workingGroupId
         || act.originActivityId
         || [
@@ -436,7 +444,7 @@ export function DosarExpertModal({
           act.gdprTemplateCode || '',
           act.gdprMetaJson || '',
         ].join('|');
-      const key = `${type}|${groupIdentity}`;
+      const key = `${type}|${groupIdentity}|${act.catalogActivityId || act.activityType || act.title}`;
       const existing = groupsByKey.get(key);
 
       if (existing) {
@@ -517,6 +525,10 @@ export function DosarExpertModal({
   const activityCatalog = useMemo(() => {
     return mergeActivityCatalogs(fallbackActivityCatalog as ActivityCatalog[], backendActivityCatalog);
   }, [backendActivityCatalog]);
+  const pendingActivityCount = activities.filter(isActivityClassificationPending).length;
+  const pendingCatalogOptions = useMemo(() => activityCatalog.filter((item) => item.isActive !== false
+    && (!expert?.category || normalizePeoCategory(item.category) === normalizePeoCategory(expert.category))
+    && (!expert?.saCodes?.length || expert.saCodes.includes(item.saCode))), [activityCatalog, expert?.category, expert?.saCodes]);
   const categoryOptions = useMemo(() => {
     return Array.from(new Set(activityCatalog.map((item) => item.category).filter(Boolean))).sort();
   }, [activityCatalog]);
@@ -672,6 +684,10 @@ export function DosarExpertModal({
   };
 
   const saveEligibilityAssignment = async () => {
+    if (!canManagePmReview || reportStatus?.status === 'approved') {
+      setEligibilityAssignmentMessage('Reîncadrarea necesită drepturi PM și o lună redeschisă pentru modificări.');
+      return;
+    }
     if (!focusedSourceActivity || !focusedDocument) {
       setEligibilityAssignmentMessage('Nu am gasit activitatea sursa pentru acest livrabil.');
       return;
@@ -686,59 +702,18 @@ export function DosarExpertModal({
     try {
       const now = new Date().toISOString();
       const checkedDeliverableType = eligibilityDeliverableType.trim();
-      const nextCheck: FocusedEligibilityCheck = {
-        ...(focusedEligibilityCheck || {
-          status: 'eligibil_cu_observatii',
-          score: 75,
-          summary: '',
-          checks: [],
-          missingElements: [],
-          recommendations: [],
-          riskFlags: [],
-        }),
-        status: 'eligibil_cu_observatii',
-        score: Math.max(Number(focusedEligibilityCheck?.score) || 0, 75),
-        summary: eligibilityNotes.trim()
-          || `Reincadrare PM: ${selectedEligibilityCatalogActivity.saCode} - ${selectedEligibilityCatalogActivity.activityName}; livrabil: ${checkedDeliverableType}.`,
-        checkedAt: now,
-        checkedBy: 'PM',
-        checkedActivityId: selectedEligibilityCatalogActivity.id,
-        checkedSaCode: selectedEligibilityCatalogActivity.saCode,
-        checkedActivityName: selectedEligibilityCatalogActivity.activityName,
-        checkedDeliverableType,
-        suggestedSettings: {
-          ...(focusedEligibilityCheck?.suggestedSettings || {
-            confidence: 'high',
-            reason: 'Reincadrare manuala PM.',
-            changes: ['activity', 'deliverableType'],
-          }),
-          saCode: selectedEligibilityCatalogActivity.saCode,
-          activityName: selectedEligibilityCatalogActivity.activityName,
-          selectedActivityId: selectedEligibilityCatalogActivity.id,
-          deliverableType: checkedDeliverableType,
-          confidence: 'high',
-          reason: eligibilityNotes.trim() || 'Reincadrare manuala PM.',
-          changes: ['activity', 'deliverableType'],
-        },
-        pmUnlockResolvedByCorrection: true,
-        pmUnlockResolvedAt: now,
-      };
+      const nextCheck = buildPmReassignmentCheck(selectedEligibilityCatalogActivity, checkedDeliverableType, now, eligibilityNotes);
       const matchesFocusedDeliverable = (deliverable: Deliverable) => (
         deliverable.documentId === focusedDocument.id
         || deliverable.id === focusedDocument.id
         || deliverable.id === focusedDeliverable?.id
         || Boolean(focusedDocument.s3Key && deliverable.s3Key === focusedDocument.s3Key)
         || Boolean(focusedDocument.fileHash && deliverable.fileHash === focusedDocument.fileHash)
-        || Boolean(focusedDocument.firstPageTextHash && deliverable.firstPageTextHash === focusedDocument.firstPageTextHash)
-        || Boolean(focusedDocument.contentFingerprint && deliverable.contentFingerprint === focusedDocument.contentFingerprint)
       );
-
+      const patch = buildPmActivityAssignmentPatch(focusedSourceActivity, selectedEligibilityCatalogActivity, now);
       await updateActivity(focusedSourceActivity.id, {
-        saCode: selectedEligibilityCatalogActivity.saCode,
-        catalogActivityId: selectedEligibilityCatalogActivity.id,
-        activityType: selectedEligibilityCatalogActivity.activityName,
-        title: selectedEligibilityCatalogActivity.activityName,
-        deliverables: (focusedSourceActivity.deliverables || []).map((deliverable) => (
+        ...patch,
+        deliverables: (patch.deliverables || []).map((deliverable) => (
           matchesFocusedDeliverable(deliverable)
             ? {
                 ...deliverable,
@@ -750,6 +725,12 @@ export function DosarExpertModal({
             : deliverable
         )),
       });
+      for (const deliverable of patch.deliverables || []) {
+        if (!deliverable.documentId || deliverable.documentId === focusedDocument.id) continue;
+        await updateDocument(deliverable.documentId, {
+          saCode: selectedEligibilityCatalogActivity.saCode, eligibilityCheck: deliverable.eligibilityCheck,
+        });
+      }
       await updateDocument(focusedDocument.id, {
         sourceActivityId: focusedSourceActivity.id,
         activityDate: focusedSourceActivity.date || focusedDocument.activityDate,
@@ -758,11 +739,36 @@ export function DosarExpertModal({
         stadiu: focusedDeliverable?.stadiu || focusedDocument.stadiu,
         eligibilityCheck: nextCheck,
       });
-      setEligibilityAssignmentMessage('Reincadrarea a fost salvata in activitatea sursa si in metadatele documentului.');
+      setEligibilityAssignmentMessage('Încadrarea zilei sursă și raportul au fost actualizate. Eligibilitatea trebuie reevaluată. Blocurile cu încadrări diferite necesită reconcilierea perioadei.');
     } catch (error) {
       setEligibilityAssignmentMessage(error instanceof Error ? error.message : 'Reincadrarea nu a putut fi salvata.');
     } finally {
       setIsSavingEligibilityAssignment(false);
+    }
+  };
+
+  const assignPendingActivityGroup = async (group: DossierActivityGroup) => {
+    const catalog = pendingCatalogOptions.find((item) => item.id === pendingCatalogSelections[group.key]);
+    if (!canManagePmReview || reportStatus?.status === 'approved' || !catalog) return;
+    const pendingActivities = group.activities.filter(isActivityClassificationPending);
+    setPendingAssignmentGroup(group.key);
+    setPendingAssignmentMessage(null);
+    try {
+      const now = new Date().toISOString();
+      // The button names the exact series scope; each day retains its own hours and ID.
+      for (const activity of pendingActivities) {
+        const patch = buildPmActivityAssignmentPatch(activity, catalog, now);
+        await updateActivity(activity.id, patch);
+        for (const deliverable of patch.deliverables || []) {
+          if (!deliverable.documentId) continue;
+          await updateDocument(deliverable.documentId, { saCode: catalog.saCode, eligibilityCheck: deliverable.eligibilityCheck });
+        }
+      }
+      setPendingAssignmentMessage(`Încadrarea a fost salvată pentru ${pendingActivities.length} zile. Orele au fost păstrate; eligibilitatea livrabilelor rămâne de verificat.`);
+    } catch (error) {
+      setPendingAssignmentMessage(error instanceof Error ? error.message : 'Încadrarea nu a putut fi salvată. Reîncarcă dosarul înainte de a continua.');
+    } finally {
+      setPendingAssignmentGroup(null);
     }
   };
 
@@ -1072,6 +1078,14 @@ export function DosarExpertModal({
             {monthName} {year} — {projectCode}
           </DialogDescription>
         </DialogHeader>
+
+        {pendingActivityCount > 0 && (
+          <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-950">
+            {pendingActivityCount} zile au încadrarea în așteptare. Ciornele, inclusiv cele fără livrabil încărcat,
+            se pot încadra din lista „Activități per SA”. Luna poate fi trimisă după rezolvarea lor.
+          </div>
+        )}
+        {pendingAssignmentMessage && <div role="status" className="rounded-lg border p-3 text-xs">{pendingAssignmentMessage}</div>}
 
         {!isFocusedEligibilityDossier && (
         <div className="flex flex-wrap gap-2 rounded-lg border bg-slate-50 p-3">
@@ -1557,6 +1571,7 @@ export function DosarExpertModal({
                               const datesLabel = group.dates.map(formatActivityDay).join(', ');
                               const fullDatesLabel = group.dates.map(formatActivityDate).join(', ');
                               const isApproved = group.activities.every((activity) => activity.status === 'approved');
+                              const classificationPending = group.activities.some(isActivityClassificationPending);
                               const hasClarification = !isApproved && group.activities.some((activity) => Boolean(activity.pmNotes));
                               const approveActionId = `approve-${group.key}`;
                               const clarificationActionId = `clarification-${group.key}`;
@@ -1640,6 +1655,34 @@ export function DosarExpertModal({
                                         Clarificare PM: {group.activities.find((activity) => activity.pmNotes)?.pmNotes}
                                       </div>
                                     )}
+                                    {classificationPending && (
+                                      <div className="mt-2 space-y-2 rounded-md border border-amber-200 bg-amber-50 p-2">
+                                        <Badge variant="outline" className="border-amber-300 text-amber-900">Încadrare în așteptare</Badge>
+                                        <p className="text-[11px] text-amber-950">PM poate confirma activitatea pentru aceste {group.activities.length} zile. Confirmarea încadrării nu aprobă eligibilitatea.</p>
+                                        {canManagePmReview && (
+                                          <div className="flex flex-wrap items-center gap-2">
+                                            <Select
+                                              value={pendingCatalogSelections[group.key] || undefined}
+                                              onValueChange={(value) => setPendingCatalogSelections((previous) => ({ ...previous, [group.key]: value }))}
+                                              disabled={pendingAssignmentGroup !== null || reportStatus?.status === 'approved'}
+                                            >
+                                              <SelectTrigger className="h-8 min-w-0 flex-1 bg-white text-xs" aria-label="Încadrare PM pentru ciornă">
+                                                <SelectValue placeholder="Alege încadrarea din catalog" />
+                                              </SelectTrigger>
+                                              <SelectContent>
+                                                {pendingCatalogOptions.map((item) => <SelectItem key={item.id} value={item.id}>{item.saCode} · {item.activityName}</SelectItem>)}
+                                              </SelectContent>
+                                            </Select>
+                                            <Button type="button" size="sm" className="h-8 text-xs"
+                                              onClick={() => void assignPendingActivityGroup(group)}
+                                              disabled={!pendingCatalogSelections[group.key] || pendingAssignmentGroup !== null || reportStatus?.status === 'approved'}>
+                                              {pendingAssignmentGroup === group.key && <Loader2 className="h-3 w-3 animate-spin" />}
+                                              Încadrează {group.activities.length} zile
+                                            </Button>
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
                                   </div>
                                   <div className="flex shrink-0 flex-col items-end gap-1">
                                     <span className="text-slate-500">{group.totalHours}h</span>
@@ -1663,7 +1706,7 @@ export function DosarExpertModal({
                                         size="sm"
                                         className="h-7 px-2 text-[10px]"
                                         onClick={() => runActivityAction('approve', group, onApproveActivity)}
-                                        disabled={!onApproveActivity || activityActionId !== null || isApproved}
+                                        disabled={!onApproveActivity || activityActionId !== null || isApproved || classificationPending}
                                         title="Marcheaza activitatea ca fiind conforma"
                                       >
                                         {activityActionId === approveActionId ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle className="h-3 w-3" />}

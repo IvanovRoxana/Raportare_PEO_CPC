@@ -874,10 +874,10 @@ export function DeliverableItem({
       status: 'neconcludent',
       score: 0,
       executionStatus: 'pending' as const,
-      summary: 'Verificarea eligibilitatii a fost pornita. Daca AI nu raspunde, continua cu introducere manuala si verificare PM.',
+      summary: 'Verificarea eligibilitatii a fost pornita. Daca AI nu raspunde, salveaza ciorna pentru verificare PM.',
       checks: [],
       missingElements: [],
-      recommendations: ['Continua cu introducere manuala daca verificarea automata nu raspunde.'],
+      recommendations: ['Poti salva ciorna pentru verificare PM daca analiza automata nu raspunde.'],
       riskFlags: ['Verificare automata in curs sau indisponibila.'],
       checkedAt: new Date().toISOString(),
       checkedBy: expertName,
@@ -997,7 +997,7 @@ export function DeliverableItem({
           summary: failureSummary,
           checks: [],
           missingElements: [],
-          recommendations: ['Reîncearcă verificarea sau validează manual livrabilul.'],
+          recommendations: ['Reincearca verificarea sau salveaza ciorna pentru verificare PM.'],
           riskFlags: ['Eroare tehnica; nu reprezinta o evaluare a eligibilitatii.'],
           checkedAt: new Date().toISOString(),
           checkedBy: expertName,
@@ -1638,6 +1638,7 @@ export function DeliverableItem({
 
           {visibleEligibilityCheck && (
             <EligibilityResultCard
+              classificationMode={classificationMode}
               check={visibleEligibilityCheck}
               isLoading={aiLoading}
               onApplySuggestedSettings={handleApplyEligibilitySuggestion}
@@ -1695,6 +1696,7 @@ export function DeliverableItem({
       )}
       {showEligibilityControl && !renderInlineNotes && deliverable.uploaded && !deliverable.isPhoto && visibleEligibilityCheck && (
         <EligibilityResultCard
+          classificationMode={classificationMode}
           check={visibleEligibilityCheck}
           isLoading={aiLoading}
           onApplySuggestedSettings={handleApplyEligibilitySuggestion}
@@ -1834,10 +1836,10 @@ export function DeliverableEligibilityControl({
       status: 'neconcludent',
       score: 0,
       executionStatus: 'pending' as const,
-      summary: 'Verificarea eligibilitatii a fost pornita. Daca AI nu raspunde, continua cu introducere manuala si verificare PM.',
+      summary: 'Verificarea eligibilitatii a fost pornita. Daca AI nu raspunde, salveaza ciorna pentru verificare PM.',
       checks: [],
       missingElements: [],
-      recommendations: ['Continua cu introducere manuala daca verificarea automata nu raspunde.'],
+      recommendations: ['Poti salva ciorna pentru verificare PM daca analiza automata nu raspunde.'],
       riskFlags: ['Verificare automata in curs sau indisponibila.'],
       checkedAt: new Date().toISOString(),
       checkedBy: expertName,
@@ -1955,7 +1957,7 @@ export function DeliverableEligibilityControl({
           summary: failureSummary,
           checks: [],
           missingElements: [],
-          recommendations: ['Reincearca verificarea sau valideaza manual livrabilul.'],
+          recommendations: ['Reincearca verificarea sau salveaza ciorna pentru verificare PM.'],
           riskFlags: ['Eroare tehnica; nu reprezinta o evaluare a eligibilitatii.'],
           checkedAt: new Date().toISOString(),
           checkedBy: expertName,
@@ -2059,6 +2061,7 @@ export function DeliverableEligibilityControl({
 
       {visibleEligibilityCheck && (
         <EligibilityResultCard
+          classificationMode={classificationMode}
           check={visibleEligibilityCheck}
           isLoading={aiLoading}
           onApplySuggestedSettings={handleApplyEligibilitySuggestion}
@@ -2108,12 +2111,14 @@ function getEligibilityClass(status: string) {
 
 function EligibilityResultCard({
   check,
+  classificationMode = 'manual',
   isLoading = false,
   onApplySuggestedSettings,
   onRequestPmUnlock,
   onRecheck,
 }: {
   check: NonNullable<DeliverableSlot['eligibilityCheck']>;
+  classificationMode?: 'automatic' | 'manual';
   isLoading?: boolean;
   onApplySuggestedSettings?: (
     settings: EligibilitySuggestedSettings,
@@ -2132,7 +2137,8 @@ function EligibilityResultCard({
   const pmUnlockRequested = Boolean(check.pmUnlockRequested);
   const suggestedSettings = check.suggestedSettings;
   const canApplyActivity = Boolean(
-    suggestedSettings?.changes?.includes('activity')
+    (classificationMode !== 'automatic' || check.classification?.requiresSaConfirmation)
+    && suggestedSettings?.changes?.includes('activity')
     && suggestedSettings.saCode
     && suggestedSettings.activityName
     && onApplySuggestedSettings,
@@ -2228,7 +2234,7 @@ function EligibilityResultCard({
                 className="h-7 border-indigo-300 px-2 text-[10px] text-indigo-700 hover:bg-indigo-50"
                 onClick={() => onApplySuggestedSettings?.(suggestedSettings, 'activity')}
               >
-                {check.classification?.requiresSaConfirmation ? 'Confirma schimbarea SA si activitatii' : 'Aplica activitatea sugerata'} ({suggestedSettings.saCode})
+                {classificationMode === 'automatic' ? 'Confirma schimbarea SA si reia analiza' : check.classification?.requiresSaConfirmation ? 'Confirma schimbarea SA si activitatii' : 'Aplica activitatea sugerata'} ({suggestedSettings.saCode})
               </Button>
             )}
             {canApplyDeliverableType && (

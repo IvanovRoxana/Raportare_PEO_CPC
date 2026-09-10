@@ -1,4 +1,5 @@
 import type { Activity } from '../types.ts';
+import { isActivityClassificationPending } from '../activity-classification.ts';
 import {
   validateWorkBlockAllocation,
   type ReportingFlowType,
@@ -11,6 +12,7 @@ export type DraftWorkBlockValidationIssue = {
     | 'missing_activity'
     | 'activity_outside_period'
     | 'activity_expert_mismatch'
+    | 'pending_classification'
     | 'missing_title'
     | 'missing_sa'
     | 'invalid_allocated_hours'
@@ -122,6 +124,14 @@ export function validateDraftWorkBlockInput(
       issues.push({
         code: 'activity_expert_mismatch',
         message: `Activitatea ${activityId} apartine altui expert.`,
+        activityId,
+      });
+    }
+
+    if (isActivityClassificationPending(activity)) {
+      issues.push({
+        code: 'pending_classification',
+        message: `Activitatea din ${activity.date} așteaptă încadrarea de către PM și nu poate fi inclusă în Anexa 10.`,
         activityId,
       });
     }

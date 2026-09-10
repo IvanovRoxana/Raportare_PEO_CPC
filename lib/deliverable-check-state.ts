@@ -10,6 +10,7 @@ function normalizeCheckText(value: string) {
 
 // Recognize persisted attempts from older clients without changing the saved contract.
 export function getEligibilityAttemptState(check: DeliverableEligibilityCheck): EligibilityAttemptState {
+  if (check.executionStatus === 'not_started') return 'blocked';
   if (check.executionStatus === 'pending') return 'pending';
   if (check.executionStatus === 'failed') return 'technical_error';
   if (check.executionStatus === 'completed') return 'result';

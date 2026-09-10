@@ -7,6 +7,7 @@ import {
   executeGroupedActivityDeletion,
   getActivityGroupMembers,
   getActivityGroupMembersForSelectedDates,
+  isSameEditableActivity,
   mergeActivityGroupForEdit,
   prepareExistingActivityUpdate,
   planGroupedActivityDeletion,
@@ -45,6 +46,20 @@ function deliverable(id: string, overrides: Partial<Deliverable> = {}): Delivera
     ...overrides,
   };
 }
+
+test('pending drafts only share edit and deliverable groups through an explicit period', () => {
+  const pending = activity('pending-1', { activityType: 'pending_classification', saCode: 'SA3.4', title: 'Încadrare în așteptare' });
+  const unrelated = { ...pending, id: 'pending-2', date: '2026-06-04' };
+  assert.equal(isSameEditableActivity(pending, unrelated), false);
+  assert.equal(areActivitiesCompatibleForDeliverableGroup(pending, unrelated), false);
+  const grouped = { ...pending, periodGroupId: 'explicit-period' };
+  const groupedSibling = { ...unrelated, periodGroupId: 'explicit-period' };
+  assert.equal(isSameEditableActivity(grouped, groupedSibling), true);
+  assert.equal(areActivitiesCompatibleForDeliverableGroup(grouped, groupedSibling), true);
+  const assigned = { ...groupedSibling, activityType: 'Consultare', catalogActivityId: 'catalog-1' };
+  assert.equal(isSameEditableActivity(grouped, assigned), false);
+  assert.equal(areActivitiesCompatibleForDeliverableGroup(grouped, assigned), false);
+});
 
 test('editarea unei activitati pastreaza id-ul activitatii existente', () => {
   const updated = prepareExistingActivityUpdate(

@@ -13,6 +13,7 @@ import {
   type FinancialLeaveAllocation,
 } from './financial-leave-allocation.ts';
 import { isPeoPidsTimesheetProject } from './concurrent-project-timesheet-bucket.ts';
+import { isActivityClassificationPending } from './activity-classification.ts';
 
 export type CellInput = string | number | null | { formula: string };
 
@@ -424,6 +425,16 @@ function validateExportPayload(payload: ExportPayload) {
 
   if (!Number.isInteger(payload.year) || payload.year < 2024 || payload.year > 2030) {
     throw new Error('Anul exportului este invalid.');
+  }
+
+  const reportMonth = `${payload.year}-${String(payload.month + 1).padStart(2, '0')}`;
+  const pendingActivities = (payload.activities ?? []).filter((activity) =>
+    isActivityClassificationPending(activity)
+    && activity.date?.startsWith(`${reportMonth}-`)
+    && (!payload.expert.id || !activity.expertId || activity.expertId === payload.expert.id));
+  if (pendingActivities.length > 0) {
+    const dates = [...new Set(pendingActivities.map((activity) => activity.date))].join(', ');
+    throw new Error(`Exportul este blocat: există activități în așteptarea încadrării de către PM (${dates}). Orele rămân în calendar; confirmă încadrarea înainte de raportare.`);
   }
 
   const invalidActivities = (payload.activities ?? []).filter((activity) => {

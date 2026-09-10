@@ -78,8 +78,10 @@ import { formatDate, formatDateRo } from '@/lib/app-utils';
 import {
   createActivityDeliverableAvailabilityResolver,
   getActivitiesMissingDeliverables,
+  getActivitiesPendingClassification,
   isActivityExceptionForSubmit,
 } from '@/lib/submit-readiness';
+import { isActivityClassificationPending } from '@/lib/activity-classification';
 import { getWorkingDaysListInMonth } from '@/lib/working-hours';
 import {
   getMonthlyBlockingState,
@@ -111,6 +113,7 @@ import { buildExpertSubmittedMonthNotifications, getPmNotificationRecipients } f
 type SubmitReadinessSeverity = 'ok' | 'warning' | 'blocking';
 const SUBMISSION_DATA_LOADING_MESSAGE = 'Se verifică datele raportului…';
 type SubmitReadinessKey =
+  | 'classification'
   | 'working-days'
   | 'deliverables'
   | 'titles'
@@ -1630,7 +1633,7 @@ function ExpertDashboardContent() {
           location: sourceActivity.location,
           dayType: sourceActivity.dayType,
           pmNotes: editingActivity.pmNotes,
-          status: editingActivity.status || 'sent',
+          status: isActivityClassificationPending(sourceActivity) ? 'draft' : editingActivity.status || 'sent',
         };
 
         const validation = validateActivitiesBeforeCreate({
@@ -1696,7 +1699,7 @@ function ExpertDashboardContent() {
         return;
       }
 
-      const submittedActivities = editingActivity
+      const submittedActivities = (editingActivity
         ? buildSubmittedActivitiesForEdit(
             editingActivity,
             newActivities,
@@ -1707,7 +1710,9 @@ function ExpertDashboardContent() {
             normalizePontajHoursValue,
             editScope,
           )
-        : newActivities;
+        : newActivities).map((activity): Activity => isActivityClassificationPending(activity)
+          ? { ...activity, status: 'draft', catalogActivityId: undefined }
+          : activity);
       const submittedActivityIds = new Set(submittedActivities.map((activity) => activity.id));
       const isNewAutomaticLeave = !editingActivity
         && submittedActivities.length > 0
@@ -1833,7 +1838,9 @@ function ExpertDashboardContent() {
       }
       await refreshActivities();
       setActivitySaveNotice(
-        editingActivity
+        savedActivitiesForWorkBlock.some(isActivityClassificationPending)
+          ? 'Draftul a fost salvat. Orele sunt vizibile în pontaj. PM trebuie să confirme încadrarea înainte de trimiterea lunii și export.'
+          : editingActivity
           ? 'Modificarile au fost salvate. Pontajul a fost actualizat.'
           : 'Activitatea a fost salvata. Pontajul a fost actualizat.',
       );
@@ -2289,6 +2296,7 @@ function ExpertDashboardContent() {
         action: { type: 'edit-activity', activityId: activity.id, section: 'deliverables' },
       };
     });
+    const activitiesPendingClassification = getActivitiesPendingClassification(activities);
     const unconfirmedTitleGroups = unconfirmedTitles.reduce((groups, item) => {
       const group = groups.get(item.activity.id) || {
         activity: item.activity,
@@ -2378,6 +2386,22 @@ function ExpertDashboardContent() {
     }));
 
     const items: SubmitReadinessItem[] = [
+      {
+        key: 'classification',
+        label: 'Încadrarea activităților',
+        detail: activitiesPendingClassification.length === 0
+          ? 'Toate activitățile au încadrare.'
+          : `${activitiesPendingClassification.length} activități așteaptă încadrarea de către PM. Orele sunt salvate; trimiterea lunii și exportul sunt blocate până la încadrare.`,
+        severity: activitiesPendingClassification.length === 0 ? 'ok' : 'blocking',
+        issues: activitiesPendingClassification.map((activity) => ({
+          id: `classification-${activity.id}`,
+          title: getActivityDisplayTitle(activity),
+          detail: 'PM trebuie să confirme activitatea și subactivitatea înainte de raportare.',
+          meta: `${formatDisplayDate(activity.date)} / ${activity.hours} ore`,
+          actionLabel: 'Vezi draftul',
+          action: { type: 'edit-activity', activityId: activity.id },
+        })),
+      },
       {
         key: 'working-days',
         label: 'Zile lucratoare acoperite',

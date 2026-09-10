@@ -58,9 +58,14 @@ export function EligibilityAssessmentDetails({ check, className = '' }: Eligibil
             <p className="font-medium text-amber-800">Schimbarea subactivității necesită confirmarea expertului și o nouă verificare.</p>
           ) : classification.appliedBy === 'expert' ? (
             <p className="text-slate-600">Încadrare aleasă de expert.</p>
+          ) : classification.appliedBy === 'pm' ? (
+            <p className="text-slate-600">Încadrare stabilită de PM.</p>
           ) : classification.appliedBy === 'ai' ? (
-            <p className="text-slate-600">Încadrare automată, care poate fi corectată de expert.</p>
+            <p className="text-slate-600">Încadrare automată, disponibilă pentru verificarea PM.</p>
+          ) : classification.confidence !== 'high' && classification.activityId ? (
+            <p className="text-amber-800">Propunere de încadrare pentru verificarea PM.</p>
           ) : null}
+          <p className="text-slate-600">Încadrarea identifică activitatea. Verdictul și scorul de eligibilitate sunt evaluate separat.</p>
         </section>
       ) : null}
 

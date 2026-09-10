@@ -1,4 +1,5 @@
 import type { Activity, Deliverable } from './types';
+import { isActivityClassificationPending } from './activity-classification.ts';
 import {
   createActivityPeriodGroupId,
   inferLegacyActivityPeriodGroups,
@@ -85,6 +86,13 @@ function hasCorruptGroupDuplicateForActivity(activity: Activity, activities: Act
 export function isSameEditableActivity(activity: Activity, candidate: Activity) {
   if (activity.id === candidate.id) return true;
   if (activity.expertId && candidate.expertId && activity.expertId !== candidate.expertId) return false;
+
+  if (isActivityClassificationPending(activity) || isActivityClassificationPending(candidate)) {
+    const groupId = getActivityEditGroupId(activity);
+    return Boolean(isActivityClassificationPending(activity) && isActivityClassificationPending(candidate)
+      && groupId && groupId === getActivityEditGroupId(candidate)
+      && normalizeMatchValue(activity.saCode) === normalizeMatchValue(candidate.saCode));
+  }
 
   if (activity.catalogActivityId || candidate.catalogActivityId) {
     return Boolean(activity.catalogActivityId && activity.catalogActivityId === candidate.catalogActivityId);

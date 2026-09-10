@@ -1,6 +1,15 @@
 import { normalizeActivityCatalogSaCode } from './activity-catalog-merge.ts';
 import type { ActivityCatalog, DeliverableEligibilityCheck } from './types.ts';
 
+// Persist in existing Activity fields so drafts need no schema migration.
+// A legacy activity without a catalog ID is not necessarily unclassified.
+export const PENDING_ACTIVITY_CLASSIFICATION_TYPE = 'pending_classification';
+export const PENDING_ACTIVITY_CLASSIFICATION_TITLE = 'Încadrare în așteptare';
+
+export function isActivityClassificationPending(activity: { activityType?: string | null }) {
+  return activity.activityType === PENDING_ACTIVITY_CLASSIFICATION_TYPE;
+}
+
 export function resolveAutomaticActivityClassification(args: {
   check?: DeliverableEligibilityCheck | null;
   automatic: boolean;

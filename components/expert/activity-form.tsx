@@ -62,7 +62,8 @@ import {
   getDeliverableDocumentSignature,
   hasSameDeliverableDocument,
 } from '@/lib/deliverable-deduplication';
-import { resolveAutomaticActivityClassification } from '@/lib/activity-classification';
+import { isActivityClassificationPending, PENDING_ACTIVITY_CLASSIFICATION_TITLE, PENDING_ACTIVITY_CLASSIFICATION_TYPE, resolveAutomaticActivityClassification } from '@/lib/activity-classification';
+import { resolveKnownActivityContinuation } from '@/lib/activity-continuation';
 import { clearDeliverableGroupChecks, getRelatedDeliverableAssessmentKey, isDeliverableNarrativeBlocked, mergeRelatedDeliverableAssessment, reconcileDeliverableGroupEvidence } from '@/lib/deliverable-group-state';
 import { shouldAttachUploadedDeliverablesToDate } from '@/lib/activity-deliverables';
 import { getActivityEditGroupId, isSameEditableActivity } from '@/lib/activity-edit';
@@ -156,6 +157,8 @@ type DuplicateDeliverableActivityChoice = {
   title: string;
   saCode?: string;
   isCompatible: boolean;
+  continuesKnownActivity?: boolean;
+  requiresSaConfirmation?: boolean;
 };
 
 type ActivityWizardStepId = 'type' | 'time' | 'deliverables' | 'description' | 'collaboration' | 'review';
@@ -785,9 +788,8 @@ export function ActivityForm({
     onSelectedDatesChange?.(nextDates, normalizedSelectedHours);
   }, [normalizedSelectedHours, onSelectedDatesChange, selectedActivityDates]);
 
-  const [activityTitle, setActivityTitle] = useState(activitySeed?.activityType || '');
-  const [selectedCatalogActivityId, setSelectedCatalogActivityId] = useState(activitySeed?.catalogActivityId || '');
-  const [autoClassifyActivity, setAutoClassifyActivity] = useState(!initialActivity);
+  const [activityTitle, setActivityTitle] = useState(isActivityClassificationPending({ activityType: activitySeed?.activityType }) ? '' : activitySeed?.activityType || '');
+  const [selectedCatalogActivityId, setSelectedCatalogActivityId] = useState(isActivityClassificationPending({ activityType: activitySeed?.activityType }) ? '' : activitySeed?.catalogActivityId || '');
   const [dayType, setDayType] = useState<'lucratoare' | 'CO' | 'CM'>(
     (activitySeed?.dayType as 'lucratoare' | 'CO' | 'CM') || 'lucratoare'
   );
@@ -819,10 +821,12 @@ export function ActivityForm({
     items: DeliverableSlot[];
     related: Record<string, Partial<DeliverableSlot>>;
     relatedInvalidated: boolean;
+    classificationInvalidationVersion: number;
   }>(() => ({
     items: activitySeed?.deliverables?.map((deliverable) => mapSavedDeliverableToSlot(deliverable, Boolean(initialActivity))) || [],
     related: {},
     relatedInvalidated: false,
+    classificationInvalidationVersion: 0,
   }));
   const deliverables = deliverableState.items;
   const relatedDocumentsRef = useRef<DeliverableSlot[]>([]);
@@ -833,23 +837,32 @@ export function ActivityForm({
       const items = reconcileDeliverableGroupEvidence(previous.items, next);
       return items === next
         ? { ...previous, items }
-        : { items, related: {}, relatedInvalidated: true };
+        : { items, related: {}, relatedInvalidated: true, classificationInvalidationVersion: previous.classificationInvalidationVersion + 1 };
     });
   }, []);
   const invalidateDeliverableAssessments = useCallback(() => {
     setDeliverableState((previous) => ({
-      items: clearDeliverableGroupChecks(previous.items), related: {}, relatedInvalidated: true,
+      ...previous, items: clearDeliverableGroupChecks(previous.items), related: {}, relatedInvalidated: true,
     }));
   }, []);
   const automaticClassificationAllowed = showStandardActivityWorkflow
     && !isGdprExpert && activityFormTab === 'standard' && dayType === 'lucratoare';
   const classificationContextRef = useRef({
-    automatic: autoClassifyActivity, allowed: automaticClassificationAllowed, saCode, catalog: activityTabCatalog,
+    automatic: automaticClassificationAllowed, allowed: automaticClassificationAllowed, saCode, catalog: activityTabCatalog,
   });
   classificationContextRef.current = {
-    automatic: autoClassifyActivity, allowed: automaticClassificationAllowed, saCode, catalog: activityTabCatalog,
+    automatic: automaticClassificationAllowed, allowed: automaticClassificationAllowed, saCode, catalog: activityTabCatalog,
   };
-  const classificationMode = automaticClassificationAllowed && autoClassifyActivity ? 'automatic' : 'manual';
+  const classificationMode = automaticClassificationAllowed ? 'automatic' : 'manual';
+  const lastClassificationInvalidation = useRef(deliverableState.classificationInvalidationVersion);
+  useEffect(() => {
+    if (lastClassificationInvalidation.current === deliverableState.classificationInvalidationVersion) return;
+    lastClassificationInvalidation.current = deliverableState.classificationInvalidationVersion;
+    if (!automaticClassificationAllowed) return;
+    // Preserve saved assignments on retries; replacing the document evidence requires a new classification.
+    setSelectedCatalogActivityId('');
+    setActivityTitle('');
+  }, [automaticClassificationAllowed, deliverableState.classificationInvalidationVersion]);
   const eligibilityExpertContext = {
     classificationMode: classificationMode as 'automatic' | 'manual',
     currentDescription: description,
@@ -1115,7 +1128,7 @@ export function ActivityForm({
     return activityTabCatalog
       .filter(item => item.saCode === saCode);
   }, [saCode, activityTabCatalog]);
-  const initialActivityTitle = initialActivity
+  const initialActivityTitle = initialActivity && !isActivityClassificationPending(initialActivity)
     ? (initialActivity.activityType || initialActivity.title || '').trim()
     : '';
 
@@ -1163,9 +1176,7 @@ export function ActivityForm({
   }, [activityTitle, gdprCatalogItems, gdprTemplateCode, selectedCatalogActivityId]);
 
   const selectedActivitySelectValue = selectedCatalogItem?.id
-    || (isInitialActivitySelectionPreserved ? LEGACY_INITIAL_ACTIVITY_SELECT_VALUE : (
-      automaticClassificationAllowed && autoClassifyActivity ? '__automatic__' : ''
-    ));
+    || (isInitialActivitySelectionPreserved ? LEGACY_INITIAL_ACTIVITY_SELECT_VALUE : '');
 
   const handleSaCodeChange = useCallback((nextSaCode: string) => {
     classificationContextRef.current = {
@@ -1174,20 +1185,12 @@ export function ActivityForm({
     setSaCode(nextSaCode);
     setSelectedCatalogActivityId('');
     setActivityTitle('');
-    setAutoClassifyActivity(true);
     invalidateDeliverableAssessments();
   }, [invalidateDeliverableAssessments]);
 
   const handleActivitySelectionChange = useCallback((catalogActivityId: string) => {
-    const automatic = catalogActivityId === '__automatic__';
-    classificationContextRef.current = { ...classificationContextRef.current, automatic };
-    setAutoClassifyActivity(automatic);
+    if (automaticClassificationAllowed) return;
     invalidateDeliverableAssessments();
-    if (automatic) {
-      setSelectedCatalogActivityId('');
-      setActivityTitle('');
-      return;
-    }
     if (catalogActivityId === LEGACY_INITIAL_ACTIVITY_SELECT_VALUE) {
       setSelectedCatalogActivityId(initialActivity?.catalogActivityId || '');
       setActivityTitle(initialActivityTitle);
@@ -1197,7 +1200,7 @@ export function ActivityForm({
     const catalogItem = availableActivityItems.find((item) => item.id === catalogActivityId);
     setSelectedCatalogActivityId(catalogActivityId);
     setActivityTitle(catalogItem?.activityName || '');
-  }, [availableActivityItems, initialActivity?.catalogActivityId, initialActivityTitle, invalidateDeliverableAssessments]);
+  }, [automaticClassificationAllowed, availableActivityItems, initialActivity?.catalogActivityId, initialActivityTitle, invalidateDeliverableAssessments]);
 
   const handleGdprCatalogActivityChange = useCallback((catalogActivityId: string) => {
     const catalogItem = gdprCatalogItems.find((item) => item.id === catalogActivityId);
@@ -1293,7 +1296,7 @@ export function ActivityForm({
 
   const activityAutofillDeliverables = deliverablesForEligibility.length > 0 ? deliverablesForEligibility : deliverables;
   const activityAutofillManualEntryMessage = activityAutofillDeliverables.some(isDeliverableNarrativeBlocked)
-    ? 'Verificarea automata nu a putut citi/analiza livrabilul. Continua cu introducere manuala si verificare PM.'
+    ? 'Verificarea automata nu a putut citi/analiza livrabilul. Poti salva ciorna pentru verificare PM.'
     : null;
   const effectiveActivityAutofillUnavailableMessage = activityAutofillManualEntryMessage || activityAutofillUnavailableMessage;
   const canExtractActivityAutofillText = activityAutofillDeliverables.some((deliverable) => (
@@ -1463,6 +1466,9 @@ export function ActivityForm({
     : isBusinessHubTabActive
       ? roleConfig.defaultSaCode || saCode
       : saCode;
+  const isStandardClassificationPending = automaticClassificationAllowed && !effectiveActivityTitle.trim();
+  const activityTypeForSave = isStandardClassificationPending ? PENDING_ACTIVITY_CLASSIFICATION_TYPE : effectiveActivityTitle;
+  const activityTitleForSave = isStandardClassificationPending ? PENDING_ACTIVITY_CLASSIFICATION_TITLE : effectiveActivityTitle;
   
   // Check if current activity is exception (no deliverable required)
   const isException = isExceptionActivity(effectiveActivityTitle);
@@ -1525,7 +1531,8 @@ export function ActivityForm({
   });
   const baseSaveBlockers = [
     selectedActivityDates.length === 0 ? 'Selecteaza cel putin o zi din calendar.' : null,
-    (!effectiveActivityTitle.trim() && !isLeave) ? 'Selecteaza tipul activitatii.' : null,
+    (!effectiveActivityTitle.trim() && !isLeave && !automaticClassificationAllowed) ? 'Selecteaza tipul activitatii.' : null,
+    (automaticClassificationAllowed && !effectiveSaCode) ? 'Selecteaza subactivitatea.' : null,
     isSaving ? 'Salvarea este deja in curs.' : null,
     (isBusinessHubTabActive && selectedActivityDates.length !== 1) ? 'Registrul Business Hub se completeaza pentru o singura zi selectata.' : null,
     (isBusinessHubTabActive && getBusinessHubMetaMissingFields(businessHubMetaDraft).length > 0)
@@ -1664,7 +1671,7 @@ export function ActivityForm({
         ? next : reconcileDeliverableGroupEvidence(previous.items, next);
       return items === next
         ? { ...previous, items }
-        : { items, related: {}, relatedInvalidated: true };
+        : { items, related: {}, relatedInvalidated: true, classificationInvalidationVersion: previous.classificationInvalidationVersion + 1 };
     });
   }, []);
 
@@ -1681,10 +1688,16 @@ export function ActivityForm({
       ));
       if (!catalogMatch) return;
 
+      if (classificationContextRef.current.allowed) {
+        // The expert confirms only a different SA. The activity is assigned by the next AI assessment.
+        if (catalogMatch.saCode === classificationContextRef.current.saCode) return;
+        handleSaCodeChange(catalogMatch.saCode);
+        return;
+      }
+
       setSaCode(catalogMatch.saCode);
       setSelectedCatalogActivityId(catalogMatch.id);
       setActivityTitle(catalogMatch.activityName);
-      setAutoClassifyActivity(false);
       classificationContextRef.current = { ...classificationContextRef.current, automatic: false, saCode: catalogMatch.saCode };
       invalidateDeliverableAssessments();
       updateDeliverable(deliverableId, {
@@ -1703,7 +1716,7 @@ export function ActivityForm({
         aiCheck: null,
       });
     }
-  }, [filteredCatalog, invalidateDeliverableAssessments, updateDeliverable]);
+  }, [filteredCatalog, handleSaCodeChange, invalidateDeliverableAssessments, updateDeliverable]);
 
   const removeDeliverable = useCallback((id: string) => {
     setDeliverables(prev => prev.filter((d) => d.id !== id));
@@ -1858,6 +1871,23 @@ export function ActivityForm({
     selectedActivityDates,
   ]);
 
+  const getKnownActivityContinuation = useCallback((sourceActivityId?: string) => resolveKnownActivityContinuation({
+    sourceActivityId,
+    activities: allActivities,
+    documents: deliverables.filter((document) => document.uploaded).map((document) => ({
+      documentId: document.documentId, fileHash: document.fileHash, fileData: document.fileData,
+      fileName: document.filename || document.name || '', originalFileName: document.filename || document.name || '',
+      fileType: document.fileType || '', fileSize: document.fileSize || 0,
+      firstPageTextHash: document.firstPageTextHash, contentFingerprint: document.contentFingerprint,
+    })),
+    catalog: activityTabCatalog,
+    expertId,
+    expertCategory,
+    projectCode: expert?.projectCode,
+    month,
+    year,
+  }), [activityTabCatalog, allActivities, deliverables, expert?.projectCode, expertCategory, expertId, month, year]);
+
   const handleSave = useCallback(async (
     confirmedDuplicate = false,
     confirmedMonthlyDeliverableDuplicate = false,
@@ -1868,7 +1898,22 @@ export function ActivityForm({
     }
 
     setValidationError(null);
+    const confirmedContinuation = isStandardClassificationPending && confirmedMonthlyDeliverableDuplicate
+      ? getKnownActivityContinuation(selectedDuplicateSourceActivityId) : null;
+    if (isStandardClassificationPending && confirmedMonthlyDeliverableDuplicate && !confirmedContinuation) {
+      setValidationError('Activitatea sursa nu mai corespunde documentelor sau incadrarii permise. Reia verificarea duplicatului.');
+      return;
+    }
+    const pendingClassificationForSave = isStandardClassificationPending && !confirmedContinuation;
+    const finalActivityType = confirmedContinuation?.activityType || activityTypeForSave;
+    const finalActivityTitle = confirmedContinuation?.title || confirmedContinuation?.activityType || activityTitleForSave;
+    const finalSaCode = confirmedContinuation?.saCode || effectiveSaCode;
+    const finalStandardCatalogId = confirmedContinuation?.catalogActivityId
+      || (pendingClassificationForSave ? undefined : standardCatalogActivityIdForSave);
     const reportingWarnings: string[] = [];
+    if (pendingClassificationForSave) {
+      reportingWarnings.push('Incadrarea activitatii este in asteptare. Ciorna poate fi salvata; transmiterea raportului necesita incadrare AI sau verificare PM.');
+    }
     const eventDocumentationForSave = getEventDocumentationStatus(deliverables);
     const hasMainDeliverableForSave = deliverables.some((deliverable) => (
       isMainDeliverableSlot(deliverable)
@@ -1989,16 +2034,16 @@ export function ActivityForm({
       expertId,
       date,
       hours: isLeave ? 0 : Number(normalizePontajHoursValue(normalizedSelectedHours[date], getDefaultHoursForDate(date))),
-      status: initialActivity?.status,
+      status: pendingClassificationForSave ? 'draft' : initialActivity?.status,
       projectCode: expert?.projectCode,
-      saCode: effectiveSaCode,
+      saCode: finalSaCode,
       catalogActivityId: isBusinessHubTabActive
         ? businessHubRegistryCatalogItem?.id
         : isGdprExpert
           ? selectedGdprCatalogItem?.id
-          : standardCatalogActivityIdForSave,
-      activityType: effectiveActivityTitle,
-      title: effectiveActivityTitle,
+          : finalStandardCatalogId,
+      activityType: finalActivityType,
+      title: finalActivityTitle,
       description,
       businessHubMetaJson: isBusinessHubTabActive
         ? serializeBusinessHubMeta({ ...businessHubMetaDraft, date })
@@ -2108,14 +2153,15 @@ export function ActivityForm({
         expertId,
         expertName,
         hours: dateHours,
-        activityType: effectiveActivityTitle,
-        saCode: effectiveSaCode,
+        activityType: finalActivityType,
+        ...(pendingClassificationForSave ? { status: 'draft' as const } : {}),
+        saCode: finalSaCode,
         catalogActivityId: isBusinessHubTabActive
           ? businessHubRegistryCatalogItem?.id
           : isGdprExpert
             ? selectedGdprCatalogItem?.id
-            : standardCatalogActivityIdForSave,
-        title: effectiveActivityTitle,
+            : finalStandardCatalogId,
+        title: finalActivityTitle,
         description,
         activitySummary: activitySummary.trim() || undefined,
         activitySummaryGeneratedAt: activitySummary.trim() ? (activitySummaryGeneratedAt || activitySeed?.activitySummaryGeneratedAt || new Date().toISOString()) : undefined,
@@ -2145,7 +2191,7 @@ export function ActivityForm({
               projectName: d.projectName,
               sourceActivityId: d.sourceActivityId,
               activityDate: date,
-              saCode,
+              saCode: finalSaCode,
               category: resolvedDeliverableCategory,
               deliverableType: resolvedDeliverableType,
               stadiu: d.stadiu,
@@ -2169,15 +2215,15 @@ export function ActivityForm({
               titleConfirmed: d.titleConfirmed,
               titleCheckStatus: d.titleCheckStatus,
               titleCheckMessage: d.titleCheckMessage,
-              aiStatus: d.aiCheck?.eligible === true
+              aiStatus: confirmedContinuation ? undefined : d.aiCheck?.eligible === true
                 ? 'eligible'
                 : d.aiCheck?.eligible === false
                   ? 'ineligible'
                   : d.aiCheck
                     ? 'review'
                     : undefined,
-              aiReason: d.aiCheck?.reason,
-              eligibilityCheck: normalizeDeliverableEligibilityCheck(d.eligibilityCheck ?? null) || undefined,
+              aiReason: confirmedContinuation ? undefined : d.aiCheck?.reason,
+              eligibilityCheck: confirmedContinuation ? undefined : normalizeDeliverableEligibilityCheck(d.eligibilityCheck ?? null) || undefined,
               fileData: d.fileData,
             };
           }) : [],
@@ -2250,7 +2296,10 @@ export function ActivityForm({
         date: activity.date,
         title: getActivityDuplicateChoiceLabel(activity),
         saCode: activity.saCode,
-        isCompatible: activities.some((nextActivity) => areActivitiesCompatibleForDeliverableGroup(nextActivity, activity)),
+        isCompatible: activities.some((nextActivity) => areActivitiesCompatibleForDeliverableGroup(nextActivity, activity))
+          || Boolean(isStandardClassificationPending && getKnownActivityContinuation(activity.id)),
+        continuesKnownActivity: Boolean(isStandardClassificationPending && getKnownActivityContinuation(activity.id)),
+        requiresSaConfirmation: isStandardClassificationPending && normalizeActivityCatalogSaCode(activity.saCode) !== normalizeActivityCatalogSaCode(effectiveSaCode),
       }));
       const compatibleChoices = duplicateChoices.filter((choice) => choice.isCompatible);
       const selectedCompatibleSourceActivityId = selectedDuplicateSourceActivityId
@@ -2262,7 +2311,7 @@ export function ActivityForm({
         || compatibleChoices[0]?.id;
       const duplicateMessage = compatibleChoices.length > 0
         ? message
-        : `${message} Nu exista o activitate compatibila pentru reutilizarea acestui fisier in aceeasi luna. Anuleaza si incarca un livrabil diferit sau alege aceeasi activitate/SA.`;
+        : `${message} Nu exista o activitate compatibila pentru reutilizarea acestui fisier in aceeasi luna. Reia incadrarea AI sau solicita verificare PM.`;
 
       if (!confirmedMonthlyDeliverableDuplicate || !defaultSourceActivityId) {
         setMonthlyDeliverableDuplicateConfirmation({
@@ -2305,9 +2354,9 @@ export function ActivityForm({
         ...activity,
         periodGroupId: duplicatePeriodGroupId,
         workingGroupId: duplicatePeriodGroupId,
-        deliverables: activity.deliverables?.filter((deliverable) => (
-          !hasSameDeliverableDocument(deliverable, monthlyDuplicate.deliverable)
-        )),
+        deliverables: activity.deliverables?.filter((deliverable) => confirmedContinuation
+          ? !confirmedContinuation.deliverables?.some((existing) => hasSameDeliverableDocument(deliverable, existing))
+          : !hasSameDeliverableDocument(deliverable, monthlyDuplicate.deliverable)),
       }));
 
       if (
@@ -2348,6 +2397,8 @@ export function ActivityForm({
   }, [
     activityCommon,
     activityKeywords,
+    activityTitleForSave,
+    activityTypeForSave,
     allActivities,
     collaborators,
     dayType,
@@ -2368,6 +2419,7 @@ export function ActivityForm({
     gdprMeta,
     gdprTemplateCode,
     getDefaultHoursForDate,
+    getKnownActivityContinuation,
     grupTinta,
     normalizedSelectedHours,
     initialActivity,
@@ -2379,6 +2431,7 @@ export function ActivityForm({
     isException,
     isSaving,
     isSubmittingActivity,
+    isStandardClassificationPending,
     isLeave,
     location,
     month,
@@ -2462,7 +2515,7 @@ export function ActivityForm({
   ), [activityCommon, allExperts, collaborators]);
   const prelimDeliverables = deliverables.filter(d => d.slotType === 'raport_preliminar');
   const justifDeliverables = deliverables.filter(d => d.slotType === 'justificativ');
-  const canClassifyWithoutActivity = automaticClassificationAllowed && autoClassifyActivity
+  const canClassifyWithoutActivity = automaticClassificationAllowed
     && Boolean(expertCategory && effectiveSaCode);
   const eligibilityBlockedReason = !effectiveSaCode
     ? 'Selecteaza subactivitatea inainte de verificarea eligibilitatii.'
@@ -2541,7 +2594,7 @@ export function ActivityForm({
     },
     {
       id: 'type',
-      label: 'Tip activitate',
+      label: automaticClassificationAllowed ? 'Subactivitate' : 'Tip activitate',
       description: isBusinessHubExpert ? 'Business Hub, standard sau eveniment' : 'Standard sau eveniment',
       blocked: !effectiveActivityTitle.trim() && !isLeave && !canClassifyWithoutActivity,
       disabled: isLeave,
@@ -2582,6 +2635,7 @@ export function ActivityForm({
     },
   ], [
     activityCommon,
+    automaticClassificationAllowed,
     canOpenDeliverablesStep,
     canClassifyWithoutActivity,
     collaborators.length,
@@ -2657,6 +2711,7 @@ export function ActivityForm({
     if (!context) return;
 
     if (action === 'activity' && context.sourceSaCode && context.sourceActivityName) {
+      if (classificationContextRef.current.allowed) return;
       const catalogMatch = filteredCatalog.find((item) => (
         item.saCode === context.sourceSaCode
         && item.activityName === context.sourceActivityName
@@ -2670,7 +2725,6 @@ export function ActivityForm({
       setSaCode(catalogMatch.saCode);
       setSelectedCatalogActivityId(catalogMatch.id);
       setActivityTitle(catalogMatch.activityName);
-      setAutoClassifyActivity(false);
       classificationContextRef.current = { ...classificationContextRef.current, automatic: false, saCode: catalogMatch.saCode };
       invalidateDeliverableAssessments();
       updateDeliverable(deliverableId, {
@@ -2733,7 +2787,10 @@ export function ActivityForm({
       saveBlockers,
       validationError,
     },
-  });
+  }).map((item) => automaticClassificationAllowed ? {
+    ...item,
+    actions: item.actions?.filter((action) => !(action.id.startsWith('existing-source:') && action.id.endsWith(':activity'))),
+  } : item);
   const attachExistingDeliverable = useCallback((candidate: ExistingDeliverableCandidate) => {
     const savedEligibilityCheck = normalizeDeliverableEligibilityCheck(candidate.eligibilityCheck ?? null);
     const hasReusableEligibility = Boolean(
@@ -2848,11 +2905,10 @@ export function ActivityForm({
       isPendingConfirm: false,
     };
 
-    if (!activityTitle && sourceCatalogMatch) {
+    if (!classificationContextRef.current.allowed && !activityTitle && sourceCatalogMatch) {
       setSaCode(sourceCatalogMatch.saCode);
       setSelectedCatalogActivityId(sourceCatalogMatch.id);
       setActivityTitle(sourceCatalogMatch.activityName);
-      setAutoClassifyActivity(false);
       classificationContextRef.current = { ...classificationContextRef.current, automatic: false, saCode: sourceCatalogMatch.saCode };
       slot.saCode = sourceCatalogMatch.saCode;
     }
@@ -3613,18 +3669,25 @@ export function ActivityForm({
 
                   {!isGdprExpert ? (
                     <Field>
-                      <FieldLabel htmlFor="activity">Activitate</FieldLabel>
+                      <FieldLabel htmlFor={automaticClassificationAllowed ? undefined : 'activity'}>Incadrare activitate</FieldLabel>
+                      {automaticClassificationAllowed ? (
+                        <div className="rounded-md border bg-slate-50 px-3 py-2 text-sm" aria-live="polite" data-testid="standard-activity-classification">
+                          <div className="font-medium">{activityTitle || PENDING_ACTIVITY_CLASSIFICATION_TITLE}</div>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {activityTitle
+                              ? 'Incadrarea este pastrata. Poti relua verificarea livrabilului pentru o noua analiza AI. Verdictul de eligibilitate se afiseaza separat.'
+                              : 'Selecteaza SA, incarca livrabilul si ruleaza verificarea AI. Poti salva ciorna pana la incadrarea de catre AI sau PM.'}
+                          </p>
+                          {!eligibilityCheckEnabled && (
+                            <p className="mt-1 text-xs text-amber-700">Verificarea AI este indisponibila. Salveaza ciorna pentru verificare PM.</p>
+                          )}
+                        </div>
+                      ) : (
                       <Select value={selectedActivitySelectValue} onValueChange={handleActivitySelectionChange} disabled={!saCode || availableActivityItems.length === 0}>
                         <SelectTrigger id="activity">
                           <SelectValue placeholder={!saCode ? "Selecteaza SA mai intai" : "Selecteaza activitatea"} />
                         </SelectTrigger>
                         <SelectContent>
-                          {automaticClassificationAllowed && (
-                            <>
-                              <SelectItem value="__automatic__">Selectare automata din livrabil</SelectItem>
-                              <SelectSeparator />
-                            </>
-                          )}
                           {availableActivityItems.length === 0 ? (
                             <div className="px-2 py-1.5 text-sm text-muted-foreground">Nicio activitate pentru acest SA</div>
                           ) : (
@@ -3644,12 +3707,6 @@ export function ActivityForm({
                           )}
                         </SelectContent>
                       </Select>
-                      {automaticClassificationAllowed && (
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {autoClassifyActivity
-                            ? 'AI selecteaza activitatea din aceasta subactivitate dupa analiza livrabilului. Poti corecta oricand alegerea din lista.'
-                            : 'Alegerea manuala este pastrata. O alta incadrare propusa de AI se aplica numai dupa confirmarea ta.'}
-                        </p>
                       )}
                       {selectedCatalogItem && (
                         <p className="text-xs text-muted-foreground mt-1">
@@ -4624,7 +4681,10 @@ export function ActivityForm({
             </div>
             <div>
               <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Activitate</div>
-              <div className="font-medium text-foreground">{effectiveSaCode || 'SA neselectat'}{effectiveActivityTitle ? ` - ${effectiveActivityTitle}` : ''}</div>
+              <div className="font-medium text-foreground">{effectiveSaCode || 'SA neselectat'}{activityTitleForSave ? ` - ${activityTitleForSave}` : ''}</div>
+              {isStandardClassificationPending && (
+                <p className="mt-1 text-xs text-amber-700">Ciorna neincadrata. Raportul poate fi transmis dupa incadrarea AI sau PM.</p>
+              )}
             </div>
             <div>
               <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Livrabile</div>
@@ -4765,6 +4825,12 @@ export function ActivityForm({
                         <span className="block text-xs text-muted-foreground">
                           {formatDateRo(choice.date)}{choice.saCode ? ` / ${choice.saCode}` : ''}
                         </span>
+                        {choice.continuesKnownActivity && (
+                          <span className="block text-xs text-slate-700">Documentele coincid cu sursa. Se pastreaza incadrarea activitatii existente.</span>
+                        )}
+                        {choice.requiresSaConfirmation && choice.isCompatible && (
+                          <span className="block text-xs font-medium text-amber-800">Continuarea confirma schimbarea subactivitatii la {choice.saCode}.</span>
+                        )}
                         {choice.isCompatible ? (
                           <span className="inline-flex text-xs font-medium text-emerald-700">
                             Recomandata pentru activitatea curenta
@@ -4798,7 +4864,9 @@ export function ActivityForm({
                   monthlyDeliverableDuplicateConfirmation?.sourceActivityId,
                 )}
               >
-                Adauga la activitatea existenta
+                {monthlyDeliverableDuplicateConfirmation?.choices.find((choice) => choice.id === monthlyDeliverableDuplicateConfirmation.sourceActivityId)?.requiresSaConfirmation
+                  ? 'Confirma schimbarea SA si continua activitatea'
+                  : 'Continua activitatea existenta'}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -4903,7 +4971,7 @@ export function ActivityForm({
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                   Se salveaza...
                 </>
-              ) : initialActivity ? 'Salveaza modificarile' : 'Adauga activitate'}
+              ) : isStandardClassificationPending ? 'Salveaza ciorna' : initialActivity ? 'Salveaza modificarile' : 'Adauga activitate'}
             </Button>
           </div>
         </div>

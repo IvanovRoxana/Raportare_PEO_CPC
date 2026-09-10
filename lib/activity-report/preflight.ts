@@ -61,10 +61,14 @@ export function buildDeterministicAnexa10Preflight(model: Anexa10ReportModel): A
     ...model.problems.map((problem, index) => finding({
       id: `allocation-problem-${index + 1}`,
       severity: 'critical',
-      area: 'hours',
-      title: 'Problema de alocare ore',
+      area: problem.code === 'pending_classification' || problem.code === 'stale_classification' ? 'table' : 'hours',
+      title: problem.code === 'pending_classification'
+        ? 'Încadrare în așteptare'
+        : problem.code === 'stale_classification' ? 'Încadrare de reconciliat' : 'Problema de alocare ore',
       detail: problem.message,
-      suggestion: 'Corecteaza alocarea work block-urilor inainte de export.',
+      suggestion: problem.code === 'pending_classification' || problem.code === 'stale_classification'
+        ? 'PM trebuie să confirme încadrarea activităților înainte de export.'
+        : 'Corecteaza alocarea work block-urilor inainte de export.',
     })),
     ...model.warnings.map((warning, index) => finding({
       id: `model-warning-${index + 1}`,

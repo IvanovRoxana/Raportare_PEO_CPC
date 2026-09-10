@@ -1,4 +1,29 @@
-import type { Activity, Deliverable } from '../types.ts';
+import type { Activity, ActivityCatalog, Deliverable } from '../types.ts';
+import { isActivityClassificationPending } from '../activity-classification.ts';
+import { normalizeActivityCatalogSaCode } from '../activity-catalog-merge.ts';
+import { areComCommunicationMultiGroupActivities } from '../activity-multigroup-rules.ts';
+import activityCatalogSeed from '../../data/import/activity-catalog.json' with { type: 'json' };
+
+const classificationText = (value?: string) => (value || '').normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '').trim().replace(/\s+/g, ' ').toLocaleLowerCase('ro');
+
+export function hasStaleCatalogClassification(activity: Activity, workBlock: Pick<ReportingWorkBlock, 'activityCode' | 'activityCategory' | 'title'>) {
+  if (!activity.catalogActivityId) return false;
+  // Monthly COM evidence intentionally supports several catalog activities.
+  // SA consistency is checked separately for each linked activity.
+  if (areComCommunicationMultiGroupActivities(activity, { activityType: workBlock.activityCategory || workBlock.title, title: workBlock.title })) return false;
+  const code = (workBlock.activityCode || '').trim();
+  // Older blocks may store a financing activity code instead of a catalogue ID.
+  if (code && !/^(?:A|SA)\s*\d+(?:\.\d+)*$/i.test(code)) return activity.catalogActivityId !== code;
+  if (workBlock.activityCategory) {
+    return classificationText(workBlock.activityCategory) !== classificationText(activity.activityType || activity.title);
+  }
+  const knownTitleMatches = (activityCatalogSeed as ActivityCatalog[]).filter((item) =>
+    normalizeActivityCatalogSaCode(item.saCode) === normalizeActivityCatalogSaCode(activity.saCode)
+    && classificationText(item.activityName) === classificationText(workBlock.title));
+  return knownTitleMatches.length > 0 && !knownTitleMatches.some((item) => item.id === activity.catalogActivityId
+    || classificationText(item.activityName) === classificationText(activity.activityType || activity.title));
+}
 
 export type ReportingFlowType =
   | 'deliverable'
@@ -78,6 +103,8 @@ export type WorkBlockAllocationProblem = {
     | 'over_allocated_activity'
     | 'negative_allocated_hours'
     | 'zero_hour_work_block'
+    | 'pending_classification'
+    | 'stale_classification'
     | 'missing_sa';
   message: string;
   activityId?: string;
@@ -88,6 +115,7 @@ export function buildWorkBlocks(activities: Activity[]): ReportingWorkBlockBundl
   const groups = new Map<string, Activity[]>();
 
   for (const activity of activities) {
+    if (isActivityClassificationPending(activity)) continue;
     const key = getWorkBlockGroupKey(activity);
     groups.set(key, [...(groups.get(key) ?? []), activity]);
   }
@@ -121,7 +149,31 @@ export function validateWorkBlockAllocation(
   const activitiesById = new Map(activities.map((activity) => [activity.id, activity]));
   const allocatedByActivity = new Map<string, number>();
 
+  for (const activity of activities.filter(isActivityClassificationPending)) {
+    problems.push({
+      code: 'pending_classification',
+      message: `Activitatea din ${activity.date} este în așteptarea încadrării de către PM. Orele rămân în pontaj; raportarea este blocată până la încadrare.`,
+      activityId: activity.id,
+    });
+  }
+
   for (const bundle of bundles) {
+    const classificationMismatch = bundle.workBlock.aiConsolidationStatus === 'classification_review_required'
+      || bundle.activityLinks.some((link) => {
+        const activity = activitiesById.get(link.activityId);
+        if (!activity || isActivityClassificationPending(activity)) return false;
+        const activitySa = normalizeActivityCatalogSaCode(activity.saCode);
+        const blockSa = normalizeActivityCatalogSaCode(bundle.workBlock.saCode);
+        return Boolean(activitySa && blockSa && activitySa !== blockSa)
+          || hasStaleCatalogClassification(activity, bundle.workBlock);
+      });
+    if (classificationMismatch) {
+      problems.push({
+        code: 'stale_classification',
+        message: `Încadrarea blocului „${bundle.workBlock.title}” nu corespunde activităților asociate. PM trebuie să reconcilieze încadrarea înainte de raportare.`,
+        workBlockId: bundle.workBlock.id,
+      });
+    }
     if (!bundle.workBlock.saCode || bundle.workBlock.saCode === 'SA neprecizata') {
       problems.push({
         code: 'missing_sa',

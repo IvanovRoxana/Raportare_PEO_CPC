@@ -1,4 +1,5 @@
 import type { Activity } from '../types.ts';
+import { isActivityClassificationPending } from '../activity-classification.ts';
 import { buildWorkBlocks, type ReportingWorkBlockBundle } from './work-blocks.ts';
 import type { DraftWorkBlockInput } from './draft-work-blocks.ts';
 import type { ActivityEditScope } from '../activity-edit.ts';
@@ -29,7 +30,7 @@ export function buildActivitySaveWorkBlockInput({
     .filter((activity) => getActivityMonth(activity) === month && getActivityYear(activity) === year)
     .sort((first, second) => first.date.localeCompare(second.date) || first.id.localeCompare(second.id));
 
-  if (targetActivities.length === 0) return null;
+  if (targetActivities.length === 0 || targetActivities.some(isActivityClassificationPending)) return null;
 
   const bundle = buildWorkBlocks(targetActivities)[0];
   if (!bundle) return null;

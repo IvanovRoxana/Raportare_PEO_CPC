@@ -1,4 +1,5 @@
 import type { Activity, ActivityCatalog, Deliverable } from './types.ts';
+import { isActivityClassificationPending } from './activity-classification.ts';
 import { isEventActivity, isExceptionActivity } from './peo-constants.ts';
 import { isEventActivityCatalogItem } from './activity-catalog-merge.ts';
 import { getBusinessHubMetaMissingFields, parseBusinessHubMetaJson } from './business-hub-reporting.ts';
@@ -36,6 +37,7 @@ function getActivityCreatedTime(activity: Activity) {
 }
 
 function getLegacyActivityPeriodSignature(activity: Activity) {
+  if (isActivityClassificationPending(activity)) return null;
   if (activity.periodGroupId || activity.workingGroupId) return null;
   if (getActivityCreatedTime(activity) === null) return null;
 
@@ -78,6 +80,7 @@ function isMonthlySocialMediaVisualActivity(activity: Activity) {
 }
 
 function getMonthlySocialMediaDeliverableSignature(activity: Activity) {
+  if (isActivityClassificationPending(activity)) return null;
   if (!isMonthlySocialMediaVisualActivity(activity)) return null;
 
   return [
@@ -92,6 +95,7 @@ function getMonthlySocialMediaDeliverableSignature(activity: Activity) {
 }
 
 function getMonthlyComDeliverableSignature(activity: Activity) {
+  if (isActivityClassificationPending(activity)) return null;
   const communicationGroupKey = getComCommunicationMultiGroupKey(activity);
   if (!communicationGroupKey) return null;
 
@@ -185,6 +189,10 @@ export function hasUsableDeliverable(deliverables?: Deliverable[]) {
   return (deliverables ?? []).some((deliverable) =>
     Boolean(deliverable.filePath || deliverable.s3Key || deliverable.fileName || deliverable.documentId),
   );
+}
+
+export function getActivitiesPendingClassification(activities: Activity[]) {
+  return activities.filter(isActivityClassificationPending);
 }
 
 function getDeliverableKind(deliverable: Deliverable) {

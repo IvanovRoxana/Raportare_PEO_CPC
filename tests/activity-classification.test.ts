@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { resolveAutomaticActivityClassification } from '../lib/activity-classification.ts';
+import { isActivityClassificationPending, PENDING_ACTIVITY_CLASSIFICATION_TYPE, resolveAutomaticActivityClassification } from '../lib/activity-classification.ts';
 import type { ActivityCatalog, DeliverableEligibilityCheck } from '../lib/types.ts';
 
 const catalog: ActivityCatalog[] = [{
@@ -21,6 +21,21 @@ const context = { check, automatic: true, allowed: true, saCode: 'SA3.1', catalo
 
 test('selectia automata accepta rezultatul final canonic din catalog pentru SA-ul curent', () => {
   assert.equal(resolveAutomaticActivityClassification(context)?.id, 'catalog-current');
+});
+
+test('canonical activity assignment does not turn negative or inconclusive eligibility into approval', () => {
+  for (const status of ['neeligibil', 'neconcludent']) {
+    const negative = { ...check, status, score: 20 };
+    assert.equal(resolveAutomaticActivityClassification({ ...context, check: negative })?.id, 'catalog-current');
+    assert.equal(negative.status, status);
+    assert.equal(negative.score, 20);
+  }
+});
+
+test('only the explicit pending marker blocks drafts, preserving legacy name-based assignments', () => {
+  assert.equal(isActivityClassificationPending({ activityType: PENDING_ACTIVITY_CLASSIFICATION_TYPE }), true);
+  assert.equal(isActivityClassificationPending({ activityType: 'Consultare regionala' }), false);
+  assert.equal(isActivityClassificationPending({}), false);
 });
 
 test('o alegere manuala sau un flux special blocheaza raspunsul automat aflat in zbor', () => {

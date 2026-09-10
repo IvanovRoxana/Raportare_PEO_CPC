@@ -485,7 +485,7 @@ export interface DashboardComplianceRow {
 
 export interface DeliverableEligibilityCheck {
   assessmentVersion?: string;
-  executionStatus?: 'pending' | 'completed' | 'failed';
+  executionStatus?: 'pending' | 'completed' | 'failed' | 'not_started';
   classification?: {
     activityId: string;
     activityName: string;
@@ -494,7 +494,7 @@ export interface DeliverableEligibilityCheck {
     reason: string;
     autoApply: boolean;
     requiresSaConfirmation: boolean;
-    appliedBy?: 'ai' | 'expert';
+    appliedBy?: 'ai' | 'expert' | 'pm';
     appliedAt?: string;
     alternatives: Array<{ activityId: string; activityName: string; saCode: string; reason: string }>;
   };

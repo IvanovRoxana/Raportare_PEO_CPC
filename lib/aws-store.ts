@@ -90,6 +90,9 @@ import { parseAwsJsonField, serializeAwsJsonField } from './aws-json';
 import { planDeliverableSync } from './activity-deliverable-sync';
 import { areActivitiesCompatibleForDeliverableGroup, dedupeDeliverablesBySignature, findMonthlyDeliverableDuplicate, getDeliverableDocumentSignature, hasSameDeliverableDocument } from './deliverable-deduplication';
 import { buildPersistedWorkBlockBundles } from './activity-report/persisted-work-blocks';
+import { hasActivityClassificationChanged, planActivityReassignmentWorkBlockSync } from './activity-report/activity-reassignment-sync';
+import { buildDeterministicWorkBlockConsolidation, buildWorkBlockConsolidationRequest } from './activity-report/work-block-consolidation';
+import { isActivityClassificationPending } from './activity-classification';
 import {
   prepareDraftWorkBlockBundle,
   prepareDraftWorkBlockSave,
@@ -1828,6 +1831,9 @@ async function validateActivityBatchForWrite(
   activities: Omit<Activity, 'id' | 'createdAt' | 'updatedAt'>[],
   excludedIds: string[] = [],
 ) {
+  if (activities.some((activity) => isActivityClassificationPending(activity) && activity.status !== 'draft')) {
+    throw new Error('Activitățile cu încadrare în așteptare pot fi salvate numai ca ciorne.');
+  }
   const groups = new Map<string, Omit<Activity, 'id' | 'createdAt' | 'updatedAt'>[]>();
 
   activities.forEach((activity) => {
@@ -2892,6 +2898,109 @@ export const sharedDeliverablesService = {
   },
 };
 
+async function invalidateActivityClassificationWorkBlocks(client: any, activity: Activity) {
+  if (!client.models.ReportingWorkBlock || !client.models.WorkBlockActivityLink) return;
+  const links = await listModel<PersistedWorkBlockActivityLink>(client.models.WorkBlockActivityLink, { activityId: { eq: activity.id } });
+  const groupId = activity.periodGroupId || activity.workingGroupId;
+  const ids = new Set([...links.map((link) => link.workBlockId), groupId ? `work-block:${groupId}` : `work-block:activity:${activity.id}`]);
+  for (const id of ids) {
+    const block = await client.models.ReportingWorkBlock.get({ id });
+    assertNoErrors(block, 'AWS get work block before reassignment');
+    if (!block.data) continue;
+    await assertCanAccessExpert(client, block.data.expertId);
+    const result = await client.models.ReportingWorkBlock.update({
+      id, aiConsolidationStatus: 'classification_review_required', aiConsolidationUpdatedAt: new Date().toISOString(),
+    });
+    assertNoErrors(result, 'AWS invalidate work block before reassignment');
+  }
+}
+
+async function synchronizeReassignedActivityWorkBlocks(client: any, previous: Activity, current: Activity) {
+  if (!client.models.ReportingWorkBlock || !client.models.WorkBlockActivityLink || !client.models.WorkBlockDeliverableLink) return;
+  // Keep the expert's existing Cognito ownership when PM creates report records.
+  const sourceOwner = (previous as Activity & { owner?: string }).owner;
+  const sourceLinks = await listModel<PersistedWorkBlockActivityLink>(client.models.WorkBlockActivityLink, { activityId: { eq: current.id } });
+  const blockIds = new Set(sourceLinks.map((link) => link.workBlockId));
+  const groupId = current.periodGroupId || current.workingGroupId;
+  blockIds.add(groupId ? `work-block:${groupId}` : `work-block:activity:${current.id}`);
+  const workBlocks: PersistedReportingWorkBlock[] = [];
+  for (const id of blockIds) {
+    const result = await client.models.ReportingWorkBlock.get({ id });
+    assertNoErrors(result, 'AWS get work block for activity reassignment');
+    if (result.data) {
+      await assertCanAccessExpert(client, result.data.expertId);
+      workBlocks.push(result.data);
+    }
+  }
+  const activityLinks = (await Promise.all(workBlocks.map((block) => listModel<PersistedWorkBlockActivityLink>(
+    client.models.WorkBlockActivityLink, { workBlockId: { eq: block.id } },
+  )))).flat();
+  const deliverableLinks = (await Promise.all(workBlocks.map((block) => listModel<PersistedWorkBlockDeliverableLink>(
+    client.models.WorkBlockDeliverableLink, { workBlockId: { eq: block.id } },
+  )))).flat();
+  const activities = await Promise.all([...new Set(activityLinks.map((link) => link.activityId))].map(async (id) => {
+    if (id === current.id) return current;
+    const result = await client.models.Activity.get({ id });
+    assertNoErrors(result, 'AWS get linked activity for reassignment');
+    return result.data ? attachActivityChildren(result.data) : null;
+  }));
+  const resolvedActivities = [...activities.filter((activity): activity is Activity => Boolean(activity)), current];
+  const plan = planActivityReassignmentWorkBlockSync({ previous, current, workBlocks, activityLinks, activities: resolvedActivities, now: new Date().toISOString() });
+  for (const patch of plan.updates) {
+    const result = await client.models.ReportingWorkBlock.update(patch);
+    assertNoErrors(result, 'AWS invalidate reassigned work block');
+  }
+  for (const link of plan.appendActivityLinks) {
+    const result = await client.models.WorkBlockActivityLink.create({
+      id: link.id, workBlockId: link.workBlockId, activityId: link.activityId, allocatedHours: link.allocatedHours,
+      owner: workBlocks.find((block) => block.id === link.workBlockId)?.owner || sourceOwner,
+    });
+    assertNoErrors(result, 'AWS append resolved activity allocation');
+  }
+  for (const patch of plan.updates) {
+    for (const deliverable of current.deliverables || []) {
+      const deliverableId = deliverable.id || deliverable.documentId || deliverable.fileHash || deliverable.fileName;
+      if (!deliverableId || deliverableLinks.some((link) => link.workBlockId === patch.id && link.deliverableId === deliverableId)) continue;
+      const link: PersistedWorkBlockDeliverableLink = {
+        id: `${patch.id}:deliverable:${deliverableId}`, workBlockId: patch.id,
+        deliverableId, isPrimary: !deliverableLinks.some((item) => item.workBlockId === patch.id),
+      };
+      const result = await client.models.WorkBlockDeliverableLink.create({ ...link, owner: workBlocks.find((block) => block.id === patch.id)?.owner || sourceOwner });
+      assertNoErrors(result, 'AWS append resolved work block evidence link');
+      deliverableLinks.push(link);
+    }
+  }
+  for (const bundle of plan.createBundles) {
+    const result = await client.models.ReportingWorkBlock.create({ ...bundle.workBlock, owner: sourceOwner, aiConsolidationStatus: 'stale' });
+    assertNoErrors(result, 'AWS create resolved activity work block');
+    for (const link of bundle.activityLinks) {
+      const saved = await client.models.WorkBlockActivityLink.create({
+        id: link.id, workBlockId: link.workBlockId, activityId: link.activityId, allocatedHours: link.allocatedHours,
+        owner: sourceOwner,
+      });
+      assertNoErrors(saved, 'AWS create resolved activity allocation');
+    }
+    for (const link of bundle.deliverableLinks) {
+      const saved = await client.models.WorkBlockDeliverableLink.create({ ...link, owner: sourceOwner });
+      assertNoErrors(saved, 'AWS create resolved work block evidence link');
+    }
+  }
+  const repairedBundles = buildPersistedWorkBlockBundles({
+    workBlocks: plan.updates.filter((patch) => patch.aiConsolidationStatus === 'stale').map((patch) => ({
+      ...workBlocks.find((block) => block.id === patch.id)!, ...patch,
+    })) as unknown as PersistedReportingWorkBlock[],
+    activityLinks: [...activityLinks, ...plan.appendActivityLinks], deliverableLinks, activities: resolvedActivities,
+  });
+  for (const bundle of [...repairedBundles, ...plan.createBundles]) {
+    const request = buildWorkBlockConsolidationRequest(bundle, resolvedActivities);
+    const allocatedHours = new Map(bundle.activityLinks.map((link) => [link.activityId, link.allocatedHours]));
+    request.activities = request.activities.map((activity) => ({ ...activity, hours: allocatedHours.get(activity.id) ?? 0 }));
+    const consolidated = buildDeterministicWorkBlockConsolidation(request, 'deterministic_fallback');
+    const result = await client.models.ReportingWorkBlock.update({ id: bundle.workBlock.id, ...consolidated });
+    assertNoErrors(result, 'AWS reconsolidate reassigned work block');
+  }
+}
+
 export const activitiesService = {
   async getAll(): Promise<Activity[]> {
     const client = getAwsDataClient() as any;
@@ -3036,6 +3145,8 @@ export const activitiesService = {
         hours: updates.hours ?? existing.data.hours,
         activityType: updates.activityType ?? existing.data.activityType,
         title: updates.title ?? existing.data.title,
+        ...(isActivityClassificationPending({ activityType: updates.activityType ?? existing.data.activityType })
+          ? { catalogActivityId: undefined } : {}),
       } as Omit<Activity, 'id' | 'createdAt' | 'updatedAt'>;
 
       const [preparedCandidate] = await attachActivitiesToExistingDeliverableGroups(client, [candidate], [id]);
@@ -3046,8 +3157,24 @@ export const activitiesService = {
         workingGroupId: preparedCandidate.workingGroupId,
         deliverables: preparedCandidate.deliverables,
       };
+      if (hasActivityClassificationChanged(existing.data, candidate)) {
+        const hasNewSummary = Boolean(updates.activitySummary?.trim()
+          && (updates.activitySummary !== existing.data.activitySummary
+            || (updates.activitySummaryAuditId && updates.activitySummaryAuditId !== existing.data.activitySummaryAuditId)));
+        preparedUpdates = {
+          ...preparedUpdates,
+          activitySummary: hasNewSummary ? updates.activitySummary : '',
+          activitySummaryGeneratedAt: hasNewSummary ? updates.activitySummaryGeneratedAt || '' : '',
+          activitySummaryAuditId: hasNewSummary ? updates.activitySummaryAuditId || '' : '',
+        };
+      }
     }
 
+    if (existing.data && hasActivityClassificationChanged(existing.data, { ...existing.data, ...preparedUpdates })) {
+      // Invalidate before writing Activity: even an opaque legacy block must not
+      // expose obsolete prose if a later Activity/document/report write fails.
+      await invalidateActivityClassificationWorkBlocks(client, existing.data as Activity);
+    }
     const result = await client.models.Activity.update(omitUndefinedFields(withSupportedActivityShareFields({
       id,
       expertId: preparedUpdates.expertId,
@@ -3058,7 +3185,8 @@ export const activitiesService = {
       hours: preparedUpdates.hours,
       activityType: preparedUpdates.activityType,
       saCode: preparedUpdates.saCode,
-      catalogActivityId: preparedUpdates.catalogActivityId,
+      catalogActivityId: isActivityClassificationPending({ activityType: preparedUpdates.activityType ?? existing.data?.activityType })
+        ? null : preparedUpdates.catalogActivityId,
       title: preparedUpdates.title,
       description: preparedUpdates.description,
       activitySummary: preparedUpdates.activitySummary,
@@ -3134,6 +3262,14 @@ export const activitiesService = {
           }),
         ),
       );
+    }
+    if (existing.data && ['saCode', 'catalogActivityId', 'activityType', 'title'].some((field) => Object.prototype.hasOwnProperty.call(updates, field))) {
+      try {
+        const current = await attachActivityChildren({ ...existing.data, ...preparedUpdates, ...result.data });
+        await synchronizeReassignedActivityWorkBlocks(client, existing.data as Activity, current);
+      } catch {
+        throw new Error('Activitatea a fost salvată, dar raportul nu a putut fi sincronizat. Reîncarcă dosarul și salvează din nou încadrarea înainte de export.');
+      }
     }
   },
 
@@ -4605,6 +4741,9 @@ export const reportStatusService = {
         leaveEntriesService.getByMonth(status.month, status.year),
       ]);
       if (!expert) throw new Error('Expertul nu exista.');
+      if (activities.some((activity) => activity.expertId === status.expertId && isActivityClassificationPending(activity))) {
+        throw new Error('Luna nu poate fi trimisă sau aprobată cât timp există activități cu încadrare în așteptare.');
+      }
       const expertLeaves = leaves.filter((leave) => leave.expertId === status.expertId);
       if (expertLeaves.some((leave) => leave.status !== 'VALIDATED' && leave.status !== 'REJECTED')) {
         throw new Error('Pontajul nu poate fi trimis sau aprobat cat timp exista CO nevalidat.');

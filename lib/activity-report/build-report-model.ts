@@ -2,6 +2,7 @@ import { getMonthName } from '../app-utils.ts';
 import { getDocumentAuditTitle } from '../document-sharing.ts';
 import activityCatalogSeed from '../../data/import/activity-catalog.json' with { type: 'json' };
 import type { Activity, ActivityCatalog, Expert } from '../types.ts';
+import { isActivityClassificationPending } from '../activity-classification.ts';
 import { formatDayCluster } from './day-cluster.ts';
 import {
   buildWorkBlocks,
@@ -112,10 +113,26 @@ export function buildAnexa10ReportModel({
   const sentenceMonthName = monthName.toLocaleLowerCase('ro');
   const bundles = workBlockBundles ?? buildWorkBlocks(activities);
   const activityById = new Map(activities.map((activity) => [activity.id, activity]));
-  const filteredBundles = bundles.filter((bundle) => shouldIncludeBundle(bundle, settings));
-  const orderedBundles = orderTableBundles(filteredBundles);
-  const validationBundles = filteredBundles.filter((bundle) => !isLeaveBundle(bundle));
+  const includedBundles = bundles.filter((bundle) => shouldIncludeBundle(bundle, settings));
+  const validationBundles = includedBundles.filter((bundle) => !isLeaveBundle(bundle));
   const problems = validateWorkBlockAllocation(activities, validationBundles);
+  const unsafeBlockIds = new Set(problems
+    .filter((problem) => problem.code === 'stale_classification' || problem.code === 'missing_activity')
+    .map((problem) => problem.workBlockId));
+  const filteredBundles = includedBundles.filter((bundle) => !unsafeBlockIds.has(bundle.workBlock.id)
+    && !bundle.activityLinks.some((link) => {
+      const activity = activityById.get(link.activityId);
+      return activity && isActivityClassificationPending(activity);
+    })).map((bundle) => bundle.workBlock.aiConsolidationStatus === 'stale' ? {
+      ...bundle,
+      workBlock: {
+        ...bundle.workBlock,
+        cleanedActivitySummary: undefined,
+        generatedTableSummary: undefined,
+        generatedNarrative: undefined,
+      },
+    } : bundle);
+  const orderedBundles = orderTableBundles(filteredBundles);
   const warnings = buildReportWarnings(filteredBundles, activityById, settings);
   const tableRows = buildTableRows(orderedBundles, activityById, expert);
   const saSections = buildSaSections(
