@@ -781,7 +781,7 @@ export function DeliverableItem({
       const validation = isPhoto || !titleSuggestionPatch.declaredTitle
         ? null
         : validateDeclaredTitleInDocumentText({
-            documentText: firstPageText,
+            documentText: [firstPageText, docText].filter(Boolean).join('\n'),
             declaredTitle: titleSuggestionPatch.declaredTitle,
             titleSource: titleSuggestionPatch.titleSource,
           });
@@ -1045,16 +1045,18 @@ export function DeliverableItem({
     });
   };
 
+  const titleValidationText = [deliverable.firstPageText, deliverable.docText].filter(Boolean).join('\n');
+
   const validateTitle = (title: string, source: DeliverableSlot['titleSource']) =>
     validateDeclaredTitleInDocumentText({
-      documentText: deliverable.firstPageText,
+      documentText: titleValidationText,
       declaredTitle: title,
       titleSource: source,
     });
 
   const validateTitleForConfirmation = (title: string, source: DeliverableSlot['titleSource']) =>
     validateDeclaredTitleInDocumentText({
-      documentText: deliverable.firstPageText,
+      documentText: titleValidationText,
       declaredTitle: title,
       titleSource: source,
       allowManualConfirmationWithoutExtractedText: true,
@@ -1145,7 +1147,7 @@ export function DeliverableItem({
   const step1ok = deliverable.uploaded && !hasPendingUpload;
   const currentTitleValidation = deliverable.uploaded && !deliverable.isPhoto && deliverable.declaredTitle
     ? validateDeclaredTitleInDocumentText({
-        documentText: deliverable.firstPageText,
+        documentText: titleValidationText,
         declaredTitle: deliverable.declaredTitle,
         titleSource: deliverable.titleSource,
       })
