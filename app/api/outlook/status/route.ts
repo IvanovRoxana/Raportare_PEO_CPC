@@ -7,6 +7,19 @@ import {
 } from '@/lib/outlook-graph';
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
+function outlookStatusResponse(body: unknown, init?: ResponseInit) {
+  return NextResponse.json(body, {
+    ...(init || {}),
+    headers: {
+      'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+      Pragma: 'no-cache',
+      Expires: '0',
+      ...(init?.headers || {}),
+    },
+  });
+}
 
 export async function GET(request: NextRequest) {
   const origin = request.nextUrl.origin;
@@ -14,7 +27,7 @@ export async function GET(request: NextRequest) {
   const config = getOutlookGraphConfig(origin);
   const token = config.isConfigured ? readOutlookToken(request, config.encryptionSecret) : null;
 
-  return NextResponse.json({
+  return outlookStatusResponse({
     configured: config.isConfigured,
     missing: config.missing,
     connected: Boolean(expertEmail && tokenMatchesExpert(token, expertEmail)),

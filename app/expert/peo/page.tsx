@@ -1078,15 +1078,23 @@ function ExpertDashboardContent() {
     setSelectedOutlookEventId(null);
     setOutlookError(null);
     setOutlookEvents([]);
+    setOutlookStatus(null);
 
     if (!expertEmail || !canUseSelectedExpertOutlook) {
-      setOutlookStatus(null);
       return;
     }
 
     setOutlookLoading(true);
     try {
-      const statusResponse = await fetch(`/api/outlook/status?expertEmail=${encodeURIComponent(expertEmail)}`, { cache: 'no-store' });
+      const cacheKey = Date.now();
+      const noCacheHeaders = {
+        'Cache-Control': 'no-cache',
+        Pragma: 'no-cache',
+      };
+      const statusResponse = await fetch(
+        `/api/outlook/status?expertEmail=${encodeURIComponent(expertEmail)}&_ts=${cacheKey}`,
+        { cache: 'no-store', headers: noCacheHeaders },
+      );
       const statusBody = await statusResponse.json().catch(() => null) as OutlookConnectionStatus | null;
       if (!statusResponse.ok || !statusBody) {
         throw new Error('Statusul conexiunii Outlook nu a putut fi citit.');
@@ -1096,8 +1104,8 @@ function ExpertDashboardContent() {
       if (!statusBody.configured || !statusBody.connected) return;
 
       const eventsResponse = await fetch(
-        `/api/outlook/events?expertEmail=${encodeURIComponent(expertEmail)}&month=${currentMonth}&year=${currentYear}`,
-        { cache: 'no-store' },
+        `/api/outlook/events?expertEmail=${encodeURIComponent(expertEmail)}&month=${currentMonth}&year=${currentYear}&_ts=${cacheKey}`,
+        { cache: 'no-store', headers: noCacheHeaders },
       );
       const eventsBody = await eventsResponse.json().catch(() => null) as {
         events?: OutlookCalendarEvent[];

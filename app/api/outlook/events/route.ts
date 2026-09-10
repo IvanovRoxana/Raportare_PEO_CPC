@@ -12,6 +12,19 @@ import {
 } from '@/lib/outlook-graph';
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
+function outlookEventsResponse(body: unknown, init?: ResponseInit) {
+  return NextResponse.json(body, {
+    ...(init || {}),
+    headers: {
+      'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+      Pragma: 'no-cache',
+      Expires: '0',
+      ...(init?.headers || {}),
+    },
+  });
+}
 
 function monthRange(month: number, year: number) {
   const start = new Date(Date.UTC(year, month, 1, 0, 0, 0));
@@ -30,15 +43,15 @@ export async function GET(request: NextRequest) {
   const config = getOutlookGraphConfig(origin);
 
   if (!config.isConfigured) {
-    return NextResponse.json({ connected: false, configured: false, events: [], missing: config.missing }, { status: 200 });
+    return outlookEventsResponse({ connected: false, configured: false, events: [], missing: config.missing }, { status: 200 });
   }
   if (!expertEmail || !Number.isInteger(month) || month < 0 || month > 11 || !Number.isInteger(year)) {
-    return NextResponse.json({ error: 'Parametri Outlook invalizi.' }, { status: 400 });
+    return outlookEventsResponse({ error: 'Parametri Outlook invalizi.' }, { status: 400 });
   }
 
   let token = readOutlookToken(request, config.encryptionSecret);
   if (!tokenMatchesExpert(token, expertEmail)) {
-    return NextResponse.json({ connected: false, configured: true, events: [] }, { status: 403 });
+    return outlookEventsResponse({ connected: false, configured: true, events: [] }, { status: 403 });
   }
 
   let refreshedToken = false;
@@ -48,19 +61,19 @@ export async function GET(request: NextRequest) {
       refreshedToken = true;
     }
     if (!token) {
-      return NextResponse.json({ connected: false, configured: true, events: [] }, { status: 401 });
+      return outlookEventsResponse({ connected: false, configured: true, events: [] }, { status: 401 });
     }
     const events = await getOutlookCalendarEvents({
       accessToken: token.accessToken,
       ...monthRange(month, year),
     });
-    const response = NextResponse.json({ connected: true, configured: true, events });
+    const response = outlookEventsResponse({ connected: true, configured: true, events });
     if (refreshedToken) {
       setEncryptedCookie(response, OUTLOOK_TOKEN_COOKIE, token, config.encryptionSecret, 30 * 24 * 60 * 60);
     }
     return response;
   } catch (error) {
-    return NextResponse.json({
+    return outlookEventsResponse({
       connected: false,
       configured: true,
       events: [],
