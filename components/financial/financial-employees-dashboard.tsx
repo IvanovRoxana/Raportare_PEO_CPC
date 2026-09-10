@@ -426,12 +426,12 @@ export function FinancialEmployeesDashboard() {
           setContractForm(null);
         }
       }}>
-        <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
+        <DialogContent className="max-h-[90vh] w-[calc(100%-2rem)] overflow-y-auto sm:!max-w-5xl lg:!max-w-6xl">
           <DialogHeader>
             <DialogTitle>{employeeForm?.expertId ? 'Editeaza salariat' : 'Adauga salariat'}</DialogTitle>
             <DialogDescription>Modifica profilul si norma CIM/PEO, apoi salveaza fiecare sectiune.</DialogDescription>
           </DialogHeader>
-          {employeeForm && contractForm ? <div className="grid gap-4 xl:grid-cols-2">
+          {employeeForm && contractForm ? <div className="grid gap-5 lg:grid-cols-2">
             <div className="rounded-lg border p-4">
               <div className="mb-3 flex items-center gap-2 text-sm font-semibold"><Users className="h-4 w-4" />Profil salariat</div>
               <div className="grid gap-3 md:grid-cols-2">
