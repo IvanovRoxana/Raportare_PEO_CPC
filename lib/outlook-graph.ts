@@ -5,6 +5,8 @@ export const OUTLOOK_TOKEN_COOKIE = 'peo_outlook_graph_token';
 export const OUTLOOK_STATE_COOKIE = 'peo_outlook_graph_state';
 
 const OUTLOOK_SCOPES = ['openid', 'profile', 'email', 'offline_access', 'User.Read', 'Calendars.Read'];
+const COOKIE_CHUNK_SIZE = 3000;
+const MAX_COOKIE_CHUNKS = 8;
 
 export type OutlookGraphEvent = {
   id: string;
@@ -146,31 +148,52 @@ export function buildOutlookAuthorizeUrl(args: {
 }
 
 export function setEncryptedCookie(response: NextResponse, name: string, value: unknown, secret: string, maxAge: number) {
-  response.cookies.set(name, encryptJson(value, secret), {
+  const encrypted = encryptJson(value, secret);
+  const cookieOptions = {
     httpOnly: true,
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',
     path: '/',
     maxAge,
+  } as const;
+
+  if (encrypted.length <= COOKIE_CHUNK_SIZE) {
+    response.cookies.set(name, encrypted, cookieOptions);
+    clearOutlookCookieChunks(response, name);
+    return;
+  }
+
+  const chunks = encrypted.match(new RegExp(`.{1,${COOKIE_CHUNK_SIZE}}`, 'g')) || [];
+  if (chunks.length > MAX_COOKIE_CHUNKS) {
+    throw new Error('Outlook token is too large to store in cookies.');
+  }
+  response.cookies.set(name, `chunked:${chunks.length}`, cookieOptions);
+  chunks.forEach((chunk, index) => {
+    response.cookies.set(`${name}.${index}`, chunk, cookieOptions);
   });
+  for (let index = chunks.length; index < MAX_COOKIE_CHUNKS; index += 1) {
+    response.cookies.set(`${name}.${index}`, '', { ...cookieOptions, maxAge: 0 });
+  }
 }
 
 export function clearOutlookCookie(response: NextResponse, name: string) {
-  response.cookies.set(name, '', {
+  const cookieOptions = {
     httpOnly: true,
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',
     path: '/',
     maxAge: 0,
-  });
+  } as const;
+  response.cookies.set(name, '', cookieOptions);
+  clearOutlookCookieChunks(response, name);
 }
 
 export function readOutlookState(request: NextRequest, secret: string) {
-  return decryptJson<OutlookState>(request.cookies.get(OUTLOOK_STATE_COOKIE)?.value, secret);
+  return decryptJson<OutlookState>(readEncryptedCookieValue(request, OUTLOOK_STATE_COOKIE), secret);
 }
 
 export function readOutlookToken(request: NextRequest, secret: string) {
-  return decryptJson<OutlookTokenBundle>(request.cookies.get(OUTLOOK_TOKEN_COOKIE)?.value, secret);
+  return decryptJson<OutlookTokenBundle>(readEncryptedCookieValue(request, OUTLOOK_TOKEN_COOKIE), secret);
 }
 
 export async function exchangeOutlookCode(args: {
@@ -297,6 +320,30 @@ function toOutlookGraphEvent(item: NonNullable<GraphCalendarViewResponse['value'
     event.location = item.location.displayName;
   }
   return event;
+}
+
+function readEncryptedCookieValue(request: NextRequest, name: string) {
+  const value = request.cookies.get(name)?.value;
+  if (!value?.startsWith('chunked:')) return value;
+
+  const chunkCount = Number(value.replace('chunked:', ''));
+  if (!Number.isInteger(chunkCount) || chunkCount < 1 || chunkCount > MAX_COOKIE_CHUNKS) return undefined;
+
+  const chunks = Array.from({ length: chunkCount }, (_, index) => request.cookies.get(`${name}.${index}`)?.value || '');
+  return chunks.every(Boolean) ? chunks.join('') : undefined;
+}
+
+function clearOutlookCookieChunks(response: NextResponse, name: string) {
+  const cookieOptions = {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+    maxAge: 0,
+  } as const;
+  for (let index = 0; index < MAX_COOKIE_CHUNKS; index += 1) {
+    response.cookies.set(`${name}.${index}`, '', cookieOptions);
+  }
 }
 
 function encryptJson(value: unknown, secret: string) {
