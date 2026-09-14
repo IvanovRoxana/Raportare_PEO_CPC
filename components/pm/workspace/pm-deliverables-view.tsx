@@ -1,9 +1,15 @@
 'use client';
 
 import { useState } from 'react';
-import { Download, FileText } from 'lucide-react';
+import { Download, FileText, FolderOpen, MoreHorizontal, ShieldCheck, MessageSquare, Sparkles } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { ExpertAvatar } from '@/components/expert/expert-avatar';
 import { getSecureDocumentUrl } from '@/lib/document-retrieval';
 import {
@@ -11,7 +17,13 @@ import {
   PM_DELIVERABLE_STATUS_LABELS,
   type PmDeliverableStatus,
 } from '@/lib/pm-deliverable-status';
-import { buildPmDeliverablesViewModel, type PmDeliverableFilterId } from '@/lib/pm-deliverables-view';
+import {
+  buildPmDeliverableActionModel,
+  buildPmDeliverablesViewModel,
+  type PmDeliverableAction,
+  type PmDeliverableActionId,
+  type PmDeliverableFilterId,
+} from '@/lib/pm-deliverables-view';
 import type { DocumentMetadata, Expert } from '@/lib/types';
 import type { PmWorkspaceProps } from './pm-workspace';
 
@@ -41,7 +53,7 @@ export function DeliverablesView(props: PmWorkspaceProps) {
   });
 
   const openDocumentFile = async (document: DocumentMetadata) => {
-    setDocumentActionId(document.id);
+    setDocumentActionId(`open_file-${document.id}`);
     const previewWindow = window.open('', '_blank');
     try {
       const result = await getSecureDocumentUrl(document);
@@ -54,6 +66,38 @@ export function DeliverablesView(props: PmWorkspaceProps) {
     } catch (error) {
       previewWindow?.close();
       window.alert(error instanceof Error ? error.message : 'Fișierul nu a putut fi deschis.');
+    } finally {
+      setDocumentActionId(null);
+    }
+  };
+
+  const openDocumentDossier = (document: DocumentMetadata, action: PmDeliverableAction) => {
+    if (!document.uploadedByExpertId) return;
+    props.onOpenDossierById(document.uploadedByExpertId, {
+      documentId: document.id,
+      activityId: document.sourceActivityId,
+      issueType: action.issueType || 'problems',
+    });
+  };
+
+  const runDocumentAction = async (document: DocumentMetadata, action: PmDeliverableAction) => {
+    if (action.id === 'open_file') {
+      await openDocumentFile(document);
+      return;
+    }
+
+    if (action.id === 'open_dossier' || action.id === 'view_ai_review') {
+      openDocumentDossier(document, action);
+      return;
+    }
+
+    setDocumentActionId(`${action.id}-${document.id}`);
+    try {
+      if (action.id === 'request_clarification') {
+        await props.onRequestDocumentClarification(document);
+      } else if (action.id === 'approve_pm_unlock') {
+        await props.onApprovePmUnlock(document);
+      }
     } finally {
       setDocumentActionId(null);
     }
@@ -92,6 +136,7 @@ export function DeliverablesView(props: PmWorkspaceProps) {
             <tbody className="divide-y">
               {documents.map((doc) => {
                 const status = getPmDeliverableStatus(doc);
+                const actionModel = buildPmDeliverableActionModel(status);
                 return (
                   <tr key={doc.id}>
                     <td className="px-4 py-3 font-semibold">{doc.declaredTitle || doc.extractedTitle || doc.originalFileName}</td>
@@ -103,10 +148,34 @@ export function DeliverablesView(props: PmWorkspaceProps) {
                       </Badge>
                     </td>
                     <td>
-                      <Button size="sm" variant="outline" onClick={() => openDocumentFile(doc)} disabled={documentActionId !== null}>
-                        <FileText className="h-4 w-4" />
-                        {documentActionId === doc.id ? 'Se deschide...' : 'Deschide fișier'}
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant={actionModel.primary.id === 'open_file' ? 'outline' : 'default'}
+                          onClick={() => void runDocumentAction(doc, actionModel.primary)}
+                          disabled={documentActionId !== null}
+                        >
+                          <DeliverableActionIcon id={actionModel.primary.id} />
+                          {documentActionId === `${actionModel.primary.id}-${doc.id}` ? 'Se procesează...' : actionModel.primary.label}
+                        </Button>
+                        {actionModel.secondary.length > 0 ? (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button size="sm" variant="outline" disabled={documentActionId !== null} aria-label="Mai multe acțiuni livrabil">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-52">
+                              {actionModel.secondary.map((action) => (
+                                <DropdownMenuItem key={action.id} onSelect={() => void runDocumentAction(doc, action)}>
+                                  <DeliverableActionIcon id={action.id} />
+                                  {action.label}
+                                </DropdownMenuItem>
+                              ))}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        ) : null}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -117,4 +186,12 @@ export function DeliverablesView(props: PmWorkspaceProps) {
       ))}
     </div>
   );
+}
+
+function DeliverableActionIcon({ id }: { id: PmDeliverableActionId }) {
+  if (id === 'open_dossier') return <FolderOpen className="h-4 w-4" />;
+  if (id === 'request_clarification') return <MessageSquare className="h-4 w-4" />;
+  if (id === 'approve_pm_unlock') return <ShieldCheck className="h-4 w-4" />;
+  if (id === 'view_ai_review') return <Sparkles className="h-4 w-4" />;
+  return <FileText className="h-4 w-4" />;
 }

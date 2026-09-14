@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { buildPmDeliverablesViewModel } from '../lib/pm-deliverables-view.ts';
+import { buildPmDeliverableActionModel, buildPmDeliverablesViewModel } from '../lib/pm-deliverables-view.ts';
 import type { DocumentMetadata, Expert } from '../lib/types.ts';
 
 const experts: Expert[] = [
@@ -54,5 +54,39 @@ describe('buildPmDeliverablesViewModel', () => {
 
     assert.deepEqual(model.filteredDocuments.map((item) => item.id), ['clarification']);
     assert.deepEqual(model.groups.map((group) => group.expert.id), ['e1']);
+  });
+});
+
+describe('buildPmDeliverableActionModel', () => {
+  it('expune acțiuni PM pentru livrabile neeligibile', () => {
+    const model = buildPmDeliverableActionModel('ineligible');
+
+    assert.equal(model.primary.id, 'open_dossier');
+    assert.equal(model.primary.issueType, 'pm_unlock_requests');
+    assert.deepEqual(model.secondary.map((action) => action.id), [
+      'request_clarification',
+      'approve_pm_unlock',
+      'open_file',
+    ]);
+  });
+
+  it('nu expune acțiuni PM agresive pentru statusuri normale', () => {
+    for (const status of ['approved', 'sent', 'draft'] as const) {
+      const model = buildPmDeliverableActionModel(status);
+
+      assert.equal(model.primary.id, 'open_file');
+      assert.deepEqual(model.secondary, []);
+    }
+  });
+
+  it('păstrează dosarul ca acțiune principală pentru clarificări și auto-rezolvate', () => {
+    const clarification = buildPmDeliverableActionModel('clarifications');
+    const autoResolved = buildPmDeliverableActionModel('auto_resolved');
+
+    assert.equal(clarification.primary.id, 'open_dossier');
+    assert.deepEqual(clarification.secondary.map((action) => action.id), ['request_clarification', 'open_file']);
+    assert.equal(autoResolved.primary.id, 'open_dossier');
+    assert.equal(autoResolved.primary.issueType, 'eligibility_ai_review');
+    assert.deepEqual(autoResolved.secondary.map((action) => action.id), ['view_ai_review', 'open_file']);
   });
 });

@@ -7,6 +7,24 @@ import type { DocumentMetadata, Expert } from './types.ts';
 
 export type PmDeliverableFilterId = PmDeliverableStatus | 'all';
 
+export type PmDeliverableActionId =
+  | 'open_dossier'
+  | 'request_clarification'
+  | 'approve_pm_unlock'
+  | 'open_file'
+  | 'view_ai_review';
+
+export type PmDeliverableAction = {
+  id: PmDeliverableActionId;
+  label: string;
+  issueType?: string;
+};
+
+export type PmDeliverableActionModel = {
+  primary: PmDeliverableAction;
+  secondary: PmDeliverableAction[];
+};
+
 export type PmDeliverableFilter = {
   id: PmDeliverableFilterId;
   label: string;
@@ -88,5 +106,62 @@ export function buildPmDeliverablesViewModel({
     statusCounts,
     filteredDocuments,
     groups,
+  };
+}
+
+export function buildPmDeliverableActionModel(status: PmDeliverableStatus): PmDeliverableActionModel {
+  const openFile: PmDeliverableAction = { id: 'open_file', label: 'Deschide fișier' };
+  const openDossier: PmDeliverableAction = { id: 'open_dossier', label: 'Deschide dosar', issueType: 'problems' };
+  const openEligibilityDossier: PmDeliverableAction = {
+    id: 'open_dossier',
+    label: 'Deschide dosar',
+    issueType: 'pm_unlock_requests',
+  };
+
+  if (status === 'ineligible') {
+    return {
+      primary: openEligibilityDossier,
+      secondary: [
+        { id: 'request_clarification', label: 'Cere clarificări' },
+        { id: 'approve_pm_unlock', label: 'Deblochează PM' },
+        openFile,
+      ],
+    };
+  }
+
+  if (status === 'clarifications') {
+    return {
+      primary: openDossier,
+      secondary: [
+        { id: 'request_clarification', label: 'Cere clarificări' },
+        openFile,
+      ],
+    };
+  }
+
+  if (status === 'pm_unlocked') {
+    return {
+      primary: openEligibilityDossier,
+      secondary: [openFile],
+    };
+  }
+
+  if (status === 'auto_resolved') {
+    return {
+      primary: {
+        id: 'open_dossier',
+        label: 'Deschide dosar',
+        issueType: 'eligibility_ai_review',
+      },
+      secondary: [
+        { id: 'view_ai_review', label: 'Vezi verificarea AI', issueType: 'eligibility_ai_review' },
+        openFile,
+      ],
+    };
+  }
+
+  return {
+    primary: openFile,
+    secondary: [],
   };
 }
