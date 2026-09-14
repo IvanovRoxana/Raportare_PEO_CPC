@@ -7,6 +7,7 @@ import {
   retrieveActivityAutofillContext,
   shouldRunActivityAutofillRag,
 } from '../lib/rag/retrieval.ts';
+import type { KnowledgeChunk } from '../lib/types.ts';
 
 function restoreEnv(key: string, value: string | undefined) {
   if (value === undefined) {
@@ -14,6 +15,22 @@ function restoreEnv(key: string, value: string | undefined) {
   } else {
     process.env[key] = value;
   }
+}
+
+function testChunk(id: string, patch: Partial<KnowledgeChunk> = {}): KnowledgeChunk {
+  return {
+    id,
+    documentId: `doc-${id}`,
+    chunkIndex: 0,
+    text: `Fragment relevant ${id}`,
+    embeddingJson: '[1,0]',
+    embeddingModel: 'text-embedding-3-small',
+    sourceType: 'raportare_aprobata_oir',
+    category: 'cr',
+    status: 'active',
+    metadataJson: JSON.stringify({ positionInProject: 'Coordonator Centre Regionale' }),
+    ...patch,
+  };
 }
 
 test('chunking normalizes text and keeps overlap-sized chunks', () => {
@@ -106,6 +123,87 @@ test('PA-only RAG can be extended to an explicitly allowed category', () => {
   restoreEnv('ACTIVITY_AUTOFILL_RAG_ENABLED', previousEnabled);
   restoreEnv('ACTIVITY_AUTOFILL_RAG_PA_ONLY', previousPaOnly);
   restoreEnv('ACTIVITY_AUTOFILL_RAG_ALLOWED_CATEGORIES', previousAllowedCategories);
+});
+
+test('activity autofill retrieval prioritizes expert position category SA and activity before reference sources', async () => {
+  const previousEnabled = process.env.ACTIVITY_AUTOFILL_RAG_ENABLED;
+  const previousPaOnly = process.env.ACTIVITY_AUTOFILL_RAG_PA_ONLY;
+  const previousAllowedPositions = process.env.ACTIVITY_AUTOFILL_RAG_ALLOWED_POSITIONS;
+
+  process.env.ACTIVITY_AUTOFILL_RAG_ENABLED = 'true';
+  process.env.ACTIVITY_AUTOFILL_RAG_PA_ONLY = 'true';
+  process.env.ACTIVITY_AUTOFILL_RAG_ALLOWED_POSITIONS = 'Coordonator Centre Regionale';
+
+  const calls: string[] = [];
+  const result = await retrieveActivityAutofillContext({
+    category: 'cr',
+    expertId: 'expert-cr-1',
+    expertName: 'Irina Nicolae',
+    expertRole: 'Coordonator Centre Regionale',
+    positionInProject: 'Coordonator Centre Regionale',
+    projectCode: '302141',
+    month: 8,
+    year: 2026,
+    deliverables: [{ documentTitle: 'Minuta Hub Est', extractedText: 'Agenda speakeri paneluri si cerinte eveniment regional.' }],
+    catalogCandidates: [{ id: 'cat-1', category: 'cr', saCode: 'SA3.3', activityName: 'Organizarea si coordonarea evenimentelor anuale ale centrelor regionale' }],
+    selectedActivityId: 'cat-1',
+    saCode: 'SA3.3',
+    activityName: 'Organizarea si coordonarea evenimentelor anuale ale centrelor regionale',
+    currentDescription: 'Am participat la intalnirea de aliniere speakeri.',
+  }, {
+    topK: 6,
+    dependencies: {
+      generateEmbedding: async () => [1, 0],
+      listKnowledgeChunksByExpertId: async () => {
+        calls.push('expert:expertId');
+        return Array.from({ length: 4 }, (_, index) => testChunk(`expert-${index + 1}`, { expertId: 'expert-cr-1' }));
+      },
+      listKnowledgeChunksBySaCode: async (saCode) => {
+        calls.push(`category-sa:${saCode}`);
+        return Array.from({ length: 4 }, (_, index) => testChunk(`sa-${index + 1}`, { saCode }));
+      },
+      listKnowledgeChunksByCategoryAndSourceType: async (_category, sourceType, filter) => {
+        const record = filter as Record<string, unknown> | undefined;
+        if (sourceType !== 'raportare_aprobata_oir') {
+          calls.push(`reference:${sourceType}`);
+          return [testChunk(`reference-${sourceType}`, { sourceType })];
+        }
+        if (record && 'expertName' in record) {
+          calls.push('expert:expertName');
+          return [];
+        }
+        if (record && 'activityName' in record) {
+          calls.push('activity');
+          return Array.from({ length: 3 }, (_, index) => testChunk(`activity-${index + 1}`, {
+            activityName: 'Organizarea si coordonarea evenimentelor anuale ale centrelor regionale',
+          }));
+        }
+        calls.push('position');
+        return Array.from({ length: 7 }, (_, index) => testChunk(`position-${index + 1}`));
+      },
+    },
+  });
+
+  assert.deepEqual(calls, [
+    'expert:expertId',
+    'expert:expertName',
+    'position',
+    'category-sa:SA3.3',
+    'activity',
+  ]);
+  assert.deepEqual(result.chunks.map(({ chunk }) => chunk.id), [
+    'expert-1',
+    'position-1',
+    'sa-1',
+    'activity-1',
+    'expert-2',
+    'position-2',
+  ]);
+  assert.equal(result.chunks.some(({ chunk }) => chunk.sourceType !== 'raportare_aprobata_oir'), false);
+
+  restoreEnv('ACTIVITY_AUTOFILL_RAG_ENABLED', previousEnabled);
+  restoreEnv('ACTIVITY_AUTOFILL_RAG_PA_ONLY', previousPaOnly);
+  restoreEnv('ACTIVITY_AUTOFILL_RAG_ALLOWED_POSITIONS', previousAllowedPositions);
 });
 
 test('RAG admin guard fails closed when token is not configured', () => {

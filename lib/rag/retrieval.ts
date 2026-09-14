@@ -8,7 +8,7 @@ import { normalizePeoCategory } from '../peo-category.ts';
 import { getActivityAutofillDeliverableEvidenceText } from '../activity-autofill.ts';
 import type { KnowledgeChunk } from '../types.ts';
 import { normalizeRagText } from './chunking.ts';
-import { cosineSimilarity, generateEmbedding, getRagEmbeddingModelName, parseEmbedding } from './embeddings.ts';
+import { cosineSimilarity, generateEmbedding as defaultGenerateEmbedding, getRagEmbeddingModelName, parseEmbedding } from './embeddings.ts';
 import { findSaPurposeContext, type SaPurposeRetrievalResult } from './sa-purpose.ts';
 import type { RagAuthContext, RagRetrievalRequest, RagRetrievalResult } from './types.ts';
 
@@ -20,12 +20,38 @@ const APPROVED_REPORT_SOURCE_TYPE = 'raportare_aprobata_oir';
 const REFERENCE_SOURCE_TYPES = ['cerere_finantare', 'manual_beneficiar', 'descriere_activitati', 'fisa_post'];
 const SA_PURPOSE_SOURCE_TYPES = ['scop_sa', 'descriere_activitati', 'other'];
 const MIN_EXPERT_HISTORY_CHUNKS = 30;
+const MIN_SPECIFIC_CANDIDATES_BEFORE_REFERENCE = 18;
 
-type CandidateBucket = 'expert_history' | 'position_history' | 'same_sa' | 'reference';
+type CandidateBucket = 'expert_history' | 'position_history' | 'category_sa' | 'activity_history' | 'reference';
 
 interface CandidateChunk {
   chunk: KnowledgeChunk;
   bucket: CandidateBucket;
+}
+
+interface RagRetrievalDependencies {
+  generateEmbedding: (text: string) => Promise<number[]>;
+  listKnowledgeChunksByExpertId: (
+    expertId: string,
+    filter?: Record<string, unknown>,
+    options?: ({ limit?: number; maxItems?: number } & RagAuthContext),
+  ) => Promise<KnowledgeChunk[]>;
+  listKnowledgeChunksByCategoryAndSourceType: (
+    category: string,
+    sourceType: string,
+    filter?: Record<string, unknown>,
+    options?: ({ limit?: number; maxItems?: number } & RagAuthContext),
+  ) => Promise<KnowledgeChunk[]>;
+  listKnowledgeChunksBySaCode: (
+    saCode: string,
+    filter?: Record<string, unknown>,
+    options?: ({ limit?: number; maxItems?: number } & RagAuthContext),
+  ) => Promise<KnowledgeChunk[]>;
+}
+
+interface ActivityAutofillRetrievalOptions extends RagAuthContext {
+  topK?: number;
+  dependencies?: Partial<RagRetrievalDependencies>;
 }
 
 function toNumber(value: number | string | undefined) {
@@ -122,7 +148,7 @@ function requestOptions(
   const remaining = remainingMs(deadline);
   if (remaining <= 250) return null;
   return {
-    ...options,
+    authToken: options.authToken,
     limit,
     maxItems,
     timeoutMs: Math.max(250, Math.min(2000, remaining)),
@@ -139,6 +165,10 @@ function activeChunkFilter(category?: string, extra: Record<string, unknown> = {
 
 function getCandidateSaCodes(request: RagRetrievalRequest) {
   return request.saCode?.trim() ? [request.saCode.trim()] : [];
+}
+
+function getRequestActivityName(request: Pick<RagRetrievalRequest, 'activityName'>) {
+  return request.activityName?.trim() || '';
 }
 
 function addUniqueCandidates(
@@ -170,29 +200,46 @@ function selectDiverseTopChunks(
     .sort((a, b) => b.score - a.score);
 
   const quotas: Record<CandidateBucket, number> = {
-    expert_history: Math.max(4, Math.ceil(topK / 2)),
-    position_history: Math.max(2, Math.ceil(topK / 3)),
-    same_sa: Math.max(2, Math.ceil(topK / 3)),
-    reference: 2,
+    expert_history: Math.max(2, Math.ceil(topK / 3)),
+    position_history: Math.max(1, Math.ceil(topK / 4)),
+    category_sa: Math.max(1, Math.ceil(topK / 4)),
+    activity_history: Math.max(1, Math.ceil(topK / 4)),
+    reference: Math.min(2, Math.max(1, Math.floor(topK / 4))),
   };
+  const bucketOrder: CandidateBucket[] = ['expert_history', 'position_history', 'category_sa', 'activity_history', 'reference'];
   const used = new Set<string>();
   const selected: typeof scored = [];
   const counts: Record<CandidateBucket, number> = {
     expert_history: 0,
     position_history: 0,
-    same_sa: 0,
+    category_sa: 0,
+    activity_history: 0,
     reference: 0,
   };
 
-  for (const item of scored) {
+  for (const bucket of bucketOrder) {
     if (selected.length >= topK) break;
-    if (counts[item.bucket] >= quotas[item.bucket]) continue;
+    const item = scored.find((candidate) => candidate.bucket === bucket && !used.has(candidate.chunk.id));
+    if (!item) continue;
     selected.push(item);
     used.add(item.chunk.id);
     counts[item.bucket] += 1;
   }
 
-  for (const item of scored) {
+  for (const bucket of bucketOrder) {
+    for (const item of scored.filter((candidate) => candidate.bucket === bucket)) {
+      if (selected.length >= topK) break;
+      if (used.has(item.chunk.id)) continue;
+      if (counts[item.bucket] >= quotas[item.bucket]) continue;
+      selected.push(item);
+      used.add(item.chunk.id);
+      counts[item.bucket] += 1;
+    }
+  }
+
+  for (const item of scored.sort((a, b) => (
+    b.score - a.score || bucketOrder.indexOf(a.bucket) - bucketOrder.indexOf(b.bucket)
+  ))) {
     if (selected.length >= topK) break;
     if (used.has(item.chunk.id)) continue;
     selected.push(item);
@@ -230,6 +277,23 @@ function chunkMatchesProjectPosition(chunk: KnowledgeChunk, position: string) {
   return values.some((value) => value === expected);
 }
 
+function chunkMatchesActivityName(chunk: KnowledgeChunk, activityName: string) {
+  const expected = normalizeScopeValue(activityName);
+  if (!expected) return false;
+  const metadata = metadataForChunk(chunk);
+  const values = [
+    chunk.activityName,
+    metadata.activityName,
+    metadata.selectedActivityName,
+  ]
+    .filter((value): value is string => typeof value === 'string')
+    .map(normalizeScopeValue);
+  return values.some((value) => (
+    value === expected
+    || (value.length > 12 && expected.length > 12 && (value.includes(expected) || expected.includes(value)))
+  ));
+}
+
 function filterChunksByProjectPosition(chunks: KnowledgeChunk[], request: RagRetrievalRequest, requireMatch = false) {
   const position = getRequestProjectPosition(request);
   if (!position) return chunks;
@@ -238,16 +302,40 @@ function filterChunksByProjectPosition(chunks: KnowledgeChunk[], request: RagRet
   return chunks;
 }
 
+function filterChunksByActivityName(chunks: KnowledgeChunk[], request: RagRetrievalRequest, requireMatch = false) {
+  const activityName = getRequestActivityName(request);
+  if (!activityName) return chunks;
+  const matching = chunks.filter((chunk) => chunkMatchesActivityName(chunk, activityName));
+  if (matching.length > 0 || requireMatch) return matching;
+  return chunks;
+}
+
+async function resolveRetrievalDependencies(
+  overrides: Partial<RagRetrievalDependencies> = {},
+): Promise<RagRetrievalDependencies> {
+  const store = overrides.listKnowledgeChunksByExpertId
+    && overrides.listKnowledgeChunksByCategoryAndSourceType
+    && overrides.listKnowledgeChunksBySaCode
+    ? null
+    : await import('./store.ts');
+  return {
+    generateEmbedding: overrides.generateEmbedding ?? defaultGenerateEmbedding,
+    listKnowledgeChunksByExpertId: overrides.listKnowledgeChunksByExpertId ?? store!.listKnowledgeChunksByExpertId,
+    listKnowledgeChunksByCategoryAndSourceType: overrides.listKnowledgeChunksByCategoryAndSourceType ?? store!.listKnowledgeChunksByCategoryAndSourceType,
+    listKnowledgeChunksBySaCode: overrides.listKnowledgeChunksBySaCode ?? store!.listKnowledgeChunksBySaCode,
+  };
+}
+
 async function collectRagCandidates(
   request: RagRetrievalRequest,
-  options: RagAuthContext,
+  options: ActivityAutofillRetrievalOptions,
   deadline: number,
+  dependencies: RagRetrievalDependencies,
 ) {
   const category = normalizePeoCategory(request.category) || undefined;
   const candidates: CandidateChunk[] = [];
   const seen = new Set<string>();
   const warnings: string[] = [];
-  const store = await import('./store.ts');
 
   const run = async (
     label: string,
@@ -271,7 +359,7 @@ async function collectRagCandidates(
     await run('istoric expert dupa expertId', 'expert_history', async () => {
       const requestConfig = requestOptions(options, deadline, 350);
       if (!requestConfig) return [];
-      return store.listKnowledgeChunksByExpertId(
+      return dependencies.listKnowledgeChunksByExpertId(
         request.expertId!,
         activeChunkFilter(category, { sourceType: { eq: APPROVED_REPORT_SOURCE_TYPE } }),
         requestConfig,
@@ -283,7 +371,7 @@ async function collectRagCandidates(
     await run('istoric expert dupa nume', 'expert_history', async () => {
       const requestConfig = requestOptions(options, deadline, 350);
       if (!requestConfig || !category) return [];
-      return store.listKnowledgeChunksByCategoryAndSourceType(
+      return dependencies.listKnowledgeChunksByCategoryAndSourceType(
         category,
         APPROVED_REPORT_SOURCE_TYPE,
         activeChunkFilter(undefined, { expertName: { eq: request.expertName } }),
@@ -296,7 +384,7 @@ async function collectRagCandidates(
     await run('istoric dupa pozitia in proiect', 'position_history', async () => {
       const requestConfig = requestOptions(options, deadline, 350);
       if (!requestConfig) return [];
-      const chunks = await store.listKnowledgeChunksByCategoryAndSourceType(
+      const chunks = await dependencies.listKnowledgeChunksByCategoryAndSourceType(
         category,
         APPROVED_REPORT_SOURCE_TYPE,
         activeChunkFilter(),
@@ -307,10 +395,10 @@ async function collectRagCandidates(
   }
 
   for (const saCode of getCandidateSaCodes(request)) {
-    await run(`istoric categorie pentru ${saCode}`, 'same_sa', async () => {
+    await run(`istoric categorie pentru ${saCode}`, 'category_sa', async () => {
       const requestConfig = requestOptions(options, deadline, 120, 80);
       if (!requestConfig) return [];
-      const chunks = await store.listKnowledgeChunksBySaCode(
+      const chunks = await dependencies.listKnowledgeChunksBySaCode(
         saCode,
         activeChunkFilter(category, { sourceType: { eq: APPROVED_REPORT_SOURCE_TYPE } }),
         requestConfig,
@@ -319,11 +407,29 @@ async function collectRagCandidates(
     });
   }
 
+  if (category && getRequestActivityName(request)) {
+    await run('istoric pentru activitatea selectata', 'activity_history', async () => {
+      const requestConfig = requestOptions(options, deadline, 120, 80);
+      if (!requestConfig) return [];
+      const chunks = await dependencies.listKnowledgeChunksByCategoryAndSourceType(
+        category,
+        APPROVED_REPORT_SOURCE_TYPE,
+        activeChunkFilter(undefined, { activityName: { eq: getRequestActivityName(request) } }),
+        requestConfig,
+      );
+      return filterChunksByActivityName(filterChunksByProjectPosition(chunks, request), request);
+    });
+  }
+
+  if (candidates.length >= MIN_SPECIFIC_CANDIDATES_BEFORE_REFERENCE) {
+    return { candidates, warnings };
+  }
+
   for (const sourceType of REFERENCE_SOURCE_TYPES) {
     await run(`sursa generala ${sourceType}`, 'reference', async () => {
       const requestConfig = requestOptions(options, deadline, 80, 80);
       if (!requestConfig || !category) return [];
-      return store.listKnowledgeChunksByCategoryAndSourceType(
+      return dependencies.listKnowledgeChunksByCategoryAndSourceType(
         category,
         sourceType,
         activeChunkFilter(),
@@ -337,7 +443,7 @@ async function collectRagCandidates(
 
 export async function retrieveActivityAutofillContext(
   request: RagRetrievalRequest,
-  options: { topK?: number } & RagAuthContext = {},
+  options: ActivityAutofillRetrievalOptions = {},
 ): Promise<RagRetrievalResult> {
   const guard = shouldRunActivityAutofillRag(request);
   if (!guard.ok) {
@@ -350,13 +456,14 @@ export async function retrieveActivityAutofillContext(
       return { enabled: true, skippedReason: 'empty_query', chunks: [], warnings: [] };
     }
 
-    const queryEmbedding = await generateEmbedding(queryText);
+    const dependencies = await resolveRetrievalDependencies(options.dependencies);
+    const queryEmbedding = await dependencies.generateEmbedding(queryText);
     if (queryEmbedding.length === 0) {
       return { enabled: true, skippedReason: 'empty_embedding', chunks: [], warnings: ['Nu s-a putut genera embedding pentru query.'] };
     }
 
     const deadline = Date.now() + (options.timeoutMs ?? DEFAULT_RETRIEVAL_TIMEOUT_MS);
-    const { candidates, warnings } = await collectRagCandidates(request, options, deadline);
+    const { candidates, warnings } = await collectRagCandidates(request, options, deadline, dependencies);
     const scored = selectDiverseTopChunks(candidates, queryEmbedding, options.topK ?? DEFAULT_TOP_K);
 
     return {
