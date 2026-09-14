@@ -147,6 +147,14 @@ type WorkspaceView =
   | 'eligibilityCatalog'
   | 'actions';
 
+type NonconformityIssueFilter =
+  | 'all'
+  | 'title_mismatch'
+  | 'event_documents'
+  | 'shared_deliverables'
+  | 'pm_unlock_requests'
+  | 'manual_review';
+
 const views: Array<{ id: WorkspaceView; label: string; badge?: (props: PmWorkspaceProps) => number }> = [
   { id: 'kpi', label: 'KPI' },
   { id: 'access', label: 'Acces lună' },
@@ -380,6 +388,7 @@ function ReportGroup({ title, tone, rows, props }: { title: string; tone: 'emera
 
 function NonconformitiesView(props: PmWorkspaceProps) {
   const [acceptedTitleDocument, setAcceptedTitleDocument] = useState<DocumentMetadata | null>(null);
+  const [activeIssueFilter, setActiveIssueFilter] = useState<NonconformityIssueFilter>('all');
   const activeDocumentTicketById = useMemo(() => {
     const active = new Map<string, SupportTicket>();
     (props.supportTickets || []).forEach((ticket) => {
@@ -394,27 +403,94 @@ function NonconformitiesView(props: PmWorkspaceProps) {
     });
     return active;
   }, [props.selectedMonth, props.selectedYear, props.supportTickets]);
-  const cards = [
-    ['Livrabile comune cu denumiri diferite', props.titleIssues.length],
-    ['Evenimente comune zile diferite', props.eventDocumentIssues.length],
-    ['Colaborare nedeclarată reciproc', props.pendingSharedDeliverables.length],
-    ['Livrabile neeligibile', props.pmUnlockRequests.length],
-    ['Verificare manuală PM', props.neconformitati.filter((item) => !item.resolved).length],
+  const sections: Array<{
+    id: Exclude<NonconformityIssueFilter, 'all'>;
+    cardLabel: string;
+    title: string;
+    count: number;
+    items: Array<{ id: string; title: string; detail?: string; expertId?: string; document?: DocumentMetadata; activity?: Activity }>;
+    onSetAcceptedTitle?: (document: DocumentMetadata) => void;
+  }> = [
+    {
+      id: 'title_mismatch',
+      cardLabel: 'Livrabile comune cu denumiri diferite',
+      title: 'Livrabile comune raportate cu denumiri diferite',
+      count: props.titleIssues.length,
+      items: props.titleIssues.map((doc) => ({ id: doc.id, title: doc.declaredTitle || doc.originalFileName, detail: doc.titleCheckMessage || 'Denumire diferită', expertId: doc.uploadedByExpertId, document: doc })),
+      onSetAcceptedTitle: setAcceptedTitleDocument,
+    },
+    {
+      id: 'event_documents',
+      cardLabel: 'Evenimente comune zile diferite',
+      title: 'Evenimente comune pontate în zile diferite',
+      count: props.eventDocumentIssues.length,
+      items: props.eventDocumentIssues.map((activity) => ({ id: activity.id, title: activity.title || activity.activityType, detail: activity.date, expertId: activity.expertId, activity })),
+    },
+    {
+      id: 'shared_deliverables',
+      cardLabel: 'Colaborare nedeclarată reciproc',
+      title: 'Colaborare declarată dar neconfirmată reciproc',
+      count: props.pendingSharedDeliverables.length,
+      items: props.pendingSharedDeliverables.map((item) => ({ id: item.relation.id, title: item.relation.sourceActivityTitle || item.document?.declaredTitle || item.document?.originalFileName || 'Livrabil comun', detail: `${item.sourceExpert?.name || item.relation.sourceExpertName || 'Expert sursă'} → ${item.targetExpert?.name || 'Expert țintă'}`, expertId: item.relation.sourceExpertId, document: item.document })),
+    },
+    {
+      id: 'pm_unlock_requests',
+      cardLabel: 'Livrabile neeligibile',
+      title: 'Livrabile neeligibile',
+      count: props.pmUnlockRequests.length,
+      items: props.pmUnlockRequests.map((doc) => ({ id: doc.id, title: doc.declaredTitle || doc.originalFileName, detail: doc.eligibilityCheck?.summary || doc.eligibilityCheck?.status || 'Necesită decizie PM', expertId: doc.uploadedByExpertId, document: doc })),
+    },
+    {
+      id: 'manual_review',
+      cardLabel: 'Verificare manuală PM',
+      title: 'Verificări manuale PM',
+      count: props.neconformitati.filter((item) => !item.resolved).length,
+      items: props.neconformitati.filter((item) => !item.resolved).map((item) => ({ id: item.id, title: item.description, detail: item.severity, expertId: item.affectedExpertId })),
+    },
   ];
+  const visibleSections = activeIssueFilter === 'all'
+    ? sections
+    : sections.filter((section) => section.id === activeIssueFilter);
+
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 md:grid-cols-5">{cards.map(([label, value]) => <div key={label} className="rounded-lg border border-amber-200 bg-amber-50/50 p-4"><div className="text-2xl font-bold text-amber-700">{value}</div><div className="mt-1 text-xs font-semibold text-slate-700">{label}</div></div>)}</div>
-      <IssueSection
-        title="Livrabile comune raportate cu denumiri diferite"
-        items={props.titleIssues.map((doc) => ({ id: doc.id, title: doc.declaredTitle || doc.originalFileName, detail: doc.titleCheckMessage || 'Denumire diferită', expertId: doc.uploadedByExpertId, document: doc }))}
-        props={props}
-        onSetAcceptedTitle={setAcceptedTitleDocument}
-        activeDocumentTicketById={activeDocumentTicketById}
-      />
-      <IssueSection title="Evenimente comune pontate în zile diferite" items={props.eventDocumentIssues.map((activity) => ({ id: activity.id, title: activity.title || activity.activityType, detail: activity.date, expertId: activity.expertId, activity }))} props={props} activeDocumentTicketById={activeDocumentTicketById} />
-      <IssueSection title="Colaborare declarată dar neconfirmată reciproc" items={props.pendingSharedDeliverables.map((item) => ({ id: item.relation.id, title: item.relation.sourceActivityTitle || item.document?.declaredTitle || item.document?.originalFileName || 'Livrabil comun', detail: `${item.sourceExpert?.name || item.relation.sourceExpertName || 'Expert sursă'} → ${item.targetExpert?.name || 'Expert țintă'}`, expertId: item.relation.sourceExpertId, document: item.document }))} props={props} activeDocumentTicketById={activeDocumentTicketById} />
-      <IssueSection title="Livrabile neeligibile" items={props.pmUnlockRequests.map((doc) => ({ id: doc.id, title: doc.declaredTitle || doc.originalFileName, detail: doc.eligibilityCheck?.summary || doc.eligibilityCheck?.status || 'Necesită decizie PM', expertId: doc.uploadedByExpertId, document: doc }))} props={props} activeDocumentTicketById={activeDocumentTicketById} />
-      <IssueSection title="Verificări manuale PM" items={props.neconformitati.filter((item) => !item.resolved).map((item) => ({ id: item.id, title: item.description, detail: item.severity, expertId: item.affectedExpertId }))} props={props} />
+      <div className="grid gap-3 md:grid-cols-5">
+        {sections.map((section) => {
+          const active = activeIssueFilter === section.id;
+          return (
+            <button
+              key={section.id}
+              type="button"
+              aria-pressed={active}
+              onClick={() => setActiveIssueFilter(active ? 'all' : section.id)}
+              className={`rounded-lg border p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-[#1f3f75] ${
+                active ? 'border-[#1f3f75] bg-[#1f3f75] text-white' : 'border-amber-200 bg-amber-50/50 text-slate-700'
+              }`}
+            >
+              <div className={`text-2xl font-bold ${active ? 'text-white' : 'text-amber-700'}`}>{section.count}</div>
+              <div className={`mt-1 text-xs font-semibold ${active ? 'text-blue-50' : 'text-slate-700'}`}>{section.cardLabel}</div>
+            </button>
+          );
+        })}
+      </div>
+      {activeIssueFilter !== 'all' ? (
+        <div className="flex items-center justify-between rounded-lg border bg-white px-4 py-2 text-sm shadow-sm">
+          <span className="text-slate-600">
+            Filtru activ: <span className="font-semibold text-[#1f3f75]">{sections.find((section) => section.id === activeIssueFilter)?.cardLabel}</span>
+          </span>
+          <Button size="sm" variant="outline" onClick={() => setActiveIssueFilter('all')}>Arată toate</Button>
+        </div>
+      ) : null}
+      {visibleSections.map((section) => (
+        <IssueSection
+          key={section.id}
+          title={section.title}
+          items={section.items}
+          props={props}
+          onSetAcceptedTitle={section.onSetAcceptedTitle}
+          activeDocumentTicketById={activeDocumentTicketById}
+        />
+      ))}
       <AcceptedTitleDialog
         document={acceptedTitleDocument}
         onOpenChange={(open) => {
