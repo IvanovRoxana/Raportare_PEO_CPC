@@ -18,6 +18,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ActivityCatalogGovernancePanel } from '@/components/pm/activity-catalog-governance-panel';
+import { EligibilityGovernancePanel } from '@/components/pm/eligibility-governance-panel';
 import { ExpertAvatar } from '@/components/expert/expert-avatar';
 import {
   Dialog,
@@ -124,6 +125,8 @@ export type PmWorkspaceProps = {
   onDownloadTotalOpisXls: () => void;
   onDownloadExpertPontaj: (expert: Expert) => void | Promise<void>;
   fallbackCatalog?: ActivityCatalog[];
+  actorName?: string;
+  onExpertsChanged?: () => Promise<unknown> | unknown;
   onEligibilityGovernanceAudit?: (input: {
     actionType: string;
     oldValue?: string;
@@ -133,7 +136,16 @@ export type PmWorkspaceProps = {
   }) => Promise<unknown>;
 };
 
-type WorkspaceView = 'kpi' | 'access' | 'timesheets' | 'reports' | 'deliverables' | 'nonconformities' | 'actions';
+type WorkspaceView =
+  | 'kpi'
+  | 'access'
+  | 'timesheets'
+  | 'reports'
+  | 'deliverables'
+  | 'nonconformities'
+  | 'eligibilityCategories'
+  | 'eligibilityCatalog'
+  | 'actions';
 
 const views: Array<{ id: WorkspaceView; label: string; badge?: (props: PmWorkspaceProps) => number }> = [
   { id: 'kpi', label: 'KPI' },
@@ -142,6 +154,8 @@ const views: Array<{ id: WorkspaceView; label: string; badge?: (props: PmWorkspa
   { id: 'reports', label: 'Raportare' },
   { id: 'deliverables', label: 'Livrabile' },
   { id: 'nonconformities', label: 'Neconformități', badge: (props) => props.pmSummary.problemCount },
+  { id: 'eligibilityCategories', label: 'Categorii eligibilitate' },
+  { id: 'eligibilityCatalog', label: 'Catalog eligibilitate' },
   { id: 'actions', label: 'Acțiuni PM' },
 ];
 
@@ -818,6 +832,62 @@ function EligibilityRulesActionPanel({
   );
 }
 
+function EligibilityCategoriesView(props: PmWorkspaceProps) {
+  return (
+    <div className="space-y-4 p-4 sm:p-6 lg:p-8">
+      <section className="rounded-lg border bg-white p-4 shadow-sm">
+        <div className="flex items-center gap-3">
+          <span className="rounded-lg border bg-blue-50 p-3 text-blue-700">
+            <ShieldCheck className="h-5 w-5" />
+          </span>
+          <div>
+            <h2 className="font-semibold">Categorii eligibilitate</h2>
+            <p className="text-xs text-slate-500">
+              Catalog activități, livrabile așteptate, import/export și reguli operaționale pentru încadrare.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <ActivityCatalogGovernancePanel
+        fallbackCatalog={props.fallbackCatalog}
+        mode="pm"
+        activities={props.activities}
+        documents={props.documents}
+        onAudit={props.onEligibilityGovernanceAudit}
+      />
+    </div>
+  );
+}
+
+function EligibilityCatalogView(props: PmWorkspaceProps) {
+  return (
+    <div className="space-y-4 p-4 sm:p-6 lg:p-8">
+      <section className="rounded-lg border bg-white p-4 shadow-sm">
+        <div className="flex items-center gap-3">
+          <span className="rounded-lg border bg-blue-50 p-3 text-blue-700">
+            <ShieldCheck className="h-5 w-5" />
+          </span>
+          <div>
+            <h2 className="font-semibold">Catalog eligibilitate</h2>
+            <p className="text-xs text-slate-500">
+              Agent eligibilitate, prompturi AI per expert, cazuri PM și reguli versionate într-un singur loc.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <EligibilityGovernancePanel
+        documents={props.documents}
+        experts={props.experts}
+        actorName={props.actorName}
+        onExpertsChanged={props.onExpertsChanged}
+        onAudit={props.onEligibilityGovernanceAudit}
+      />
+    </div>
+  );
+}
+
 function SideCard({ title, items }: { title: string; items: string[] }) {
   return <section className="rounded-lg border bg-white p-4 shadow-sm"><h3 className="mb-3 text-sm font-semibold">{title}</h3><div className="space-y-3">{items.length === 0 ? <p className="text-xs text-slate-500">Nu există activitate.</p> : items.map((item, index) => <div key={`${item}-${index}`} className="rounded-md border p-3 text-xs text-slate-600">{item}</div>)}</div></section>;
 }
@@ -879,7 +949,7 @@ export function PmWorkspace(props: PmWorkspaceProps) {
   const [eligibilityRulesFocusDocument, setEligibilityRulesFocusDocument] = useState<DocumentMetadata | null>(null);
   const openEligibilityRules = (document: DocumentMetadata) => {
     setEligibilityRulesFocusDocument(document);
-    setActiveView('actions');
+    setActiveView('eligibilityCatalog');
   };
   const content = useMemo(() => {
     if (activeView === 'access') return <MonthAccessView {...props} />;
@@ -887,6 +957,8 @@ export function PmWorkspace(props: PmWorkspaceProps) {
     if (activeView === 'reports') return <ReportsView {...props} />;
     if (activeView === 'deliverables') return <DeliverablesView {...props} />;
     if (activeView === 'nonconformities') return <NonconformitiesView {...props} />;
+    if (activeView === 'eligibilityCategories') return <EligibilityCategoriesView {...props} />;
+    if (activeView === 'eligibilityCatalog') return <EligibilityCatalogView {...props} />;
     if (activeView === 'actions') return <ActionsView {...props} eligibilityRulesFocusDocument={eligibilityRulesFocusDocument} />;
     return <KpiView {...props} />;
   }, [activeView, eligibilityRulesFocusDocument, props]);

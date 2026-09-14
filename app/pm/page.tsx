@@ -1694,6 +1694,8 @@ export default function PMDashboard() {
         onDownloadExpertPontaj={handleDownloadExpertPontaj}
         supportTickets={supportTickets}
         fallbackCatalog={fallbackActivityCatalog as ActivityCatalog[]}
+        actorName={currentUser?.displayName || currentUser?.email || 'PM'}
+        onExpertsChanged={refreshExperts}
         onEligibilityGovernanceAudit={recordEligibilityGovernanceAudit}
       />
 
