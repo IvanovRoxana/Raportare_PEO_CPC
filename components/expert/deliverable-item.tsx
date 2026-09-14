@@ -706,7 +706,7 @@ export function DeliverableItem({
       } else if (isPdf) {
         const pdfResult = await extractPdfFirstPageTextWithSource(file);
         const fullPdfResult = await extractPdfTextWithSource(file);
-        firstPageText = pdfResult.text;
+        firstPageText = pdfResult.text || fullPdfResult.text?.slice(0, 5000) || null;
         titleSuggestion = suggestTitleFromFirstPage(firstPageText);
         docTitle = titleSuggestion.suggestedTitle;
         docText = fullPdfResult.text || firstPageText;
@@ -774,7 +774,7 @@ export function DeliverableItem({
           confidence: 'low',
           alternatives: titleSuggestion.alternatives,
           reason: hasExtractedText
-            ? 'Nu a fost identificat un titlu clar sustinut de textul extras din document; propunere orientativa din numele fisierului.'
+            ? 'Nu a fost identificat un titlu clar sustinut de textul extras din document; completeaza titlul manual.'
             : 'Titlu propus din numele fisierului; textul extras nu a oferit un titlu clar.',
         };
       }

@@ -508,7 +508,7 @@ export async function extractPdfFirstPageTextWithSource(file: File): Promise<Doc
       const pdfjsLib = await loadPdfJs();
       const arrayBuffer = await file.arrayBuffer();
       if (session.isStopped()) throw new Error('PDF extraction deadline reached.');
-      loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
+      loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer), disableWorker: true } as Parameters<PdfJsModule['getDocument']>[0]);
       const pdf = await loadingTask.promise;
       const page = await pdf.getPage(1);
       return extractPdfPageTextWithOcr(page as unknown as PdfPage, {
@@ -542,7 +542,7 @@ export async function extractPdfTextWithSource(file: File, options: { requireCom
       const pdfjsLib = await loadPdfJs();
       const arrayBuffer = await file.arrayBuffer();
       if (session.isStopped()) throw new Error('PDF extraction deadline reached.');
-      loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
+      loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer), disableWorker: true } as Parameters<PdfJsModule['getDocument']>[0]);
       return loadingTask.promise;
     });
     complete = pdf.numPages > 0;
