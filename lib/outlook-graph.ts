@@ -5,8 +5,8 @@ export const OUTLOOK_TOKEN_COOKIE = 'peo_outlook_graph_token';
 export const OUTLOOK_STATE_COOKIE = 'peo_outlook_graph_state';
 
 const OUTLOOK_SCOPES = ['openid', 'profile', 'email', 'offline_access', 'User.Read', 'Calendars.Read'];
-const COOKIE_CHUNK_SIZE = 3000;
 const MAX_COOKIE_CHUNKS = 8;
+const MAX_COOKIE_VALUE_SIZE = 3800;
 
 export type OutlookGraphEvent = {
   id: string;
@@ -27,7 +27,7 @@ type OutlookState = {
 
 type OutlookTokenBundle = {
   email: string;
-  accessToken: string;
+  accessToken?: string;
   refreshToken?: string;
   expiresAt: number;
 };
@@ -157,23 +157,12 @@ export function setEncryptedCookie(response: NextResponse, name: string, value: 
     maxAge,
   } as const;
 
-  if (encrypted.length <= COOKIE_CHUNK_SIZE) {
-    response.cookies.set(name, encrypted, cookieOptions);
-    clearOutlookCookieChunks(response, name);
-    return;
+  if (encrypted.length > MAX_COOKIE_VALUE_SIZE) {
+    throw new Error('Outlook cookie value is too large.');
   }
 
-  const chunks = encrypted.match(new RegExp(`.{1,${COOKIE_CHUNK_SIZE}}`, 'g')) || [];
-  if (chunks.length > MAX_COOKIE_CHUNKS) {
-    throw new Error('Outlook token is too large to store in cookies.');
-  }
-  response.cookies.set(name, `chunked:${chunks.length}`, cookieOptions);
-  chunks.forEach((chunk, index) => {
-    response.cookies.set(`${name}.${index}`, chunk, cookieOptions);
-  });
-  for (let index = chunks.length; index < MAX_COOKIE_CHUNKS; index += 1) {
-    response.cookies.set(`${name}.${index}`, '', { ...cookieOptions, maxAge: 0 });
-  }
+  response.cookies.set(name, encrypted, cookieOptions);
+  clearOutlookCookieChunks(response, name);
 }
 
 export function clearOutlookCookie(response: NextResponse, name: string) {
@@ -257,11 +246,27 @@ export async function getOutlookCalendarEvents(args: {
 }
 
 export function tokenNeedsRefresh(token: OutlookTokenBundle) {
-  return token.expiresAt <= Date.now() + 60_000;
+  return !token.accessToken || token.expiresAt <= Date.now() + 60_000;
 }
 
 export function tokenMatchesExpert(token: OutlookTokenBundle | null, expertEmail: string) {
   return Boolean(token && normalizeOutlookEmail(token.email) === normalizeOutlookEmail(expertEmail));
+}
+
+export function toStoredOutlookToken(token: OutlookTokenBundle, email: string): OutlookTokenBundle {
+  if (token.refreshToken) {
+    return {
+      email,
+      refreshToken: token.refreshToken,
+      expiresAt: 0,
+    };
+  }
+
+  return {
+    email,
+    accessToken: token.accessToken,
+    expiresAt: token.expiresAt,
+  };
 }
 
 async function tokenRequest(tenantId: string, body: URLSearchParams) {

@@ -10,6 +10,7 @@ import {
   normalizeOutlookEmail,
   readOutlookState,
   setEncryptedCookie,
+  toStoredOutlookToken,
 } from '@/lib/outlook-graph';
 
 export const runtime = 'nodejs';
@@ -44,6 +45,9 @@ export async function GET(request: NextRequest) {
 
   try {
     const token = await exchangeOutlookCode({ origin, code });
+    if (!token.accessToken) {
+      throw new Error('Microsoft OAuth response did not include an access token.');
+    }
     const signedInOutlookEmail = await getOutlookUserEmail(token.accessToken);
     const expectedEmail = normalizeOutlookEmail(statePayload.expertEmail);
 
@@ -56,10 +60,7 @@ export async function GET(request: NextRequest) {
 
     const response = redirectWithStatus(origin, returnTo, 'connected');
     clearOutlookCookie(response, OUTLOOK_STATE_COOKIE);
-    setEncryptedCookie(response, OUTLOOK_TOKEN_COOKIE, {
-      ...token,
-      email: signedInOutlookEmail,
-    }, config.encryptionSecret, 30 * 24 * 60 * 60);
+    setEncryptedCookie(response, OUTLOOK_TOKEN_COOKIE, toStoredOutlookToken(token, signedInOutlookEmail), config.encryptionSecret, 30 * 24 * 60 * 60);
     return response;
   } catch {
     const response = redirectWithStatus(origin, returnTo, 'error');

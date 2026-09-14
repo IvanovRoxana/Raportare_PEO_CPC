@@ -8,6 +8,7 @@ import {
   readOutlookToken,
   refreshOutlookToken,
   setEncryptedCookie,
+  toStoredOutlookToken,
   tokenMatchesExpert,
   tokenNeedsRefresh,
 } from '@/lib/outlook-graph';
@@ -64,13 +65,16 @@ export async function GET(request: NextRequest) {
     if (!token) {
       return outlookEventsResponse({ connected: false, configured: true, events: [] }, { status: 401 });
     }
+    if (!token.accessToken) {
+      return outlookEventsResponse({ connected: false, configured: true, events: [] }, { status: 401 });
+    }
     const events = await getOutlookCalendarEvents({
       accessToken: token.accessToken,
       ...monthRange(month, year),
     });
     const response = outlookEventsResponse({ connected: true, configured: true, events });
     if (refreshedToken) {
-      setEncryptedCookie(response, OUTLOOK_TOKEN_COOKIE, token, config.encryptionSecret, 30 * 24 * 60 * 60);
+      setEncryptedCookie(response, OUTLOOK_TOKEN_COOKIE, toStoredOutlookToken(token, token.email), config.encryptionSecret, 30 * 24 * 60 * 60);
     }
     return response;
   } catch (error) {
