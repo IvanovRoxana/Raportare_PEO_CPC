@@ -3129,6 +3129,9 @@ export const activitiesService = {
     const client = getAwsDataClient() as any;
     const existing = await client.models.Activity.get({ id });
     assertNoErrors(existing, 'AWS get activity');
+    if (!existing.data) {
+      throw new Error('Activitatea nu mai exista sau lista este invechita. Reincarca activitatile si incearca din nou.');
+    }
     let preparedUpdates = updates;
 
     if (existing.data) {

@@ -117,6 +117,18 @@ test('scrierile activitatilor verifica autorizarea Expert/PM inainte de sincroni
   );
 });
 
+test('update activitate opreste salvarea daca activitatea nu mai exista', () => {
+  const updateSource = getActivityUpdateSource();
+
+  assert.match(updateSource, /if \(!existing\.data\) \{/);
+  assert.match(updateSource, /Activitatea nu mai exista sau lista este invechita/);
+  assert.ok(
+    updateSource.indexOf('if (!existing.data) {')
+      < updateSource.indexOf('client.models.Activity.update'),
+    'update trebuie sa se opreasca inainte de Activity.update cand activitatea lipseste',
+  );
+});
+
 test('verificarea accesului accepta acelasi expert identificat prin email', () => {
   const startMarker = 'async function assertCanAccessExpert(client: any, expertId?: string | null)';
   const endMarker = 'async function getGTRegistryAccess(client: any)';

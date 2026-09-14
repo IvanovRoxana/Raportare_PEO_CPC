@@ -72,6 +72,14 @@ function getStatusClass(status: ReturnType<typeof buildMonthlyEvidenceCoverage>[
   return 'border-red-300 bg-red-50 text-red-800';
 }
 
+function getApplyErrorMessage(error: unknown) {
+  const serialized = error instanceof Error ? error.message : String(error);
+  if (/ConditionalCheckFailedException|nu mai exista|lista este invechita/i.test(serialized)) {
+    return 'Unele activitati s-au modificat intre timp. Am reincarcat lista; verifica zilele ramase si aplica din nou.';
+  }
+  return serialized || 'Nu am putut aplica dovezile.';
+}
+
 function buildEvidenceDeliverable(args: {
   evidence: EvidenceDraft;
   expert: Expert;
@@ -242,6 +250,7 @@ export function MonthlyEvidencePanel({
     setIsApplying(true);
     setMessage(null);
     try {
+      await onRefreshActivities();
       const readyDrafts = drafts.filter((draft) => draft.status === 'ready');
       const activitiesByDate = new Map<string, Activity[]>();
       activities.forEach((activity) => {
@@ -249,7 +258,12 @@ export function MonthlyEvidencePanel({
       });
 
       let attachedCount = 0;
+      let skippedExistingCount = 0;
+      let failedCount = 0;
+      const failureMessages = new Set<string>();
       for (const draft of readyDrafts) {
+        let draftApplied = false;
+        let draftFailed = false;
         const dates = getEvidenceDates({
           id: draft.id,
           fileName: draft.fileName,
@@ -263,7 +277,11 @@ export function MonthlyEvidencePanel({
           const targetActivities = activitiesByDate.get(date) ?? [];
           for (const activity of targetActivities) {
             const existing = activity.deliverables ?? [];
-            if (existing.some((deliverable) => deliverable.documentId === uploaded.documentId)) continue;
+            if (existing.some((deliverable) => deliverable.documentId === uploaded.documentId)) {
+              skippedExistingCount += 1;
+              draftApplied = true;
+              continue;
+            }
             const deliverable = buildEvidenceDeliverable({
               evidence: uploaded,
               expert,
@@ -272,23 +290,39 @@ export function MonthlyEvidencePanel({
               projectId: expert.projectCode || '302141',
               projectName: expert.projectTitle,
             });
-            await onUpdateActivity(activity.id, {
-              ...activity,
-              deliverables: [...existing, deliverable],
-            });
-            attachedCount += 1;
+            try {
+              await onUpdateActivity(activity.id, {
+                deliverables: [...existing, deliverable],
+              });
+              attachedCount += 1;
+              draftApplied = true;
+            } catch (error) {
+              failedCount += 1;
+              draftFailed = true;
+              failureMessages.add(getApplyErrorMessage(error));
+            }
           }
         }
 
-        setDrafts((prev) => prev.map((item) => item.id === draft.id ? { ...item, status: 'applied' } : item));
+        if (draftApplied && !draftFailed) {
+          setDrafts((prev) => prev.map((item) => item.id === draft.id ? { ...item, status: 'applied' } : item));
+        }
       }
 
       await onRefreshActivities();
-      setMessage(attachedCount > 0
-        ? `Am atasat dovezile la ${attachedCount} activitati.`
-        : 'Nu am gasit activitati existente pentru datele confirmate.');
+      if (failedCount > 0) {
+        const successText = attachedCount > 0 ? ` Am atasat dovezile la ${attachedCount} activitati.` : '';
+        const skippedText = skippedExistingCount > 0 ? ` ${skippedExistingCount} atasari existau deja.` : '';
+        setMessage(`${[...failureMessages][0] ?? 'Nu am putut aplica toate dovezile.'}${successText}${skippedText}`);
+      } else if (attachedCount > 0) {
+        setMessage(`Am atasat dovezile la ${attachedCount} activitati.`);
+      } else if (skippedExistingCount > 0) {
+        setMessage('Dovezile erau deja atasate la activitatile gasite.');
+      } else {
+        setMessage('Nu am gasit activitati existente pentru datele confirmate.');
+      }
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Nu am putut aplica dovezile.');
+      setMessage(getApplyErrorMessage(error));
     } finally {
       setIsApplying(false);
     }
