@@ -17,6 +17,7 @@ const MAX_CHUNKS_TO_SCORE = 900;
 const DEFAULT_TOP_K = 8;
 const DEFAULT_RETRIEVAL_TIMEOUT_MS = 5500;
 const APPROVED_REPORT_SOURCE_TYPE = 'raportare_aprobata_oir';
+const APPROVED_HISTORICAL_SOURCE_TYPES = ['raportare_aprobata_oir', 'raport_activitate_aprobat', 'livrabil_aprobat'];
 const REFERENCE_SOURCE_TYPES = ['cerere_finantare', 'manual_beneficiar', 'descriere_activitati', 'fisa_post'];
 const SA_PURPOSE_SOURCE_TYPES = ['scop_sa', 'descriere_activitati', 'other'];
 const MIN_EXPERT_HISTORY_CHUNKS = 30;
@@ -169,6 +170,18 @@ function getCandidateSaCodes(request: RagRetrievalRequest) {
 
 function getRequestActivityName(request: Pick<RagRetrievalRequest, 'activityName'>) {
   return request.activityName?.trim() || '';
+}
+
+function isWithinLastTwelveMonths(chunk: KnowledgeChunk, request: RagRetrievalRequest) {
+  // Legacy OIR imports predate mandatory period metadata; keep them available
+  // until they are reindexed into the typed historical source buckets.
+  if (chunk.sourceType === APPROVED_REPORT_SOURCE_TYPE) return true;
+  if (!APPROVED_HISTORICAL_SOURCE_TYPES.includes(chunk.sourceType || '')) return true;
+  if (chunk.month === undefined || chunk.year === undefined) return false;
+  const requestYear = toNumber(request.year) ?? new Date().getFullYear();
+  const requestMonth = toNumber(request.month) ?? new Date().getMonth() + 1;
+  const age = (requestYear - chunk.year) * 12 + (requestMonth - chunk.month);
+  return age >= 0 && age < 12;
 }
 
 function addUniqueCandidates(
@@ -361,7 +374,7 @@ async function collectRagCandidates(
       if (!requestConfig) return [];
       return dependencies.listKnowledgeChunksByExpertId(
         request.expertId!,
-        activeChunkFilter(category, { sourceType: { eq: APPROVED_REPORT_SOURCE_TYPE } }),
+        activeChunkFilter(category, { or: APPROVED_HISTORICAL_SOURCE_TYPES.map((sourceType) => ({ sourceType: { eq: sourceType } })) }),
         requestConfig,
       );
     });
@@ -400,7 +413,7 @@ async function collectRagCandidates(
       if (!requestConfig) return [];
       const chunks = await dependencies.listKnowledgeChunksBySaCode(
         saCode,
-        activeChunkFilter(category, { sourceType: { eq: APPROVED_REPORT_SOURCE_TYPE } }),
+        activeChunkFilter(category, { or: APPROVED_HISTORICAL_SOURCE_TYPES.map((sourceType) => ({ sourceType: { eq: sourceType } })) }),
         requestConfig,
       );
       return filterChunksByProjectPosition(chunks, request);
@@ -464,7 +477,8 @@ export async function retrieveActivityAutofillContext(
 
     const deadline = Date.now() + (options.timeoutMs ?? DEFAULT_RETRIEVAL_TIMEOUT_MS);
     const { candidates, warnings } = await collectRagCandidates(request, options, deadline, dependencies);
-    const scored = selectDiverseTopChunks(candidates, queryEmbedding, options.topK ?? DEFAULT_TOP_K);
+    const recentCandidates = candidates.filter(({ chunk }) => isWithinLastTwelveMonths(chunk, request));
+    const scored = selectDiverseTopChunks(recentCandidates, queryEmbedding, options.topK ?? DEFAULT_TOP_K);
 
     return {
       enabled: true,
@@ -473,7 +487,7 @@ export async function retrieveActivityAutofillContext(
       chunks: scored,
       warnings: [
         ...warnings,
-        ...(candidates.length === 0 ? ['Nu exista fragmente RAG indexate pentru contextul selectat.'] : []),
+        ...(recentCandidates.length === 0 ? ['Nu exista fragmente RAG aprobate din ultimele 12 luni pentru contextul selectat.'] : []),
         ...(remainingMs(deadline) <= 250 ? ['RAG a folosit rezultatele gasite in bugetul de timp disponibil.'] : []),
       ],
     };

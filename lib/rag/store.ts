@@ -191,6 +191,15 @@ const LIST_KNOWLEDGE_CHUNKS_QUERY = `
   }
 `;
 
+const LIST_KNOWLEDGE_DOCUMENTS_QUERY = `
+  query ListKnowledgeDocuments($filter: ModelKnowledgeDocumentFilterInput, $limit: Int, $nextToken: String) {
+    listKnowledgeDocuments(filter: $filter, limit: $limit, nextToken: $nextToken) {
+      data: items { ${KNOWLEDGE_DOCUMENT_FIELDS} }
+      nextToken
+    }
+  }
+`;
+
 const LIST_KNOWLEDGE_CHUNKS_BY_EXPERT_ID_QUERY = `
   query ListKnowledgeChunksByExpertId($expertId: ID!, $filter: ModelKnowledgeChunkFilterInput, $limit: Int, $nextToken: String) {
     listKnowledgeChunkByExpertId(expertId: $expertId, filter: $filter, limit: $limit, nextToken: $nextToken) {
@@ -367,6 +376,22 @@ export async function listKnowledgeChunks(
   return data.map(mapKnowledgeChunk);
 }
 
+export async function listKnowledgeDocuments(
+  filter?: Record<string, unknown>,
+  options: ({ limit?: number; maxItems?: number } & RagAuthContext) = {},
+) {
+  const data = await listModel<any>({
+    modelName: 'KnowledgeDocument',
+    query: LIST_KNOWLEDGE_DOCUMENTS_QUERY,
+    resultKey: 'listKnowledgeDocuments',
+    filter,
+    limit: options.limit,
+    maxItems: options.maxItems,
+    options,
+  });
+  return data.map(mapKnowledgeDocument);
+}
+
 export async function listKnowledgeChunksByExpertId(
   expertId: string,
   filter?: Record<string, unknown>,
@@ -431,6 +456,11 @@ export async function indexKnowledgeDocument(
   const textHash = hashRagText(text);
   const extractedTextPreview = text.slice(0, 800);
   const embeddingModel = getRagEmbeddingModelName();
+  const metadata = {
+    ...(input.metadata ?? {}),
+    ...(input.extractionSource ? { extractionSource: input.extractionSource } : {}),
+    ...(input.extractionComplete !== undefined ? { extractionComplete: input.extractionComplete } : {}),
+  };
 
   if (options.dryRun) {
     return {
@@ -454,13 +484,22 @@ export async function indexKnowledgeDocument(
         saCode: input.saCode,
         activityName: input.activityName,
         status: 'active',
-        metadataJson: input.metadata ? JSON.stringify(input.metadata) : undefined,
+        metadataJson: Object.keys(metadata).length ? JSON.stringify(metadata) : undefined,
       })),
     };
   }
 
+  const existing = await listKnowledgeDocuments(
+    { textHash: { eq: textHash }, status: { eq: 'active' } },
+    { ...options, limit: 10, maxItems: 10 },
+  );
+  if (existing[0]) {
+    return { dryRun: false, document: existing[0], chunks: [] };
+  }
+
   const document = await createKnowledgeDocument({
     ...input,
+    metadata,
     textHash,
     extractedTextPreview,
   }, options);
@@ -488,7 +527,7 @@ export async function indexKnowledgeDocument(
     saCode: input.saCode,
     activityName: input.activityName,
     status: 'active',
-    metadataJson: input.metadata ? JSON.stringify(input.metadata) : undefined,
+    metadataJson: Object.keys(metadata).length ? JSON.stringify(metadata) : undefined,
   })), options);
 
   return { dryRun: false, document, chunks: savedChunks };
@@ -555,9 +594,9 @@ export async function createKnowledgeChunks(
   options: RagAuthContext = {},
 ) {
   const chunks: KnowledgeChunk[] = [];
-  for (const input of inputs) {
-    const chunk = await createKnowledgeChunk(input, options);
-    if (chunk) chunks.push(chunk);
+  for (let start = 0; start < inputs.length; start += 8) {
+    const batch = await Promise.all(inputs.slice(start, start + 8).map((input) => createKnowledgeChunk(input, options)));
+    chunks.push(...batch.filter((chunk): chunk is KnowledgeChunk => Boolean(chunk)));
   }
   return chunks;
 }

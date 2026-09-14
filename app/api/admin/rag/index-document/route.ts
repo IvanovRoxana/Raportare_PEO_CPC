@@ -43,6 +43,23 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Sursa fisei postului necesita un expert sau un rol.' }, { status: 400 });
     }
 
+    const isApprovedHistorical = ['raport_activitate_aprobat', 'livrabil_aprobat'].includes(sourceType);
+    if (isApprovedHistorical) {
+      const month = Number(body?.month);
+      const year = Number(body?.year);
+      if (!expertId || !projectCode || !saCode || !body?.activityName || !Number.isInteger(month) || month < 1 || month > 12 || !Number.isInteger(year)) {
+        return NextResponse.json({ error: 'Rapoartele si livrabilele aprobate necesita expert, proiect, luna, an, SA si activitate.' }, { status: 400 });
+      }
+      if (body?.approvalStatus !== 'approved') {
+        return NextResponse.json({ error: 'Doar documentele aprobate pot fi indexate in istoricul RAG.' }, { status: 400 });
+      }
+      const now = new Date();
+      const ageInMonths = (now.getFullYear() - year) * 12 + (now.getMonth() + 1 - month);
+      if (ageInMonths < 0 || ageInMonths >= 12) {
+        return NextResponse.json({ error: 'Documentul trebuie sa apartina ultimelor 12 luni.' }, { status: 400 });
+      }
+    }
+
     if (!dryRun && !authToken) {
       return NextResponse.json({ error: 'Importul RAG real necesita x-cognito-access-token pentru scrierea in AppSync.' }, { status: 401 });
     }
@@ -65,6 +82,8 @@ export async function POST(req: Request) {
       s3Key: typeof body?.s3Key === 'string' ? body.s3Key : undefined,
       createdBy: typeof body?.createdBy === 'string' ? body.createdBy : 'admin-rag-index',
       metadata: body?.metadata && typeof body.metadata === 'object' ? body.metadata : undefined,
+      extractionSource: body?.extractionSource === 'ocr' ? 'ocr' : body?.extractionSource === 'native' ? 'native' : undefined,
+      extractionComplete: typeof body?.extractionComplete === 'boolean' ? body.extractionComplete : undefined,
     }, { dryRun, authToken });
 
     return NextResponse.json({
@@ -72,6 +91,7 @@ export async function POST(req: Request) {
       dryRun: result.dryRun,
       documentId: result.document?.id,
       chunks: result.chunks.length,
+      duplicate: result.chunks.length === 0 && Boolean(result.document?.id),
       preview: result.chunks.slice(0, 3).map((chunk) => ({
         chunkIndex: chunk.chunkIndex,
         tokenEstimate: chunk.tokenEstimate,

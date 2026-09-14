@@ -62,6 +62,8 @@ const SOURCE_TYPES = [
   { value: 'manual_beneficiar', label: 'Manual beneficiar' },
   { value: 'descriere_activitati', label: 'Descriere activitati' },
   { value: 'raportare_aprobata_oir', label: 'Raportare aprobata OIR' },
+  { value: 'raport_activitate_aprobat', label: 'RA aprobat (ultimele 12 luni)' },
+  { value: 'livrabil_aprobat', label: 'Livrabil aprobat (ultimele 12 luni)' },
   { value: 'other', label: 'Alta sursa' },
 ];
 
@@ -77,8 +79,8 @@ const INDEX_SCOPE_OPTIONS: Array<{ value: RagIndexScope; label: string }> = [
 const SOURCE_TYPES_BY_SCOPE: Record<RagIndexScope, string[]> = {
   project: ['cerere_finantare', 'manual_beneficiar'],
   subactivity: ['scop_sa', 'descriere_activitati', 'cerere_finantare'],
-  expert: ['fisa_post', 'raportare_aprobata_oir'],
-  other: ['other', 'raportare_aprobata_oir'],
+  expert: ['fisa_post', 'raport_activitate_aprobat', 'livrabil_aprobat', 'raportare_aprobata_oir'],
+  other: ['other', 'raport_activitate_aprobat', 'livrabil_aprobat', 'raportare_aprobata_oir'],
 };
 
 const currentDate = new Date();
@@ -144,6 +146,8 @@ export function AiContextHealthPanel() {
   const [indexScope, setIndexScope] = useState<RagIndexScope>('project');
   const [ragSourceType, setRagSourceType] = useState('cerere_finantare');
   const [ragText, setRagText] = useState('');
+  const [ragActivityName, setRagActivityName] = useState('');
+  const [ragExtractionSource, setRagExtractionSource] = useState<'native' | 'ocr' | undefined>();
   const [ragAdminToken, setRagAdminToken] = useState('');
   const [indexing, setIndexing] = useState(false);
   const [extractingRagFile, setExtractingRagFile] = useState(false);
@@ -230,8 +234,10 @@ export function AiContextHealthPanel() {
     }
   }
 
-  async function indexRagDocument() {
-    if (!ragTitle.trim() || !ragText.trim()) {
+  async function indexRagDocument(overrides: { text?: string; title?: string; extractionSource?: 'native' | 'ocr' } = {}) {
+    const textToIndex = overrides.text ?? ragText;
+    const titleToIndex = overrides.title ?? ragTitle;
+    if (!titleToIndex.trim() || !textToIndex.trim()) {
       setError('Completeaza titlul si textul documentului RAG.');
       return;
     }
@@ -248,11 +254,15 @@ export function AiContextHealthPanel() {
       return;
     }
     if (indexScope === 'expert' && !selectedExpert) {
-      setError('Selecteaza expertul pentru sursa fisei postului sau raportarea aprobata.');
+      setError('Selecteaza expertul pentru fisa postului, RA sau livrabilul aprobat.');
       return;
     }
     if (indexScope === 'project' && ragSourceType !== 'cerere_finantare' && ragSourceType !== 'manual_beneficiar') {
       setError('Alege Cerere finantare sau Manual beneficiar pentru o sursa de proiect.');
+      return;
+    }
+    if (['raport_activitate_aprobat', 'livrabil_aprobat'].includes(ragSourceType) && !ragActivityName.trim()) {
+      setError('Completeaza activitatea pentru raportul sau livrabilul aprobat.');
       return;
     }
 
@@ -269,9 +279,9 @@ export function AiContextHealthPanel() {
           'x-rag-admin-token': ragAdminToken.trim(),
         },
         body: JSON.stringify({
-          title: ragTitle.trim(),
+          title: titleToIndex.trim(),
           sourceType: ragSourceType,
-          text: ragText.trim(),
+          text: textToIndex.trim(),
           category: indexScope === 'project' ? undefined : category || selectedExpert?.category,
           expertId: indexScope === 'expert' ? selectedExpert?.id : undefined,
           expertName: indexScope === 'expert' ? selectedExpert?.name : undefined,
@@ -279,16 +289,23 @@ export function AiContextHealthPanel() {
           projectCode: projectCode.trim() || undefined,
           month: Number.isFinite(Number(month)) ? Number(month) : undefined,
           year: Number.isFinite(Number(year)) ? Number(year) : undefined,
-          saCode: indexScope === 'subactivity' ? saCode : undefined,
-          approvalStatus: ragSourceType === 'raportare_aprobata_oir' ? 'approved' : undefined,
+          saCode: ['raport_activitate_aprobat', 'livrabil_aprobat'].includes(ragSourceType)
+            ? saCode.trim() || undefined
+            : indexScope === 'subactivity' ? saCode : undefined,
+          activityName: ragActivityName.trim() || undefined,
+          approvalStatus: ['raportare_aprobata_oir', 'raport_activitate_aprobat', 'livrabil_aprobat'].includes(ragSourceType) ? 'approved' : undefined,
+          originalFileName: ragFileName || undefined,
+          extractionSource: overrides.extractionSource ?? ragExtractionSource,
+          extractionComplete: Boolean(textToIndex.trim()),
           createdBy: 'admin-ai-context-health',
           metadata: { source: 'admin-ai-context-health', scope: indexScope },
         }),
       });
       const data = await response.json().catch(() => null);
       if (!response.ok) throw new Error(data?.error || 'Indexarea documentului RAG a esuat.');
-      setMessage(`Document indexat: ${data?.chunks ?? 0} fragmente.`);
+      setMessage(data?.duplicate ? 'Documentul exista deja in baza RAG; nu a fost duplicat.' : `Document indexat: ${data?.chunks ?? 0} fragmente.`);
       setRagText('');
+      setRagFileName('');
       await loadHealth();
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : 'Indexarea documentului RAG a esuat.');
@@ -311,8 +328,13 @@ export function AiContextHealthPanel() {
         : await extractPdfTextWithSource(file);
       if (!result.text?.trim()) throw new Error('Nu am putut extrage text util din document. Lipeste textul manual.');
       setRagText(result.text.trim());
+      setRagExtractionSource(result.source);
       if (!ragTitle.trim()) setRagTitle(file.name.replace(/\.(pdf|docx)$/i, ''));
-      setMessage(`Text extras din ${file.name}. Revizuieste-l inainte de indexare.`);
+      await indexRagDocument({
+        text: result.text.trim(),
+        title: ragTitle.trim() || file.name.replace(/\.(pdf|docx)$/i, ''),
+        extractionSource: result.source,
+      });
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : 'Extragerea documentului a esuat.');
     } finally {
@@ -494,6 +516,9 @@ export function AiContextHealthPanel() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
+            <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+              Încarcă aici documentele de referință. Alege nivelul potrivit: Proiect pentru cererea de finanțare/manual, Subactivitate pentru scopul SA, Expert / rol pentru fișa de post și RA/livrabile aprobate.
+            </div>
             <div className="grid gap-3 sm:grid-cols-3">
               <div className="space-y-2">
                 <Label>Nivel sursă</Label>
@@ -534,6 +559,12 @@ export function AiContextHealthPanel() {
                   </SelectContent>
                 </Select>
               </div>
+              {['raport_activitate_aprobat', 'livrabil_aprobat'].includes(ragSourceType) && (
+                <div className="space-y-2 sm:col-span-2">
+                  <Label>Activitate *</Label>
+                  <Input value={ragActivityName} onChange={(event) => setRagActivityName(event.target.value)} placeholder="Denumirea exacta din catalogul de activitati" />
+                </div>
+              )}
             </div>
             <div className="space-y-2">
               <Label>Token RAG admin</Label>
@@ -561,12 +592,12 @@ export function AiContextHealthPanel() {
               rows={8}
               value={ragText}
               onChange={(event) => setRagText(event.target.value)}
-              placeholder="Lipeste textul documentului care trebuie indexat pentru AI."
+              placeholder="Text extras automat. Poate fi corectat aici doar daca este necesar."
             />
             <p className="text-xs text-muted-foreground">
-              Documentul va fi indexat cu expertul, categoria, SA, luna/anul si proiectul selectate in filtrul de mai sus.
+              Selectarea fișierului extrage și indexează automat documentul după validarea metadatelor. Pentru RA și livrabile aprobate sunt acceptate doar documentele din ultimele 12 luni.
             </p>
-            <Button type="button" onClick={indexRagDocument} disabled={indexing}>
+            <Button type="button" onClick={() => void indexRagDocument()} disabled={indexing || extractingRagFile}>
               {indexing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
               Indexeaza documentul
             </Button>

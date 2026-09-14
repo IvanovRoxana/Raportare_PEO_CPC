@@ -228,7 +228,11 @@ export async function GET(request: Request) {
         ? listKnowledgeChunksByExpertId(expert.id, { sourceType: { eq: 'fisa_post' } }, { authToken: auth.token, limit: 20, maxItems: 80 })
         : Promise.resolve([]),
       expert?.id
-        ? listKnowledgeChunksByExpertId(expert.id, { sourceType: { eq: 'raportare_aprobata_oir' } }, { authToken: auth.token, limit: 20, maxItems: 80 })
+        ? listKnowledgeChunksByExpertId(expert.id, { or: [
+            { sourceType: { eq: 'raportare_aprobata_oir' } },
+            { sourceType: { eq: 'raport_activitate_aprobat' } },
+            { sourceType: { eq: 'livrabil_aprobat' } },
+          ] }, { authToken: auth.token, limit: 20, maxItems: 120 })
         : Promise.resolve([]),
       category
         ? listKnowledgeChunksByCategoryAndSourceType(category, 'fisa_post', undefined, { authToken: auth.token, limit: 20, maxItems: 80 })
@@ -239,7 +243,9 @@ export async function GET(request: Request) {
           ))).then((groups) => groups.flat())
         : Promise.resolve([]),
       category
-        ? listKnowledgeChunksByCategoryAndSourceType(category, 'raportare_aprobata_oir', undefined, { authToken: auth.token, limit: 20, maxItems: 120 })
+        ? Promise.all(['raportare_aprobata_oir', 'raport_activitate_aprobat', 'livrabil_aprobat'].map((sourceType) => (
+            listKnowledgeChunksByCategoryAndSourceType(category, sourceType, undefined, { authToken: auth.token, limit: 20, maxItems: 120 })
+          ))).then((groups) => groups.flat())
         : Promise.resolve([]),
       projectCode
         ? listKnowledgeChunks({ status: { eq: 'active' }, projectCode: { eq: projectCode }, or: [{ sourceType: { eq: 'cerere_finantare' } }, { sourceType: { eq: 'manual_beneficiar' } }] }, { authToken: auth.token, limit: 20, maxItems: 120 })

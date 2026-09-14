@@ -16,6 +16,8 @@ export type RagSourceType =
   | 'scop_sa'
   | 'fisa_post'
   | 'raportare_aprobata_oir'
+  | 'raport_activitate_aprobat'
+  | 'livrabil_aprobat'
   | 'livrabil_istoric'
   | 'other'
   | string;
@@ -91,6 +93,8 @@ export interface RagIndexDocumentInput {
   s3Key?: string;
   createdBy?: string;
   metadata?: Record<string, unknown>;
+  extractionSource?: 'native' | 'ocr';
+  extractionComplete?: boolean;
 }
 
 export interface RagIndexDocumentResult {
