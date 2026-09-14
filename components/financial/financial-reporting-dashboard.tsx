@@ -781,11 +781,11 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
         cpcDays,
       });
       const validFrom = isoDate(year, month, 1);
-      const sameDateContract = contracts.find((contract) => contract.expertId === row.expertId && contract.validFrom === validFrom);
+      const sameMonthSettings = contracts.find((settings) => settings.expertId === row.expertId && settings.validFrom === validFrom);
       const cpcDailyCap = Math.max(0, cpcNorm);
-      const cimDailyCap = Math.max(0, parseDailyHoursLabel(row.cimNorm) || Number(sameDateContract?.cimDailyCap) || 0);
-      if (sameDateContract) {
-        await updateNormContract(sameDateContract.id, {
+      const cimDailyCap = Math.max(0, parseDailyHoursLabel(row.cimNorm) || Number(sameMonthSettings?.cimDailyCap) || 0);
+      if (sameMonthSettings) {
+        await updateNormContract(sameMonthSettings.id, {
           peoNormUnit: 'HOURS_PER_DAY',
           peoNormValue: peoNorm,
           peoDailyCap: peoNorm,
@@ -794,15 +794,15 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
           cimDailyCap,
           leaveHoursPerDay: cimDailyCap,
           status: 'ACTIVE',
-          justification: 'Actualizare manuala CO din grila Financiar',
+          justification: 'Actualizare setari lunare din grila CO Financiar',
           updatedBy: 'financial-session',
         });
       } else {
-        const openContract = contracts
-          .filter((contract) => contract.expertId === row.expertId && !contract.validTo && contract.validFrom < validFrom)
+        const openSettings = contracts
+          .filter((settings) => settings.expertId === row.expertId && !settings.validTo && settings.validFrom < validFrom)
           .sort((left, right) => right.validFrom.localeCompare(left.validFrom))[0];
-        if (openContract) {
-          await updateNormContract(openContract.id, { validTo: previousDay(validFrom), updatedBy: 'financial-session' });
+        if (openSettings) {
+          await updateNormContract(openSettings.id, { validTo: previousDay(validFrom), updatedBy: 'financial-session' });
         }
         await createNormContract({
           expertId: row.expertId,
@@ -815,7 +815,7 @@ export function FinancialReportingDashboard({ mode }: { mode: SectionMode }) {
           cimDailyCap,
           leaveHoursPerDay: cimDailyCap,
           status: 'ACTIVE',
-          justification: 'Actualizare manuala CO din grila Financiar',
+          justification: 'Actualizare setari lunare din grila CO Financiar',
           createdBy: 'financial-session',
           updatedBy: 'financial-session',
         });

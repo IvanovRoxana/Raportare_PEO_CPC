@@ -77,6 +77,20 @@ test('RAP-59 elimina actiunile de test din meniul Concedii financiar', () => {
   assert.doesNotMatch(source, /Gestioneaza norme/);
 });
 
+test('RAP-47 expune normele ca setari lunare, nu ca formular de contract', () => {
+  const employeesSource = readFileSync('components/financial/financial-employees-dashboard.tsx', 'utf8');
+  const reportingSource = readFileSync('components/financial/financial-reporting-dashboard.tsx', 'utf8');
+  const typesSource = readFileSync('lib/types.ts', 'utf8');
+
+  assert.match(typesSource, /export type ExpertMonthlySettings = ExpertNormContract/);
+  assert.match(employeesSource, /type MonthlySettingsForm/);
+  assert.match(employeesSource, /Setari lunare CIM\/PEO/);
+  assert.match(employeesSource, /Salveaza setari lunare/);
+  assert.doesNotMatch(employeesSource, /type ContractForm/);
+  assert.doesNotMatch(employeesSource, /saveContract/);
+  assert.match(reportingSource, /Actualizare setari lunare din grila CO Financiar/);
+});
+
 test('rata orara este camp persistent pe Expert si mapata prin AWS store', () => {
   const schema = readFileSync('amplify/data/resource.ts', 'utf8');
   const types = readFileSync('lib/types.ts', 'utf8');

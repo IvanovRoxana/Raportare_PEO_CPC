@@ -27,7 +27,7 @@ import {
   type FinancialHrFieldCheck,
   type FinancialHrValidationRow,
 } from '@/lib/financial-hr-validation';
-import type { Expert, ExpertNormContract, NormUnit } from '@/lib/types';
+import type { Expert, ExpertMonthlySettings, NormUnit } from '@/lib/types';
 
 const MONTHS = [
   'Ianuarie', 'Februarie', 'Martie', 'Aprilie', 'Mai', 'Iunie',
@@ -45,7 +45,7 @@ type EmployeeForm = {
   isActive: boolean;
 };
 
-type ContractForm = {
+type MonthlySettingsForm = {
   expertId: string;
   validFrom: string;
   peoNormUnit: NormUnit;
@@ -108,17 +108,17 @@ function FieldCompare({ label, check }: { label: string; check: FinancialHrField
   );
 }
 
-function contractDefaults(row?: FinancialHrValidationRow, expert?: Expert, contract?: ExpertNormContract, validFrom = '2026-06-01'): ContractForm {
+function monthlySettingsDefaults(row?: FinancialHrValidationRow, expert?: Expert, settings?: ExpertMonthlySettings, validFrom = '2026-06-01'): MonthlySettingsForm {
   const peoReference = parseFinancialHrNorm(row?.peoNorm.excelValue) ?? null;
   const cimReference = parseFinancialHrNorm(row?.cimNorm.excelValue);
   const fallbackDaily = expert?.dailyHours ?? expert?.oreZi ?? expert?.norma ?? 8;
   return {
     expertId: expert?.id ?? '',
     validFrom,
-    peoNormUnit: contract?.peoNormUnit ?? peoReference?.unit ?? 'HOURS_PER_DAY',
-    peoNormValue: String(contract?.peoNormValue ?? peoReference?.value ?? fallbackDaily),
-    cimNormUnit: contract?.cimNormUnit ?? cimReference?.unit ?? 'HOURS_PER_DAY',
-    cimNormValue: String(contract?.cimNormValue ?? cimReference?.value ?? fallbackDaily),
+    peoNormUnit: settings?.peoNormUnit ?? peoReference?.unit ?? 'HOURS_PER_DAY',
+    peoNormValue: String(settings?.peoNormValue ?? peoReference?.value ?? fallbackDaily),
+    cimNormUnit: settings?.cimNormUnit ?? cimReference?.unit ?? 'HOURS_PER_DAY',
+    cimNormValue: String(settings?.cimNormValue ?? cimReference?.value ?? fallbackDaily),
     justification: '',
   };
 }
@@ -130,7 +130,7 @@ export function FinancialEmployeesDashboard() {
   const { contracts, isLoading: loadingContracts } = useAllExpertNormContracts();
   const { links, isLoading: loadingLinks } = useFinancialPersonLinks();
   const { create: createExpert, update: updateExpert } = useExpertMutations();
-  const { create: createContract, update: updateContract } = useExpertNormContractMutations();
+  const { create: createMonthlySettings, update: updateMonthlySettings } = useExpertNormContractMutations();
   const { create: createLink, update: updateLink } = useFinancialPersonLinkMutations();
   const [month, setMonth] = useState(() => today.getMonth());
   const [year, setYear] = useState(() => today.getFullYear());
@@ -138,7 +138,7 @@ export function FinancialEmployeesDashboard() {
   const [onlyIssues, setOnlyIssues] = useState(true);
   const [selectedRowId, setSelectedRowId] = useState('');
   const [employeeForm, setEmployeeForm] = useState<EmployeeForm | null>(null);
-  const [contractForm, setContractForm] = useState<ContractForm | null>(null);
+  const [monthlySettingsForm, setMonthlySettingsForm] = useState<MonthlySettingsForm | null>(null);
   const [message, setMessage] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -174,7 +174,7 @@ export function FinancialEmployeesDashboard() {
   }, [onlyIssues, rows, search]);
 
   const selectRow = (row: FinancialHrValidationRow) => {
-    const activeContract = row.expert
+    const activeMonthlySettings = row.expert
       ? contracts
         .filter((contract) => contract.expertId === row.expert!.id && contract.status === 'ACTIVE')
         .sort((left, right) => right.validFrom.localeCompare(left.validFrom))[0]
@@ -190,7 +190,7 @@ export function FinancialEmployeesDashboard() {
       goodworksPosition: row.expert?.goodworksPosition ?? (row.goodworksFunction.excelValue === '-' ? '' : row.goodworksFunction.excelValue),
       isActive: row.expert?.isActive ?? true,
     });
-    setContractForm(contractDefaults(row, row.expert, activeContract, isoDate(year, month, 1)));
+    setMonthlySettingsForm(monthlySettingsDefaults(row, row.expert, activeMonthlySettings, isoDate(year, month, 1)));
     setMessage('');
   };
 
@@ -206,7 +206,7 @@ export function FinancialEmployeesDashboard() {
       goodworksPosition: '',
       isActive: true,
     });
-    setContractForm(contractDefaults(undefined, undefined, undefined, isoDate(year, month, 1)));
+    setMonthlySettingsForm(monthlySettingsDefaults(undefined, undefined, undefined, isoDate(year, month, 1)));
     setMessage('');
   };
 
@@ -221,7 +221,7 @@ export function FinancialEmployeesDashboard() {
     if (!employeeForm) return;
     setSaving(true);
     try {
-      const daily = contractForm ? dailyCapFromNorm(contractForm.cimNormUnit, contractForm.cimNormValue, 8) : 8;
+      const daily = monthlySettingsForm ? dailyCapFromNorm(monthlySettingsForm.cimNormUnit, monthlySettingsForm.cimNormValue, 8) : 8;
       const fields = {
         name: employeeForm.name.trim(),
         role: normalizeInput(employeeForm.positionInProject) ?? 'Salariat Concordia',
@@ -257,7 +257,7 @@ export function FinancialEmployeesDashboard() {
           else await createLink(linkPayload);
         }
         setEmployeeForm((current) => current ? { ...current, expertId } : current);
-        setContractForm((current) => current ? { ...current, expertId } : current);
+        setMonthlySettingsForm((current) => current ? { ...current, expertId } : current);
       }
       setMessage(`Profilul pentru ${fields.name} a fost salvat.`);
     } catch (error) {
@@ -267,44 +267,44 @@ export function FinancialEmployeesDashboard() {
     }
   };
 
-  const saveContract = async () => {
-    if (!contractForm?.expertId || !contractForm.validFrom) return;
-    if (!contractForm.justification.trim()) {
-      setMessage('Justificarea este obligatorie pentru modificarea normei CIM/PEO.');
+  const saveMonthlySettings = async () => {
+    if (!monthlySettingsForm?.expertId || !monthlySettingsForm.validFrom) return;
+    if (!monthlySettingsForm.justification.trim()) {
+      setMessage('Justificarea este obligatorie pentru modificarea setarilor lunare CIM/PEO.');
       return;
     }
     setSaving(true);
     try {
-      const cimDailyCap = dailyCapFromNorm(contractForm.cimNormUnit, contractForm.cimNormValue, 8);
-      const payload: Omit<ExpertNormContract, 'id'> = {
-        expertId: contractForm.expertId,
-        validFrom: contractForm.validFrom,
-        peoNormUnit: contractForm.peoNormUnit,
-        peoNormValue: numeric(contractForm.peoNormValue),
+      const cimDailyCap = dailyCapFromNorm(monthlySettingsForm.cimNormUnit, monthlySettingsForm.cimNormValue, 8);
+      const payload: Omit<ExpertMonthlySettings, 'id'> = {
+        expertId: monthlySettingsForm.expertId,
+        validFrom: monthlySettingsForm.validFrom,
+        peoNormUnit: monthlySettingsForm.peoNormUnit,
+        peoNormValue: numeric(monthlySettingsForm.peoNormValue),
         peoDailyCap: cimDailyCap,
-        cimNormUnit: contractForm.cimNormUnit,
-        cimNormValue: numeric(contractForm.cimNormValue),
+        cimNormUnit: monthlySettingsForm.cimNormUnit,
+        cimNormValue: numeric(monthlySettingsForm.cimNormValue),
         cimDailyCap,
         leaveHoursPerDay: cimDailyCap,
         status: 'ACTIVE',
-        justification: contractForm.justification,
+        justification: monthlySettingsForm.justification,
         createdBy: 'financial-session',
         updatedBy: 'financial-session',
       };
-      const sameDateContract = contracts.find((contract) => contract.expertId === payload.expertId && contract.validFrom === payload.validFrom);
-      if (sameDateContract) {
-        await updateContract(sameDateContract.id, payload);
+      const sameMonthSettings = contracts.find((settings) => settings.expertId === payload.expertId && settings.validFrom === payload.validFrom);
+      if (sameMonthSettings) {
+        await updateMonthlySettings(sameMonthSettings.id, payload);
       } else {
-        const openContract = contracts
-          .filter((contract) => contract.expertId === payload.expertId && !contract.validTo && contract.validFrom < payload.validFrom)
+        const openSettings = contracts
+          .filter((settings) => settings.expertId === payload.expertId && !settings.validTo && settings.validFrom < payload.validFrom)
           .sort((left, right) => right.validFrom.localeCompare(left.validFrom))[0];
-        if (openContract) await updateContract(openContract.id, { validTo: previousDay(payload.validFrom), updatedBy: 'financial-session' });
-        await createContract(payload);
+        if (openSettings) await updateMonthlySettings(openSettings.id, { validTo: previousDay(payload.validFrom), updatedBy: 'financial-session' });
+        await createMonthlySettings(payload);
       }
-      setContractForm((current) => current ? { ...current, justification: '' } : current);
-      setMessage(`Norma a fost salvata: CIM ${formatFinancialHrNorm(payload.cimNormUnit, payload.cimNormValue)}.`);
+      setMonthlySettingsForm((current) => current ? { ...current, justification: '' } : current);
+      setMessage(`Setarile lunare au fost salvate: CIM ${formatFinancialHrNorm(payload.cimNormUnit, payload.cimNormValue)}.`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Norma nu a putut fi salvata.');
+      setMessage(error instanceof Error ? error.message : 'Setarile lunare nu au putut fi salvate.');
     } finally {
       setSaving(false);
     }
@@ -420,10 +420,10 @@ export function FinancialEmployeesDashboard() {
         </CardContent>
       </Card>
 
-      <Dialog open={Boolean(employeeForm && contractForm)} onOpenChange={(open) => {
+      <Dialog open={Boolean(employeeForm && monthlySettingsForm)} onOpenChange={(open) => {
         if (!open) {
           setEmployeeForm(null);
-          setContractForm(null);
+          setMonthlySettingsForm(null);
         }
       }}>
         <DialogContent className="max-h-[90vh] w-[calc(100%-2rem)] overflow-y-auto sm:!max-w-5xl lg:!max-w-6xl">
@@ -431,7 +431,7 @@ export function FinancialEmployeesDashboard() {
             <DialogTitle>{employeeForm?.expertId ? 'Editeaza salariat' : 'Adauga salariat'}</DialogTitle>
             <DialogDescription>Modifica profilul si norma CIM/PEO, apoi salveaza fiecare sectiune.</DialogDescription>
           </DialogHeader>
-          {employeeForm && contractForm ? <div className="grid gap-5 lg:grid-cols-2">
+          {employeeForm && monthlySettingsForm ? <div className="grid gap-5 lg:grid-cols-2">
             <div className="rounded-lg border p-4">
               <div className="mb-3 flex items-center gap-2 text-sm font-semibold"><Users className="h-4 w-4" />Profil salariat</div>
               <div className="grid gap-3 md:grid-cols-2">
@@ -459,23 +459,23 @@ export function FinancialEmployeesDashboard() {
             </div>
 
             <div className="rounded-lg border p-4">
-              <div className="mb-3 flex items-center gap-2 text-sm font-semibold"><ShieldCheck className="h-4 w-4" />Norma CIM/PEO</div>
+              <div className="mb-3 flex items-center gap-2 text-sm font-semibold"><ShieldCheck className="h-4 w-4" />Setari lunare CIM/PEO</div>
               <div className="grid gap-3 md:grid-cols-3">
-              <Input type="date" value={contractForm.validFrom} onChange={(event) => setContractForm((current) => current ? { ...current, validFrom: event.target.value } : current)} aria-label="Valabil de la" />
-              <select className="h-10 rounded-md border bg-background px-3 text-sm" value={contractForm.peoNormUnit} onChange={(event) => setContractForm((current) => current ? { ...current, peoNormUnit: event.target.value as NormUnit } : current)} aria-label="Unitate PEO">
+              <Input type="date" value={monthlySettingsForm.validFrom} onChange={(event) => setMonthlySettingsForm((current) => current ? { ...current, validFrom: event.target.value } : current)} aria-label="Valabil de la" />
+              <select className="h-10 rounded-md border bg-background px-3 text-sm" value={monthlySettingsForm.peoNormUnit} onChange={(event) => setMonthlySettingsForm((current) => current ? { ...current, peoNormUnit: event.target.value as NormUnit } : current)} aria-label="Unitate PEO">
                 <option value="HOURS_PER_DAY">PEO h/zi</option>
                 <option value="HOURS_PER_MONTH">PEO h/luna</option>
               </select>
-              <Input type="number" min="0" step="0.5" value={contractForm.peoNormValue} onChange={(event) => setContractForm((current) => current ? { ...current, peoNormValue: event.target.value } : current)} placeholder="Norma PEO" />
-              <select className="h-10 rounded-md border bg-background px-3 text-sm" value={contractForm.cimNormUnit} onChange={(event) => setContractForm((current) => current ? { ...current, cimNormUnit: event.target.value as NormUnit } : current)} aria-label="Unitate CIM">
+              <Input type="number" min="0" step="0.5" value={monthlySettingsForm.peoNormValue} onChange={(event) => setMonthlySettingsForm((current) => current ? { ...current, peoNormValue: event.target.value } : current)} placeholder="Norma PEO" />
+              <select className="h-10 rounded-md border bg-background px-3 text-sm" value={monthlySettingsForm.cimNormUnit} onChange={(event) => setMonthlySettingsForm((current) => current ? { ...current, cimNormUnit: event.target.value as NormUnit } : current)} aria-label="Unitate CIM">
                 <option value="HOURS_PER_DAY">CIM h/zi</option>
                 <option value="HOURS_PER_MONTH">CIM h/luna</option>
               </select>
-              <Input type="number" min="0" step="0.5" value={contractForm.cimNormValue} onChange={(event) => setContractForm((current) => current ? { ...current, cimNormValue: event.target.value } : current)} placeholder="Norma CIM" />
-              <Input className="md:col-span-2" value={contractForm.justification} onChange={(event) => setContractForm((current) => current ? { ...current, justification: event.target.value } : current)} placeholder="Justificare modificare norma" />
-              <Button onClick={saveContract} disabled={saving || !contractForm.expertId}>
+              <Input type="number" min="0" step="0.5" value={monthlySettingsForm.cimNormValue} onChange={(event) => setMonthlySettingsForm((current) => current ? { ...current, cimNormValue: event.target.value } : current)} placeholder="Norma CIM" />
+              <Input className="md:col-span-2" value={monthlySettingsForm.justification} onChange={(event) => setMonthlySettingsForm((current) => current ? { ...current, justification: event.target.value } : current)} placeholder="Justificare modificare setari lunare" />
+              <Button onClick={saveMonthlySettings} disabled={saving || !monthlySettingsForm.expertId}>
                 {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                Salveaza norma
+                Salveaza setari lunare
               </Button>
               </div>
             </div>

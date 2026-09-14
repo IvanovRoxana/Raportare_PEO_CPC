@@ -64,6 +64,8 @@ export interface ExpertNormContract {
   updatedAt?: string;
 }
 
+export type ExpertMonthlySettings = ExpertNormContract;
+
 export type FinancialPersonLinkStatus = 'suggested' | 'confirmed' | 'dismissed';
 export type FinancialPersonLinkSource = 'automatic' | 'manual' | 'financial';
 
