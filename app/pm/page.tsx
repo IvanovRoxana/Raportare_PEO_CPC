@@ -1227,6 +1227,73 @@ export default function PMDashboard() {
     }
   };
 
+  const resolveDocumentClarification = async (documentMeta: DocumentMetadata, thread?: PmClarificationThread) => {
+    if (!canManagePmReview) return;
+    const confirmed = window.confirm('Marchezi clarificarea pentru acest livrabil ca rezolvată?');
+    if (!confirmed) return;
+
+    const expert = visibleExperts.find((item) => item.id === documentMeta.uploadedByExpertId);
+    const now = new Date().toISOString();
+    const actorName = currentUser?.displayName || currentUser?.email || 'PM';
+    const activeTicket = findActiveDocumentSupportTicket(supportTickets, {
+      module: 'pm',
+      relatedDocumentId: documentMeta.id,
+      selectedMonth,
+      selectedYear,
+    });
+
+    try {
+      if (activeTicket) {
+        await updateSupportTicket(activeTicket, {
+          status: 'resolved',
+          resolvedAt: now,
+          resolvedBy: actorName,
+          updatedBy: actorName,
+        });
+      }
+
+      await createAuditLog({
+        actionType: 'pm_clarification_resolved',
+        actorId: currentUser?.id || currentUser?.email || 'pm',
+        actorName,
+        actorRole: currentUser?.roles?.join(',') || 'pm',
+        affectedExpertId: documentMeta.uploadedByExpertId,
+        affectedExpertName: expert?.name || documentMeta.uploadedByExpertName,
+        projectCode: expert?.projectCode || documentMeta.projectId,
+        month: selectedMonth,
+        year: selectedYear,
+        fieldName: `document:${documentMeta.id}`,
+        oldValue: thread?.status || activeTicket?.status || 'requested',
+        newValue: 'resolved',
+        justification: `Clarificare PM marcată ca rezolvată pentru ${documentMeta.originalFileName}.`,
+        source: 'manual',
+      });
+
+      setLocalDocumentClarificationThreads((current) => [
+        {
+          id: thread?.id || `document-${documentMeta.id}`,
+          targetType: 'document',
+          targetId: documentMeta.id,
+          expertId: documentMeta.uploadedByExpertId,
+          month: selectedMonth,
+          year: selectedYear,
+          status: 'resolved',
+          pmMessage: thread?.pmMessage || activeTicket?.description || 'Clarificare PM rezolvată.',
+          requestedAt: thread?.requestedAt || activeTicket?.createdAt,
+          requestedBy: thread?.requestedBy || activeTicket?.createdBy,
+          answeredAt: thread?.answeredAt,
+          resolvedAt: now,
+          lastRealertedAt: thread?.lastRealertedAt,
+          lastRealertedBy: thread?.lastRealertedBy,
+          realertCount: thread?.realertCount,
+        },
+        ...current.filter((item) => !(item.targetType === 'document' && item.targetId === documentMeta.id)),
+      ]);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Clarificarea nu a putut fi marcată ca rezolvată.');
+    }
+  };
+
   const rejectReviewMonth = async () => {
     const note = window.prompt('Motiv respingere pentru aceasta raportare:');
     if (note === null) return;
@@ -1783,6 +1850,7 @@ export default function PMDashboard() {
         onCloseMonthAccess={closeMonthAccess}
         onRequestDocumentClarification={requestDocumentClarification}
         onRealertClarification={realertClarification}
+        onResolveDocumentClarification={resolveDocumentClarification}
         onApprovePmUnlock={approvePmUnlockRequest}
         onMarkDocumentIneligible={markDocumentIneligible}
         onDownloadTotalOpisXls={handleDownloadTotalOpisXls}

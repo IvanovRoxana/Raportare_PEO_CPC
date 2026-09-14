@@ -96,6 +96,7 @@ import {
 } from '@/lib/activity-autofill';
 import { isDeliverableEligibilityCheckEnabledClient } from '@/lib/feature-flags';
 import { normalizeDeliverableEligibilityCheck } from '@/lib/deliverable-eligibility';
+import { isReusableEligibilityCheckForContext } from '@/lib/deliverable-check-state';
 import {
   buildExistingDeliverableSourceContext,
   type ExistingDeliverableSourceAction,
@@ -2544,15 +2545,21 @@ export function ActivityForm({
     ? mainDeliverables
         .filter((deliverable) => deliverable.uploaded && !deliverable.isPhoto && Boolean(deliverable.filename || deliverable.name))
         .map((deliverable): string | null => {
-          if (!deliverable.eligibilityCheck) {
+          const eligibilityCheck = deliverable.eligibilityCheck;
+          if (!isReusableEligibilityCheckForContext(eligibilityCheck, {
+            saCode: effectiveSaCode,
+            activityId: selectedCatalogActivityId,
+            activityName: effectiveActivityTitle,
+            deliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
+          })) {
             if (!canRequireDeliverableEligibilityCheck(deliverable, deliverablesForEligibility, expertCategory)) {
               return null;
             }
             return 'Ruleaza verificarea eligibilitatii pentru livrabilul principal.';
           }
           if (
-            deliverable.eligibilityCheck.status === 'neeligibil'
-            && !deliverable.eligibilityCheck.pmUnlockApproved
+            eligibilityCheck?.status === 'neeligibil'
+            && !eligibilityCheck.pmUnlockApproved
           ) {
             return 'Livrabilul este neeligibil. Solicita deblocare PM si asteapta aprobarea sau corecteaza livrabilul.';
           }

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
+import { fetchAuthSession } from 'aws-amplify/auth';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -71,6 +72,8 @@ import { clarificationStatusLabel } from '@/lib/pm-clarification-flow';
 import { isActivityClassificationPending } from '@/lib/activity-classification';
 import { buildPmActivityAssignmentPatch, buildPmReassignmentCheck } from '@/lib/pm-activity-assignment';
 import { normalizePeoCategory } from '@/lib/peo-category';
+import { limitEligibilityDocumentText } from '@/lib/eligibility-assessment';
+import { mergeEligibilityCheckWithPmUnlockTracking } from '@/lib/pm-unlock-status';
 
 interface DosarExpertModalProps {
   open: boolean;
@@ -325,6 +328,7 @@ export function DosarExpertModal({
   const [eligibilityDeliverableType, setEligibilityDeliverableType] = useState('');
   const [eligibilityNotes, setEligibilityNotes] = useState('');
   const [isSavingEligibilityAssignment, setIsSavingEligibilityAssignment] = useState(false);
+  const [isRecheckingEligibility, setIsRecheckingEligibility] = useState(false);
   const [eligibilityAssignmentMessage, setEligibilityAssignmentMessage] = useState<string | null>(null);
   const [pendingCatalogSelections, setPendingCatalogSelections] = useState<Record<string, string>>({});
   const [pendingAssignmentMessage, setPendingAssignmentMessage] = useState<string | null>(null);
@@ -746,6 +750,147 @@ export function DosarExpertModal({
       setEligibilityAssignmentMessage(error instanceof Error ? error.message : 'Reincadrarea nu a putut fi salvata.');
     } finally {
       setIsSavingEligibilityAssignment(false);
+    }
+  };
+
+  const recheckFocusedEligibility = async () => {
+    if (!canManagePmReview || reportStatus?.status === 'approved') {
+      setEligibilityAssignmentMessage('Reverificarea necesită drepturi PM și o lună redeschisă pentru modificări.');
+      return;
+    }
+    if (!focusedSourceActivity || !focusedDocument) {
+      setEligibilityAssignmentMessage('Nu am gasit activitatea sursa pentru acest livrabil.');
+      return;
+    }
+    if (!selectedEligibilityCatalogActivity || !eligibilityDeliverableType.trim()) {
+      setEligibilityAssignmentMessage('Alege activitatea din catalog si tipul de livrabil inainte de reverificare.');
+      return;
+    }
+    const extractedText = focusedDocument.docText || focusedDocument.firstPageText || focusedDeliverable?.docText || focusedDeliverable?.firstPageText || '';
+    if (!extractedText.trim()) {
+      setEligibilityAssignmentMessage('Nu exista text extras pentru reverificare. Deschide fisierul sau reia OCR/extragerea inainte de analiza AI.');
+      return;
+    }
+
+    setIsRecheckingEligibility(true);
+    setEligibilityAssignmentMessage(null);
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      try {
+        const token = (await fetchAuthSession()).tokens?.accessToken?.toString();
+        if (token) headers.Authorization = `Bearer ${token}`;
+      } catch {
+        // Serverul valideaza sesiunea si intoarce mesajul relevant.
+      }
+      const checkedDeliverableType = eligibilityDeliverableType.trim();
+      const response = await fetch('/api/ai/check-deliverable-eligibility', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          documentTitle: getDocumentAuditTitle({
+            ...focusedDocument,
+            fileName: focusedDocument.originalFileName,
+            originalFileName: focusedDocument.originalFileName,
+          }),
+          fileName: focusedDocument.originalFileName,
+          extractedText: limitEligibilityDocumentText(extractedText),
+          deliverables: [{
+            id: focusedDocument.id,
+            activityGroupId: selectedEligibilityCatalogActivity.id,
+            isPrimary: true,
+            documentTitle: focusedDocument.declaredTitle || focusedDocument.extractedTitle || focusedDocument.originalFileName,
+            declaredTitle: focusedDocument.declaredTitle,
+            fileName: focusedDocument.originalFileName,
+            extractedText: limitEligibilityDocumentText(extractedText),
+            deliverableType: checkedDeliverableType,
+            textScope: focusedDocument.docText ? 'Text extras integral din document' : 'Text extras din prima pagina',
+            fileHash: focusedDocument.fileHash,
+            duplicateStatus: focusedDocument.duplicateStatus,
+            possibleDuplicateOfDocumentId: focusedDocument.possibleDuplicateOfDocumentId,
+          }],
+          primaryDeliverableId: focusedDocument.id,
+          activityGroupId: selectedEligibilityCatalogActivity.id,
+          selectedActivityId: selectedEligibilityCatalogActivity.id,
+          classificationMode: 'manual',
+          currentSaCode: selectedEligibilityCatalogActivity.saCode,
+          selectedActivityName: selectedEligibilityCatalogActivity.activityName,
+          deliverableType: checkedDeliverableType,
+          deliverableOptions: [checkedDeliverableType],
+          activityCatalogCandidates: [selectedEligibilityCatalogActivity],
+          currentDescription: focusedSourceActivity.description || focusedSourceActivity.title || '',
+          projectCode,
+          month,
+          year,
+          expertId: expert?.id,
+          expertCategory: selectedEligibilityCatalogActivity.category || expert?.category,
+          expertFunction: expert?.positionInProject || expert?.role,
+          expertName: expert?.name,
+        }),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(result?.error || `Serviciul de eligibilitate a raspuns cu eroarea HTTP ${response.status}.`);
+      }
+      if (!result || typeof result.status !== 'string' || typeof result.summary !== 'string') {
+        throw new Error('Serviciul de eligibilitate a returnat un raspuns incomplet.');
+      }
+
+      const now = new Date().toISOString();
+      const nextCheck = mergeEligibilityCheckWithPmUnlockTracking(focusedEligibilityCheck, {
+        ...result,
+        checkedAt: now,
+        checkedBy: expert?.name || 'PM',
+        checkedActivityId: selectedEligibilityCatalogActivity.id,
+        checkedSaCode: selectedEligibilityCatalogActivity.saCode,
+        checkedActivityName: result.checkedActivityName || selectedEligibilityCatalogActivity.activityName,
+        checkedDeliverableType: checkedDeliverableType,
+        modelAuditId: result.modelAuditId,
+        analyzedDeliverables: result.analyzedDeliverables,
+      });
+      const matchesFocusedDeliverable = (deliverable: Deliverable) => (
+        deliverable.documentId === focusedDocument.id
+        || deliverable.id === focusedDocument.id
+        || deliverable.id === focusedDeliverable?.id
+        || Boolean(focusedDocument.s3Key && deliverable.s3Key === focusedDocument.s3Key)
+        || Boolean(focusedDocument.fileHash && deliverable.fileHash === focusedDocument.fileHash)
+      );
+      const reassignmentPatch = buildPmActivityAssignmentPatch(focusedSourceActivity, selectedEligibilityCatalogActivity, now);
+      await updateActivity(focusedSourceActivity.id, {
+        ...reassignmentPatch,
+        deliverables: (reassignmentPatch.deliverables || []).map((deliverable) => (
+          matchesFocusedDeliverable(deliverable)
+            ? {
+                ...deliverable,
+                saCode: selectedEligibilityCatalogActivity.saCode,
+                category: selectedEligibilityCatalogActivity.category,
+                deliverableType: checkedDeliverableType,
+                aiStatus: result.status === 'eligibil' || result.status === 'eligibil_cu_observatii'
+                  ? 'eligible'
+                  : result.status === 'neeligibil'
+                    ? 'ineligible'
+                    : 'review',
+                aiReason: result.summary || 'Verificare eligibilitate finalizata.',
+                eligibilityCheck: nextCheck,
+              }
+            : deliverable
+        )),
+      });
+      await updateDocument(focusedDocument.id, {
+        sourceActivityId: focusedSourceActivity.id,
+        activityDate: focusedSourceActivity.date || focusedDocument.activityDate,
+        saCode: selectedEligibilityCatalogActivity.saCode,
+        deliverableType: checkedDeliverableType,
+        stadiu: focusedDeliverable?.stadiu || focusedDocument.stadiu,
+        eligibilityCheck: nextCheck,
+      });
+      const ok = result.status === 'eligibil' || result.status === 'eligibil_cu_observatii';
+      setEligibilityAssignmentMessage(ok
+        ? 'Eligibilitatea a fost reverificata si este OK. Poti aproba livrabilul.'
+        : `Eligibilitatea a fost reverificata: ${result.status}. Verifica sumarul AI inainte de aprobare.`);
+    } catch (error) {
+      setEligibilityAssignmentMessage(error instanceof Error ? error.message : 'Reverificarea eligibilitatii nu a putut fi finalizata.');
+    } finally {
+      setIsRecheckingEligibility(false);
     }
   };
 
@@ -1385,12 +1530,22 @@ export function DosarExpertModal({
                         </p>
                       )}
 
-                      <div className="flex justify-end">
+                      <div className="flex flex-wrap justify-end gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => void recheckFocusedEligibility()}
+                          disabled={isRecheckingEligibility || isSavingEligibilityAssignment || !selectedEligibilityCatalogActivity || !eligibilityDeliverableType.trim()}
+                        >
+                          {isRecheckingEligibility ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                          Reverifica eligibilitatea
+                        </Button>
                         <Button
                           type="button"
                           size="sm"
                           onClick={() => void saveEligibilityAssignment()}
-                          disabled={isSavingEligibilityAssignment || !selectedEligibilityCatalogActivity || !eligibilityDeliverableType.trim()}
+                          disabled={isSavingEligibilityAssignment || isRecheckingEligibility || !selectedEligibilityCatalogActivity || !eligibilityDeliverableType.trim()}
                         >
                           {isSavingEligibilityAssignment ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
                           Salveaza reincadrare

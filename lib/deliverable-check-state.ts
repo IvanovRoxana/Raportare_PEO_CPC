@@ -43,6 +43,28 @@ export function isReusableEligibilityCheck(check?: DeliverableEligibilityCheck |
   return Boolean(check && getEligibilityAttemptState(check) === 'result');
 }
 
+export function isReusableEligibilityCheckForContext(
+  check: DeliverableEligibilityCheck | null | undefined,
+  context: {
+    saCode?: string;
+    activityId?: string;
+    activityName?: string;
+    deliverableType?: string;
+  },
+) {
+  if (!isReusableEligibilityCheck(check)) return false;
+
+  const normalizedSaCode = normalizeCheckText(String(context.saCode || '').trim());
+  const normalizedActivityName = normalizeCheckText(String(context.activityName || '').trim());
+  const normalizedDeliverableType = normalizeCheckText(String(context.deliverableType || '').trim());
+  if (!normalizedSaCode || !normalizedActivityName || !normalizedDeliverableType) return false;
+
+  return normalizeCheckText(String(check?.checkedSaCode || '').trim()) === normalizedSaCode
+    && normalizeCheckText(String(check?.checkedActivityName || '').trim()) === normalizedActivityName
+    && normalizeCheckText(String(check?.checkedDeliverableType || '').trim()) === normalizedDeliverableType
+    && (!context.activityId || check?.checkedActivityId === context.activityId);
+}
+
 export function getDisplayEligibilityScore(check: DeliverableEligibilityCheck): number | null {
   return getEligibilityAttemptState(check) === 'result' ? check.score : null;
 }

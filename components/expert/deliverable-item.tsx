@@ -13,7 +13,7 @@ import { DELIVERABLE_ELIGIBILITY_UI_MESSAGE, isDeliverableEligibilityCheckEnable
 import { hasSufficientDeliverableEvidenceForEligibility } from '@/lib/deliverable-eligibility';
 import { mergeEligibilityCheckWithPmUnlockTracking } from '@/lib/pm-unlock-status';
 import { applyAutomaticTitleSuggestion, formatTitleFromFilename, getTitleValidationText, isLikelyFilenameDerivedTitle, isTitleAcceptedForWorkflow, shouldUseAiTitleSuggestion, suggestTitleFromFirstPage, validateDeclaredTitleInDocumentText } from '@/lib/title-suggestion';
-import { EligibilityAttemptError, getDeclaredTitleEligibilityIssue, getDisplayEligibilityScore, getEligibilityAttemptState, getEligibilityFailureSummary, isReusableEligibilityCheck, type EligibilityFailurePhase } from '@/lib/deliverable-check-state';
+import { EligibilityAttemptError, getDeclaredTitleEligibilityIssue, getDisplayEligibilityScore, getEligibilityAttemptState, getEligibilityFailureSummary, isReusableEligibilityCheckForContext, type EligibilityFailurePhase } from '@/lib/deliverable-check-state';
 import { buildDeliverableGroupAssessmentPatches } from '@/lib/deliverable-group-state';
 import {
   getDocumentAuditTitle,
@@ -531,7 +531,12 @@ export function DeliverableItem({
     selectedActivityId,
     deliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
   }) ? null : deliverable.eligibilityCheck;
-  const hasReusableEligibilityCheck = isReusableEligibilityCheck(visibleEligibilityCheck);
+  const hasReusableEligibilityCheck = isReusableEligibilityCheckForContext(visibleEligibilityCheck, {
+    saCode: subActivity,
+    activityId: selectedActivityId,
+    activityName: activityTitle,
+    deliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
+  });
   const metadataLocked = Boolean(deliverable.lockedExistingMetadata);
 
   const readFileAsDataUrl = (file: File) =>
@@ -1813,7 +1818,12 @@ export function DeliverableEligibilityControl({
     selectedActivityId,
     deliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
   }) ? null : deliverable.eligibilityCheck;
-  const hasReusableEligibilityCheck = isReusableEligibilityCheck(visibleEligibilityCheck);
+  const hasReusableEligibilityCheck = isReusableEligibilityCheckForContext(visibleEligibilityCheck, {
+    saCode: subActivity,
+    activityId: selectedActivityId,
+    activityName: activityTitle,
+    deliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
+  });
 
   if (!deliverable.uploaded || deliverable.isPhoto) return null;
 

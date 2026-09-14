@@ -121,6 +121,7 @@ export type PmWorkspaceProps = {
   onCloseMonthAccess: (request: MonthAccessRequest) => void | Promise<void>;
   onRequestDocumentClarification: (document: DocumentMetadata) => void;
   onRealertClarification: (thread: PmClarificationThread) => void | Promise<void>;
+  onResolveDocumentClarification: (document: DocumentMetadata, thread?: PmClarificationThread) => void | Promise<void>;
   onApprovePmUnlock: (document: DocumentMetadata) => void | Promise<void>;
   onMarkDocumentIneligible: (document: DocumentMetadata) => void | Promise<void>;
   onDownloadTotalOpisXls: () => void;
@@ -657,7 +658,6 @@ function ActionsView(props: ActionsViewProps) {
             <Button onClick={() => setActiveAction('subactivities')} variant={activeAction === 'subactivities' ? 'default' : 'outline'} className={activeAction === 'subactivities' ? 'bg-[#1f3f75]' : undefined}>Subactivități</Button>
             <Button onClick={() => setActiveAction('situation')} variant={activeAction === 'situation' ? 'default' : 'outline'} className={activeAction === 'situation' ? 'bg-[#1f3f75]' : undefined}>Situație raportare</Button>
             <Button onClick={() => setActiveAction('annex12')} variant={activeAction === 'annex12' ? 'default' : 'outline'} className={activeAction === 'annex12' ? 'bg-[#1f3f75]' : undefined}>Anexa 12</Button>
-            <Button onClick={() => setActiveAction('eligibility')} variant={activeAction === 'eligibility' ? 'default' : 'outline'} className={activeAction === 'eligibility' ? 'bg-[#1f3f75]' : undefined}>Catalog eligibilitate</Button>
           </div>
         </div>
       </section>

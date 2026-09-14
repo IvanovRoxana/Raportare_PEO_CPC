@@ -93,6 +93,7 @@ import { buildPersistedWorkBlockBundles } from './activity-report/persisted-work
 import { hasActivityClassificationChanged, planActivityReassignmentWorkBlockSync } from './activity-report/activity-reassignment-sync';
 import { buildDeterministicWorkBlockConsolidation, buildWorkBlockConsolidationRequest } from './activity-report/work-block-consolidation';
 import { isActivityClassificationPending } from './activity-classification';
+import { isReusableEligibilityCheck } from './deliverable-check-state';
 import {
   prepareDraftWorkBlockBundle,
   prepareDraftWorkBlockSave,
@@ -3232,6 +3233,13 @@ export const activitiesService = {
         deliverablePlan.toUpdate.map(async (deliverable) => {
           const result = await client.models.Deliverable.update(buildDeliverableWritePayload(id, deliverable, true));
           assertNoErrors(result, 'AWS update deliverable');
+          if (deliverable.documentId && isReusableEligibilityCheck(deliverable.eligibilityCheck)) {
+            const documentResult = await client.models.Document?.update({
+              id: deliverable.documentId,
+              eligibilityCheck: serializeAwsJsonField(deliverable.eligibilityCheck),
+            });
+            if (documentResult) assertNoErrors(documentResult, 'AWS sync document eligibility check');
+          }
           return result;
         }),
       );

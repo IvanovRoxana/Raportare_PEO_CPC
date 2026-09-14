@@ -17,7 +17,7 @@ import {
   validateEligibilitySuggestedSettings,
 } from '../lib/deliverable-eligibility.ts';
 import { extractEventDate, type DeliverableSlot } from '../lib/deliverable-types.ts';
-import { getDeclaredTitleEligibilityIssue, isReusableEligibilityCheck } from '../lib/deliverable-check-state.ts';
+import { getDeclaredTitleEligibilityIssue, isReusableEligibilityCheck, isReusableEligibilityCheckForContext } from '../lib/deliverable-check-state.ts';
 import { buildEligibilityAssessmentPrompt, validateEligibilityAssessmentInput, type EligibilityAssessmentInput } from '../lib/eligibility-assessment.ts';
 import type { EligibilityContextResult } from '../lib/rag/eligibility-context.ts';
 
@@ -547,6 +547,16 @@ test('reincadrarea PM sincronizeaza si metadatele documentului, nu doar eligibil
   assert.match(awsStoreSource, /assertNoErrors\(result, 'AWS update document metadata'\)/);
 });
 
+test('reincadrarea PM permite reverificarea eligibilitatii inainte de aprobarea livrabilului', () => {
+  assert.match(pmDossierModalSource, /Reverifica eligibilitatea/);
+  assert.match(pmDossierModalSource, /fetch\('\/api\/ai\/check-deliverable-eligibility'/);
+  assert.match(pmDossierModalSource, /classificationMode: 'manual'/);
+  assert.match(pmDossierModalSource, /selectedActivityId: selectedEligibilityCatalogActivity\.id/);
+  assert.match(pmDossierModalSource, /const nextCheck = mergeEligibilityCheckWithPmUnlockTracking\(focusedEligibilityCheck,/);
+  assert.match(pmDossierModalSource, /const reassignmentPatch = buildPmActivityAssignmentPatch\(focusedSourceActivity, selectedEligibilityCatalogActivity, now\)/);
+  assert.match(pmDossierModalSource, /Eligibilitatea a fost reverificata si este OK\. Poti aproba livrabilul\./);
+});
+
 test('dosarul PM randeaza preview DOCX ca HTML cand fisierul poate fi preluat', () => {
   assert.match(pmDossierModalSource, /function isDocxPreviewFile/);
   assert.match(pmDossierModalSource, /const mammoth = await import\('mammoth'\)/);
@@ -584,7 +594,7 @@ test('poarta de text pentru eligibilitate verifica toate livrabilele grupului ac
   assert.match(deliverableItemSource, /eligibilityDeliverables\.some\(canAttemptTextExtractionFromStoredFile\)/);
   assert.match(deliverableItemSource, /const eligibilityDeliverables = getEligibilityDeliverables\(deliverable, relatedDeliverables\)/);
   assert.match(deliverableItemSource, /Textul extras din livrabilele incarcate pentru grupul activitatii/);
-  assert.match(deliverableItemSource, /isReusableEligibilityCheck\(visibleEligibilityCheck\)/);
+  assert.match(deliverableItemSource, /isReusableEligibilityCheckForContext\(visibleEligibilityCheck/);
   assert.equal(isReusableEligibilityCheck(normalizeDeliverableEligibilityCheck({ status: 'neconcludent', summary: 'Textul extras este prea scurt.' })), false);
   const validGroup = assessmentPromptInput();
   assert.doesNotThrow(() => validateEligibilityAssessmentInput(validGroup));
@@ -594,6 +604,31 @@ test('poarta de text pentru eligibilitate verifica toate livrabilele grupului ac
   }), /Un livrabil nu are suficient text lizibil/);
   assert.match(eligibilityRouteSource, /validateEligibilityAssessmentInput\(input\)/);
   assert.match(eligibilityRouteSource, /eligibilityDocuments\.length !== parsedDocuments\.data\.length/);
+});
+
+test('reutilizeaza verdictul doar pentru acelasi document si acelasi context de raportare', () => {
+  const check = normalizeDeliverableEligibilityCheck({
+    status: 'eligibil',
+    score: 94,
+    summary: 'Document eligibil.',
+    checkedSaCode: 'SA3.4',
+    checkedActivityId: 'activity-1',
+    checkedActivityName: 'Elaborare newsletter',
+    checkedDeliverableType: 'Informare / newsletter',
+  });
+
+  const context = {
+    saCode: 'SA3.4',
+    activityId: 'activity-1',
+    activityName: 'Elaborare newsletter',
+    deliverableType: 'Informare / newsletter',
+  };
+  assert.equal(isReusableEligibilityCheckForContext(check, context), true);
+  assert.equal(isReusableEligibilityCheckForContext(check, { ...context, activityId: 'activity-2' }), false);
+  assert.equal(isReusableEligibilityCheckForContext(check, { ...context, deliverableType: 'Raport' }), false);
+  assert.equal(isReusableEligibilityCheckForContext(check, { ...context, saCode: 'SA3.5' }), false);
+  assert.equal(isReusableEligibilityCheckForContext(check, { ...context, activityName: 'Alta activitate' }), false);
+  assert.equal(isReusableEligibilityCheckForContext({ ...check!, checkedActivityName: undefined }, context), false);
 });
 
 test('eligibilitatea afiseaza direct eroarea de titlu declarat', () => {
