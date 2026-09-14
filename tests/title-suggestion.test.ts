@@ -4,6 +4,7 @@ import {
   applyAutomaticTitleSuggestion,
   detectSuggestedTitleFromText,
   firstLinesLookAdministrative,
+  getTitleValidationText,
   isAdministrativeTitleCandidate,
   shouldUseAiTitleSuggestion,
   isLikelyFilenameDerivedTitle,
@@ -165,6 +166,31 @@ test('matches titles when ampersand is extracted as the word and', () => {
     titleCheckStatus: 'matched',
     titleCheckMessage: 'Titlul se regaseste in prima pagina a documentului.',
   });
+});
+
+test('does not accept fuzzy title words as substrings of other words', () => {
+  assert.equal(
+    titleExistsInDocumentText(
+      'Planificarea activitatilor pentru reorganizare institutionala aprofundata regionala',
+      'Plan activitate pentru reorganizare institutionala aprofundata regionala',
+    ),
+    false,
+  );
+});
+
+test('prefers first-page text for title validation and falls back to full text', () => {
+  assert.equal(getTitleValidationText('Titlu prima pagina', 'Titlu din continut'), 'Titlu prima pagina');
+  assert.equal(getTitleValidationText('', 'Titlu din continut'), 'Titlu din continut');
+});
+
+test('matches OCR text with accents and punctuation differences', () => {
+  assert.equal(
+    titleExistsInDocumentText(
+      'Sinteza legislativa cu impact regional / sectorial',
+      'Sinteză legislativă cu impact regional-sectorial',
+    ),
+    true,
+  );
 });
 
 test('does not validate short filename-derived titles by loose word overlap', () => {

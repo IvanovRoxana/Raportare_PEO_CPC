@@ -1,5 +1,5 @@
 import type { DeliverableEligibilityCheck, DeliverableSlot } from './deliverable-types.ts';
-import { validateDeclaredTitleInDocumentText } from './title-suggestion.ts';
+import { getTitleValidationText, validateDeclaredTitleInDocumentText } from './title-suggestion.ts';
 
 export type EligibilityAttemptState = 'pending' | 'technical_error' | 'blocked' | 'result';
 export type EligibilityFailurePhase = 'download' | 'extraction' | 'evaluation';
@@ -56,7 +56,7 @@ export function getDeclaredTitleEligibilityIssue(
   const declaredTitle = (deliverable.declaredTitle || '').trim();
   if (!declaredTitle) return 'Completeaza titlul declarat al documentului inainte de verificarea eligibilitatii.';
   const validation = validateDeclaredTitleInDocumentText({
-    documentText: deliverable.firstPageText,
+    documentText: getTitleValidationText(deliverable.firstPageText, deliverable.docText),
     declaredTitle,
     titleSource: deliverable.titleSource,
   });

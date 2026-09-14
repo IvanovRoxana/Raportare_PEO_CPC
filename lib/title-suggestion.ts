@@ -461,8 +461,13 @@ export function titleExistsInDocumentText(documentText: string | null | undefine
   if (words.length === 0) return false;
   if (words.length < 5 || titleNorm.length < 32) return false;
 
-  const matchedWords = words.filter((word) => documentNorm.includes(word)).length;
+  const documentWords = new Set(documentNorm.split(' ').filter(Boolean));
+  const matchedWords = words.filter((word) => documentWords.has(word)).length;
   return matchedWords >= Math.max(5, Math.ceil(words.length * 0.9));
+}
+
+export function getTitleValidationText(firstPageText?: string | null, documentText?: string | null) {
+  return normalizeSpaces(firstPageText || documentText || '') || null;
 }
 
 export function validateDeclaredTitleInDocumentText(args: {

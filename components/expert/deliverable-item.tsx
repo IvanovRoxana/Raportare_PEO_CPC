@@ -12,7 +12,7 @@ import { extractDocxFirstPageText, extractDocxTextWithSource, extractHtmlTextWit
 import { DELIVERABLE_ELIGIBILITY_UI_MESSAGE, isDeliverableEligibilityCheckEnabledClient } from '@/lib/feature-flags';
 import { hasSufficientDeliverableEvidenceForEligibility } from '@/lib/deliverable-eligibility';
 import { mergeEligibilityCheckWithPmUnlockTracking } from '@/lib/pm-unlock-status';
-import { applyAutomaticTitleSuggestion, formatTitleFromFilename, shouldUseAiTitleSuggestion, suggestTitleFromFirstPage, validateDeclaredTitleInDocumentText } from '@/lib/title-suggestion';
+import { applyAutomaticTitleSuggestion, formatTitleFromFilename, getTitleValidationText, shouldUseAiTitleSuggestion, suggestTitleFromFirstPage, validateDeclaredTitleInDocumentText } from '@/lib/title-suggestion';
 import { EligibilityAttemptError, getDeclaredTitleEligibilityIssue, getDisplayEligibilityScore, getEligibilityAttemptState, getEligibilityFailureSummary, isReusableEligibilityCheck, type EligibilityFailurePhase } from '@/lib/deliverable-check-state';
 import { buildDeliverableGroupAssessmentPatches } from '@/lib/deliverable-group-state';
 import {
@@ -1050,7 +1050,7 @@ export function DeliverableItem({
     });
   };
 
-  const titleValidationText = [deliverable.firstPageText, deliverable.docText].filter(Boolean).join('\n');
+  const titleValidationText = getTitleValidationText(deliverable.firstPageText, deliverable.docText);
 
   const validateTitle = (title: string, source: DeliverableSlot['titleSource']) =>
     validateDeclaredTitleInDocumentText({
