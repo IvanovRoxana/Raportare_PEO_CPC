@@ -93,3 +93,9 @@ test('existing-document source actions cannot bypass AI classification in standa
   assert.match(form, /isBusinessHubTabActive\s*\? businessHubRegistryActivityTitle/);
   assert.match(section(form, '<EventDocsPanel', 'deliverableNotesMode='), /classificationMode: 'manual'/);
 });
+
+test('deliverable type is not an expert-facing selection or eligibility correction step', () => {
+  assert.doesNotMatch(item, /placeholder="Tip livrabil"/);
+  assert.doesNotMatch(item, /Aplica tipul livrabilului/);
+  assert.match(item, /deliverableType.*contract|persisted\/AI contract/);
+});

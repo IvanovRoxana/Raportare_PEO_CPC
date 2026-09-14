@@ -327,6 +327,14 @@ export function isLikelyFilenameDerivedTitle(title?: string | null, fileName?: s
   return titleWords.every((word) => word.length > 3 && fileWords.has(word));
 }
 
+export function isTitleAcceptedForWorkflow(args: {
+  titleConfirmed?: boolean;
+  declaredTitle?: string | null;
+  fileName?: string | null;
+}) {
+  return Boolean(args.titleConfirmed || isLikelyFilenameDerivedTitle(args.declaredTitle, args.fileName));
+}
+
 export function suggestTitleFromFirstPage(text?: string | null): TitleSuggestionResult {
   const lines = splitRelevantLines(text);
   if (lines.length === 0) {

@@ -6,6 +6,7 @@ import { EXCEPTIONS, isEventActivity } from './peo-constants.ts';
 import { isDeliverableEligibilityCheckEnabledClient } from './feature-flags.ts';
 import { getBusinessHubMetaMissingFields, parseBusinessHubMetaJson } from './business-hub-reporting.ts';
 import { getEventDocumentationStatus, hasEventDocumentationSlots } from './event-documentation.ts';
+import { isTitleAcceptedForWorkflow } from './title-suggestion.ts';
 import type { Activity, Deliverable } from './types.ts';
 
 export type ActivityStatus = 
@@ -100,7 +101,7 @@ export function getActivityStatus(entry: ActivityEntry): ActivityStatus {
       if (mainDelivs.some(d => (
         !d.isPhoto
         && (
-          !d.titleConfirmed
+          !isTitleAcceptedForWorkflow({ titleConfirmed: d.titleConfirmed, declaredTitle: d.declaredTitle, fileName: d.fileName })
           || !d.stadiu
           || (eligibilityCheckEnabled && !d.eligibilityCheck)
           || (eligibilityCheckEnabled && d.eligibilityCheck?.status === 'neeligibil' && !d.eligibilityCheck.pmUnlockApproved)

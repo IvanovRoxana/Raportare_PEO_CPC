@@ -54,7 +54,7 @@ import { filterActivityCatalogForFormTab, getActiveGdprActivityCatalog, isActivi
 import { buildIdentityDocumentS3Key, findDuplicateCandidates, getDocumentAuditTitle, hashFirstPageText, normalizeDocumentTextForFingerprint, sha256Hex } from '@/lib/document-sharing';
 import { getSecureDocumentUrl } from '@/lib/document-retrieval';
 import { extractDocxFirstPageText, extractDocxTextWithSource, extractHtmlTextWithSource, extractImageTextWithSource, extractPdfFirstPageTextWithSource, extractPdfTextWithSource, extractXlsxTextWithSource, isImageFile } from '@/lib/document-utils';
-import { applyAutomaticTitleSuggestion, formatTitleFromFilename, isLikelyFilenameDerivedTitle, shouldUseAiTitleSuggestion, suggestTitleFromFirstPage, validateDeclaredTitleInDocumentText } from '@/lib/title-suggestion';
+import { applyAutomaticTitleSuggestion, formatTitleFromFilename, isTitleAcceptedForWorkflow, shouldUseAiTitleSuggestion, suggestTitleFromFirstPage, validateDeclaredTitleInDocumentText } from '@/lib/title-suggestion';
 import {
   areActivitiesCompatibleForDeliverableGroup,
   findActivityOwningDeliverableSignature,
@@ -1950,13 +1950,12 @@ export function ActivityForm({
             titleSource: d.titleSource,
           })
         : null;
-      return !d.titleConfirmed
+      return !isTitleAcceptedForWorkflow({ titleConfirmed: d.titleConfirmed, declaredTitle: d.declaredTitle, fileName: d.filename || d.name })
         || d.titleCheckStatus === 'mismatch'
         || d.titleCheckStatus === 'extraction_failed'
         || d.titleMatch === false
         || currentValidation?.titleCheckStatus === 'mismatch'
-        || currentValidation?.titleCheckStatus === 'extraction_failed'
-        || isLikelyFilenameDerivedTitle(d.declaredTitle, d.filename || d.name);
+        || currentValidation?.titleCheckStatus === 'extraction_failed';
     });
 
     if (invalidTitleDeliverable) {

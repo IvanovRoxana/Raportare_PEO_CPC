@@ -1,5 +1,5 @@
 import type { DeliverableEligibilityCheck, DeliverableSlot } from './deliverable-types.ts';
-import { getTitleValidationText, validateDeclaredTitleInDocumentText } from './title-suggestion.ts';
+import { getTitleValidationText, isLikelyFilenameDerivedTitle, validateDeclaredTitleInDocumentText } from './title-suggestion.ts';
 
 export type EligibilityAttemptState = 'pending' | 'technical_error' | 'blocked' | 'result';
 export type EligibilityFailurePhase = 'download' | 'extraction' | 'evaluation';
@@ -54,7 +54,7 @@ export function getDeclaredTitleEligibilityIssue(
   if (!deliverable.uploaded || deliverable.isPhoto || deliverable.titleSource === 'admin_override') return null;
   if (!deliverable.firstPageText?.trim() && allowDeferredExtraction) return null;
   const declaredTitle = (deliverable.declaredTitle || '').trim();
-  if (!declaredTitle) return 'Completeaza titlul declarat al documentului inainte de verificarea eligibilitatii.';
+  if (!declaredTitle || isLikelyFilenameDerivedTitle(declaredTitle, deliverable.filename || deliverable.name)) return null;
   const validation = validateDeclaredTitleInDocumentText({
     documentText: getTitleValidationText(deliverable.firstPageText, deliverable.docText),
     declaredTitle,

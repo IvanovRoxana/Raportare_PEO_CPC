@@ -6,6 +6,7 @@ import {
   firstLinesLookAdministrative,
   getTitleValidationText,
   isAdministrativeTitleCandidate,
+  isTitleAcceptedForWorkflow,
   shouldUseAiTitleSuggestion,
   isLikelyFilenameDerivedTitle,
   resolveDocumentTitleSuggestion,
@@ -421,4 +422,17 @@ test('keeps source admin_override matched for administrator exception', () => {
     titleCheckStatus: 'admin_overridden',
     titleCheckMessage: 'Titlul a fost suprascris de administrator cu justificare.',
   });
+});
+
+test('accepts a filename-derived title as a non-blocking workflow fallback', () => {
+  assert.equal(isTitleAcceptedForWorkflow({
+    titleConfirmed: false,
+    declaredTitle: 'raport activitate iunie',
+    fileName: 'raport-activitate-iunie.pdf',
+  }), true);
+  assert.equal(isTitleAcceptedForWorkflow({
+    titleConfirmed: false,
+    declaredTitle: 'Titlu inventat',
+    fileName: 'raport-activitate-iunie.pdf',
+  }), false);
 });

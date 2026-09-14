@@ -12,7 +12,7 @@ import { extractDocxFirstPageText, extractDocxTextWithSource, extractHtmlTextWit
 import { DELIVERABLE_ELIGIBILITY_UI_MESSAGE, isDeliverableEligibilityCheckEnabledClient } from '@/lib/feature-flags';
 import { hasSufficientDeliverableEvidenceForEligibility } from '@/lib/deliverable-eligibility';
 import { mergeEligibilityCheckWithPmUnlockTracking } from '@/lib/pm-unlock-status';
-import { applyAutomaticTitleSuggestion, formatTitleFromFilename, getTitleValidationText, shouldUseAiTitleSuggestion, suggestTitleFromFirstPage, validateDeclaredTitleInDocumentText } from '@/lib/title-suggestion';
+import { applyAutomaticTitleSuggestion, formatTitleFromFilename, getTitleValidationText, isTitleAcceptedForWorkflow, shouldUseAiTitleSuggestion, suggestTitleFromFirstPage, validateDeclaredTitleInDocumentText } from '@/lib/title-suggestion';
 import { EligibilityAttemptError, getDeclaredTitleEligibilityIssue, getDisplayEligibilityScore, getEligibilityAttemptState, getEligibilityFailureSummary, isReusableEligibilityCheck, type EligibilityFailurePhase } from '@/lib/deliverable-check-state';
 import { buildDeliverableGroupAssessmentPatches } from '@/lib/deliverable-group-state';
 import {
@@ -1165,7 +1165,14 @@ export function DeliverableItem({
       || currentTitleValidation?.titleCheckStatus === 'extraction_failed'
     ),
   );
-  const effectiveTitleConfirmed = Boolean(deliverable.titleConfirmed && !hasInvalidConfirmedTitle);
+  const effectiveTitleConfirmed = Boolean(
+    !hasInvalidConfirmedTitle
+    && isTitleAcceptedForWorkflow({
+      titleConfirmed: deliverable.titleConfirmed,
+      declaredTitle: deliverable.declaredTitle,
+      fileName: deliverable.filename || deliverable.name,
+    }),
+  );
   const effectiveTitleMatch = hasInvalidConfirmedTitle ? false : deliverable.titleMatch;
   const effectiveTitleCheckStatus = hasInvalidConfirmedTitle
     ? (currentTitleValidation?.titleCheckStatus || 'mismatch')
@@ -1257,26 +1264,7 @@ export function DeliverableItem({
             {deliverable.type || deliverable.deliverableType || 'Livrabil existent'}
           </div>
         ) : (
-          <Select
-            value={deliverable.type || deliverable.deliverableType || ''}
-            onValueChange={(value: string) => onUpdate({
-              type: value,
-              deliverableType: value,
-              aiCheck: null,
-              eligibilityCheck: null,
-            })}
-          >
-            <SelectTrigger className="flex-1 text-xs">
-              <SelectValue placeholder="Tip livrabil" />
-            </SelectTrigger>
-            <SelectContent>
-              {typeOptions.map((type) => (
-                <SelectItem key={type} value={type} className="text-xs">
-                  {type}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex-1" aria-hidden="true" />
         )}
 
         {onRemove && (
@@ -2150,11 +2138,9 @@ function EligibilityResultCard({
     && suggestedSettings.activityName
     && onApplySuggestedSettings,
   );
-  const canApplyDeliverableType = Boolean(
-    suggestedSettings?.changes?.includes('deliverableType')
-    && suggestedSettings.deliverableType
-    && onApplySuggestedSettings,
-  );
+  // The type remains in the persisted/AI contract for compatibility, but is no
+  // longer an expert-facing correction step.
+  const canApplyDeliverableType = false;
 
   return (
     <div className={`rounded border p-2 text-[10px] ${getEligibilityClass(check.status)}`}>
@@ -2244,26 +2230,10 @@ function EligibilityResultCard({
                 {classificationMode === 'automatic' ? 'Confirma schimbarea SA si reia analiza' : check.classification?.requiresSaConfirmation ? 'Confirma schimbarea SA si activitatii' : 'Aplica activitatea sugerata'} ({suggestedSettings.saCode})
               </Button>
             )}
-            {canApplyDeliverableType && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-7 border-indigo-300 px-2 text-[10px] text-indigo-700 hover:bg-indigo-50"
-                onClick={() => onApplySuggestedSettings?.(suggestedSettings, 'deliverableType')}
-              >
-                Aplica tipul livrabilului
-              </Button>
-            )}
           </div>
           {canApplyActivity && (
             <div className="mt-1 text-[10px] text-slate-600">
               Activitate propusa: {suggestedSettings.saCode} - {suggestedSettings.activityName}
-            </div>
-          )}
-          {canApplyDeliverableType && (
-            <div className="mt-1 text-[10px] text-slate-600">
-              Tip livrabil propus: {suggestedSettings.deliverableType}
             </div>
           )}
         </div>
