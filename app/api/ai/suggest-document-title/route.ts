@@ -49,7 +49,7 @@ export async function POST(req: Request) {
       actorName: expertName,
       projectCode,
       model: openaiModel(),
-      system: 'Identifică titlul real al documentului din textul primei pagini. Copiază titlul literal, fără reformulare. Ignoră metadata administrativă și returnează suggestedTitle null dacă nu există un titlu clar. Returnează doar JSON valid.',
+      system: 'Identifică titlul real al documentului din textul primei pagini. Copiază titlul literal, fără reformulare. Câmpurile etichetate Ședință, Ref., Subiect, Titlu sau Denumire pot conține titlul; elimină doar eticheta și prefixul administrativ, nu conținutul titlului. Ignoră data, locația, participanții și codurile. Returnează suggestedTitle null dacă nu există un titlu clar. Returnează doar JSON valid.',
       prompt: `Nume fișier: ${fileName || 'Nespecificat'}
 
 Text extras din prima pagină:
@@ -61,7 +61,7 @@ ${selectedActivityOrDeliverable}
 Sugestie euristică locală (folosește-o doar dacă este susținută de text):
 ${JSON.stringify(localSuggestion)}
 
-Identifică titlul literal cel mai probabil. Nu parafraza. Folosește confidence high numai pentru un titlu explicit; altfel folosește medium sau suggestedTitle null cu confidence low.
+Identifică titlul literal cel mai probabil. Nu parafraza. Dacă există o linie de forma „Ședință: Ref. ...”, folosește textul de după „Ref.” ca titlu, fără data finală dacă data este separată. Folosește confidence high numai pentru un titlu explicit; altfel folosește medium sau suggestedTitle null cu confidence low.
 
 Returnează JSON valid cu:
 {

@@ -12,7 +12,7 @@ import { extractDocxFirstPageText, extractDocxTextWithSource, extractHtmlTextWit
 import { DELIVERABLE_ELIGIBILITY_UI_MESSAGE, isDeliverableEligibilityCheckEnabledClient } from '@/lib/feature-flags';
 import { hasSufficientDeliverableEvidenceForEligibility } from '@/lib/deliverable-eligibility';
 import { mergeEligibilityCheckWithPmUnlockTracking } from '@/lib/pm-unlock-status';
-import { applyAutomaticTitleSuggestion, formatTitleFromFilename, getTitleValidationText, isTitleAcceptedForWorkflow, shouldUseAiTitleSuggestion, suggestTitleFromFirstPage, validateDeclaredTitleInDocumentText } from '@/lib/title-suggestion';
+import { applyAutomaticTitleSuggestion, formatTitleFromFilename, getTitleValidationText, isLikelyFilenameDerivedTitle, isTitleAcceptedForWorkflow, shouldUseAiTitleSuggestion, suggestTitleFromFirstPage, validateDeclaredTitleInDocumentText } from '@/lib/title-suggestion';
 import { EligibilityAttemptError, getDeclaredTitleEligibilityIssue, getDisplayEligibilityScore, getEligibilityAttemptState, getEligibilityFailureSummary, isReusableEligibilityCheck, type EligibilityFailurePhase } from '@/lib/deliverable-check-state';
 import { buildDeliverableGroupAssessmentPatches } from '@/lib/deliverable-group-state';
 import {
@@ -543,12 +543,16 @@ export function DeliverableItem({
     });
 
   useEffect(() => {
-    if (!deliverable.uploaded || deliverable.isPhoto || deliverable.suggestedTitle) return;
+    const fileName = deliverable.filename || deliverable.name || '';
+    const shouldRecheckFilenameSuggestion = Boolean(
+      deliverable.suggestedTitle
+      && isLikelyFilenameDerivedTitle(deliverable.suggestedTitle, fileName),
+    );
+    if (!deliverable.uploaded || deliverable.isPhoto || (deliverable.suggestedTitle && !shouldRecheckFilenameSuggestion)) return;
 
     const titleText = deliverable.firstPageText;
     if (!titleText || titleText.trim().length < 20) return;
 
-    const fileName = deliverable.filename || deliverable.name || '';
     const hydrationKey = [
       deliverable.id,
       deliverable.firstPageTextHash,
@@ -764,7 +768,7 @@ export function DeliverableItem({
 
       if (!docTitle) {
         const hasExtractedText = Boolean(titleText && titleText.trim());
-        docTitle = formatTitleFromFilename(file.name) || null;
+        docTitle = hasExtractedText ? null : formatTitleFromFilename(file.name) || null;
         titleSuggestion = {
           suggestedTitle: docTitle,
           confidence: 'low',

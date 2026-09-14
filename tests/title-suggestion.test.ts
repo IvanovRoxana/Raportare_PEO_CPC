@@ -194,6 +194,11 @@ test('matches OCR text with accents and punctuation differences', () => {
   );
 });
 
+test('does not turn a filename into the title when document text has no confirmed title', () => {
+  const documentText = 'MINUTĂ\nȘedință: Ref. Întâlnirea de aliniere privind speakerii Hub EST\nData: 07.08.2026';
+  assert.equal(titleExistsInDocumentText(documentText, 'Minută Aliniere speakeri Eveniment anual Hub EST'), false);
+});
+
 test('does not validate short filename-derived titles by loose word overlap', () => {
   const documentText = [
     'Confederatia Patronala Concordia',
