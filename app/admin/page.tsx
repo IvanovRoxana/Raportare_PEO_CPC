@@ -166,7 +166,7 @@ export default async function AdminPage({
       <Card className="overflow-hidden rounded-[1.5rem] py-0">
         <Tabs defaultValue={selectedTab}>
           <div className="border-b border-slate-100 px-6 pt-5">
-            <TabsList className="h-auto gap-8 bg-transparent p-0">
+            <TabsList className="flex h-auto w-full flex-wrap justify-start gap-x-6 gap-y-2 bg-transparent p-0">
               {[
                 ['utilizatori', 'Utilizatori', UsersRound],
                 ['categorii-experti', 'Categorii experti PEO', BriefcaseBusiness],
