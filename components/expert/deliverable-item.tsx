@@ -28,6 +28,7 @@ import {
 import { getSecureDocumentUrl } from '@/lib/document-retrieval';
 import type { ActivityCatalog } from '@/lib/types';
 import { EligibilityAssessmentDetails } from './eligibility-assessment-details';
+import { limitEligibilityDocumentText } from '@/lib/eligibility-assessment';
 
 export interface DeliverableDuplicateInfo {
   documentId: string;
@@ -305,6 +306,8 @@ async function readDeliverableTextForEligibility(deliverable: DeliverableSlot, e
 }
 
 function buildEligibilityDocumentPayload(deliverable: DeliverableSlot, activityGroupId: string, isPrimary: boolean) {
+  const extractedText = deliverable.docText || deliverable.firstPageText || '';
+  const limitedText = limitEligibilityDocumentText(extractedText);
   return {
     id: deliverable.id,
     activityGroupId,
@@ -315,13 +318,15 @@ function buildEligibilityDocumentPayload(deliverable: DeliverableSlot, activityG
       originalFileName: deliverable.filename || deliverable.name,
     }),
     fileName: deliverable.filename || deliverable.name,
-    extractedText: deliverable.docText || deliverable.firstPageText || '',
+    extractedText: limitedText,
     fileHash: deliverable.fileHash,
     deliverableType: deliverable.type || deliverable.deliverableType || deliverable.slotType,
     duplicateStatus: deliverable.duplicateStatus,
     possibleDuplicateOfDocumentId: deliverable.possibleDuplicateOfDocumentId,
-    textScope: deliverable.textExtractionScope === 'full_document'
-      ? 'Text integral extras'
+    textScope: limitedText.length < extractedText.length
+      ? `Primele ${limitedText.length} caractere analizate; restul documentului nu a fost transmis evaluatorului.`
+      : deliverable.textExtractionScope === 'full_document'
+        ? 'Text integral extras'
       : 'Text partial / completitudine necunoscuta',
   };
 }
@@ -921,7 +926,7 @@ export function DeliverableItem({
             originalFileName: eligibilityDeliverable.filename || eligibilityDeliverable.name,
           }),
           fileName: eligibilityDeliverable.filename || eligibilityDeliverable.name,
-          extractedText,
+          extractedText: limitEligibilityDocumentText(extractedText),
           deliverables: [
             buildEligibilityDocumentPayload(eligibilityDeliverable, selectedActivityId || subActivity, true),
           ],
@@ -1904,7 +1909,7 @@ export function DeliverableEligibilityControl({
             originalFileName: primaryEligibilityDeliverable.filename || primaryEligibilityDeliverable.name,
           }),
           fileName: primaryEligibilityDeliverable.filename || primaryEligibilityDeliverable.name,
-          extractedText,
+          extractedText: limitEligibilityDocumentText(extractedText),
           selectedActivityId,
           currentSaCode: subActivity,
           classificationMode,

@@ -20,6 +20,7 @@ import {
   ELIGIBILITY_ASSESSMENT_VERSION,
   validateEligibilityAssessmentInput,
   type EligibilityAssessmentInput,
+  limitEligibilityDocumentText,
 } from '@/lib/eligibility-assessment';
 
 export const runtime = 'nodejs';
@@ -91,6 +92,12 @@ export async function POST(req: Request) {
       catalogSource: catalog.source,
       catalogWarnings: catalog.warnings,
     };
+    input.documents = input.documents.map((document) => {
+      const limitedText = limitEligibilityDocumentText(document.extractedText);
+      return limitedText.length < document.extractedText.length
+        ? { ...document, extractedText: limitedText, textScope: `Primele ${limitedText.length} caractere analizate; restul documentului nu a fost transmis evaluatorului.` }
+        : document;
+    });
     validateEligibilityAssessmentInput(input);
     const activeRuleset = await getActiveAiEligibilityRuleset({ authToken, timeoutMs: 3000 });
     input.rulesContext = activeRuleset?.rulesJson ? JSON.stringify(activeRuleset.rulesJson) : '';

@@ -4,8 +4,8 @@ import {
   buildEligibilityAssessmentPrompt,
   EligibilityAssessmentInputError,
   finalizeEligibilityAssessment,
-  MAX_ELIGIBILITY_DOCUMENT_CHARS,
-  MAX_ELIGIBILITY_GROUP_CHARS,
+  MAX_ELIGIBILITY_ANALYSIS_DOCUMENT_CHARS,
+  limitEligibilityDocumentText,
   MAX_ELIGIBILITY_PROMPT_CHARS,
   scopeEligibilityAssessmentCandidates,
   validateEligibilityAssessmentInput,
@@ -121,14 +121,12 @@ test('assessment prompt retains the exact full document including content after 
   assert.match(built.system, /nu din potrivirea de cuvinte sau titluri/);
 });
 
-test('oversized document, group and full prompt are explicitly rejected instead of truncated', () => {
-  assert.throws(() => buildEligibilityAssessmentPrompt(input({ documents: [
-    { id: 'too-long', extractedText: 'x'.repeat(MAX_ELIGIBILITY_DOCUMENT_CHARS + 1) },
-  ] }), context), EligibilityAssessmentInputError);
-  assert.throws(() => buildEligibilityAssessmentPrompt(input({ documents: [
-    { id: 'group-1', extractedText: 'x'.repeat(MAX_ELIGIBILITY_GROUP_CHARS / 2 + 1) },
-    { id: 'group-2', extractedText: 'y'.repeat(MAX_ELIGIBILITY_GROUP_CHARS / 2) },
-  ] }), context), /nu a fost evaluat doar inceputul/);
+test('oversized document text is explicitly limited before evaluation while full prompt limits remain enforced', () => {
+  const oversized = 'x'.repeat(MAX_ELIGIBILITY_ANALYSIS_DOCUMENT_CHARS + 1);
+  assert.equal(limitEligibilityDocumentText(oversized).length, MAX_ELIGIBILITY_ANALYSIS_DOCUMENT_CHARS);
+  assert.doesNotThrow(() => buildEligibilityAssessmentPrompt(input({ documents: [
+    { id: 'too-long', extractedText: limitEligibilityDocumentText(oversized), textScope: 'Primele 18000 caractere analizate; restul documentului nu a fost transmis evaluatorului.' },
+  ] }), context));
   assert.throws(() => buildEligibilityAssessmentPrompt(input({ rulesContext: 'r'.repeat(MAX_ELIGIBILITY_PROMPT_CHARS) }), context), /nu a fost trunchiat/);
 });
 
