@@ -11,6 +11,7 @@ export type PmDeliverableActionId =
   | 'open_dossier'
   | 'request_clarification'
   | 'approve_pm_unlock'
+  | 'mark_ineligible'
   | 'open_file'
   | 'view_ai_review';
 
@@ -111,6 +112,7 @@ export function buildPmDeliverablesViewModel({
 
 export function buildPmDeliverableActionModel(status: PmDeliverableStatus): PmDeliverableActionModel {
   const openFile: PmDeliverableAction = { id: 'open_file', label: 'Deschide fișier' };
+  const markIneligible: PmDeliverableAction = { id: 'mark_ineligible', label: 'Marchează neeligibil' };
   const openDossier: PmDeliverableAction = { id: 'open_dossier', label: 'Deschide dosar', issueType: 'problems' };
   const openEligibilityDossier: PmDeliverableAction = {
     id: 'open_dossier',
@@ -134,6 +136,7 @@ export function buildPmDeliverableActionModel(status: PmDeliverableStatus): PmDe
       primary: openDossier,
       secondary: [
         { id: 'request_clarification', label: 'Cere clarificări' },
+        markIneligible,
         openFile,
       ],
     };
@@ -162,6 +165,6 @@ export function buildPmDeliverableActionModel(status: PmDeliverableStatus): PmDe
 
   return {
     primary: openFile,
-    secondary: [],
+    secondary: [markIneligible],
   };
 }

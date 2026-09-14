@@ -122,6 +122,7 @@ export type PmWorkspaceProps = {
   onRequestDocumentClarification: (document: DocumentMetadata) => void;
   onRealertClarification: (thread: PmClarificationThread) => void | Promise<void>;
   onApprovePmUnlock: (document: DocumentMetadata) => void | Promise<void>;
+  onMarkDocumentIneligible: (document: DocumentMetadata) => void | Promise<void>;
   onDownloadTotalOpisXls: () => void;
   onDownloadExpertPontaj: (expert: Expert) => void | Promise<void>;
   fallbackCatalog?: ActivityCatalog[];

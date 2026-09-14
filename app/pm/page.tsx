@@ -147,6 +147,7 @@ import type {
   Expert,
   Activity,
   DocumentMetadata,
+  DeliverableEligibilityCheck,
   MonthAccessRequest,
   PmClarificationThread,
   PmReviewCase,
@@ -773,6 +774,99 @@ export default function PMDashboard() {
         month: selectedMonth,
         year: selectedYear,
       }));
+    }
+  };
+
+  const markDocumentIneligible = async (document: DocumentMetadata) => {
+    if (!canApprovePmUnlockForDocument(document)) return;
+
+    const reviewerName = currentUser?.displayName || currentUser?.email || 'PM';
+    const previousCheck = document.eligibilityCheck;
+    const now = new Date().toISOString();
+    const ineligibleCheck: DeliverableEligibilityCheck = {
+      ...(previousCheck || {
+        score: 0,
+        checks: [],
+        missingElements: [],
+        recommendations: [],
+        riskFlags: [],
+      }),
+      status: 'neeligibil',
+      score: 0,
+      summary: previousCheck?.summary || 'Livrabil marcat neeligibil manual de PM.',
+      checks: [
+        ...(previousCheck?.checks || []),
+        {
+          criterion: 'Decizie PM manuală',
+          status: 'fail',
+          explanation: 'PM a marcat livrabilul ca neeligibil pentru raportarea curentă.',
+        },
+      ],
+      recommendations: previousCheck?.recommendations?.length
+        ? previousCheck.recommendations
+        : ['Solicită expertului corectarea livrabilului sau atașarea unui livrabil eligibil.'],
+      riskFlags: Array.from(new Set([...(previousCheck?.riskFlags || []), 'pm_manual_ineligible'])),
+      checkedAt: now,
+      checkedBy: reviewerName,
+      pmUnlockApproved: false,
+      pmUnlockApprovedAt: undefined,
+      pmUnlockApprovedBy: undefined,
+      pmUnlockResolvedByCorrection: false,
+      pmUnlockResolvedAt: undefined,
+    };
+
+    const { sourceActivity, sourceDeliverable } = resolvePmUnlockActivityContext(document, monthActivities);
+
+    if (sourceActivity && sourceDeliverable) {
+      await updateActivity(sourceActivity.id, {
+        deliverables: sourceActivity.deliverables?.map((deliverable) => (
+          deliverable.id === sourceDeliverable.id
+            ? {
+                ...deliverable,
+                aiStatus: 'ineligible',
+                aiReason: 'Livrabil marcat neeligibil manual de PM.',
+                eligibilityCheck: {
+                  ...(deliverable.eligibilityCheck || previousCheck || ineligibleCheck),
+                  ...ineligibleCheck,
+                },
+              }
+            : deliverable
+        )),
+      });
+    }
+
+    await updateDocumentEligibilityCheck(document.id, ineligibleCheck);
+
+    const expert = visibleExperts.find((item) => item.id === document.uploadedByExpertId);
+    try {
+      await createAuditLog({
+        actionType: 'pm_deliverable_marked_ineligible',
+        actorId: currentUser?.id || currentUser?.email || 'pm',
+        actorName: reviewerName,
+        actorRole: currentUser?.roles?.join(',') || 'pm',
+        affectedExpertId: document.uploadedByExpertId,
+        affectedExpertName: document.uploadedByExpertName || expert?.name,
+        projectCode: sourceActivity?.projectCode || sourceDeliverable?.projectCode,
+        month: selectedMonth,
+        year: selectedYear,
+        fieldName: `document:${document.id}:eligibilityCheck`,
+        oldValue: {
+          status: previousCheck?.status,
+          score: previousCheck?.score,
+          summary: previousCheck?.summary,
+        },
+        newValue: {
+          status: ineligibleCheck.status,
+          score: ineligibleCheck.score,
+          summary: ineligibleCheck.summary,
+          sourceActivityId: sourceActivity?.id || document.sourceActivityId,
+          deliverableId: sourceDeliverable?.id,
+        },
+        justification: `PM a marcat manual livrabilul ${document.originalFileName} ca neeligibil.`,
+        source: 'manual',
+      });
+    } catch (error) {
+      console.warn('PM ineligible deliverable audit log was not persisted:', error);
     }
   };
 
@@ -1690,6 +1784,7 @@ export default function PMDashboard() {
         onRequestDocumentClarification={requestDocumentClarification}
         onRealertClarification={realertClarification}
         onApprovePmUnlock={approvePmUnlockRequest}
+        onMarkDocumentIneligible={markDocumentIneligible}
         onDownloadTotalOpisXls={handleDownloadTotalOpisXls}
         onDownloadExpertPontaj={handleDownloadExpertPontaj}
         supportTickets={supportTickets}

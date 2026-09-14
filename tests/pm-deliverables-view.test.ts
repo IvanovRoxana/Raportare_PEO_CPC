@@ -70,12 +70,12 @@ describe('buildPmDeliverableActionModel', () => {
     ]);
   });
 
-  it('nu expune acțiuni PM agresive pentru statusuri normale', () => {
+  it('expune marcarea neeligibilă pentru statusuri care pot fi revizuite manual', () => {
     for (const status of ['approved', 'sent', 'draft'] as const) {
       const model = buildPmDeliverableActionModel(status);
 
       assert.equal(model.primary.id, 'open_file');
-      assert.deepEqual(model.secondary, []);
+      assert.deepEqual(model.secondary.map((action) => action.id), ['mark_ineligible']);
     }
   });
 
@@ -84,9 +84,17 @@ describe('buildPmDeliverableActionModel', () => {
     const autoResolved = buildPmDeliverableActionModel('auto_resolved');
 
     assert.equal(clarification.primary.id, 'open_dossier');
-    assert.deepEqual(clarification.secondary.map((action) => action.id), ['request_clarification', 'open_file']);
+    assert.deepEqual(clarification.secondary.map((action) => action.id), ['request_clarification', 'mark_ineligible', 'open_file']);
     assert.equal(autoResolved.primary.id, 'open_dossier');
     assert.equal(autoResolved.primary.issueType, 'eligibility_ai_review');
     assert.deepEqual(autoResolved.secondary.map((action) => action.id), ['view_ai_review', 'open_file']);
+  });
+
+  it('nu afișează marcarea neeligibilă pentru cazuri deja decise prin PM', () => {
+    for (const status of ['ineligible', 'pm_unlocked', 'auto_resolved'] as const) {
+      const model = buildPmDeliverableActionModel(status);
+
+      assert.equal(model.secondary.some((action) => action.id === 'mark_ineligible'), false);
+    }
   });
 });

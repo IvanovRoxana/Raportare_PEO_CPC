@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Download, FileText, FolderOpen, MoreHorizontal, ShieldCheck, MessageSquare, Sparkles } from 'lucide-react';
+import { Download, FileText, FolderOpen, MoreHorizontal, ShieldCheck, MessageSquare, Sparkles, XCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -97,6 +97,8 @@ export function DeliverablesView(props: PmWorkspaceProps) {
         await props.onRequestDocumentClarification(document);
       } else if (action.id === 'approve_pm_unlock') {
         await props.onApprovePmUnlock(document);
+      } else if (action.id === 'mark_ineligible') {
+        await props.onMarkDocumentIneligible(document);
       }
     } finally {
       setDocumentActionId(null);
@@ -192,6 +194,7 @@ function DeliverableActionIcon({ id }: { id: PmDeliverableActionId }) {
   if (id === 'open_dossier') return <FolderOpen className="h-4 w-4" />;
   if (id === 'request_clarification') return <MessageSquare className="h-4 w-4" />;
   if (id === 'approve_pm_unlock') return <ShieldCheck className="h-4 w-4" />;
+  if (id === 'mark_ineligible') return <XCircle className="h-4 w-4" />;
   if (id === 'view_ai_review') return <Sparkles className="h-4 w-4" />;
   return <FileText className="h-4 w-4" />;
 }

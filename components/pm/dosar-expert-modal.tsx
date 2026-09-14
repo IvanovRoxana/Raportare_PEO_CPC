@@ -108,6 +108,7 @@ type DossierDeliverable = Deliverable & {
 };
 
 type ReviewAction = 'in_review' | 'clarifications' | 'rejected' | 'approved';
+type FocusedDeliverableAction = 'approve_deliverable';
 
 type DossierActivityGroup = {
   key: string;
@@ -309,6 +310,7 @@ export function DosarExpertModal({
   const [isGeneratingPontaj, setIsGeneratingPontaj] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [reviewAction, setReviewAction] = useState<ReviewAction | null>(null);
+  const [focusedDeliverableAction, setFocusedDeliverableAction] = useState<FocusedDeliverableAction | null>(null);
   const [activityActionId, setActivityActionId] = useState<string | null>(null);
   const [documentActionId, setDocumentActionId] = useState<string | null>(null);
   const [documentError, setDocumentError] = useState<string | null>(null);
@@ -891,6 +893,17 @@ export function DosarExpertModal({
     }
   };
 
+  const approveFocusedDeliverable = async () => {
+    if (!focusedDocument || !onApprovePmUnlock) return;
+
+    setFocusedDeliverableAction('approve_deliverable');
+    try {
+      await onApprovePmUnlock(focusedDocument);
+    } finally {
+      setFocusedDeliverableAction(null);
+    }
+  };
+
   const handleDownloadOpisXls = () => {
     if (!expert) return;
     setIsGeneratingOpisXls(true);
@@ -1130,7 +1143,18 @@ export function DosarExpertModal({
                 )}
               </div>
 
-              {canManagePmReview && (
+              {canManagePmReview && isFocusedEligibilityDossier ? (
+                <div className="flex flex-wrap justify-start gap-2 lg:justify-end">
+                  <Button
+                    size="sm"
+                    onClick={() => void approveFocusedDeliverable()}
+                    disabled={!focusedDocument || !onApprovePmUnlock || focusedDeliverableAction !== null || Boolean(focusedEligibilityCheck?.pmUnlockApproved)}
+                  >
+                    {focusedDeliverableAction === 'approve_deliverable' ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+                    Aproba livrabil
+                  </Button>
+                </div>
+              ) : canManagePmReview ? (
                 <div className="flex flex-wrap justify-start gap-2 lg:justify-end">
                   <Button
                     variant="outline"
@@ -1168,7 +1192,7 @@ export function DosarExpertModal({
                     Aproba luna
                   </Button>
                 </div>
-              )}
+              ) : null}
             </div>
           </div>
         )}
@@ -1430,7 +1454,7 @@ export function DosarExpertModal({
                         disabled={!onApprovePmUnlock}
                       >
                         <ShieldCheck className="h-4 w-4" />
-                        Aproba deblocare PM
+                        Aproba livrabil
                       </Button>
                     ) : null}
                   </CardContent>
