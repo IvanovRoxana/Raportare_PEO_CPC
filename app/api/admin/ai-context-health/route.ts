@@ -2,10 +2,11 @@ import { NextResponse } from 'next/server';
 import outputs from '@/amplify_outputs.json';
 import { EXPERT_PM_EXTENDED_ACCESS_EMAILS } from '@/lib/access-control';
 import { normalizePeoCategory } from '@/lib/peo-category';
+import { getActiveAiEligibilityRuleset } from '@/lib/ai-eligibility-ruleset-runtime';
 import {
   listKnowledgeChunksByCategoryAndSourceType,
+  listKnowledgeChunks,
   listKnowledgeChunksByExpertId,
-  listKnowledgeChunksBySaCode,
 } from '@/lib/rag/store';
 import type { ActivityAutofillAudit, Expert } from '@/lib/types';
 
@@ -200,6 +201,7 @@ export async function GET(request: Request) {
     const expertId = url.searchParams.get('expertId') || undefined;
     const selectedCategory = url.searchParams.get('category') || undefined;
     const saCode = url.searchParams.get('saCode') || undefined;
+    const requestedProjectCode = url.searchParams.get('projectCode') || undefined;
     const monthParam = url.searchParams.get('month');
     const yearParam = url.searchParams.get('year');
     const month = monthParam !== null && monthParam !== '' ? Number(monthParam) : undefined;
@@ -208,6 +210,7 @@ export async function GET(request: Request) {
     const experts = await listExperts(auth.token);
     const expert = expertId ? experts.find((item) => item.id === expertId) : undefined;
     const category = normalizePeoCategory(selectedCategory || expert?.category) || selectedCategory || expert?.category || undefined;
+    const projectCode = requestedProjectCode || expert?.projectCode || undefined;
 
     const [
       expertFisaPostChunks,
@@ -215,7 +218,10 @@ export async function GET(request: Request) {
       categoryFisaPostChunks,
       categoryReferenceChunks,
       categoryApprovedReports,
-      saPurposeChunks,
+      projectSourceChunks,
+      subactivitySourceChunks,
+      activeRuleset,
+      catalogRows,
       recentAudits,
     ] = await Promise.all([
       expert?.id
@@ -235,9 +241,14 @@ export async function GET(request: Request) {
       category
         ? listKnowledgeChunksByCategoryAndSourceType(category, 'raportare_aprobata_oir', undefined, { authToken: auth.token, limit: 20, maxItems: 120 })
         : Promise.resolve([]),
-      saCode
-        ? listKnowledgeChunksBySaCode(saCode, { sourceType: { eq: 'scop_sa' } }, { authToken: auth.token, limit: 20, maxItems: 80 })
+      projectCode
+        ? listKnowledgeChunks({ status: { eq: 'active' }, projectCode: { eq: projectCode }, or: [{ sourceType: { eq: 'cerere_finantare' } }, { sourceType: { eq: 'manual_beneficiar' } }] }, { authToken: auth.token, limit: 20, maxItems: 120 })
         : Promise.resolve([]),
+      projectCode && saCode
+        ? listKnowledgeChunks({ status: { eq: 'active' }, projectCode: { eq: projectCode }, saCode: { eq: saCode }, or: [{ sourceType: { eq: 'scop_sa' } }, { sourceType: { eq: 'descriere_activitati' } }] }, { authToken: auth.token, limit: 20, maxItems: 120 })
+        : Promise.resolve([]),
+      getActiveAiEligibilityRuleset({ authToken: auth.token, timeoutMs: 2500 }).catch(() => null),
+      appSyncList<{ id: string }>({ token: auth.token, resultKey: 'listActivityCatalogs', query: `query AdminAiContextListCatalog($nextToken: String) { listActivityCatalogs(limit: 200, nextToken: $nextToken) { items { id } nextToken } }`, maxItems: 500 }).catch(() => []),
       listActivityAutofillAudits(auth.token, month, year).catch(() => []),
     ]);
 
@@ -262,7 +273,7 @@ export async function GET(request: Request) {
     const fisaPostCount = expertFisaPostChunks.length + categoryFisaPostChunks.length + (expert?.jobDescriptionText?.trim() ? 1 : 0);
 
     return NextResponse.json({
-      filters: { expertId, category, saCode, month, year },
+      filters: { expertId, category, saCode, projectCode, month, year },
       expert: expert ? {
         id: expert.id,
         name: expert.name,
@@ -295,10 +306,34 @@ export async function GET(request: Request) {
         {
           id: 'sa-purpose',
           title: 'Scop SA / cerere finantare',
-          status: saCode ? statusFromCount(saPurposeChunks.length) : 'not_applicable',
-          count: saPurposeChunks.length,
-          detail: saCode ? sourceSummary(saPurposeChunks.length, `pentru ${saCode}`) : 'Alege un cod SA pentru verificare.',
-          recommendedAction: saCode && saPurposeChunks.length === 0 ? 'Indexeaza scopul SA sau sectiunea relevanta din cererea de finantare.' : null,
+          status: saCode ? statusFromCount(subactivitySourceChunks.length) : 'not_applicable',
+          count: subactivitySourceChunks.length,
+          detail: saCode ? sourceSummary(subactivitySourceChunks.length, `pentru ${saCode}`) : 'Alege un cod SA pentru verificare.',
+          recommendedAction: saCode && subactivitySourceChunks.length === 0 ? 'Indexeaza scopul SA sau descrierea activitatilor pentru proiectul si SA-ul selectate.' : null,
+        },
+        {
+          id: 'project-sources',
+          title: 'Surse oficiale proiect',
+          status: projectCode ? statusFromCount(projectSourceChunks.length) : 'missing',
+          count: projectSourceChunks.length,
+          detail: projectCode ? sourceSummary(projectSourceChunks.length, `pentru proiectul ${projectCode}`) : 'Expertul selectat nu are cod de proiect.',
+          recommendedAction: projectCode && projectSourceChunks.length === 0 ? 'Indexeaza Cererea de finantare sau Manualul beneficiarului la nivel de proiect.' : null,
+        },
+        {
+          id: 'eligibility-rules',
+          title: 'Ruleset eligibilitate',
+          status: activeRuleset ? 'ok' : 'warning',
+          count: Number(Boolean(activeRuleset)),
+          detail: activeRuleset ? 'Exista un ruleset activ publicat.' : 'Nu exista un ruleset activ publicat.',
+          recommendedAction: activeRuleset ? null : 'Publica un ruleset activ in Catalog eligibilitate din modulul PM.',
+        },
+        {
+          id: 'activity-catalog',
+          title: 'Catalog activitati backend',
+          status: catalogRows.length > 0 ? 'ok' : 'warning',
+          count: catalogRows.length,
+          detail: catalogRows.length > 0 ? `${catalogRows.length} activitati disponibile in catalogul backend.` : 'Catalogul backend nu este disponibil.',
+          recommendedAction: catalogRows.length > 0 ? null : 'Verifica accesul si datele catalogului de activitati in modulul PM.',
         },
         {
           id: 'category-rag',
@@ -328,6 +363,7 @@ export async function GET(request: Request) {
         },
       ],
       warnings: uniqueWarnings,
+      rules: { activeRuleset: Boolean(activeRuleset), catalogCount: catalogRows.length },
       recentAudits: visibleAudits.map((audit) => ({
         id: audit.id,
         expertName: audit.expertName,

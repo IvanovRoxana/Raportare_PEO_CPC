@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { useExperts } from '@/hooks/use-backend-data';
+import { extractDocxTextWithSource, extractPdfTextWithSource } from '@/lib/document-utils';
 
 type HealthStatus = 'ok' | 'warning' | 'missing' | 'not_applicable';
 
@@ -31,6 +32,7 @@ type HealthResponse = {
     month?: number;
     year?: number;
   };
+  rules?: { activeRuleset: boolean; catalogCount: number };
   expert: {
     id: string;
     name: string;
@@ -62,6 +64,22 @@ const SOURCE_TYPES = [
   { value: 'raportare_aprobata_oir', label: 'Raportare aprobata OIR' },
   { value: 'other', label: 'Alta sursa' },
 ];
+
+type RagIndexScope = 'project' | 'subactivity' | 'expert' | 'other';
+
+const INDEX_SCOPE_OPTIONS: Array<{ value: RagIndexScope; label: string }> = [
+  { value: 'project', label: 'Proiect' },
+  { value: 'subactivity', label: 'Subactivitate / SA' },
+  { value: 'expert', label: 'Expert / rol' },
+  { value: 'other', label: 'Alte surse' },
+];
+
+const SOURCE_TYPES_BY_SCOPE: Record<RagIndexScope, string[]> = {
+  project: ['cerere_finantare', 'manual_beneficiar'],
+  subactivity: ['scop_sa', 'descriere_activitati', 'cerere_finantare'],
+  expert: ['fisa_post', 'raportare_aprobata_oir'],
+  other: ['other', 'raportare_aprobata_oir'],
+};
 
 const currentDate = new Date();
 
@@ -107,6 +125,7 @@ export function AiContextHealthPanel() {
   const [expertId, setExpertId] = useState('');
   const [category, setCategory] = useState('');
   const [saCode, setSaCode] = useState('');
+  const [projectCode, setProjectCode] = useState('');
   const [month, setMonth] = useState(String(currentDate.getMonth() + 1));
   const [year, setYear] = useState(String(currentDate.getFullYear()));
   const [health, setHealth] = useState<HealthResponse | null>(null);
@@ -122,10 +141,13 @@ export function AiContextHealthPanel() {
   const [savingJobDescription, setSavingJobDescription] = useState(false);
 
   const [ragTitle, setRagTitle] = useState('');
-  const [ragSourceType, setRagSourceType] = useState('raportare_aprobata_oir');
+  const [indexScope, setIndexScope] = useState<RagIndexScope>('project');
+  const [ragSourceType, setRagSourceType] = useState('cerere_finantare');
   const [ragText, setRagText] = useState('');
   const [ragAdminToken, setRagAdminToken] = useState('');
   const [indexing, setIndexing] = useState(false);
+  const [extractingRagFile, setExtractingRagFile] = useState(false);
+  const [ragFileName, setRagFileName] = useState('');
 
   useEffect(() => {
     if (!expertId && activeExperts[0]) {
@@ -137,6 +159,7 @@ export function AiContextHealthPanel() {
 
   useEffect(() => {
     setJobDescriptionDraft(selectedExpert?.jobDescriptionText || '');
+    if (selectedExpert?.projectCode) setProjectCode(selectedExpert.projectCode);
     if (selectedExpert?.category) setCategory(selectedExpert.category);
     if (!saCode && selectedExpert?.saCodes?.[0]) setSaCode(selectedExpert.saCodes[0]);
   }, [saCode, selectedExpert]);
@@ -151,6 +174,7 @@ export function AiContextHealthPanel() {
       if (expertId) params.set('expertId', expertId);
       if (category) params.set('category', category);
       if (saCode) params.set('saCode', saCode);
+      if (projectCode) params.set('projectCode', projectCode);
       if (month) params.set('month', month);
       if (year) params.set('year', year);
       const response = await fetch(`/api/admin/ai-context-health?${params.toString()}`, {
@@ -173,7 +197,7 @@ export function AiContextHealthPanel() {
       void loadHealth();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [expertId, category, saCode, month, year]);
+  }, [expertId, category, saCode, projectCode, month, year]);
 
   async function saveJobDescription() {
     if (!selectedExpert) return;
@@ -215,6 +239,22 @@ export function AiContextHealthPanel() {
       setError('Introdu tokenul RAG admin pentru indexare. Tokenul nu se salveaza in browser.');
       return;
     }
+    if (!projectCode.trim() && indexScope !== 'expert') {
+      setError('Completeaza codul proiectului pentru aceasta sursa.');
+      return;
+    }
+    if (indexScope === 'subactivity' && !saCode.trim()) {
+      setError('Selecteaza un cod SA pentru sursa subactivitatii.');
+      return;
+    }
+    if (indexScope === 'expert' && !selectedExpert) {
+      setError('Selecteaza expertul pentru sursa fisei postului sau raportarea aprobata.');
+      return;
+    }
+    if (indexScope === 'project' && ragSourceType !== 'cerere_finantare' && ragSourceType !== 'manual_beneficiar') {
+      setError('Alege Cerere finantare sau Manual beneficiar pentru o sursa de proiect.');
+      return;
+    }
 
     setIndexing(true);
     setError(null);
@@ -232,17 +272,17 @@ export function AiContextHealthPanel() {
           title: ragTitle.trim(),
           sourceType: ragSourceType,
           text: ragText.trim(),
-          category: category || selectedExpert?.category,
-          expertId: selectedExpert?.id,
-          expertName: selectedExpert?.name,
-          expertRole: selectedExpert?.positionInProject || selectedExpert?.role,
-          projectCode: selectedExpert?.projectCode,
+          category: indexScope === 'project' ? undefined : category || selectedExpert?.category,
+          expertId: indexScope === 'expert' ? selectedExpert?.id : undefined,
+          expertName: indexScope === 'expert' ? selectedExpert?.name : undefined,
+          expertRole: indexScope === 'expert' ? selectedExpert?.positionInProject || selectedExpert?.role : undefined,
+          projectCode: projectCode.trim() || undefined,
           month: Number.isFinite(Number(month)) ? Number(month) : undefined,
           year: Number.isFinite(Number(year)) ? Number(year) : undefined,
-          saCode: saCode || undefined,
+          saCode: indexScope === 'subactivity' ? saCode : undefined,
           approvalStatus: ragSourceType === 'raportare_aprobata_oir' ? 'approved' : undefined,
           createdBy: 'admin-ai-context-health',
-          metadata: { source: 'admin-ai-context-health' },
+          metadata: { source: 'admin-ai-context-health', scope: indexScope },
         }),
       });
       const data = await response.json().catch(() => null);
@@ -254,6 +294,29 @@ export function AiContextHealthPanel() {
       setError(caughtError instanceof Error ? caughtError.message : 'Indexarea documentului RAG a esuat.');
     } finally {
       setIndexing(false);
+    }
+  }
+
+  async function handleRagFileUpload(file?: File | null) {
+    if (!file) return;
+    setExtractingRagFile(true);
+    setError(null);
+    setMessage(null);
+    setRagFileName(file.name);
+    try {
+      const isDocx = file.name.toLowerCase().endsWith('.docx')
+        || file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      const result = isDocx
+        ? await extractDocxTextWithSource(file)
+        : await extractPdfTextWithSource(file);
+      if (!result.text?.trim()) throw new Error('Nu am putut extrage text util din document. Lipeste textul manual.');
+      setRagText(result.text.trim());
+      if (!ragTitle.trim()) setRagTitle(file.name.replace(/\.(pdf|docx)$/i, ''));
+      setMessage(`Text extras din ${file.name}. Revizuieste-l inainte de indexare.`);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : 'Extragerea documentului a esuat.');
+    } finally {
+      setExtractingRagFile(false);
     }
   }
 
@@ -374,6 +437,26 @@ export function AiContextHealthPanel() {
               </ul>
             </div>
           ) : null}
+
+          <section className="rounded-xl border bg-slate-50 p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <h3 className="font-semibold text-slate-950">Verificări și audit recent</h3>
+                <p className="mt-1 text-xs text-muted-foreground">Ultimele evaluări pentru expertul și perioada selectate.</p>
+              </div>
+              <CheckCircle2 className="h-4 w-4 text-primary" />
+            </div>
+            {health?.recentAudits.length ? (
+              <div className="space-y-2">
+                {health.recentAudits.map((audit) => (
+                  <div key={audit.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-white px-3 py-2 text-sm">
+                    <span className="font-medium text-slate-900">{audit.activityName || 'Activitate neevaluată'}</span>
+                    <span className="text-muted-foreground">{audit.confidence || 'fără încredere'} · {audit.applied ? 'aplicată' : 'neaplicată'}</span>
+                  </div>
+                ))}
+              </div>
+            ) : <p className="text-sm text-muted-foreground">Nu există evaluări recente pentru filtrele curente.</p>}
+          </section>
         </CardContent>
       </Card>
 
@@ -411,7 +494,29 @@ export function AiContextHealthPanel() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="space-y-2">
+                <Label>Nivel sursă</Label>
+                <Select
+                  value={indexScope}
+                  onValueChange={(value) => {
+                    const nextScope = value as RagIndexScope;
+                    setIndexScope(nextScope);
+                    setRagSourceType(SOURCE_TYPES_BY_SCOPE[nextScope][0]);
+                  }}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {INDEX_SCOPE_OPTIONS.map((scope) => (
+                      <SelectItem key={scope.value} value={scope.value}>{scope.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Cod proiect *</Label>
+                <Input value={projectCode} onChange={(event) => setProjectCode(event.target.value)} placeholder="302141" />
+              </div>
               <div className="space-y-2">
                 <Label>Titlu document</Label>
                 <Input value={ragTitle} onChange={(event) => setRagTitle(event.target.value)} placeholder="Ex: Raportare aprobata iunie AP" />
@@ -423,7 +528,7 @@ export function AiContextHealthPanel() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {SOURCE_TYPES.map((source) => (
+                    {SOURCE_TYPES.filter((source) => SOURCE_TYPES_BY_SCOPE[indexScope].includes(source.value)).map((source) => (
                       <SelectItem key={source.value} value={source.value}>{source.label}</SelectItem>
                     ))}
                   </SelectContent>
@@ -438,6 +543,19 @@ export function AiContextHealthPanel() {
                 onChange={(event) => setRagAdminToken(event.target.value)}
                 placeholder="Token temporar pentru indexare; nu se salveaza"
               />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="rag-source-document">Document oficial (PDF sau DOCX)</Label>
+              <Input
+                id="rag-source-document"
+                type="file"
+                accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                onChange={(event) => void handleRagFileUpload(event.target.files?.[0])}
+                disabled={extractingRagFile}
+              />
+              <p className="text-xs text-muted-foreground">
+                {extractingRagFile ? 'Se extrage textul...' : ragFileName || 'Alege un document pentru extragere automata.'}
+              </p>
             </div>
             <Textarea
               rows={8}

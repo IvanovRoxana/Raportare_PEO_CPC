@@ -16,6 +16,11 @@ export async function POST(req: Request) {
     const text = typeof body?.text === 'string' ? body.text : '';
     const title = typeof body?.title === 'string' ? body.title : body?.originalFileName;
     const sourceType = typeof body?.sourceType === 'string' ? body.sourceType : 'other';
+    const projectCode = typeof body?.projectCode === 'string' ? body.projectCode.trim() : '';
+    const saCode = typeof body?.saCode === 'string' ? body.saCode.trim() : '';
+    const expertId = typeof body?.expertId === 'string' ? body.expertId.trim() : '';
+    const expertName = typeof body?.expertName === 'string' ? body.expertName.trim() : '';
+    const expertRole = typeof body?.expertRole === 'string' ? body.expertRole.trim() : '';
     const dryRun = body?.dryRun === true || url.searchParams.get('dryRun') === 'true';
     const authToken = getCognitoAccessTokenFromRequest(req, {
       allowAuthorizationHeader: Boolean(req.headers.get('x-rag-admin-token')),
@@ -23,6 +28,19 @@ export async function POST(req: Request) {
 
     if (!text.trim() || !title) {
       return NextResponse.json({ error: 'Documentul RAG are nevoie de title si text.' }, { status: 400 });
+    }
+
+    if (['cerere_finantare', 'manual_beneficiar'].includes(sourceType) && !projectCode) {
+      return NextResponse.json({ error: 'Sursele de proiect necesita codul proiectului.' }, { status: 400 });
+    }
+    if (['cerere_finantare', 'manual_beneficiar'].includes(sourceType) && saCode) {
+      return NextResponse.json({ error: 'Sursele globale de proiect nu pot fi asociate accidental unui cod SA.' }, { status: 400 });
+    }
+    if (['scop_sa', 'descriere_activitati'].includes(sourceType) && (!projectCode || !saCode)) {
+      return NextResponse.json({ error: 'Sursele subactivitatii necesita codul proiectului si codul SA.' }, { status: 400 });
+    }
+    if (sourceType === 'fisa_post' && !expertId && !expertName && !expertRole) {
+      return NextResponse.json({ error: 'Sursa fisei postului necesita un expert sau un rol.' }, { status: 400 });
     }
 
     if (!dryRun && !authToken) {
@@ -34,13 +52,13 @@ export async function POST(req: Request) {
       sourceType,
       text,
       category: typeof body?.category === 'string' ? body.category : undefined,
-      expertId: typeof body?.expertId === 'string' ? body.expertId : undefined,
-      expertName: typeof body?.expertName === 'string' ? body.expertName : undefined,
-      expertRole: typeof body?.expertRole === 'string' ? body.expertRole : undefined,
-      projectCode: typeof body?.projectCode === 'string' ? body.projectCode : undefined,
+      expertId: expertId || undefined,
+      expertName: expertName || undefined,
+      expertRole: expertRole || undefined,
+      projectCode: projectCode || undefined,
       month: Number.isFinite(Number(body?.month)) ? Number(body.month) : undefined,
       year: Number.isFinite(Number(body?.year)) ? Number(body.year) : undefined,
-      saCode: typeof body?.saCode === 'string' ? body.saCode : undefined,
+      saCode: saCode || undefined,
       activityName: typeof body?.activityName === 'string' ? body.activityName : undefined,
       approvalStatus: typeof body?.approvalStatus === 'string' ? body.approvalStatus : undefined,
       originalFileName: typeof body?.originalFileName === 'string' ? body.originalFileName : undefined,
