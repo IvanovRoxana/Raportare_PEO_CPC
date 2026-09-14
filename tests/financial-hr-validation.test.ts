@@ -100,13 +100,19 @@ test('salariatii din Excel fara profil sunt marcati necorelat', () => {
   assert.equal(summarizeFinancialHrValidation(rows).unlinked, 1);
 });
 
-test('Pontaje trimite la Salariati pentru profil, iar editorul de norme ramane mutat', () => {
+test('Pontaje trimite la Salariati unde profilul si normele se deschid in dialog', () => {
   const pontaje = readFileSync('components/financial/financial-reporting-dashboard.tsx', 'utf8');
   const salariati = readFileSync('components/financial/financial-employees-dashboard.tsx', 'utf8');
 
   assert.match(pontaje, /\/financiar\/salariati\?expertId=/);
   assert.doesNotMatch(pontaje, /id="norma-editor"/);
-  assert.match(salariati, /id="norma-editor"/);
+  assert.match(salariati, /const expertId = searchParams\.get\('expertId'\)/);
+  assert.match(salariati, /if \(row && row\.id !== selectedRowId\) selectRow\(row\)/);
+  const dialog = salariati.slice(salariati.indexOf('<Dialog open='), salariati.indexOf('</Dialog>'));
+  assert.match(dialog, /open=\{Boolean\(employeeForm && monthlySettingsForm\)\}/);
+  assert.match(dialog, /Profil salariat/);
+  assert.match(dialog, /placeholder="Norma PEO"/);
+  assert.match(dialog, /placeholder="Norma CIM"/);
 });
 
 test('Concedii ramane separat de pagina Salariati', () => {
@@ -117,9 +123,14 @@ test('Concedii ramane separat de pagina Salariati', () => {
 
 test('pagina Salariati expune actiunea de adaugare manuala sus in header', () => {
   const source = readFileSync('components/financial/financial-employees-dashboard.tsx', 'utf8');
-  assert.match(source, /Adauga salariat/);
+  const header = source.slice(source.indexOf('actions={('), source.indexOf('<div className="grid gap-4'));
+  assert.match(header, /<Button onClick=\{addEmployee\}>/);
+  assert.match(header, /Adauga salariat/);
   assert.match(source, /const addEmployee = \(\) =>/);
-  assert.match(source, /id="employee-editor"/);
+  const addEmployee = source.slice(source.indexOf('const addEmployee = () =>'), source.indexOf('useEffect(() => {', source.indexOf('const addEmployee = () =>')));
+  assert.match(addEmployee, /setEmployeeForm\(/);
+  assert.match(addEmployee, /setMonthlySettingsForm\(/);
+  assert.match(source, /<DialogTitle>\{employeeForm\?\.expertId \? 'Editeaza salariat' : 'Adauga salariat'\}<\/DialogTitle>/);
 });
 
 test('editorul de norme expune doar norma PEO si norma CIM, nu plafoane tehnice sau reguli CO', () => {

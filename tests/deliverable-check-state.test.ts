@@ -70,8 +70,14 @@ test('administrator title override is respected without extracted text', () => {
   assert.equal(getDeclaredTitleEligibilityIssue(deliverable({ firstPageText: null, titleSource: 'admin_override' })), null);
 });
 
+test('filename-derived fallback titles do not block eligibility when text is missing or differs', () => {
+  for (const firstPageText of [null, 'Document de lucru pentru intalnirea proiectului']) {
+    assert.equal(getDeclaredTitleEligibilityIssue(deliverable({ firstPageText })), null);
+  }
+});
+
 test('missing text can reach extraction, then title validation uses the extracted first page', () => {
-  const missing = deliverable({ firstPageText: null, s3Key: 'document.pdf' });
+  const missing = deliverable({ filename: 'document.pdf', firstPageText: null, s3Key: 'document.pdf' });
   assert.equal(getDeclaredTitleEligibilityIssue(missing, true), null);
   assert.match(getDeclaredTitleEligibilityIssue(missing) || '', /extrage textul/);
   assert.equal(getDeclaredTitleEligibilityIssue({ ...missing, firstPageText: 'Ghid de lucru pentru experti' }), null);
@@ -79,6 +85,7 @@ test('missing text can reach extraction, then title validation uses the extracte
 
 test('a title on a later page cannot satisfy the first-page title gate', () => {
   assert.match(getDeclaredTitleEligibilityIssue(deliverable({
+    filename: 'document.pdf',
     firstPageText: 'Document de lucru pentru intalnirea proiectului',
     docText: 'Document de lucru pentru intalnirea proiectului\nPagina 2\nGhid de lucru pentru experti',
   })) || '', /nu se regaseste in prima pagina/);

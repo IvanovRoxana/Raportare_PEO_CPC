@@ -70,12 +70,13 @@ const amplifyDataResourceSource = readFileSync(new URL('../amplify/data/resource
 test('UI tolereaza suggestedSettings persistat fara lista changes', () => {
   assert.doesNotMatch(deliverableItemSource, /suggestedSettings\?\.changes\.includes/);
   assert.match(deliverableItemSource, /suggestedSettings\?\.changes\?\.includes\('activity'\)/);
-  assert.match(deliverableItemSource, /suggestedSettings\?\.changes\?\.includes\('deliverableType'\)/);
+  assert.doesNotMatch(deliverableItemSource, /Aplica tipul livrabilului/);
 });
 
-test('formularul pastreaza tipul livrabilului nou incarcat in aceleasi campuri ca livrabilul existent', () => {
-  assert.match(deliverableItemSource, /value=\{deliverable\.type \|\| deliverable\.deliverableType \|\| ''\}/);
-  assert.match(deliverableItemSource, /type: value,\s*deliverableType: value,/);
+test('formularul pastreaza compatibilitatea tipului salvat fara selector manual de livrabil', () => {
+  assert.doesNotMatch(deliverableItemSource, /placeholder="Tip livrabil"/);
+  assert.match(deliverableItemSource, /deliverableType: deliverable\.type \|\| deliverable\.deliverableType \|\| deliverable\.slotType/);
+  assert.match(deliverableItemSource, /type: settings\.deliverableType,\s*deliverableType: settings\.deliverableType,/);
   assert.match(activityFormSource, /const resolvedDeliverableType = d\.type \|\| d\.deliverableType \|\| d\.slotType/);
   assert.match(activityFormSource, /const resolvedDeliverableCategory = getSavedDeliverableCategory\(d\)/);
   assert.match(activityFormSource, /category: resolvedDeliverableCategory,\s*deliverableType: resolvedDeliverableType,/);
