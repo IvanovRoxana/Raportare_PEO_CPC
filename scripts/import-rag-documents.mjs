@@ -5,8 +5,8 @@ import { createHash } from 'node:crypto';
 import { readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 
-const DEFAULT_DIR = path.join(process.cwd(), 'rag-seed', 'PA');
-const TEXT_EXTENSIONS = new Set(['.txt', '.md']);
+const DEFAULT_DIR = path.join(process.cwd(), 'rag-seed');
+const SUPPORTED_EXTENSIONS = new Set(['.txt', '.md', '.pdf', '.docx']);
 const SOURCE_TYPES_BY_FOLDER = new Map([
   ['cerere-finantare', 'cerere_finantare'],
   ['manual-beneficiar', 'manual_beneficiar'],
@@ -19,7 +19,8 @@ const SOURCE_TYPES_BY_FOLDER = new Map([
 function parseArgs(argv) {
   const args = {
     dir: DEFAULT_DIR,
-    category: 'ap',
+    category: '',
+    projectCode: '',
     positionInProject: '',
     dryRun: false,
     endpoint: '',
@@ -27,12 +28,14 @@ function parseArgs(argv) {
     tokenEnv: 'RAG_ADMIN_IMPORT_TOKEN',
     cognitoToken: '',
     cognitoTokenEnv: 'RAG_COGNITO_ACCESS_TOKEN',
+    maxFiles: 0,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--dir') args.dir = path.resolve(argv[++index]);
-    if (arg === '--category') args.category = argv[++index] || 'ap';
+    if (arg === '--category') args.category = argv[++index] || '';
+    if (arg === '--project-code') args.projectCode = argv[++index] || '';
     if (arg === '--position-in-project') args.positionInProject = argv[++index] || '';
     if (arg === '--dry-run') args.dryRun = true;
     if (arg === '--endpoint') args.endpoint = argv[++index] || '';
@@ -40,6 +43,7 @@ function parseArgs(argv) {
     if (arg === '--token-env') args.tokenEnv = argv[++index] || 'RAG_ADMIN_IMPORT_TOKEN';
     if (arg === '--cognito-token') args.cognitoToken = argv[++index] || '';
     if (arg === '--cognito-token-env') args.cognitoTokenEnv = argv[++index] || 'RAG_COGNITO_ACCESS_TOKEN';
+    if (arg === '--max-files') args.maxFiles = Number(argv[++index]) || 0;
   }
 
   return args;
@@ -166,33 +170,113 @@ async function listFiles(folderPath) {
     .map((entry) => path.join(folderPath, entry.name));
 }
 
+async function listDocumentFolders(rootDir) {
+  const folders = [];
+  const pending = [rootDir];
+
+  while (pending.length) {
+    const folderPath = pending.pop();
+    const entries = await readdir(folderPath, { withFileTypes: true });
+    const files = entries.filter((entry) => entry.isFile() && entry.name !== 'metadata.csv');
+    if (files.some((entry) => SUPPORTED_EXTENSIONS.has(path.extname(entry.name).toLowerCase()))) {
+      folders.push(folderPath);
+    }
+    for (const entry of entries) {
+      if (entry.isDirectory() && !entry.name.startsWith('.')) {
+        pending.push(path.join(folderPath, entry.name));
+      }
+    }
+  }
+
+  return folders;
+}
+
+async function extractPdfText(filePath) {
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const data = new Uint8Array(await readFile(filePath));
+  const document = await pdfjs.getDocument({ data, useWorkerFetch: false, isEvalSupported: false }).promise;
+  const pages = [];
+  for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+    const page = await document.getPage(pageNumber);
+    const content = await page.getTextContent();
+    pages.push(content.items.map((item) => ('str' in item ? item.str : '')).join(' '));
+  }
+  return pages.join('\n\n');
+}
+
+async function extractDocxText(filePath) {
+  const mammothModule = await import('mammoth');
+  const mammoth = mammothModule.default ?? mammothModule;
+  const result = await mammoth.extractRawText({ buffer: await readFile(filePath) });
+  return result.value || '';
+}
+
+async function readDocumentText(filePath, extension) {
+  if (extension === '.pdf') return extractPdfText(filePath);
+  if (extension === '.docx') return extractDocxText(filePath);
+  return readFile(filePath, 'utf8');
+}
+
+function inferSourceMetadata(fileName, folderName, args) {
+  const normalizedName = fileName.toLowerCase();
+  const saMatch = normalizedName.match(/\bsa\s*(\d+)[._-](\d+)\b/i);
+  const projectMatch = fileName.match(/\b(\d{6})\b/) || folderName.match(/\b(\d{6})\b/);
+  const positionByName = [
+    [/business[_ -]?hub/i, 'Coordonator Business HUB'],
+    [/centre[_ -]?regionale|centru[_ -]?regional/i, 'Coordonator Centre Regionale'],
+    [/afaceri[_ -]?publice/i, 'Responsabil Afaceri Publice'],
+    [/informare[_ -]?si[_ -]?comunicare/i, 'Responsabil Informare si Comunicare'],
+    [/recrutare[_ -]?si[_ -]?selectie[_ -]?grup[_ -]?tinta/i, 'Expert recrutare si selectie grup tinta'],
+    [/protectia[_ -]?datelor/i, 'Expert protectia datelor cu caracter personal'],
+    [/cercetare[_ -]?si[_ -]?analize/i, 'Expert cercetare si analize'],
+  ];
+  const positionInProject = positionByName.find(([pattern]) => pattern.test(normalizedName))?.[1] || args.positionInProject;
+  const isJobDescription = /fisa[_ -]?de?[_ -]?post/i.test(normalizedName);
+  const isActivityDescription = /descriere[_ -]?activitate/i.test(normalizedName);
+
+  return {
+    sourceType: isJobDescription ? 'fisa_post' : isActivityDescription ? 'scop_sa' : SOURCE_TYPES_BY_FOLDER.get(folderName) || 'other',
+    saCode: saMatch ? `SA${saMatch[1]}.${saMatch[2]}` : undefined,
+    projectCode: args.projectCode || projectMatch?.[1],
+    positionInProject,
+  };
+}
+
 async function collectDocuments(rootDir, args) {
-  const folders = await readdir(rootDir, { withFileTypes: true });
+  const folders = await listDocumentFolders(rootDir);
   const documents = [];
   const skipped = [];
 
-  for (const folder of folders.filter((entry) => entry.isDirectory())) {
-    const sourceType = SOURCE_TYPES_BY_FOLDER.get(folder.name) || 'other';
-    const folderPath = path.join(rootDir, folder.name);
+  for (const folderPath of folders) {
+    const folderName = path.basename(folderPath);
+    const sourceType = SOURCE_TYPES_BY_FOLDER.get(folderName) || 'other';
     const metadata = await readMetadata(folderPath);
     const files = await listFiles(folderPath);
 
     for (const filePath of files) {
+      if (args.maxFiles > 0 && documents.length >= args.maxFiles) return { documents, skipped };
       const extension = path.extname(filePath).toLowerCase();
       const fileName = path.basename(filePath);
-      if (!TEXT_EXTENSIONS.has(extension)) {
+      if (!SUPPORTED_EXTENSIONS.has(extension)) {
         skipped.push({ fileName, reason: 'unsupported_extension' });
         continue;
       }
 
       const row = metadata.get(fileName) || {};
-      if (folder.name === 'raportari-aprobate-oir' && !metadata.has(fileName)) {
+      const inferred = inferSourceMetadata(fileName, folderName, args);
+      if (folderName === 'raportari-aprobate-oir' && !metadata.has(fileName)) {
         skipped.push({ fileName, reason: 'missing_metadata_row' });
         continue;
       }
 
       const fileStat = await stat(filePath);
-      const text = await readFile(filePath, 'utf8');
+      let text;
+      try {
+        text = await readDocumentText(filePath, extension);
+      } catch (error) {
+        skipped.push({ fileName, reason: 'text_extraction_failed', detail: error instanceof Error ? error.message : String(error) });
+        continue;
+      }
       if (looksLikeCorruptedText(text)) {
         skipped.push({ fileName, reason: 'text_looks_corrupted_encoding' });
         continue;
@@ -204,11 +288,11 @@ async function collectDocuments(rootDir, args) {
       }
       const activityName = metadataValue(row.activityName);
       const category = metadataValue(row.category) || metadataValue(row.expertCategory) || args.category;
-      const positionInProject = metadataValue(row.positionInProject) || args.positionInProject;
+      const positionInProject = metadataValue(row.positionInProject) || inferred.positionInProject;
       const expertRole = metadataValue(row.expertRole) || positionInProject;
       documents.push({
         title: activityName || path.basename(fileName, extension),
-        sourceType,
+        sourceType: metadataValue(row.sourceType) || inferred.sourceType || sourceType,
         text: normalizedText,
         category,
         expertId: metadataValue(row.expertId),
@@ -216,14 +300,14 @@ async function collectDocuments(rootDir, args) {
         expertRole,
         month: metadataNumber(row.month),
         year: metadataNumber(row.year),
-        saCode: metadataValue(row.saCode),
+        saCode: metadataValue(row.saCode) || inferred.saCode,
         activityName,
         approvalStatus: metadataValue(row.approvalStatus),
-        projectCode: metadataValue(row.projectCode),
+        projectCode: metadataValue(row.projectCode) || inferred.projectCode,
         originalFileName: fileName,
-        createdBy: 'script-import-rag-pa-documents',
+        createdBy: 'script-import-rag-documents',
         metadata: {
-          folder: folder.name,
+          folder: folderName,
           category,
           positionInProject,
           expertRole,
@@ -272,6 +356,7 @@ async function main() {
       month: document.month,
       year: document.year,
       saCode: document.saCode,
+      projectCode: document.projectCode,
       activityName: document.activityName,
       textChars: normalizeText(document.text).length,
       chunks: chunks.length,
@@ -281,10 +366,11 @@ async function main() {
 
   console.log(JSON.stringify({
     dryRun: args.dryRun,
-    dir: args.dir,
+      dir: args.dir,
+      projectCode: args.projectCode || undefined,
     documents: summary,
     skipped,
-    note: 'MVP proceseaza doar .txt/.md. Pentru PDF/DOCX exporta textul in folderele rag-seed inainte de import.',
+    note: 'Importul proceseaza .txt, .md, .pdf si .docx; PDF-urile scanate pot necesita OCR separat.',
   }, null, 2));
 
   if (args.dryRun) return;

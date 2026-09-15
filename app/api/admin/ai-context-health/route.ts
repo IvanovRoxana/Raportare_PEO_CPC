@@ -14,6 +14,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 type HealthStatus = 'ok' | 'warning' | 'missing' | 'not_applicable';
+type SubactivityHealth = { saCode: string; count: number; status: HealthStatus };
 
 const appSyncEndpoint = outputs.data?.url;
 const EXPERT_FIELDS = `
@@ -215,6 +216,7 @@ export async function GET(request: Request) {
       : undefined;
     const category = normalizePeoCategory(selectedCategory || expert?.category) || selectedCategory || expert?.category || undefined;
     const projectCode = requestedProjectCode || expert?.projectCode || undefined;
+    const availableSaCodes = Array.from(new Set(experts.flatMap((item) => item.saCodes || []))).sort();
 
     const [
       expertFisaPostChunks,
@@ -261,6 +263,17 @@ export async function GET(request: Request) {
       appSyncList<{ id: string }>({ token: auth.token, resultKey: 'listActivityCatalogs', query: `query AdminAiContextListCatalog($nextToken: String) { listActivityCatalogs(limit: 200, nextToken: $nextToken) { items { id } nextToken } }`, maxItems: 500 }).catch(() => []),
       listActivityAutofillAudits(auth.token, month, year).catch(() => []),
     ]);
+
+    const subactivities: SubactivityHealth[] = await Promise.all(availableSaCodes.map(async (code) => {
+      if (!projectCode) return { saCode: code, count: 0, status: 'not_applicable' };
+      const chunks = await listKnowledgeChunks({
+        status: { eq: 'active' },
+        projectCode: { eq: projectCode },
+        saCode: { eq: code },
+        or: [{ sourceType: { eq: 'scop_sa' } }, { sourceType: { eq: 'descriere_activitati' } }],
+      }, { authToken: auth.token, limit: 20, maxItems: 120 }).catch(() => []);
+      return { saCode: code, count: chunks.length, status: statusFromCount(chunks.length) };
+    }));
 
     const visibleAudits = recentAudits
       .filter((audit) => !expert?.id || audit.expertId === expert.id)
@@ -374,6 +387,7 @@ export async function GET(request: Request) {
       ],
       warnings: uniqueWarnings,
       rules: { activeRuleset: Boolean(activeRuleset), catalogCount: catalogRows.length },
+      subactivities,
       recentAudits: visibleAudits.map((audit) => ({
         id: audit.id,
         expertName: audit.expertName,

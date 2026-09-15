@@ -12,7 +12,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       status: 'not_started',
-      message: 'MVP-ul foloseste scripts/import-rag-pa-documents.mjs si endpointul index-document. Reindexarea in masa este intentionat lasata fara efect destructiv.',
+      message: 'MVP-ul foloseste scripts/import-rag-documents.mjs si endpointul index-document. Reindexarea in masa este intentionat lasata fara efect destructiv.',
     });
   } catch {
     return NextResponse.json({ error: 'Cerere RAG reindex respinsa.' }, { status: 403 });

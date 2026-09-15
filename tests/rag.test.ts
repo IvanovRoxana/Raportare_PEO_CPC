@@ -351,3 +351,12 @@ test('ruleset publish creates the first draft when no ruleset exists', () => {
   assert.match(source, /const saved = selectedRuleset\n\s+\? await updateDraft/);
   assert.match(source, /: await createDraft\(\{\n\s+title,\n\s+rulesJson: parsedRules/);
 });
+
+test('AI context health exposes separate subactivity statuses and direct catalog navigation', () => {
+  const api = readFileSync(new URL('../app/api/admin/ai-context-health/route.ts', import.meta.url), 'utf8');
+  const ui = readFileSync(new URL('../components/admin/ai-context-health-panel.tsx', import.meta.url), 'utf8');
+  assert.match(api, /subactivities: SubactivityHealth\[\]/);
+  assert.match(api, /saCode: \{ eq: code \}/);
+  assert.match(ui, /Catalog activități/);
+  assert.match(ui, /setSaCode\(subactivity\.saCode\)/);
+});

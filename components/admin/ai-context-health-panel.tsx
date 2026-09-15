@@ -46,6 +46,7 @@ type HealthResponse = {
     hasAiReportingInstructions: boolean;
   } | null;
   cards: HealthCard[];
+  subactivities: Array<{ saCode: string; count: number; status: HealthStatus }>;
   warnings: string[];
   recentAudits: Array<{
     id: string;
@@ -445,7 +446,7 @@ export function AiContextHealthPanel() {
           <div>
             <CardTitle className="flex items-center gap-2 text-base">
               <Database className="h-5 w-5 text-primary" />
-              AI Context Health
+              Context AI & Eligibilitate
             </CardTitle>
             <p className="mt-2 text-sm text-muted-foreground">
               Verifica sursele folosite de Agentul PEO si completeaza contextul lipsa inainte de generarea descrierilor.
@@ -521,6 +522,32 @@ export function AiContextHealthPanel() {
             <SummaryPill label="De completat" value={String(issueCount)} tone={issueCount > 0 ? 'warning' : 'ok'} />
             <SummaryPill label="Audituri recente" value={String(health?.recentAudits.length ?? 0)} tone="neutral" />
           </div>
+
+          <section className="rounded-xl border bg-slate-50 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h3 className="font-semibold text-slate-950">Subactivități</h3>
+                <p className="mt-1 text-xs text-muted-foreground">Fiecare SA are sursă și status separat; încărcarea unei surse nu modifică celelalte SA-uri.</p>
+              </div>
+              <Button type="button" variant="outline" size="sm" onClick={() => { window.location.href = '/admin?tab=subactivitati'; }}>
+                Catalog activități
+              </Button>
+            </div>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              {(health?.subactivities ?? []).map((subactivity) => (
+                <div key={subactivity.saCode} className="flex items-center justify-between gap-2 rounded-lg border bg-white px-3 py-2 text-sm">
+                  <div>
+                    <div className="font-semibold text-slate-900">{subactivity.saCode}</div>
+                    <div className="text-xs text-muted-foreground">{subactivity.count} fragmente</div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className={statusBadgeClass(subactivity.status)}>{statusLabel(subactivity.status)}</Badge>
+                    <Button type="button" variant="ghost" size="sm" onClick={() => { setSaCode(subactivity.saCode); configureSource('subactivity', 'scop_sa'); }}>Upload</Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
 
           <div className="grid gap-3 lg:grid-cols-2">
             {(health?.cards ?? []).map((card) => (
