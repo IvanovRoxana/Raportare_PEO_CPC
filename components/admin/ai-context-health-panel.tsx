@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { fetchAuthSession } from 'aws-amplify/auth';
-import { AlertTriangle, CheckCircle2, Database, FileText, Loader2, RefreshCw, Save, Upload } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Database, FileText, Loader2, Plus, RefreshCw, Save, Trash2, Upload } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -53,6 +53,18 @@ type HealthResponse = {
     applied?: boolean;
     createdAt?: string;
   }>;
+};
+
+type RagLibraryDocument = {
+  id: string;
+  title: string;
+  sourceType: string;
+  category?: string;
+  projectCode?: string;
+  saCode?: string;
+  expertName?: string;
+  originalFileName?: string;
+  indexedAt?: string;
 };
 
 const SOURCE_TYPES = [
@@ -154,6 +166,19 @@ export function AiContextHealthPanel() {
   const [ragFileName, setRagFileName] = useState('');
   const [ragFileInputKey, setRagFileInputKey] = useState(0);
   const [ragTextIsExtracted, setRagTextIsExtracted] = useState(false);
+  const [libraryDocuments, setLibraryDocuments] = useState<RagLibraryDocument[]>([]);
+  const [loadingLibrary, setLoadingLibrary] = useState(false);
+  const [deletingDocumentId, setDeletingDocumentId] = useState<string | null>(null);
+  const ragFormRef = useRef<HTMLDivElement>(null);
+
+  const libraryCategories = useMemo(
+    () => uniq(libraryDocuments.map((document) => document.category || '')),
+    [libraryDocuments],
+  );
+  const librarySaCodes = useMemo(
+    () => uniq(libraryDocuments.map((document) => document.saCode || '')),
+    [libraryDocuments],
+  );
 
   const ragPreviewLength = 2000;
 
@@ -198,6 +223,52 @@ export function AiContextHealthPanel() {
     } finally {
       setLoadingHealth(false);
     }
+  }
+
+  async function loadLibrary() {
+    setLoadingLibrary(true);
+    try {
+      const token = await getAccessToken();
+      const response = await fetch('/api/admin/rag/library', {
+        cache: 'no-store',
+        headers: { authorization: `Bearer ${token}`, 'x-rag-admin-token': ragAdminToken.trim() },
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(data?.error || 'Biblioteca RAG nu a putut fi incarcata.');
+      setLibraryDocuments(data?.documents || []);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : 'Biblioteca RAG nu a putut fi incarcata.');
+    } finally {
+      setLoadingLibrary(false);
+    }
+  }
+
+  async function removeFromLibrary(id: string) {
+    if (!window.confirm('Scoti documentul din biblioteca RAG?')) return;
+    setDeletingDocumentId(id);
+    try {
+      const token = await getAccessToken();
+      const response = await fetch('/api/admin/rag/library', {
+        method: 'DELETE',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', 'x-rag-admin-token': ragAdminToken.trim() },
+        body: JSON.stringify({ id }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(data?.error || 'Documentul nu a putut fi scos din biblioteca RAG.');
+      setLibraryDocuments((documents) => documents.filter((document) => document.id !== id));
+      setMessage('Documentul a fost scos din biblioteca RAG.');
+      await loadHealth();
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : 'Documentul nu a putut fi scos din biblioteca RAG.');
+    } finally {
+      setDeletingDocumentId(null);
+    }
+  }
+
+  function configureSource(scope: RagIndexScope, sourceType: string) {
+    setIndexScope(scope);
+    setRagSourceType(sourceType);
+    ragFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   useEffect(() => {
@@ -286,7 +357,9 @@ export function AiContextHealthPanel() {
           title: titleToIndex.trim(),
           sourceType: ragSourceType,
           text: textToIndex.trim(),
-          category: indexScope === 'project' ? undefined : category || selectedExpert?.category,
+          // Project sources remain separate from the expert because they have no expertId,
+          // but keep the selected category so they remain visible in the RAG library.
+          category: category || selectedExpert?.category,
           expertId: indexScope === 'expert' ? selectedExpert?.id : undefined,
           expertName: indexScope === 'expert' ? selectedExpert?.name : undefined,
           expertRole: indexScope === 'expert' ? selectedExpert?.positionInProject || selectedExpert?.role : undefined,
@@ -314,6 +387,7 @@ export function AiContextHealthPanel() {
       setRagExtractionSource(undefined);
       setRagTextIsExtracted(false);
       setRagFileInputKey((key) => key + 1);
+      await loadLibrary();
       await loadHealth();
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : 'Indexarea documentului RAG a esuat.');
@@ -393,7 +467,7 @@ export function AiContextHealthPanel() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Nespecificat</SelectItem>
-                  {categories.map((item) => (
+                  {uniq([...categories, ...libraryCategories]).sort().map((item) => (
                     <SelectItem key={item} value={item}>{item}</SelectItem>
                   ))}
                 </SelectContent>
@@ -407,7 +481,7 @@ export function AiContextHealthPanel() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Nespecificat</SelectItem>
-                  {saCodes.map((item) => (
+                  {uniq([...saCodes, ...librarySaCodes]).sort().map((item) => (
                     <SelectItem key={item} value={item}>{item}</SelectItem>
                   ))}
                 </SelectContent>
@@ -445,6 +519,11 @@ export function AiContextHealthPanel() {
                   <Badge variant="outline" className={statusBadgeClass(card.status)}>
                     {statusLabel(card.status)}
                   </Badge>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {card.id === 'project-sources' && <Button type="button" variant="outline" size="sm" onClick={() => configureSource('project', 'cerere_finantare')}><Plus className="h-3 w-3" />Adauga proiect</Button>}
+                  {card.id === 'sa-purpose' && <Button type="button" variant="outline" size="sm" onClick={() => configureSource('subactivity', 'scop_sa')}><Plus className="h-3 w-3" />Adauga SA</Button>}
+                  {card.id === 'job-description' && <Button type="button" variant="outline" size="sm" onClick={() => configureSource('expert', 'fisa_post')}><Plus className="h-3 w-3" />Adauga expert</Button>}
                 </div>
                 {card.recommendedAction && (
                   <p className="mt-3 rounded-lg bg-slate-50 p-2 text-xs text-slate-700">{card.recommendedAction}</p>
@@ -488,7 +567,7 @@ export function AiContextHealthPanel() {
       </Card>
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <Card className="rounded-2xl">
+        <Card ref={ragFormRef} className="rounded-2xl">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <FileText className="h-5 w-5 text-primary" />
@@ -617,6 +696,35 @@ export function AiContextHealthPanel() {
           </CardContent>
         </Card>
       </div>
+
+      <Card className="rounded-2xl">
+        <CardHeader className="flex flex-row items-center justify-between gap-3">
+          <div>
+            <CardTitle className="text-base">Biblioteca RAG</CardTitle>
+            <p className="mt-1 text-sm text-muted-foreground">Surse comune de proiect, SA, categorie și expert. Proiectul nu înlocuiește sursele expertului.</p>
+          </div>
+          <Button type="button" variant="outline" size="sm" onClick={() => void loadLibrary()} disabled={loadingLibrary || !ragAdminToken.trim()}>
+            {loadingLibrary ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Reincarca
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {!libraryDocuments.length ? <p className="text-sm text-muted-foreground">Apasa Reincarca pentru a vedea documentele indexate.</p> : (
+            <div className="space-y-2">
+              {libraryDocuments.map((document) => (
+                <div key={document.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-white px-3 py-2 text-sm">
+                  <div>
+                    <div className="font-medium text-slate-900">{document.title}</div>
+                    <div className="text-xs text-muted-foreground">{document.sourceType} · {document.projectCode || 'fără proiect'}{document.saCode ? ` · ${document.saCode}` : ''}{document.category ? ` · ${document.category}` : ''}</div>
+                  </div>
+                  <Button type="button" variant="ghost" size="sm" className="text-red-700" onClick={() => void removeFromLibrary(document.id)} disabled={deletingDocumentId === document.id}>
+                    {deletingDocumentId === document.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />} Scoate
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

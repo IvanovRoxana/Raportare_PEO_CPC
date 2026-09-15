@@ -16,7 +16,7 @@ export async function POST(req: Request) {
 
     const body = await req.json();
     const query = normalizeRagText(body?.query);
-    const category = normalizePeoCategory(typeof body?.category === 'string' ? body.category : 'ap');
+    const category = normalizePeoCategory(typeof body?.category === 'string' ? body.category : '');
     const topK = Math.max(1, Math.min(Number(body?.topK) || 10, 25));
     const authToken = getCognitoAccessTokenFromRequest(req, {
       allowAuthorizationHeader: Boolean(req.headers.get('x-rag-admin-token')),

@@ -249,6 +249,18 @@ const CREATE_KNOWLEDGE_CHUNK_MUTATION = `
   }
 `;
 
+const DELETE_KNOWLEDGE_DOCUMENT_MUTATION = `
+  mutation DeleteKnowledgeDocument($input: DeleteKnowledgeDocumentInput!) {
+    deleteKnowledgeDocument(input: $input) { id }
+  }
+`;
+
+const DELETE_KNOWLEDGE_CHUNK_MUTATION = `
+  mutation DeleteKnowledgeChunk($input: DeleteKnowledgeChunkInput!) {
+    deleteKnowledgeChunk(input: $input) { id }
+  }
+`;
+
 const LIST_ACTIVITY_AUTOFILL_AUDITS_QUERY = `
   query ListActivityAutofillAudits($filter: ModelActivityAutofillAuditFilterInput, $limit: Int, $nextToken: String) {
     listActivityAutofillAudits(filter: $filter, limit: $limit, nextToken: $nextToken) {
@@ -599,6 +611,26 @@ export async function createKnowledgeChunks(
     chunks.push(...batch.filter((chunk): chunk is KnowledgeChunk => Boolean(chunk)));
   }
   return chunks;
+}
+
+export async function deleteKnowledgeDocument(documentId: string, options: RagAuthContext = {}) {
+  assertCanAccessRagModel('KnowledgeDocument', options);
+  const chunks = await listKnowledgeChunks({ documentId: { eq: documentId } }, options);
+  for (const chunk of chunks) {
+    await graphqlRequest(
+      'AWS delete KnowledgeChunk',
+      DELETE_KNOWLEDGE_CHUNK_MUTATION,
+      { input: { id: chunk.id } },
+      options,
+    );
+  }
+  const data = await graphqlRequest<{ deleteKnowledgeDocument?: { id?: string } }>(
+    'AWS delete KnowledgeDocument',
+    DELETE_KNOWLEDGE_DOCUMENT_MUTATION,
+    { input: { id: documentId } },
+    options,
+  );
+  return Boolean(data.deleteKnowledgeDocument?.id);
 }
 
 export async function createActivityAutofillAudit(
