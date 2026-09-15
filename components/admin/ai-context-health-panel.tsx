@@ -271,6 +271,15 @@ export function AiContextHealthPanel() {
   function configureSource(scope: RagIndexScope, sourceType: string) {
     setIndexScope(scope);
     setRagSourceType(sourceType);
+    setRagTitle('');
+    setRagText('');
+    setRagActivityName('');
+    setRagExtractionSource(undefined);
+    setRagFileName('');
+    setRagTextIsExtracted(false);
+    setRagFileInputKey((key) => key + 1);
+    setError(null);
+    setMessage(null);
     setRagDialogOpen(true);
     window.setTimeout(() => ragFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
   }
