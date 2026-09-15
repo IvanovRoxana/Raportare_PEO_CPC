@@ -321,3 +321,9 @@ test('Admin RAG UI no longer asks for or sends the legacy token', () => {
   assert.equal(source.includes('ragAdminToken'), false);
   assert.equal(source.includes('x-rag-admin-token'), false);
 });
+
+test('approved activity reports are indexed at expert/project/month scope', () => {
+  const route = readFileSync(new URL('../app/api/admin/rag/index-document/route.ts', import.meta.url), 'utf8');
+  assert.match(route, /const requiresActivityScope = sourceType === 'livrabil_aprobat'/);
+  assert.match(route, /Rapoartele de activitate aprobate necesita expert, proiect, luna si an/);
+});

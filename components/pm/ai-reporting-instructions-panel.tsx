@@ -11,6 +11,7 @@ import type { Expert } from '@/lib/types';
 
 interface AiReportingInstructionsPanelProps {
   experts: Expert[];
+  initialExpertId?: string;
   actorName?: string;
   onSaved?: () => Promise<unknown> | unknown;
   onAudit?: (input: {
@@ -24,6 +25,7 @@ interface AiReportingInstructionsPanelProps {
 
 export function AiReportingInstructionsPanel({
   experts,
+  initialExpertId,
   actorName,
   onSaved,
   onAudit,
@@ -31,7 +33,7 @@ export function AiReportingInstructionsPanel({
   const { experts: persistedExperts } = useExperts({ includeInactive: true, includeFallback: false });
   const { create, update } = useExpertMutations();
   const [query, setQuery] = useState('');
-  const [selectedExpertId, setSelectedExpertId] = useState(experts[0]?.id ?? '');
+  const [selectedExpertId, setSelectedExpertId] = useState(initialExpertId || experts[0]?.id || '');
   const [draft, setDraft] = useState(experts[0]?.aiReportingInstructions ?? '');
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);

@@ -50,8 +50,11 @@ export async function POST(req: Request) {
     if (isApprovedHistorical) {
       const month = Number(body?.month);
       const year = Number(body?.year);
-      if (!expertId || !projectCode || !saCode || !body?.activityName || !Number.isInteger(month) || month < 1 || month > 12 || !Number.isInteger(year)) {
-        return NextResponse.json({ error: 'Rapoartele si livrabilele aprobate necesita expert, proiect, luna, an, SA si activitate.' }, { status: 400 });
+      const requiresActivityScope = sourceType === 'livrabil_aprobat';
+      if (!expertId || !projectCode || (requiresActivityScope && (!saCode || !body?.activityName)) || !Number.isInteger(month) || month < 1 || month > 12 || !Number.isInteger(year)) {
+        return NextResponse.json({ error: requiresActivityScope
+          ? 'Livrabilele aprobate necesita expert, proiect, luna, an, SA si activitate.'
+          : 'Rapoartele de activitate aprobate necesita expert, proiect, luna si an.' }, { status: 400 });
       }
       if (body?.approvalStatus !== 'approved') {
         return NextResponse.json({ error: 'Doar documentele aprobate pot fi indexate in istoricul RAG.' }, { status: 400 });

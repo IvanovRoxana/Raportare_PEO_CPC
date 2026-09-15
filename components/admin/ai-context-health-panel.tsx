@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { fetchAuthSession } from 'aws-amplify/auth';
-import { AlertTriangle, CheckCircle2, Database, FileText, Loader2, Plus, RefreshCw, Save, Trash2, Upload } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Database, FileText, Loader2, Plus, RefreshCw, Save, Settings, Trash2, Upload } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { AiReportingInstructionsPanel } from '@/components/pm/ai-reporting-instructions-panel';
 import { useExperts } from '@/hooks/use-backend-data';
 import { extractDocxTextWithSource, extractPdfTextWithSource } from '@/lib/document-utils';
 
@@ -168,6 +169,7 @@ export function AiContextHealthPanel() {
   const [ragTextIsExtracted, setRagTextIsExtracted] = useState(false);
   const [libraryDocuments, setLibraryDocuments] = useState<RagLibraryDocument[]>([]);
   const [loadingLibrary, setLoadingLibrary] = useState(false);
+  const [showAiInstructionsEditor, setShowAiInstructionsEditor] = useState(false);
   const [deletingDocumentId, setDeletingDocumentId] = useState<string | null>(null);
   const [ragDialogOpen, setRagDialogOpen] = useState(false);
   const ragFormRef = useRef<HTMLDivElement>(null);
@@ -334,7 +336,7 @@ export function AiContextHealthPanel() {
       setError('Alege Cerere finantare sau Manual beneficiar pentru o sursa de proiect.');
       return;
     }
-    if (['raport_activitate_aprobat', 'livrabil_aprobat'].includes(ragSourceType) && !ragActivityName.trim()) {
+    if (ragSourceType === 'livrabil_aprobat' && !ragActivityName.trim()) {
       setError('Completeaza activitatea pentru raportul sau livrabilul aprobat.');
       return;
     }
@@ -363,7 +365,7 @@ export function AiContextHealthPanel() {
           projectCode: projectCode.trim() || undefined,
           month: Number.isFinite(Number(month)) ? Number(month) : undefined,
           year: Number.isFinite(Number(year)) ? Number(year) : undefined,
-          saCode: ['raport_activitate_aprobat', 'livrabil_aprobat'].includes(ragSourceType)
+          saCode: ragSourceType === 'livrabil_aprobat'
             ? saCode.trim() || undefined
             : indexScope === 'subactivity' ? saCode : undefined,
           activityName: ragActivityName.trim() || undefined,
@@ -524,6 +526,7 @@ export function AiContextHealthPanel() {
                   {card.id === 'job-description' && <Button type="button" variant="outline" size="sm" onClick={() => configureSource('expert', 'fisa_post')}><Plus className="h-3 w-3" />Adauga expert</Button>}
                   {card.id === 'category-rag' && <Button type="button" variant="outline" size="sm" onClick={() => configureSource('project', 'manual_beneficiar')}><Plus className="h-3 w-3" />Adauga categorie</Button>}
                   {card.id === 'approved-reports' && <Button type="button" variant="outline" size="sm" onClick={() => configureSource('expert', 'raport_activitate_aprobat')}><Plus className="h-3 w-3" />Adauga raport</Button>}
+                  {card.id === 'ai-instructions' && <Button type="button" variant="outline" size="sm" onClick={() => setShowAiInstructionsEditor(true)}><Settings className="h-3 w-3" />Configureaza instructiuni</Button>}
                 </div>
                 {card.recommendedAction && (
                   <p className="mt-3 rounded-lg bg-slate-50 p-2 text-xs text-slate-700">{card.recommendedAction}</p>
@@ -531,6 +534,26 @@ export function AiContextHealthPanel() {
               </div>
             ))}
           </div>
+
+          {showAiInstructionsEditor && (
+            <section className="rounded-xl border border-blue-200 bg-blue-50/40 p-4">
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="font-semibold text-slate-950">Instrucțiuni AI pentru expert</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">Configurează stilul și responsabilitățile specifice pentru expertul selectat.</p>
+                </div>
+                <Button type="button" variant="ghost" size="sm" onClick={() => setShowAiInstructionsEditor(false)}>Închide</Button>
+              </div>
+              <AiReportingInstructionsPanel
+                experts={activeExperts}
+                initialExpertId={expertId}
+                onSaved={async () => {
+                  await refreshExperts();
+                  await loadHealth();
+                }}
+              />
+            </section>
+          )}
 
           {health?.warnings.length ? (
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
@@ -667,7 +690,7 @@ export function AiContextHealthPanel() {
                   </SelectContent>
                 </Select>
               </div>
-              {['raport_activitate_aprobat', 'livrabil_aprobat'].includes(ragSourceType) && (
+              {ragSourceType === 'livrabil_aprobat' && (
                 <div className="space-y-2 sm:col-span-2">
                   <Label>Activitate *</Label>
                   <Input value={ragActivityName} onChange={(event) => setRagActivityName(event.target.value)} placeholder="Denumirea exacta din catalogul de activitati" />
