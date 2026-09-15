@@ -12,10 +12,11 @@ export async function extractPdfTextFromBuffer(buffer: ArrayBuffer): Promise<Ext
     useWorkerFetch: false,
   });
   const pdf = await loadingTask.promise;
+  const pageCount = pdf.numPages;
   const pages: string[] = [];
 
   try {
-    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+    for (let pageNumber = 1; pageNumber <= pageCount; pageNumber += 1) {
       const page = await pdf.getPage(pageNumber);
       const content = await page.getTextContent();
       const pageText = content.items
@@ -37,6 +38,6 @@ export async function extractPdfTextFromBuffer(buffer: ArrayBuffer): Promise<Ext
 
   return {
     text: pages.join('\n\n').trim(),
-    pageCount: pdf.numPages,
+    pageCount,
   };
 }
