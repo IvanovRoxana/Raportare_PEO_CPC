@@ -6,6 +6,7 @@ import { AlertTriangle, CheckCircle2, Database, FileText, Loader2, Plus, Refresh
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -169,6 +170,7 @@ export function AiContextHealthPanel() {
   const [libraryDocuments, setLibraryDocuments] = useState<RagLibraryDocument[]>([]);
   const [loadingLibrary, setLoadingLibrary] = useState(false);
   const [deletingDocumentId, setDeletingDocumentId] = useState<string | null>(null);
+  const [ragDialogOpen, setRagDialogOpen] = useState(false);
   const ragFormRef = useRef<HTMLDivElement>(null);
 
   const libraryCategories = useMemo(
@@ -268,7 +270,8 @@ export function AiContextHealthPanel() {
   function configureSource(scope: RagIndexScope, sourceType: string) {
     setIndexScope(scope);
     setRagSourceType(sourceType);
-    ragFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setRagDialogOpen(true);
+    window.setTimeout(() => ragFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
   }
 
   useEffect(() => {
@@ -524,6 +527,8 @@ export function AiContextHealthPanel() {
                   {card.id === 'project-sources' && <Button type="button" variant="outline" size="sm" onClick={() => configureSource('project', 'cerere_finantare')}><Plus className="h-3 w-3" />Adauga proiect</Button>}
                   {card.id === 'sa-purpose' && <Button type="button" variant="outline" size="sm" onClick={() => configureSource('subactivity', 'scop_sa')}><Plus className="h-3 w-3" />Adauga SA</Button>}
                   {card.id === 'job-description' && <Button type="button" variant="outline" size="sm" onClick={() => configureSource('expert', 'fisa_post')}><Plus className="h-3 w-3" />Adauga expert</Button>}
+                  {card.id === 'category-rag' && <Button type="button" variant="outline" size="sm" onClick={() => configureSource('project', 'manual_beneficiar')}><Plus className="h-3 w-3" />Adauga categorie</Button>}
+                  {card.id === 'approved-reports' && <Button type="button" variant="outline" size="sm" onClick={() => configureSource('expert', 'raport_activitate_aprobat')}><Plus className="h-3 w-3" />Adauga raport</Button>}
                 </div>
                 {card.recommendedAction && (
                   <p className="mt-3 rounded-lg bg-slate-50 p-2 text-xs text-slate-700">{card.recommendedAction}</p>
@@ -567,7 +572,7 @@ export function AiContextHealthPanel() {
       </Card>
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <Card ref={ragFormRef} className="rounded-2xl">
+        <Card className="rounded-2xl">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <FileText className="h-5 w-5 text-primary" />
@@ -592,7 +597,19 @@ export function AiContextHealthPanel() {
           </CardContent>
         </Card>
 
-        <Card className="rounded-2xl">
+        <Dialog open={ragDialogOpen} onOpenChange={setRagDialogOpen}>
+          <DialogTrigger asChild>
+            <Button type="button" className="h-auto min-h-28 w-full justify-start rounded-2xl border border-dashed border-primary/40 bg-blue-50 p-5 text-left text-primary shadow-sm hover:bg-blue-100">
+              <Plus className="h-5 w-5" />
+              <span><span className="block font-semibold">Adauga document nou</span><span className="mt-1 block text-xs font-normal text-muted-foreground">Alege categoria, incarca documentul si salveaza-l in biblioteca si baza de date.</span></span>
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-h-[calc(100vh-2rem)] max-w-3xl overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Adauga sursa in biblioteca RAG</DialogTitle>
+              <DialogDescription>Documentul este salvat pe server ca sursa separata pentru proiect, SA, categorie sau expert.</DialogDescription>
+            </DialogHeader>
+        <Card ref={ragFormRef} className="rounded-2xl border-0 shadow-none">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <Upload className="h-5 w-5 text-primary" />
@@ -625,6 +642,18 @@ export function AiContextHealthPanel() {
               <div className="space-y-2">
                 <Label>Cod proiect *</Label>
                 <Input value={projectCode} onChange={(event) => setProjectCode(event.target.value)} placeholder="302141" />
+              </div>
+              <div className="space-y-2">
+                <Label>Categorie *</Label>
+                <Select value={category || 'none'} onValueChange={(value) => setCategory(value === 'none' ? '' : value)}>
+                  <SelectTrigger><SelectValue placeholder="Alege categoria" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Nespecificat</SelectItem>
+                    {uniq([...categories, ...libraryCategories]).sort().map((item) => (
+                      <SelectItem key={`rag-category-${item}`} value={item}>{item}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label>Titlu document</Label>
@@ -695,6 +724,8 @@ export function AiContextHealthPanel() {
             </Button>
           </CardContent>
         </Card>
+          </DialogContent>
+        </Dialog>
       </div>
 
       <Card className="rounded-2xl">
