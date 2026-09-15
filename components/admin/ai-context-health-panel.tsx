@@ -146,6 +146,7 @@ export function AiContextHealthPanel() {
   const [year, setYear] = useState(String(currentDate.getFullYear()));
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [loadingHealth, setLoadingHealth] = useState(false);
+  const healthRequestId = useRef(0);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -201,6 +202,7 @@ export function AiContextHealthPanel() {
   }, [saCode, selectedExpert]);
 
   async function loadHealth() {
+    const requestId = ++healthRequestId.current;
     setLoadingHealth(true);
     setError(null);
     setMessage(null);
@@ -208,6 +210,7 @@ export function AiContextHealthPanel() {
       const token = await getAccessToken();
       const params = new URLSearchParams();
       if (expertId) params.set('expertId', expertId);
+      if (selectedExpert?.email) params.set('expertEmail', selectedExpert.email);
       if (category) params.set('category', category);
       if (saCode) params.set('saCode', saCode);
       if (projectCode) params.set('projectCode', projectCode);
@@ -219,12 +222,14 @@ export function AiContextHealthPanel() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error || 'Nu am putut citi sanatatea contextului AI.');
+      if (requestId !== healthRequestId.current) return;
       setHealth(data as HealthResponse);
     } catch (caughtError) {
+      if (requestId !== healthRequestId.current) return;
       setError(caughtError instanceof Error ? caughtError.message : 'Nu am putut citi sanatatea contextului AI.');
       setHealth(null);
     } finally {
-      setLoadingHealth(false);
+      if (requestId === healthRequestId.current) setLoadingHealth(false);
     }
   }
 
@@ -536,6 +541,7 @@ export function AiContextHealthPanel() {
                   {card.id === 'category-rag' && <Button type="button" variant="outline" size="sm" onClick={() => configureSource('project', 'manual_beneficiar')}><Plus className="h-3 w-3" />Adauga categorie</Button>}
                   {card.id === 'approved-reports' && <Button type="button" variant="outline" size="sm" onClick={() => configureSource('expert', 'raport_activitate_aprobat')}><Plus className="h-3 w-3" />Adauga raport</Button>}
                   {card.id === 'ai-instructions' && <Button type="button" variant="outline" size="sm" onClick={() => setShowAiInstructionsEditor(true)}><Settings className="h-3 w-3" />Configureaza instructiuni</Button>}
+                  {card.id === 'eligibility-rules' && <Button type="button" variant="outline" size="sm" onClick={() => { window.location.href = '/pm?tab=eligibility-governance'; }}><Settings className="h-3 w-3" />Deschide ruleset</Button>}
                 </div>
                 {card.recommendedAction && (
                   <p className="mt-3 rounded-lg bg-slate-50 p-2 text-xs text-slate-700">{card.recommendedAction}</p>

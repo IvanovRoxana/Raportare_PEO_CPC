@@ -327,3 +327,21 @@ test('approved activity reports are indexed at expert/project/month scope', () =
   assert.match(route, /const requiresActivityScope = sourceType === 'livrabil_aprobat'/);
   assert.match(route, /Rapoartele de activitate aprobate necesita expert, proiect, luna si an/);
 });
+
+test('AI context health can resolve a merged fallback expert by email', () => {
+  const route = readFileSync(new URL('../app/api/admin/ai-context-health/route.ts', import.meta.url), 'utf8');
+  assert.match(route, /expertEmail = url\.searchParams\.get\('expertEmail'\)/);
+  assert.match(route, /item\.email\?\.trim\(\)\.toLowerCase\(\) === expertEmail/);
+});
+
+test('AI context health ignores stale responses after a filter change', () => {
+  const source = readFileSync(new URL('../components/admin/ai-context-health-panel.tsx', import.meta.url), 'utf8');
+  assert.match(source, /const healthRequestId = useRef\(0\)/);
+  assert.match(source, /if \(requestId !== healthRequestId\.current\) return/);
+});
+
+test('AI context health ruleset card opens the existing PM governance editor', () => {
+  const source = readFileSync(new URL('../components/admin/ai-context-health-panel.tsx', import.meta.url), 'utf8');
+  assert.match(source, /card\.id === 'eligibility-rules'/);
+  assert.match(source, /\/pm\?tab=eligibility-governance/);
+});

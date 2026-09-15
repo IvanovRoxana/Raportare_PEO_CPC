@@ -199,6 +199,7 @@ export async function GET(request: Request) {
 
     const url = new URL(request.url);
     const expertId = url.searchParams.get('expertId') || undefined;
+    const expertEmail = url.searchParams.get('expertEmail')?.trim().toLowerCase() || undefined;
     const selectedCategory = url.searchParams.get('category') || undefined;
     const saCode = url.searchParams.get('saCode') || undefined;
     const requestedProjectCode = url.searchParams.get('projectCode') || undefined;
@@ -208,7 +209,10 @@ export async function GET(request: Request) {
     const year = yearParam !== null && yearParam !== '' ? Number(yearParam) : undefined;
 
     const experts = await listExperts(auth.token);
-    const expert = expertId ? experts.find((item) => item.id === expertId) : undefined;
+    const expert = expertId
+      ? experts.find((item) => item.id === expertId)
+        || (expertEmail ? experts.find((item) => item.email?.trim().toLowerCase() === expertEmail) : undefined)
+      : undefined;
     const category = normalizePeoCategory(selectedCategory || expert?.category) || selectedCategory || expert?.category || undefined;
     const projectCode = requestedProjectCode || expert?.projectCode || undefined;
 
