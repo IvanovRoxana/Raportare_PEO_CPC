@@ -152,6 +152,10 @@ export function AiContextHealthPanel() {
   const [indexing, setIndexing] = useState(false);
   const [extractingRagFile, setExtractingRagFile] = useState(false);
   const [ragFileName, setRagFileName] = useState('');
+  const [ragFileInputKey, setRagFileInputKey] = useState(0);
+  const [ragTextIsExtracted, setRagTextIsExtracted] = useState(false);
+
+  const ragPreviewLength = 2000;
 
   useEffect(() => {
     if (!expertId && activeExperts[0]) {
@@ -306,6 +310,10 @@ export function AiContextHealthPanel() {
       setMessage(data?.duplicate ? 'Documentul exista deja in baza RAG; nu a fost duplicat.' : `Document indexat: ${data?.chunks ?? 0} fragmente.`);
       setRagText('');
       setRagFileName('');
+      setRagTitle('');
+      setRagExtractionSource(undefined);
+      setRagTextIsExtracted(false);
+      setRagFileInputKey((key) => key + 1);
       await loadHealth();
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : 'Indexarea documentului RAG a esuat.');
@@ -329,12 +337,9 @@ export function AiContextHealthPanel() {
       if (!result.text?.trim()) throw new Error('Nu am putut extrage text util din document. Lipeste textul manual.');
       setRagText(result.text.trim());
       setRagExtractionSource(result.source);
+      setRagTextIsExtracted(true);
       if (!ragTitle.trim()) setRagTitle(file.name.replace(/\.(pdf|docx)$/i, ''));
-      await indexRagDocument({
-        text: result.text.trim(),
-        title: ragTitle.trim() || file.name.replace(/\.(pdf|docx)$/i, ''),
-        extractionSource: result.source,
-      });
+      setMessage('Documentul a fost incarcat. Verifica preview-ul si apasa „Indexeaza documentul”.');
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : 'Extragerea documentului a esuat.');
     } finally {
@@ -578,6 +583,7 @@ export function AiContextHealthPanel() {
             <div className="space-y-2">
               <Label htmlFor="rag-source-document">Document oficial (PDF sau DOCX)</Label>
               <Input
+                key={ragFileInputKey}
                 id="rag-source-document"
                 type="file"
                 accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -590,12 +596,19 @@ export function AiContextHealthPanel() {
             </div>
             <Textarea
               rows={8}
-              value={ragText}
-              onChange={(event) => setRagText(event.target.value)}
-              placeholder="Text extras automat. Poate fi corectat aici doar daca este necesar."
+              value={ragTextIsExtracted ? ragText.slice(0, ragPreviewLength) : ragText}
+              readOnly={ragTextIsExtracted}
+              onChange={(event) => {
+                setRagTextIsExtracted(false);
+                setRagText(event.target.value);
+              }}
+              placeholder="Preview-ul textului extras va aparea aici."
             />
             <p className="text-xs text-muted-foreground">
-              Selectarea fișierului extrage și indexează automat documentul după validarea metadatelor. Pentru RA și livrabile aprobate sunt acceptate doar documentele din ultimele 12 luni.
+              {ragTextIsExtracted
+                ? `Se afișează primele ${ragPreviewLength} caractere ca preview; la indexare se folosește textul extras integral. `
+                : ''}
+              Încărcarea nu indexează automat documentul. Pentru RA și livrabile aprobate sunt acceptate doar documentele din ultimele 12 luni.
             </p>
             <Button type="button" onClick={() => void indexRagDocument()} disabled={indexing || extractingRagFile}>
               {indexing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
