@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { AiReportingInstructionsPanel } from '@/components/pm/ai-reporting-instructions-panel';
+import { RagReferenceImportDialog } from '@/components/admin/rag-reference-import-dialog';
 import { useExperts } from '@/hooks/use-backend-data';
 import { extractDocxTextWithSource, extractPdfTextWithSource } from '@/lib/document-utils';
 
@@ -442,7 +443,7 @@ export function AiContextHealthPanel() {
   return (
     <div className="space-y-6">
       <Card className="rounded-2xl">
-        <CardHeader className="flex flex-row items-start justify-between gap-4">
+        <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-4">
           <div>
             <CardTitle className="flex items-center gap-2 text-base">
               <Database className="h-5 w-5 text-primary" />
@@ -452,10 +453,13 @@ export function AiContextHealthPanel() {
               Verifica sursele folosite de Agentul PEO si completeaza contextul lipsa inainte de generarea descrierilor.
             </p>
           </div>
+          <div className="flex flex-wrap gap-2">
+          <RagReferenceImportDialog roles={activeExperts.map((expert) => expert.positionInProject || '')} onIndexed={async () => { await loadLibrary(); await loadHealth(); }} />
           <Button type="button" variant="outline" size="sm" onClick={loadHealth} disabled={loadingHealth}>
             {loadingHealth ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
             Reincarca
           </Button>
+          </div>
         </CardHeader>
         <CardContent className="space-y-5">
           <div className="grid gap-3 md:grid-cols-5">
