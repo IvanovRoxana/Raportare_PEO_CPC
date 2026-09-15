@@ -523,6 +523,7 @@ async function extractDeliverableTextForActivityAutofill(deliverable: Deliverabl
       documentText: firstPageText || docText,
       declaredTitle: automaticTitle.declaredTitle,
       titleSource: automaticTitle.titleSource,
+      validationScope: firstPageText ? 'first_page' : 'document',
     });
 
   return {
@@ -1949,6 +1950,7 @@ export function ActivityForm({
             documentText: d.firstPageText || d.docText,
             declaredTitle: d.declaredTitle,
             titleSource: d.titleSource,
+            validationScope: d.firstPageText ? 'first_page' : 'document',
           })
         : null;
       return !isTitleAcceptedForWorkflow({ titleConfirmed: d.titleConfirmed, declaredTitle: d.declaredTitle, fileName: d.filename || d.name })

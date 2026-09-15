@@ -133,10 +133,23 @@ test('accepts suggested title and validates when it exists in the document text'
     documentText,
     declaredTitle: 'Ghid de lucru pentru experti',
     titleSource: 'auto_detected',
+    validationScope: 'first_page',
   }), {
     titleMatch: true,
     titleCheckStatus: 'matched',
     titleCheckMessage: 'Titlul se regaseste in prima pagina a documentului.',
+  });
+});
+
+test('uses the document scope message when the validation input is not marked as first-page text', () => {
+  assert.deepEqual(validateDeclaredTitleInDocumentText({
+    documentText: 'Ghid de lucru pentru experti\nCapitolul 1',
+    declaredTitle: 'Ghid de lucru pentru experti',
+    titleSource: 'auto_detected',
+  }), {
+    titleMatch: true,
+    titleCheckStatus: 'matched',
+    titleCheckMessage: 'Titlul se regaseste in document.',
   });
 });
 
@@ -165,7 +178,7 @@ test('matches titles when ampersand is extracted as the word and', () => {
   }), {
     titleMatch: true,
     titleCheckStatus: 'matched',
-    titleCheckMessage: 'Titlul se regaseste in prima pagina a documentului.',
+    titleCheckMessage: 'Titlul se regaseste in document.',
   });
 });
 

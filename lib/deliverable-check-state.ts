@@ -1,5 +1,5 @@
 import type { DeliverableEligibilityCheck, DeliverableSlot } from './deliverable-types.ts';
-import { getTitleValidationText, isLikelyFilenameDerivedTitle, validateDeclaredTitleInDocumentText } from './title-suggestion.ts';
+import { getTitleValidationScope, getTitleValidationText, isLikelyFilenameDerivedTitle, validateDeclaredTitleInDocumentText } from './title-suggestion.ts';
 
 export type EligibilityAttemptState = 'pending' | 'technical_error' | 'blocked' | 'result';
 export type EligibilityFailurePhase = 'download' | 'extraction' | 'evaluation';
@@ -81,6 +81,7 @@ export function getDeclaredTitleEligibilityIssue(
     documentText: getTitleValidationText(deliverable.firstPageText, deliverable.docText),
     declaredTitle,
     titleSource: deliverable.titleSource,
+    validationScope: getTitleValidationScope(deliverable.firstPageText, deliverable.docText),
   });
   return validation.titleMatch ? null : validation.titleCheckMessage;
 }

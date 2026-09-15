@@ -12,7 +12,7 @@ import { extractDocxFirstPageText, extractDocxTextWithSource, extractHtmlTextWit
 import { DELIVERABLE_ELIGIBILITY_UI_MESSAGE, isDeliverableEligibilityCheckEnabledClient } from '@/lib/feature-flags';
 import { hasSufficientDeliverableEvidenceForEligibility } from '@/lib/deliverable-eligibility';
 import { mergeEligibilityCheckWithPmUnlockTracking } from '@/lib/pm-unlock-status';
-import { applyAutomaticTitleSuggestion, formatTitleFromFilename, getTitleValidationText, isLikelyFilenameDerivedTitle, isTitleAcceptedForWorkflow, shouldUseAiTitleSuggestion, suggestTitleFromFirstPage, validateDeclaredTitleInDocumentText } from '@/lib/title-suggestion';
+import { applyAutomaticTitleSuggestion, formatTitleFromFilename, getTitleValidationScope, getTitleValidationText, isLikelyFilenameDerivedTitle, isTitleAcceptedForWorkflow, shouldUseAiTitleSuggestion, suggestTitleFromFirstPage, validateDeclaredTitleInDocumentText } from '@/lib/title-suggestion';
 import { EligibilityAttemptError, getDeclaredTitleEligibilityIssue, getDisplayEligibilityScore, getEligibilityAttemptState, getEligibilityFailureSummary, isReusableEligibilityCheckForContext, type EligibilityFailurePhase } from '@/lib/deliverable-check-state';
 import { buildDeliverableGroupAssessmentPatches } from '@/lib/deliverable-group-state';
 import {
@@ -624,6 +624,7 @@ export function DeliverableItem({
             documentText: titleText,
             declaredTitle: titleSuggestionPatch.declaredTitle,
             titleSource: titleSuggestionPatch.titleSource,
+            validationScope: 'first_page',
           })
         : null;
 
@@ -798,6 +799,7 @@ export function DeliverableItem({
             documentText: [firstPageText, docText].filter(Boolean).join('\n'),
             declaredTitle: titleSuggestionPatch.declaredTitle,
             titleSource: titleSuggestionPatch.titleSource,
+            validationScope: firstPageText ? 'first_page' : 'document',
           });
       const fileData = await readFileAsDataUrl(file);
       const fileHash = await sha256Hex(await file.arrayBuffer());
@@ -1066,6 +1068,7 @@ export function DeliverableItem({
       documentText: titleValidationText,
       declaredTitle: title,
       titleSource: source,
+      validationScope: getTitleValidationScope(deliverable.firstPageText, deliverable.docText),
     });
 
   const validateTitleForConfirmation = (title: string, source: DeliverableSlot['titleSource']) =>
@@ -1073,6 +1076,7 @@ export function DeliverableItem({
       documentText: titleValidationText,
       declaredTitle: title,
       titleSource: source,
+      validationScope: getTitleValidationScope(deliverable.firstPageText, deliverable.docText),
       allowManualConfirmationWithoutExtractedText: true,
     });
 
@@ -1164,6 +1168,7 @@ export function DeliverableItem({
         documentText: titleValidationText,
         declaredTitle: deliverable.declaredTitle,
         titleSource: deliverable.titleSource,
+        validationScope: getTitleValidationScope(deliverable.firstPageText, deliverable.docText),
       })
     : null;
   const hasInvalidConfirmedTitle = Boolean(

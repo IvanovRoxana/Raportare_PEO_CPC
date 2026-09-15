@@ -1,6 +1,7 @@
 export type TitleSource = 'auto_detected' | 'manual' | 'edited_by_expert' | 'admin_override';
 export type TitleCheckStatus = 'matched' | 'mismatch' | 'extraction_failed' | 'admin_overridden';
 export type TitleSuggestionConfidence = 'high' | 'medium' | 'low';
+export type TitleValidationScope = 'first_page' | 'document';
 
 export interface TitleCheckResult {
   titleMatch: boolean;
@@ -478,10 +479,18 @@ export function getTitleValidationText(firstPageText?: string | null, documentTe
   return normalizeSpaces(firstPageText || documentText || '') || null;
 }
 
+export function getTitleValidationScope(
+  firstPageText?: string | null,
+  documentText?: string | null,
+): TitleValidationScope {
+  return firstPageText?.trim() ? 'first_page' : 'document';
+}
+
 export function validateDeclaredTitleInDocumentText(args: {
   documentText?: string | null;
   declaredTitle?: string | null;
   titleSource?: TitleSource | string;
+  validationScope?: TitleValidationScope;
   allowManualConfirmationWithoutExtractedText?: boolean;
 }): TitleCheckResult {
   if (args.titleSource === 'admin_override') {
@@ -521,8 +530,12 @@ export function validateDeclaredTitleInDocumentText(args: {
     titleMatch: matched,
     titleCheckStatus: matched ? 'matched' : 'mismatch',
     titleCheckMessage: matched
-      ? 'Titlul se regaseste in prima pagina a documentului.'
-      : 'Titlul declarat nu se regaseste in prima pagina a documentului. Corecteaza titlul sau solicita suprascriere de administrator.',
+      ? args.validationScope === 'first_page'
+        ? 'Titlul se regaseste in prima pagina a documentului.'
+        : 'Titlul se regaseste in document.'
+      : args.validationScope === 'first_page'
+        ? 'Titlul declarat nu se regaseste in prima pagina a documentului. Corecteaza titlul sau solicita suprascriere de administrator.'
+        : 'Titlul declarat nu se regaseste in document. Corecteaza titlul sau solicita suprascriere de administrator.',
   };
 }
 
