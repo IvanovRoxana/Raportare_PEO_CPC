@@ -345,3 +345,9 @@ test('AI context health ruleset card opens the existing PM governance editor', (
   assert.match(source, /card\.id === 'eligibility-rules'/);
   assert.match(source, /\/pm\?tab=eligibility-governance/);
 });
+
+test('ruleset publish creates the first draft when no ruleset exists', () => {
+  const source = readFileSync(new URL('../components/pm/eligibility-governance-panel.tsx', import.meta.url), 'utf8');
+  assert.match(source, /const saved = selectedRuleset\n\s+\? await updateDraft/);
+  assert.match(source, /: await createDraft\(\{\n\s+title,\n\s+rulesJson: parsedRules/);
+});

@@ -105,17 +105,23 @@ export function EligibilityGovernancePanel({
   };
 
   const publishRuleset = async () => {
-    if (!selectedRuleset) return;
     setIsSaving(true);
     setMessage(null);
     try {
       const parsedRules = JSON.parse(rulesJsonText);
-      const saved = await updateDraft(selectedRuleset.id, {
-        title,
-        rulesJson: parsedRules,
-        changeReason,
-        updatedBy: actorName,
-      });
+      const saved = selectedRuleset
+        ? await updateDraft(selectedRuleset.id, {
+            title,
+            rulesJson: parsedRules,
+            changeReason,
+            updatedBy: actorName,
+          })
+        : await createDraft({
+            title,
+            rulesJson: parsedRules,
+            actorName,
+            changeReason,
+          });
       const published = await publish(saved, activeRuleset, actorName);
       await onAudit?.({
         actionType: 'ai_eligibility_ruleset_published',
