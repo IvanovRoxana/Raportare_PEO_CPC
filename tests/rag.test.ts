@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 import { splitTextIntoRagChunks } from '../lib/rag/chunking.ts';
-import { guardRagAdminRequest } from '../lib/rag/admin-auth.ts';
+import { assertRagAdminRequest, guardRagAdminRequest } from '../lib/rag/admin-auth.ts';
 import { getCognitoAccessTokenFromRequest } from '../lib/rag/cognito-auth.ts';
 import {
   retrieveActivityAutofillContext,
@@ -262,4 +263,61 @@ test('Cognito token helper reads explicit and bearer tokens without using admin 
     },
   }));
   assert.equal(ignoredBearer, '');
+});
+
+function makeAccessToken(groups: string[]) {
+  const encode = (value: Record<string, unknown>) => Buffer.from(JSON.stringify(value)).toString('base64url');
+  return `${encode({ alg: 'none', typ: 'JWT' })}.${encode({
+    iss: 'https://cognito-idp.eu-north-1.amazonaws.com/eu-north-1_RVfck2jAV',
+    token_use: 'access',
+    exp: Math.floor(Date.now() / 1000) + 300,
+    username: 'admin@example.com',
+    sub: 'admin-id',
+    'cognito:groups': groups,
+  })}.signature`;
+}
+
+test('RAG admin Cognito guard allows an Admin without the legacy import header', async () => {
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ Username: 'admin@example.com' }), { status: 200 });
+  const token = makeAccessToken(['admin']);
+  const result = await assertRagAdminRequest(new Request('http://localhost/api/admin/rag/index-document', {
+    headers: { authorization: `Bearer ${token}` },
+  }));
+  assert.equal(result, token);
+  globalThis.fetch = previousFetch;
+});
+
+test('RAG admin Cognito guard returns 401 without a session and 403 for non-Admin', async () => {
+  async function rejectionOf(action: () => Promise<unknown>) {
+    try {
+      await action();
+    } catch (error) {
+      return error as Error & { status?: number };
+    }
+    throw new Error('Expected request to be rejected.');
+  }
+
+  const noSession = await rejectionOf(
+    () => assertRagAdminRequest(new Request('http://localhost/api/admin/rag/index-document')),
+  );
+  assert.equal(noSession.status, 401);
+
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ Username: 'expert@example.com' }), { status: 200 });
+  const token = makeAccessToken(['expert']);
+  const nonAdmin = await rejectionOf(
+    () => assertRagAdminRequest(new Request('http://localhost/api/admin/rag/index-document', {
+      headers: { authorization: `Bearer ${token}` },
+    })),
+  ) as Error & { status?: number };
+  assert.equal(nonAdmin.status, 403);
+  globalThis.fetch = previousFetch;
+});
+
+test('Admin RAG UI no longer asks for or sends the legacy token', () => {
+  const source = readFileSync(new URL('../components/admin/ai-context-health-panel.tsx', import.meta.url), 'utf8');
+  assert.equal(source.includes('Token RAG admin'), false);
+  assert.equal(source.includes('ragAdminToken'), false);
+  assert.equal(source.includes('x-rag-admin-token'), false);
 });

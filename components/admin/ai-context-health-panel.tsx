@@ -161,7 +161,6 @@ export function AiContextHealthPanel() {
   const [ragText, setRagText] = useState('');
   const [ragActivityName, setRagActivityName] = useState('');
   const [ragExtractionSource, setRagExtractionSource] = useState<'native' | 'ocr' | undefined>();
-  const [ragAdminToken, setRagAdminToken] = useState('');
   const [indexing, setIndexing] = useState(false);
   const [extractingRagFile, setExtractingRagFile] = useState(false);
   const [ragFileName, setRagFileName] = useState('');
@@ -233,7 +232,7 @@ export function AiContextHealthPanel() {
       const token = await getAccessToken();
       const response = await fetch('/api/admin/rag/library', {
         cache: 'no-store',
-        headers: { authorization: `Bearer ${token}`, 'x-rag-admin-token': ragAdminToken.trim() },
+        headers: { authorization: `Bearer ${token}` },
       });
       const data = await response.json().catch(() => null);
       if (!response.ok) throw new Error(data?.error || 'Biblioteca RAG nu a putut fi incarcata.');
@@ -252,7 +251,7 @@ export function AiContextHealthPanel() {
       const token = await getAccessToken();
       const response = await fetch('/api/admin/rag/library', {
         method: 'DELETE',
-        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', 'x-rag-admin-token': ragAdminToken.trim() },
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
         body: JSON.stringify({ id }),
       });
       const data = await response.json().catch(() => null);
@@ -319,10 +318,6 @@ export function AiContextHealthPanel() {
       setError('Completeaza titlul si textul documentului RAG.');
       return;
     }
-    if (!ragAdminToken.trim()) {
-      setError('Introdu tokenul RAG admin pentru indexare. Tokenul nu se salveaza in browser.');
-      return;
-    }
     if (!projectCode.trim() && indexScope !== 'expert') {
       setError('Completeaza codul proiectului pentru aceasta sursa.');
       return;
@@ -354,7 +349,6 @@ export function AiContextHealthPanel() {
         headers: {
           authorization: `Bearer ${token}`,
           'content-type': 'application/json',
-          'x-rag-admin-token': ragAdminToken.trim(),
         },
         body: JSON.stringify({
           title: titleToIndex.trim(),
@@ -681,15 +675,6 @@ export function AiContextHealthPanel() {
               )}
             </div>
             <div className="space-y-2">
-              <Label>Token RAG admin</Label>
-              <Input
-                type="password"
-                value={ragAdminToken}
-                onChange={(event) => setRagAdminToken(event.target.value)}
-                placeholder="Token temporar pentru indexare; nu se salveaza"
-              />
-            </div>
-            <div className="space-y-2">
               <Label htmlFor="rag-source-document">Document oficial (PDF sau DOCX)</Label>
               <Input
                 key={ragFileInputKey}
@@ -735,7 +720,7 @@ export function AiContextHealthPanel() {
             <CardTitle className="text-base">Biblioteca RAG</CardTitle>
             <p className="mt-1 text-sm text-muted-foreground">Surse comune de proiect, SA, categorie și expert. Proiectul nu înlocuiește sursele expertului.</p>
           </div>
-          <Button type="button" variant="outline" size="sm" onClick={() => void loadLibrary()} disabled={loadingLibrary || !ragAdminToken.trim()}>
+          <Button type="button" variant="outline" size="sm" onClick={() => void loadLibrary()} disabled={loadingLibrary}>
             {loadingLibrary ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Reincarca
           </Button>
         </CardHeader>

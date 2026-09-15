@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { guardRagAdminRequest } from '@/lib/rag/admin-auth';
+import { assertRagAdminRequest, guardRagAdminRequest, ragAdminAuthErrorResponse } from '@/lib/rag/admin-auth';
 import { getCognitoAccessTokenFromRequest } from '@/lib/rag/cognito-auth';
 import { indexKnowledgeDocument } from '@/lib/rag/store';
 
@@ -8,8 +8,14 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
   try {
-    const denied = guardRagAdminRequest(req);
-    if (denied) return denied;
+    let authToken = '';
+    if (req.headers.get('authorization')) {
+      authToken = await assertRagAdminRequest(req);
+    } else {
+      const denied = guardRagAdminRequest(req);
+      if (denied) return denied;
+      authToken = getCognitoAccessTokenFromRequest(req, { allowAuthorizationHeader: false });
+    }
 
     const url = new URL(req.url);
     const body = await req.json();
@@ -22,9 +28,6 @@ export async function POST(req: Request) {
     const expertName = typeof body?.expertName === 'string' ? body.expertName.trim() : '';
     const expertRole = typeof body?.expertRole === 'string' ? body.expertRole.trim() : '';
     const dryRun = body?.dryRun === true || url.searchParams.get('dryRun') === 'true';
-    const authToken = getCognitoAccessTokenFromRequest(req, {
-      allowAuthorizationHeader: Boolean(req.headers.get('x-rag-admin-token')),
-    });
 
     if (!text.trim() || !title) {
       return NextResponse.json({ error: 'Documentul RAG are nevoie de title si text.' }, { status: 400 });
@@ -99,6 +102,8 @@ export async function POST(req: Request) {
       })),
     });
   } catch (error) {
+    const authError = ragAdminAuthErrorResponse(error);
+    if (authError) return authError;
     console.error('[admin-rag-index-document] Failed to index document.', error);
     return NextResponse.json({ error: 'Indexarea documentului RAG a esuat.' }, { status: 500 });
   }
