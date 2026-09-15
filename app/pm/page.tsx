@@ -212,6 +212,7 @@ function getFilenameFromContentDisposition(disposition: string, fallbackName: st
 
 export default function PMDashboard() {
   const router = useRouter();
+  const [activeTab, setActiveTab] = useState('pontaj');
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [selectedExpertId, setSelectedExpertId] = useState<string | null>(null);
@@ -230,6 +231,11 @@ export default function PMDashboard() {
   const [pmExceptionNotes, setPmExceptionNotes] = useState('');
   const [pmExceptionError, setPmExceptionError] = useState<string | null>(null);
   const [isSavingPmException, setIsSavingPmException] = useState(false);
+
+  useEffect(() => {
+    const requestedTab = new URLSearchParams(window.location.search).get('tab');
+    if (requestedTab) setActiveTab(requestedTab);
+  }, []);
 
   // Local data states for editing before save
   const [pontajData, setPontajData] = useState<PontajRow[]>([]);
@@ -2210,7 +2216,7 @@ export default function PMDashboard() {
           onOpenProblems={(expert) => openReviewReport(expert, { issueType: 'problems' })}
         />
 
-        <Tabs id="pm-tabs" defaultValue="pontaj" className="space-y-6 scroll-mt-24">
+        <Tabs id="pm-tabs" value={activeTab} onValueChange={setActiveTab} className="space-y-6 scroll-mt-24">
           <TabsList className="flex h-auto flex-wrap">
             <TabsTrigger value="pontaj">Pontaj Excel</TabsTrigger>
             <TabsTrigger value="raport">Raport Activitate</TabsTrigger>
