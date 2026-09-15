@@ -383,7 +383,6 @@ export function AiContextHealthPanel() {
       });
       const data = await response.json().catch(() => null);
       if (!response.ok) throw new Error(data?.error || 'Indexarea documentului RAG a esuat.');
-      setMessage(data?.duplicate ? 'Documentul exista deja in baza RAG; nu a fost duplicat.' : `Document indexat: ${data?.chunks ?? 0} fragmente.`);
       setRagText('');
       setRagFileName('');
       setRagTitle('');
@@ -392,6 +391,8 @@ export function AiContextHealthPanel() {
       setRagFileInputKey((key) => key + 1);
       await loadLibrary();
       await loadHealth();
+      setMessage(data?.duplicate ? 'Documentul exista deja in baza RAG; nu a fost duplicat.' : `Document indexat: ${data?.chunks ?? 0} fragmente.`);
+      setRagDialogOpen(false);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : 'Indexarea documentului RAG a esuat.');
     } finally {
