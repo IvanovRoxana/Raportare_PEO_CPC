@@ -1,5 +1,5 @@
 import { canAccessExpertId, resolveDataAccessScope } from './access-control.ts';
-import { expertIdentityKey, mergeExpertWithFallback } from './expert-merge.ts';
+import { mergeExpertLists } from './expert-merge.ts';
 import { canonicalRoleId } from './eligibility-scope.ts';
 import type { Expert } from './types.ts';
 
@@ -10,15 +10,14 @@ export class EligibilityAccessError extends Error {
 export type EligibilityActor = { id: string; email?: string; roles: string[] };
 
 export function normalizeEligibilityExperts(backendExperts: Expert[], referenceExperts: Expert[]): Expert[] {
-  const references = new Map(referenceExperts.map((expert) => [expertIdentityKey(expert), expert]));
-  // Match the dashboard's canonical IDs using trusted reference data, never display names.
-  // A reference profile alone must not create access without an existing backend record.
-  return backendExperts.map((expert) => ({
-    ...mergeExpertWithFallback(expert, references.get(expertIdentityKey(expert))),
-    // Reference timestamps are generated at runtime and must not invalidate run snapshots.
-    createdAt: expert.createdAt,
-    updatedAt: expert.updatedAt,
-  }));
+  // Use the same trusted server-side reference fallback as the dashboard. Existing
+  // backend records retain priority, including explicit deactivation and project changes.
+  return mergeExpertLists(backendExperts, referenceExperts.map((expert) => ({
+    ...expert,
+    // Reference profiles have no persisted timestamps; runtime dates would invalidate snapshots.
+    createdAt: '',
+    updatedAt: '',
+  })));
 }
 
 export function authorizeEligibilityExpert(actor: EligibilityActor, experts: Expert[], expertId: string, projectCode?: string) {

@@ -61,23 +61,44 @@ test('all imported profiles authorize their own dashboard ID and deny other expe
     }
   }
 });
-test('reference normalization preserves backend restrictions and requires a backend record', () => {
+test('all trusted reference profiles remain accessible to their verified account without a backend row', () => {
+  const references = peoUsersAsExperts();
+  const profiles = normalizeEligibilityExperts([], references);
+  assert.equal(profiles.length, references.length);
+  for (const reference of references) {
+    const session = { id: `cognito-${reference.id}`, email: reference.email, roles: ['expert'] };
+    const resolved = authorizeEligibilityExpert(session, profiles, reference.id, reference.projectCode);
+    assert.equal(resolved.expert.id, reference.id);
+    assert.deepEqual(resolved.expert.saCodes, reference.saCodes);
+    for (const other of references.filter((item) => item.id !== reference.id)) {
+      assert.throws(() => authorizeEligibilityExpert(session, profiles, other.id));
+    }
+    assert.throws(() => authorizeEligibilityExpert({ ...session, email: undefined }, profiles, reference.id));
+    assert.throws(() => authorizeEligibilityExpert({ ...session, roles: [] }, profiles, reference.id));
+    assert.throws(() => authorizeEligibilityExpert(session, profiles, reference.id, 'foreign'));
+    assert.throws(() => authorizeEligibilityExpert(session, profiles, 'unknown-expert'));
+  }
+});
+test('reference normalization preserves backend restrictions and does not revive disabled profiles', () => {
   const inactive = normalizeEligibilityExperts([{ ...expert, id: 'imported', isActive: false }], [expert]);
+  assert.equal(inactive.length, 1);
   assert.throws(() => authorizeEligibilityExpert(actor, inactive, expert.id));
-  assert.deepEqual(normalizeEligibilityExperts([], [expert]), []);
   const changed = normalizeEligibilityExperts([{ ...expert, id: 'imported', projectCode: 'other-project', saCodes: ['SA1.1'], positionInProject: 'Updated role' }], [expert]);
   assert.equal(changed[0].projectCode, 'other-project');
   assert.deepEqual(changed[0].saCodes, ['SA1.1']);
   assert.equal(changed[0].positionInProject, 'Updated role');
   assert.throws(() => authorizeEligibilityExpert(actor, changed, expert.id, '302141'));
   const unrelated = { ...expert, id: 'unrelated', email: 'other@test' };
-  assert.equal(normalizeEligibilityExperts([unrelated], [expert])[0].id, 'unrelated');
+  const profiles = normalizeEligibilityExperts([unrelated], [expert]);
+  assert.equal(profiles.find((item) => item.email === unrelated.email)?.id, 'unrelated');
 });
 test('reference timestamps do not change the normalized expert snapshot between requests', () => {
   const imported = { ...expert, id: 'imported' };
-  const first = normalizeEligibilityExperts([imported], [{ ...expert, createdAt: '2026-09-16T10:00:00Z', updatedAt: '2026-09-16T10:00:00Z' }]);
-  const second = normalizeEligibilityExperts([imported], [{ ...expert, createdAt: '2026-09-16T10:01:00Z', updatedAt: '2026-09-16T10:01:00Z' }]);
-  assert.equal(buildEvaluationKey({ experts: first }), buildEvaluationKey({ experts: second }));
+  for (const backend of [[], [imported]]) {
+    const first = normalizeEligibilityExperts(backend, [{ ...expert, createdAt: '2026-09-16T10:00:00Z', updatedAt: '2026-09-16T10:00:00Z' }]);
+    const second = normalizeEligibilityExperts(backend, [{ ...expert, createdAt: '2026-09-16T10:01:00Z', updatedAt: '2026-09-16T10:01:00Z' }]);
+    assert.equal(buildEvaluationKey({ experts: first }), buildEvaluationKey({ experts: second }));
+  }
 });
 test('role templates without expertId require canonical role and project', () => {
   assert.equal(canonicalRoleId({ positionInProject: 'Coordonator centru regional' }), scope.roleId);
