@@ -348,8 +348,9 @@ test('AI context health ruleset card opens the existing PM governance editor', (
 
 test('ruleset publish creates the first draft when no ruleset exists', () => {
   const source = readFileSync(new URL('../components/pm/eligibility-governance-panel.tsx', import.meta.url), 'utf8');
-  assert.match(source, /const saved = selectedRuleset\n\s+\? await updateDraft/);
+  assert.match(source, /selectedRuleset && selectedRuleset\.status === 'draft'\n\s+\? await updateDraft/);
   assert.match(source, /: await createDraft\(\{\n\s+title,\n\s+rulesJson: parsedRules/);
+  assert.match(source, /version: \(activeRuleset\?\.version \?\? 0\) \+ 1/);
 });
 
 test('AI context health exposes separate subactivity statuses and direct catalog navigation', () => {

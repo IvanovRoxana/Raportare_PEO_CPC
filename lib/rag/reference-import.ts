@@ -32,6 +32,16 @@ export type RagReferenceImportInference =
 
 const DEFAULT_PROJECT_CODE = '302141';
 
+export const REFERENCE_SOURCE_TYPES = ['scop_sa', 'descriere_activitati', 'fisa_post', 'cerere_finantare', 'manual_beneficiar'] as const;
+export const MAX_REFERENCE_FILE_BYTES = 15 * 1024 * 1024;
+
+// Role aliases used by the project's Expert catalog. The original filename is retained.
+const ROLE_ALIASES: Record<string, string> = {
+  'expert recrutare si selectie grup tinta': 'Expert Recrutare si Selectie GT',
+  'expert cu protectia datelor cu caracter personal': 'Expert Protectia Datelor',
+  'responsabil centru regional': 'Responsabil Centre Regionale',
+};
+
 const SOURCE_TYPE_LABELS: Record<string, string> = {
   cerere_finantare: 'cerere_finantare',
   manual_beneficiar: 'manual_beneficiar',
@@ -49,7 +59,8 @@ export function normalizeReferenceLabel(value: string) {
     .replace(/[ăâ]/gi, 'a')
     .replace(/[î]/gi, 'i')
     .toLowerCase()
-    .replace(/\.[a-z0-9]+$/i, '')
+    .replace(/\.(pdf|docx)$/i, '')
+    .replace(/\s*\(\d+\)\s*$/, '')
     .replace(/[_\-–—]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -57,7 +68,8 @@ export function normalizeReferenceLabel(value: string) {
 
 export function cleanReferenceTitle(fileName: string) {
   return String(fileName || '')
-    .replace(/\.[a-z0-9]+$/i, '')
+    .replace(/\.(pdf|docx)$/i, '')
+    .replace(/\s*\(\d+\)\s*$/, '')
     .replace(/[_\-–—]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -73,14 +85,14 @@ export function inferSaCodeFromFileName(fileName: string) {
 export function inferExpertRoleFromFileName(fileName: string) {
   const title = cleanReferenceTitle(fileName);
   const withoutCommonPrefixes = title
-    .replace(/\b(fișa|fisa)\s+(de\s+)?post(ului)?\b/gi, ' ')
+    .replace(/\b(fi[șşs]a)\s+(de\s+)?post(ului)?\b/gi, ' ')
     .replace(/\bjob\s+description\b/gi, ' ')
     .replace(/\bjd\b/gi, ' ')
     .replace(/\b302141\b/g, ' ')
     .replace(/\bSA\s*[0-9]+(?:\.[0-9]+)?\b/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim();
-  return withoutCommonPrefixes || title;
+  return ROLE_ALIASES[normalizeReferenceLabel(withoutCommonPrefixes)] || withoutCommonPrefixes;
 }
 
 function inferSourceType(fileName: string, override?: RagReferenceImportOverride): RagSourceType | '' {
@@ -93,7 +105,7 @@ function inferSourceType(fileName: string, override?: RagReferenceImportOverride
   if (/cerere\s+de\s+finantare|cererea\s+de\s+finantare|contract\s+finantare/.test(normalized)) {
     return SOURCE_TYPE_LABELS.cerere_finantare;
   }
-  if (/manual\s+(beneficiar|implementare)|instructiuni\s+beneficiar/.test(normalized)) {
+  if (/manual(ul)?\s+(beneficiar|implementare)|instructiuni\s+beneficiar/.test(normalized)) {
     return SOURCE_TYPE_LABELS.manual_beneficiar;
   }
   if (/descriere|scop|subactivitate|activitati|activitate/.test(normalized)) {
@@ -117,7 +129,7 @@ export function inferRagReferenceImportFromFileName(
   const expertId = override.expertId?.trim() || '';
   const expertName = override.expertName?.trim() || '';
 
-  if (!sourceType) {
+  if (!sourceType || !REFERENCE_SOURCE_TYPES.some((type) => type === sourceType)) {
     return {
       ok: false,
       reason: 'Nu am putut incadra fisierul ca sursa RAG oficiala. Redenumeste fisierul sau trimite override.sourceType.',
@@ -126,7 +138,11 @@ export function inferRagReferenceImportFromFileName(
     };
   }
 
-  if (['scop_sa', 'descriere_activitati'].includes(sourceType) && !saCode) {
+  if (!projectCode) {
+    return { ok: false, reason: 'Completeaza codul proiectului.', warnings, title };
+  }
+
+  if (['scop_sa', 'descriere_activitati'].includes(sourceType) && !/^SA\d+\.\d+$/.test(saCode)) {
     return {
       ok: false,
       reason: 'Documentul de descriere/scop SA nu contine codul SA in numele fisierului.',
@@ -144,8 +160,8 @@ export function inferRagReferenceImportFromFileName(
     };
   }
 
-  if (sourceType === 'fisa_post' && expertRole === title) {
-    warnings.push('Pozitia expertului a fost inferata din numele fisierului; verifica daca rolul este formulat corect.');
+  if (sourceType === 'fisa_post' && !override.expertRole) {
+    warnings.push('Verifica pozitia propusa fata de fisa postului si catalogul expertilor.');
   }
   if (sourceType === 'scop_sa' && normalizeReferenceLabel(fileName).includes('descriere')) {
     warnings.push('Documentul de descriere a fost mapat intentionat ca scop_sa, conform fluxului de eligibilitate.');

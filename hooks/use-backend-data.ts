@@ -1047,13 +1047,14 @@ export function useAiEligibilityRulesetMutations() {
   const createDraft = async (input: {
     title: string;
     rulesJson: unknown;
+    version?: number;
     actorName?: string;
     changeReason?: string;
   }) => {
     const created = await aiEligibilityRulesetsService.create({
       title: input.title,
       status: 'draft',
-      version: 1,
+      version: input.version ?? 1,
       rulesJson: input.rulesJson,
       schemaVersion: 'eligibility-rules-v1',
       createdBy: input.actorName,

@@ -2,17 +2,16 @@ import { NextResponse } from 'next/server';
 import { assertRagAdminRequest, guardRagAdminRequest, ragAdminAuthErrorResponse } from '@/lib/rag/admin-auth';
 import { getCognitoAccessTokenFromRequest } from '@/lib/rag/cognito-auth';
 import { indexKnowledgeDocument } from '@/lib/rag/store';
-import { extractPdfTextFromBuffer } from '@/lib/rag/pdf-text';
+import { extractReferenceDocumentText } from '@/lib/rag/reference-document-text';
 import {
   cleanReferenceTitle,
   inferRagReferenceImportFromFileName,
+  MAX_REFERENCE_FILE_BYTES,
   type RagReferenceImportOverride,
 } from '@/lib/rag/reference-import';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-
-const MAX_PDF_SIZE_BYTES = 15 * 1024 * 1024;
 
 function getString(value: FormDataEntryValue | null) {
   return typeof value === 'string' ? value.trim() : '';
@@ -81,7 +80,7 @@ export async function POST(req: Request) {
     const files = getFiles(formData);
 
     if (!files.length) {
-      return NextResponse.json({ error: 'Incarca cel putin un PDF in campul files.' }, { status: 400 });
+      return NextResponse.json({ error: 'Incarca cel putin un PDF sau DOCX in campul files.' }, { status: 400 });
     }
 
     if (!dryRun && !authToken) {
@@ -92,23 +91,23 @@ export async function POST(req: Request) {
 
     for (const file of files) {
       const fileName = file.name || 'document.pdf';
-      const contentType = file.type || 'application/pdf';
-      const isPdf = fileName.toLowerCase().endsWith('.pdf') || contentType === 'application/pdf';
+      const contentType = file.type || 'application/octet-stream';
+      const isSupported = /\.(pdf|docx)$/i.test(fileName);
 
-      if (!isPdf) {
+      if (!isSupported) {
         results.push({
           fileName,
           status: 'skipped',
-          reason: 'Fisierul nu este PDF.',
+          reason: 'Sunt acceptate doar fisiere PDF sau DOCX.',
         });
         continue;
       }
 
-      if (file.size > MAX_PDF_SIZE_BYTES) {
+      if (file.size > MAX_REFERENCE_FILE_BYTES) {
         results.push({
           fileName,
           status: 'skipped',
-          reason: 'PDF-ul depaseste limita de 15 MB pentru importul sincron.',
+          reason: 'Fisierul depaseste limita de 15 MB pentru importul sincron.',
         });
         continue;
       }
@@ -133,13 +132,13 @@ export async function POST(req: Request) {
 
       let extracted;
       try {
-        extracted = await extractPdfTextFromBuffer(await file.arrayBuffer());
+        extracted = await extractReferenceDocumentText(fileName, await file.arrayBuffer());
       } catch (error) {
         results.push({
           fileName,
           title: inference.input.title,
           status: 'failed',
-          error: error instanceof Error ? error.message : 'Extragerea textului din PDF a esuat.',
+          error: error instanceof Error ? error.message : 'Extragerea textului a esuat.',
           warnings: inference.warnings,
         });
         continue;
@@ -150,45 +149,50 @@ export async function POST(req: Request) {
           fileName,
           title: inference.input.title,
           status: 'skipped',
-          reason: 'PDF-ul nu contine suficient text nativ pentru indexare. Este posibil sa necesite OCR.',
+          reason: 'Documentul nu contine suficient text nativ pentru indexare. Pentru PDF scanat foloseste incarcarea individuala cu OCR.',
           pageCount: extracted.pageCount,
           warnings: inference.warnings,
         });
         continue;
       }
 
-      const result = await indexKnowledgeDocument({
-        ...inference.input,
-        text: extracted.text,
-        metadata: {
-          ...(inference.input.metadata ?? {}),
-          importEndpoint: 'index-reference-pdfs',
-          fileSize: file.size,
-          contentType,
-          pageCount: extracted.pageCount,
-        },
-      }, { dryRun, authToken });
+      try {
+        const result = await indexKnowledgeDocument({
+          ...inference.input,
+          text: extracted.text,
+          metadata: {
+            ...(inference.input.metadata ?? {}),
+            importEndpoint: 'index-reference-pdfs',
+            fileSize: file.size,
+            contentType,
+            pageCount: extracted.pageCount,
+          },
+        }, { dryRun, authToken });
 
-      results.push({
-        fileName,
-        title: inference.input.title,
-        status: dryRun ? 'dry_run' : result.chunks.length === 0 && result.document?.id ? 'duplicate' : 'indexed',
-        sourceType: inference.input.sourceType,
-        projectCode: inference.input.projectCode,
-        saCode: inference.input.saCode,
-        expertId: inference.input.expertId,
-        expertName: inference.input.expertName,
-        expertRole: inference.input.expertRole,
-        documentId: result.document?.id,
-        chunks: result.chunks.length,
-        pageCount: extracted.pageCount,
-        warnings: inference.warnings,
-        preview: result.chunks.slice(0, 2).map((chunk) => ({
-          chunkIndex: chunk.chunkIndex,
-          tokenEstimate: chunk.tokenEstimate,
-          text: chunk.text.slice(0, 220),
-        })),
-      });
+        results.push({
+          fileName,
+          title: inference.input.title,
+          status: dryRun ? 'dry_run' : result.chunks.length === 0 && result.document?.id ? 'duplicate' : 'indexed',
+          sourceType: inference.input.sourceType,
+          projectCode: inference.input.projectCode,
+          saCode: inference.input.saCode,
+          expertId: inference.input.expertId,
+          expertName: inference.input.expertName,
+          expertRole: inference.input.expertRole,
+          documentId: result.document?.id,
+          chunks: result.chunks.length,
+          pageCount: extracted.pageCount,
+          warnings: [...inference.warnings, ...extracted.warnings],
+          preview: result.chunks.slice(0, 2).map((chunk) => ({
+            chunkIndex: chunk.chunkIndex,
+            tokenEstimate: chunk.tokenEstimate,
+            text: chunk.text.slice(0, 220),
+          })),
+        });
+      } catch (error) {
+        console.error('[admin-rag-index-reference-pdfs] Indexing failed.', error);
+        results.push({ fileName, status: 'failed', error: 'Indexarea a esuat. Verifica biblioteca RAG inainte de reincercare; pot exista date partiale.' });
+      }
     }
 
     return NextResponse.json({
