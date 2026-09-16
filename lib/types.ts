@@ -486,6 +486,17 @@ export interface DashboardComplianceRow {
 }
 
 export interface DeliverableEligibilityCheck {
+  usageAudit?: { inputTokens: number; outputTokens: number; embeddingTokens: number; retries: number; costUsd: number; model: string };
+  rulesSource?: string;
+  runId?: string;
+  evaluationKey?: string;
+  authoritative?: boolean;
+  reused?: boolean;
+  criterionFindings?: Array<{ criterionId: string; status: string; explanation: string; evidenceIds: string[];
+    provenance?: { documentId: string; anchor: string; sourceVersion: string };
+    sourceQuotes?: Array<{ chunkId: string; quote: string }>;
+    documentQuotes?: Array<{ documentId: string; quote: string }>; }>;
+  evaluationLimitations?: string[];
   assessmentVersion?: string;
   executionStatus?: 'pending' | 'completed' | 'failed' | 'not_started';
   classification?: {
@@ -607,6 +618,29 @@ export interface DeliverableEligibilityCheck {
   }>;
   fallbackFlags?: string[];
   categoryContextUsed?: Record<string, unknown>;
+  documentIdentity?: {
+    documentType: string;
+    topic: string;
+    action: string;
+    beneficiary: string;
+    result: string;
+    context: string;
+  };
+  expertRoleAssessment?: EligibilityAssessmentFinding;
+  serviceAssessment?: EligibilityAssessmentFinding;
+  projectRelevanceAssessment?: EligibilityAssessmentFinding;
+  evidenceAssessment?: EligibilityAssessmentFinding;
+  consistencyChecks?: EligibilityAssessmentFinding[];
+  missingEvidence?: string[];
+  recommendedSa?: {
+    saCode: string;
+    activityName: string;
+    reason: string;
+  } | null;
+  selectedSaMatch?: EligibilityAssessmentFinding;
+  verdict?: 'eligibil' | 'eligibil_cu_observatii' | 'neeligibil' | 'neconcludent' | string;
+  justification?: string;
+  observations?: string[];
   analyzedDeliverables?: Array<{
     id?: string;
     documentTitle?: string;
@@ -614,6 +648,14 @@ export interface DeliverableEligibilityCheck {
     deliverableType?: string;
     isPrimary?: boolean;
   }>;
+}
+
+export interface EligibilityAssessmentFinding {
+  status: 'pass' | 'warning' | 'fail' | 'unknown' | 'not_applicable' | string;
+  explanation: string;
+  deliverableEvidence?: string[];
+  contextEvidence?: string[];
+  limitations?: string[];
 }
 
 export interface AiEligibilityRuleset {
@@ -624,6 +666,7 @@ export interface AiEligibilityRuleset {
   rulesJson?: unknown;
   schemaVersion?: string;
   activeFrom?: string;
+  activeTo?: string;
   publishedAt?: string;
   publishedBy?: string;
   createdBy?: string;
@@ -649,6 +692,8 @@ export interface AiEligibilityRuleVersion {
 }
 
 export interface Deliverable {
+  extractionComplete?: boolean;
+  textExtractionScope?: string;
   id: string;
   activityId?: string;
   fileName: string;
@@ -769,6 +814,7 @@ export interface ActivityMapping {
 }
 
 export interface DocumentMetadata {
+  extractionComplete?: boolean;
   id: string;
   s3Bucket?: string;
   s3Key: string;
@@ -1021,7 +1067,21 @@ export interface ActivityCatalog {
   createdAt?: string;
 }
 
-export interface KnowledgeDocument {
+export interface KnowledgeIndexMetadata {
+  roleId?: string;
+  documentVersionId?: string;
+  extractionVersion?: string;
+  extractionComplete?: boolean;
+  processedSections?: string[];
+  failedSections?: string[];
+  indexGenerationId?: string;
+  expectedChunkCount?: number;
+  manifestHash?: string;
+  publishedGeneration?: string;
+  supersededAt?: string;
+}
+
+export interface KnowledgeDocument extends KnowledgeIndexMetadata {
   id: string;
   title: string;
   sourceType: string;
@@ -1047,7 +1107,7 @@ export interface KnowledgeDocument {
   updatedAt?: string;
 }
 
-export interface KnowledgeChunk {
+export interface KnowledgeChunk extends KnowledgeIndexMetadata {
   id: string;
   documentId: string;
   chunkIndex: number;

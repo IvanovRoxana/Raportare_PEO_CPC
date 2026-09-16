@@ -27,6 +27,7 @@ function testChunk(id: string, patch: Partial<KnowledgeChunk> = {}): KnowledgeCh
     embeddingJson: '[1,0]',
     embeddingModel: 'text-embedding-3-small',
     sourceType: 'raportare_aprobata_oir',
+    projectCode: '302141',
     category: 'cr',
     status: 'active',
     metadataJson: JSON.stringify({ positionInProject: 'Coordonator Centre Regionale' }),
@@ -347,7 +348,7 @@ test('AI context health ruleset card opens the existing PM governance editor', (
 });
 
 test('ruleset publish creates the first draft when no ruleset exists', () => {
-  const source = readFileSync(new URL('../components/pm/eligibility-governance-panel.tsx', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../components/pm/eligibility-governance-panel.tsx', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
   assert.match(source, /selectedRuleset && selectedRuleset\.status === 'draft'\n\s+\? await updateDraft/);
   assert.match(source, /: await createDraft\(\{\n\s+title,\n\s+rulesJson: parsedRules/);
   assert.match(source, /version: \(activeRuleset\?\.version \?\? 0\) \+ 1/);
@@ -357,7 +358,7 @@ test('AI context health exposes separate subactivity statuses and direct catalog
   const api = readFileSync(new URL('../app/api/admin/ai-context-health/route.ts', import.meta.url), 'utf8');
   const ui = readFileSync(new URL('../components/admin/ai-context-health-panel.tsx', import.meta.url), 'utf8');
   assert.match(api, /subactivities: SubactivityHealth\[\]/);
-  assert.match(api, /saCode: \{ eq: code \}/);
+  assert.match(api, /selectHealthChunks\(allChunks, \{ projectCode, saCode: code \}\)/);
   assert.match(ui, /Catalog activități/);
   assert.match(ui, /setSaCode\(subactivity\.saCode\)/);
 });

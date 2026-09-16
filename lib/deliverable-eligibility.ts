@@ -6,6 +6,30 @@ export const deliverableEligibilityCheckSchema = z.object({
   explanation: z.string(),
 });
 
+const eligibilityFindingSchema = z.object({
+  status: z.enum(['pass', 'warning', 'fail', 'unknown', 'not_applicable']),
+  explanation: z.string(),
+  deliverableEvidence: z.array(z.string()).default([]),
+  contextEvidence: z.array(z.string()).default([]),
+  limitations: z.array(z.string()).default([]),
+});
+
+const structuredEligibilitySchema = z.object({
+  documentIdentity: z.object({
+    documentType: z.string(), topic: z.string(), action: z.string(), beneficiary: z.string(), result: z.string(), context: z.string(),
+  }),
+  expertRoleAssessment: eligibilityFindingSchema,
+  serviceAssessment: eligibilityFindingSchema,
+  projectRelevanceAssessment: eligibilityFindingSchema,
+  evidenceAssessment: eligibilityFindingSchema,
+  consistencyChecks: z.array(eligibilityFindingSchema),
+  missingEvidence: z.array(z.string()),
+  recommendedSa: z.object({ saCode: z.string(), activityName: z.string(), reason: z.string() }).nullable(),
+  selectedSaMatch: eligibilityFindingSchema,
+  justification: z.string(),
+  observations: z.array(z.string()),
+});
+
 export const deliverableEligibilitySchema = z.object({
   status: z.enum(['eligibil', 'eligibil_cu_observatii', 'neeligibil', 'neconcludent']),
   score: z.number().min(0).max(100),
@@ -23,6 +47,7 @@ export const deliverableEligibilitySchema = z.object({
     reason: z.string(),
     changes: z.array(z.enum(['activity', 'deliverableType'])),
   }).nullable(),
+  structuredAssessment: structuredEligibilitySchema.optional(),
 });
 
 export const deliverableEligibilityAiSchema = z.object({
@@ -43,6 +68,7 @@ export const deliverableEligibilityAiSchema = z.object({
     reason: z.string(),
     changes: z.array(z.enum(['activity', 'deliverableType'])),
   }),
+  structuredAssessment: structuredEligibilitySchema.optional(),
 });
 
 export const deliverableEligibilityActivityCandidateSchema = z.object({
@@ -801,6 +827,7 @@ export function normalizeDeliverableEligibilityAiOutput(
 ): z.infer<typeof deliverableEligibilitySchema> {
   return {
     ...output,
+    structuredAssessment: output.structuredAssessment,
     suggestedSettings: output.suggestedSettings.hasSuggestion
       ? {
           saCode: output.suggestedSettings.saCode || null,

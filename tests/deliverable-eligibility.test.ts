@@ -752,11 +752,13 @@ test('construieste audit semantic cu context expert, rubrici si risc duplicat', 
 test('ruta leaga evaluarea LLM de catalogul autorizat, sursele oficiale si auditul raspunsului', () => {
   assert.match(eligibilityRouteSource, /loadEligibilityCatalog\(/);
   assert.match(eligibilityRouteSource, /candidates: catalog\.candidates/);
-  assert.match(eligibilityRouteSource, /category: catalog\.expert\.category/);
+  assert.match(eligibilityRouteSource, /category: resolved\.expert\.category/);
+  assert.match(eligibilityRouteSource, /resolveEligibilityContext\(req/);
   assert.match(eligibilityRouteSource, /retrieveEligibilityContext\(/);
   assert.match(eligibilityRouteSource, /const prompt = buildEligibilityAssessmentPrompt\(input, context\)/);
   assert.match(eligibilityRouteSource, /const assessment = finalizeEligibilityAssessment\(input, context, result\.output\)/);
-  assert.match(eligibilityRouteSource, /NextResponse\.json\(\{\s*\.\.\.assessment,/);
+  assert.match(eligibilityRouteSource, /await completeEligibilityRun\(run, response\)/);
+  assert.match(eligibilityRouteSource, /NextResponse\.json\(response\)/);
   assert.match(eligibilityRouteSource, /categoryContextUsed/);
   assert.match(eligibilityRouteSource, /modelAuditId: result\.auditId/);
   assert.doesNotMatch(eligibilityRouteSource, /buildDeliverableEligibilitySemanticAudit|semanticAudit\.normalizedScore|rubricScores/);
@@ -786,7 +788,7 @@ test('ruta foloseste rulesetul activ autorizat si stabileste versiunea pe server
   const rulesContext = JSON.stringify({ mandatoryEvidence: 'Verifica rezultatele documentate.' });
   const prompt = buildEligibilityAssessmentPrompt({ ...assessmentPromptInput(), rulesContext }, assessmentPromptContext);
   assert.equal(JSON.parse(prompt.prompt).administeredRules, rulesContext);
-  assert.match(eligibilityRouteSource, /getActiveAiEligibilityRuleset\(\{ authToken/);
+  assert.match(eligibilityRouteSource, /getActiveAiEligibilityRuleset\(\{ projectCode: resolved\.expert\.projectCode/);
   assert.match(eligibilityRouteSource, /input\.rulesContext = activeRuleset\?\.rulesJson \? JSON\.stringify\(activeRuleset\.rulesJson\)/);
   assert.match(eligibilityRouteSource, /ruleVersionId: activeRuleset \? `\$\{activeRuleset\.id\}:v\$\{activeRuleset\.version\}` : ELIGIBILITY_ASSESSMENT_VERSION/);
   assert.doesNotMatch(eligibilityRouteSource, /body\.ruleVersionId/);

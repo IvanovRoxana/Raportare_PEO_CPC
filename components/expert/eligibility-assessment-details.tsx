@@ -1,6 +1,8 @@
 'use client';
 
 import { Badge } from '@/components/ui/badge';
+import useSWR from 'swr';
+import { eligibilityRequest } from '@/lib/eligibility-client';
 import type { DeliverableEligibilityCheck } from '@/lib/types';
 
 const COVERAGE_LABELS = {
@@ -19,18 +21,43 @@ const SOURCE_LABELS: Record<string, string> = {
 };
 
 const CONFIDENCE_LABELS = { high: 'ridicată', medium: 'medie', low: 'scăzută' } as const;
+const FINDING_LABELS: Record<string, string> = {
+  pass: 'Da', warning: 'Parțial', fail: 'Nu', unknown: 'Neclar', not_applicable: 'Nu se aplică',
+};
+const DECISION_LABELS: Record<string, string> = {
+  confirm: 'Confirmare', reject: 'Respingere', request_clarification: 'Solicitare de clarificări',
+  approve_exception: 'Excepție aprobată', reclassify: 'Reîncadrare și reevaluare',
+};
 
 export interface EligibilityAssessmentDetailsProps {
   check: DeliverableEligibilityCheck;
   className?: string;
 }
 
-export function EligibilityAssessmentDetails({ check, className = '' }: EligibilityAssessmentDetailsProps) {
+export function EligibilityAssessmentDetails({ check: cachedCheck, className = '' }: EligibilityAssessmentDetailsProps) {
+  const { data: verified, error: verificationError } = useSWR(cachedCheck.runId ? `/api/eligibility/runs/${encodeURIComponent(cachedCheck.runId)}` : null, eligibilityRequest);
+  const check: DeliverableEligibilityCheck = verified?.result || cachedCheck;
   const classification = check.classification;
   const coverage = check.referenceCoverage;
   const sourceEvidence = check.sourceEvidence || [];
   const summaries = check.documentSummaries || [];
-  if (!classification && !coverage && !sourceEvidence.length && !summaries.length) return null;
+  const consistencyChecks = check.consistencyChecks || [];
+  const consistencyFinding = consistencyChecks.length
+    ? {
+        status: consistencyChecks.some((item) => item.status === 'fail') ? 'fail' : consistencyChecks.some((item) => item.status === 'warning' || item.status === 'unknown') ? 'warning' : 'pass',
+        explanation: consistencyChecks.map((item) => item.explanation).join(' '),
+      }
+    : undefined;
+  const structured = check.documentIdentity ? {
+    'Expert și rol': check.expertRoleAssessment,
+    'Tip real de document': check.documentIdentity.documentType ? { status: 'pass', explanation: `${check.documentIdentity.documentType}${check.documentIdentity.topic ? ` · ${check.documentIdentity.topic}` : ''}` } : { status: 'unknown', explanation: 'Tipul real al documentului nu a putut fi stabilit.' },
+    'Serviciu demonstrat': check.serviceAssessment,
+    'SA selectată': check.selectedSaMatch,
+    'Legătura cu proiectul': check.projectRelevanceAssessment,
+    'Rezultat și dovezi': check.evidenceAssessment,
+    'Consistență și riscuri': consistencyFinding,
+  } : null;
+  if (!check.runId && !classification && !coverage && !sourceEvidence.length && !summaries.length && !structured) return null;
 
   const documentNames = [
     ...(check.documentsRead || []),
@@ -44,6 +71,47 @@ export function EligibilityAssessmentDetails({ check, className = '' }: Eligibil
 
   return (
     <div className={`space-y-3 text-xs ${className}`}>
+      {check.runId ? <section className="rounded-md border bg-slate-50 p-3" aria-label="Evaluare persistata">
+        <p className="font-semibold">{verified?.current ? 'Evaluare autoritară verificată' : verified ? 'Evaluare istorică / necesită reevaluare' : verificationError ? 'Evaluare neconfirmată' : 'Se verifică evaluarea salvată'}</p>
+        <p className="mt-1 break-all">{check.runId} · {check.checkedAt}</p>
+        <p>{check.status === 'neconcludent' ? 'Necesită clarificare' : check.status}</p>
+        {check.ruleVersionId ? <p className="break-all">Reguli: {check.ruleVersionId}{check.rulesSource === 'published_ruleset' ? ' · versiune publicată' : ' · registru executabil indisponibil'}</p> : null}
+        {check.usageAudit ? <p>Consum: {check.usageAudit.inputTokens + check.usageAudit.outputTokens} tokenuri · cost estimat ${check.usageAudit.costUsd.toFixed(4)}</p> : null}
+        {verificationError ? <p className="text-amber-800">Rezultatul salvat nu a putut fi confirmat de server.</p> : null}
+        {check.evaluationLimitations?.map((item) => <p key={item} className="mt-1 text-amber-800">{item}</p>)}
+        {check.criterionFindings?.map((item) => <div key={item.criterionId} className="mt-2 border-t pt-2">
+          <strong>{item.criterionId}</strong> · {FINDING_LABELS[item.status] || item.status}<p>{item.explanation}</p>
+          {item.provenance ? <p className="break-all text-slate-500">Sursă: {item.provenance.documentId} · versiune {item.provenance.sourceVersion}</p> : null}
+          {item.sourceQuotes?.map((quote, index) => <blockquote key={`source-${index}`} className="mt-1 border-l-2 pl-2">Sursă: {quote.quote}</blockquote>)}
+          {item.documentQuotes?.map((quote, index) => <blockquote key={`document-${index}`} className="mt-1 border-l-2 pl-2">Livrabil: {quote.quote}</blockquote>)}
+        </div>)}
+      </section> : null}
+      {verified?.decisions?.length ? <section aria-label="Istoricul deciziilor PM" className="rounded-md border p-3">
+        <p className="font-semibold">Decizii PM</p>
+        {(verified.decisions as Array<{ id: string; decision: string; reason: string; createdAt: string }>).slice()
+          .sort((a, b) => a.createdAt.localeCompare(b.createdAt)).map((decision) => <div key={decision.id} className="mt-2 border-t pt-2">
+            <p>{DECISION_LABELS[decision.decision] || decision.decision} · {decision.createdAt}</p><p>{decision.reason}</p>
+          </div>)}
+      </section> : null}
+      {structured ? (
+        <section aria-label="Matricea verificării" className="rounded-md border border-slate-200 bg-white p-3">
+          <div className="mb-2 font-semibold text-slate-800">Matricea verificării</div>
+          <div className="space-y-1">
+            {Object.entries(structured).map(([label, finding]) => finding ? (
+              <div key={label} className="grid grid-cols-[minmax(0,150px)_auto_minmax(0,1fr)] gap-2 border-b border-slate-100 py-1 last:border-0">
+                <span className="font-medium text-slate-700">{label}</span>
+                <Badge variant="outline" className={finding.status === 'pass' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : finding.status === 'fail' ? 'border-red-200 bg-red-50 text-red-800' : 'border-amber-200 bg-amber-50 text-amber-800'}>
+                  {FINDING_LABELS[finding.status] || finding.status}
+                </Badge>
+                <span className="text-slate-600">{finding.explanation}</span>
+              </div>
+            ) : null)}
+          </div>
+          {check.recommendedSa ? <p className="mt-2 text-slate-700"><span className="font-medium">SA recomandată:</span> {check.recommendedSa.saCode} — {check.recommendedSa.activityName}. {check.recommendedSa.reason}</p> : null}
+          {check.justification ? <p className="mt-2 whitespace-pre-wrap text-slate-700"><span className="font-medium">Motivare:</span> {check.justification}</p> : null}
+          {check.observations?.length ? <p className="mt-2 text-amber-800"><span className="font-medium">Observații:</span> {check.observations.join(' ')}</p> : null}
+        </section>
+      ) : null}
       {classification ? (
         <section aria-label="Încadrarea activității" className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-3">
           <div className="font-semibold text-slate-900">

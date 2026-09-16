@@ -273,6 +273,7 @@ const schema = a.schema({
       declaredTitle: a.string(),
       docTitle: a.string(),
       docText: a.string(),
+      extractionComplete: a.boolean(),
       suggestedTitle: a.string(),
       titleSuggestionConfidence: a.string(),
       titleSuggestionAlternatives: a.string().array(),
@@ -419,6 +420,7 @@ const schema = a.schema({
       declaredTitle: a.string(),
       suggestedTitle: a.string(),
       docText: a.string(),
+      extractionComplete: a.boolean(),
       firstPageText: a.string(),
       titleSuggestionConfidence: a.string(),
       titleSuggestionAlternatives: a.string().array(),
@@ -778,6 +780,17 @@ const schema = a.schema({
 
   KnowledgeDocument: a
     .model({
+      roleId: a.string(),
+      documentVersionId: a.string(),
+      extractionVersion: a.string(),
+      extractionComplete: a.boolean(),
+      processedSections: a.string().array(),
+      failedSections: a.string().array(),
+      indexGenerationId: a.string(),
+      expectedChunkCount: a.integer(),
+      manifestHash: a.string(),
+      publishedGeneration: a.string(),
+      supersededAt: a.datetime(),
       title: a.string().required(),
       sourceType: a.string().required(),
       category: a.string(),
@@ -813,6 +826,17 @@ const schema = a.schema({
 
   KnowledgeChunk: a
     .model({
+      roleId: a.string(),
+      documentVersionId: a.string(),
+      extractionVersion: a.string(),
+      extractionComplete: a.boolean(),
+      processedSections: a.string().array(),
+      failedSections: a.string().array(),
+      indexGenerationId: a.string(),
+      expectedChunkCount: a.integer(),
+      manifestHash: a.string(),
+      publishedGeneration: a.string(),
+      supersededAt: a.datetime(),
       documentId: a.id().required(),
       chunkIndex: a.integer().required(),
       text: a.string().required(),
@@ -940,6 +964,7 @@ const schema = a.schema({
       rulesJson: a.json(),
       schemaVersion: a.string().default("eligibility-rules-v1"),
       activeFrom: a.datetime(),
+      activeTo: a.datetime(),
       publishedAt: a.datetime(),
       publishedBy: a.string(),
       createdBy: a.string(),
@@ -971,8 +996,33 @@ const schema = a.schema({
       index("status"),
     ])
     .authorization((allow) => [
-      allow.groups(["pm", "admin"]).to(["create", "read", "update", "delete"]),
+      allow.groups(["pm", "admin"]).to(["read"]),
     ]),
+
+  EligibilityEvaluationRun: a
+    .model({
+    runId: a.string().required(), evaluationKey: a.string().required(),
+    expertId: a.id().required(), projectCode: a.string().required(), saCode: a.string().required(),
+    actorId: a.string().required(), status: a.string().required(), authoritative: a.boolean().required(),
+    inputSnapshot: a.json().required(), resultJson: a.json(), limitations: a.string().array(),
+    rulesetVersion: a.string(), catalogVersion: a.string(), evaluatorVersion: a.string(),
+    model: a.string(), configurationJson: a.json(), completedAt: a.datetime(),
+  }).secondaryIndexes((index) => [index('evaluationKey'), index('expertId'), index('projectCode')])
+    .authorization((allow) => [allow.groups(['pm', 'admin']).to(['read'])]),
+
+  EligibilityEvaluationEvidence: a
+    .model({
+    runId: a.string().required(), criterionId: a.string().required(), evidenceJson: a.json().required(),
+  }).secondaryIndexes((index) => [index('runId')])
+    .authorization((allow) => [allow.groups(['pm', 'admin']).to(['read'])]),
+
+  PmEligibilityDecision: a
+    .model({
+    runId: a.string().required(), evaluationKey: a.string().required(), expertId: a.id().required(),
+    projectCode: a.string().required(), actorId: a.string().required(), decision: a.string().required(),
+    reason: a.string().required(), replacementSaCode: a.string(), replacementActivityId: a.string(),
+  }).secondaryIndexes((index) => [index('runId'), index('expertId')])
+    .authorization((allow) => [allow.groups(['pm', 'admin']).to(['read'])]),
 
   WorkingGroup: a
     .model({

@@ -10,6 +10,14 @@ import {
 
 const fullSchema = readFileSync("amplify/data/resource.ts", "utf8");
 
+test("eligibility models are independent blocks and stay out of the foundation bootstrap", () => {
+  const names = extractModelBlocks(fullSchema).blocks.map((block) => block.name);
+  for (const name of ['EligibilityEvaluationRun', 'EligibilityEvaluationEvidence', 'PmEligibilityDecision']) {
+    assert.ok(names.includes(name));
+    assert.equal(buildFoundationSchema(fullSchema).includes(`${name}: a`), false);
+  }
+});
+
 test("staging foundation schema contains the expected closed model set", () => {
   const foundation = buildFoundationSchema(fullSchema);
   const parsed = extractModelBlocks(foundation);

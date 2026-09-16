@@ -1,3 +1,6 @@
+import { archiveRagOriginal } from '@/lib/eligibility-originals';
+import { extractReferenceDocumentText } from '@/lib/rag/reference-document-text';
+import { authenticateEligibilityRequest } from '@/lib/eligibility-resolver';
 import { NextResponse } from 'next/server';
 import { assertRagAdminRequest, guardRagAdminRequest, ragAdminAuthErrorResponse } from '@/lib/rag/admin-auth';
 import { getCognitoAccessTokenFromRequest } from '@/lib/rag/cognito-auth';
@@ -19,7 +22,7 @@ export async function POST(req: Request) {
 
     const url = new URL(req.url);
     const body = await req.json();
-    const text = typeof body?.text === 'string' ? body.text : '';
+    let text = typeof body?.text === 'string' ? body.text : '';
     const title = typeof body?.title === 'string' ? body.title : body?.originalFileName;
     const sourceType = typeof body?.sourceType === 'string' ? body.sourceType : 'other';
     const projectCode = typeof body?.projectCode === 'string' ? body.projectCode.trim() : '';
@@ -27,6 +30,7 @@ export async function POST(req: Request) {
     const expertId = typeof body?.expertId === 'string' ? body.expertId.trim() : '';
     const expertName = typeof body?.expertName === 'string' ? body.expertName.trim() : '';
     const expertRole = typeof body?.expertRole === 'string' ? body.expertRole.trim() : '';
+    const roleId = typeof body?.roleId === 'string' ? body.roleId.trim() : '';
     const dryRun = body?.dryRun === true || url.searchParams.get('dryRun') === 'true';
 
     if (!text.trim() || !title) {
@@ -42,7 +46,7 @@ export async function POST(req: Request) {
     if (['scop_sa', 'descriere_activitati'].includes(sourceType) && (!projectCode || !saCode)) {
       return NextResponse.json({ error: 'Sursele subactivitatii necesita codul proiectului si codul SA.' }, { status: 400 });
     }
-    if (sourceType === 'fisa_post' && !expertId && !expertName && !expertRole) {
+    if (sourceType === 'fisa_post' && !expertId && !expertName && !expertRole && !roleId) {
       return NextResponse.json({ error: 'Sursa fisei postului necesita un expert sau un rol.' }, { status: 400 });
     }
 
@@ -70,6 +74,25 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Importul RAG real necesita x-cognito-access-token pentru scrierea in AppSync.' }, { status: 401 });
     }
 
+    let original: { s3Key: string; originalFileHash: string } | undefined;
+    let actorId = 'dry-run';
+    if (!dryRun) {
+      const actor = await authenticateEligibilityRequest(req);
+      if (!actor.roles.some((role) => ['pm', 'admin'].includes(role))) return NextResponse.json({ error: 'Importul necesita PM/Admin.' }, { status: 403 });
+      actorId = actor.id;
+      const fileName = typeof body.originalFileName === 'string' ? body.originalFileName : `${title}.txt`;
+      const binary = /\.(pdf|docx)$/i.test(fileName);
+      if (binary && !body.originalFileBase64) return NextResponse.json({ error: 'Trimite originalul PDF/DOCX pentru arhivare si verificarea extragerii.' }, { status: 422 });
+      {
+        const bytes = body.originalFileBase64 ? new Uint8Array(Buffer.from(String(body.originalFileBase64), 'base64')) : new TextEncoder().encode(text);
+        original = await archiveRagOriginal(fileName, bytes);
+        if (binary) {
+          const extracted = await extractReferenceDocumentText(fileName, Uint8Array.from(bytes).buffer);
+          text = extracted.text; body.extractionComplete = extracted.complete;
+          body.metadata = { ...body.metadata, processedSections: extracted.processedSections, failedSections: extracted.failedSections };
+        } else { body.extractionComplete = true; }
+      }
+    }
     const result = await indexKnowledgeDocument({
       title,
       sourceType,
@@ -78,6 +101,7 @@ export async function POST(req: Request) {
       expertId: expertId || undefined,
       expertName: expertName || undefined,
       expertRole: expertRole || undefined,
+      roleId: roleId || undefined,
       projectCode: projectCode || undefined,
       month: Number.isFinite(Number(body?.month)) ? Number(body.month) : undefined,
       year: Number.isFinite(Number(body?.year)) ? Number(body.year) : undefined,
@@ -85,9 +109,9 @@ export async function POST(req: Request) {
       activityName: typeof body?.activityName === 'string' ? body.activityName : undefined,
       approvalStatus: typeof body?.approvalStatus === 'string' ? body.approvalStatus : undefined,
       originalFileName: typeof body?.originalFileName === 'string' ? body.originalFileName : undefined,
-      s3Key: typeof body?.s3Key === 'string' ? body.s3Key : undefined,
-      createdBy: typeof body?.createdBy === 'string' ? body.createdBy : 'admin-rag-index',
-      metadata: body?.metadata && typeof body.metadata === 'object' ? body.metadata : undefined,
+      s3Key: original?.s3Key || (typeof body?.s3Key === 'string' ? body.s3Key : undefined),
+      createdBy: actorId,
+      metadata: { ...(body?.metadata && typeof body.metadata === 'object' ? body.metadata : {}), originalFileHash: original?.originalFileHash },
       extractionSource: body?.extractionSource === 'ocr' ? 'ocr' : body?.extractionSource === 'native' ? 'native' : undefined,
       extractionComplete: typeof body?.extractionComplete === 'boolean' ? body.extractionComplete : undefined,
     }, { dryRun, authToken });

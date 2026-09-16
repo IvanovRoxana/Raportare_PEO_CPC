@@ -1019,7 +1019,11 @@ export function useAiEligibilityRulesets() {
 
   return {
     rulesets: stableList(data),
-    activeRuleset: stableList(data).find((ruleset) => ruleset.status === 'active') ?? null,
+    activeRuleset: stableList(data).filter((ruleset) => ruleset.status === 'active'
+      && (!ruleset.publishedAt || Date.parse(ruleset.publishedAt) <= Date.now())
+      && (!ruleset.activeFrom || Date.parse(ruleset.activeFrom) <= Date.now())
+      && (!ruleset.activeTo || Date.parse(ruleset.activeTo) > Date.now()))
+      .sort((a, b) => b.version - a.version)[0] ?? null,
     isLoading,
     error,
   };
@@ -1032,7 +1036,7 @@ export function useAiEligibilityRuleVersions(rulesetId: string | null) {
   );
 
   return {
-    versions: stableList(data),
+    versions: stableList(data).filter((version) => version.status !== 'head'),
     isLoading,
     error,
   };
@@ -1056,7 +1060,7 @@ export function useAiEligibilityRulesetMutations() {
       status: 'draft',
       version: input.version ?? 1,
       rulesJson: input.rulesJson,
-      schemaVersion: 'eligibility-rules-v1',
+      schemaVersion: 'eligibility-rules-v2',
       createdBy: input.actorName,
       updatedBy: input.actorName,
       changeReason: input.changeReason,
@@ -1074,67 +1078,22 @@ export function useAiEligibilityRulesetMutations() {
     return updated;
   };
 
-  const publish = async (ruleset: AiEligibilityRuleset, activeRuleset: AiEligibilityRuleset | null, actorName?: string) => {
-    const now = new Date().toISOString();
-    if (activeRuleset && activeRuleset.id !== ruleset.id) {
-      await aiEligibilityRulesetsService.update(activeRuleset.id, { status: 'archived' });
-      await aiEligibilityRuleVersionsService.create({
-        rulesetId: activeRuleset.id,
-        version: activeRuleset.version,
-        status: 'archived',
-        previousRulesJson: activeRuleset.rulesJson,
-        newRulesJson: activeRuleset.rulesJson,
-        changedBy: actorName,
-        changeReason: 'Arhivare automata la publicarea unei versiuni noi.',
-        archivedAt: now,
-      });
-    }
-
-    const published = await aiEligibilityRulesetsService.update(ruleset.id, {
-      status: 'active',
-      publishedAt: now,
-      publishedBy: actorName,
-      updatedBy: actorName,
+  const publishRequest = async (rulesetId: string, restoreVersionId?: string) => {
+    const token = (await fetchAuthSession()).tokens?.accessToken?.toString();
+    if (!token) throw new Error('Sesiunea Cognito lipseste.');
+    const response = await fetch('/api/eligibility/rulesets/publish', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ rulesetId, restoreVersionId }),
     });
-    await aiEligibilityRuleVersionsService.create({
-      rulesetId: published.id,
-      version: published.version,
-      status: 'active',
-      previousRulesJson: activeRuleset?.rulesJson,
-      newRulesJson: published.rulesJson,
-      changedBy: actorName,
-      changeReason: published.changeReason || 'Publicare reguli eligibilitate.',
-      publishedAt: now,
-    });
-    refreshRulesets(published.id);
-    if (activeRuleset) refreshRulesets(activeRuleset.id);
-    return published;
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Publicarea a esuat.');
+    refreshRulesets(rulesetId);
+    return result as AiEligibilityRuleset;
   };
-
-  const rollbackToVersion = async (ruleset: AiEligibilityRuleset, version: AiEligibilityRuleVersion, actorName?: string) => {
-    const now = new Date().toISOString();
-    const rolledBack = await aiEligibilityRulesetsService.update(ruleset.id, {
-      rulesJson: version.newRulesJson,
-      version: version.version,
-      status: 'active',
-      publishedAt: now,
-      publishedBy: actorName,
-      updatedBy: actorName,
-      changeReason: `Rollback la versiunea ${version.version}.`,
-    });
-    await aiEligibilityRuleVersionsService.create({
-      rulesetId: ruleset.id,
-      version: version.version,
-      status: 'active',
-      previousRulesJson: ruleset.rulesJson,
-      newRulesJson: version.newRulesJson,
-      changedBy: actorName,
-      changeReason: `Rollback la versiunea ${version.version}.`,
-      publishedAt: now,
-    });
-    refreshRulesets(ruleset.id);
-    return rolledBack;
-  };
+  const publish = async (ruleset: AiEligibilityRuleset, _activeRuleset: AiEligibilityRuleset | null, _actorName?: string) =>
+    publishRequest(ruleset.id);
+  const rollbackToVersion = async (ruleset: AiEligibilityRuleset, version: AiEligibilityRuleVersion, _actorName?: string) =>
+    publishRequest(ruleset.id, version.id);
 
   return { createDraft, updateDraft, publish, rollbackToVersion };
 }

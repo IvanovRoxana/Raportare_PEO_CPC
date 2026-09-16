@@ -2113,7 +2113,7 @@ function getEligibilityLabel(status: string) {
   if (status === 'eligibil') return 'Eligibil';
   if (status === 'eligibil_cu_observatii') return 'Eligibil cu observații';
   if (status === 'neeligibil') return 'Neeligibil';
-  return 'Neconcludent';
+  return 'Necesită clarificare';
 }
 
 function getEligibilityClass(status: string) {

@@ -430,6 +430,7 @@ function withSupportedExpertFields(payload: Record<string, unknown>, expert: Par
 function withSupportedDeliverableFields(payload: Record<string, unknown>, deliverable: Partial<Deliverable>) {
   const extendedFields: Record<string, unknown> = {
     docText: trimPersistedDocumentText(deliverable.docText),
+    extractionComplete: (deliverable.extractionComplete === true || deliverable.textExtractionScope === 'full_document') && Boolean(deliverable.docText) && (deliverable.docText?.length || 0) <= MAX_PERSISTED_DOCUMENT_TEXT_CHARS,
     suggestedTitle: deliverable.suggestedTitle,
     titleSuggestionConfidence: deliverable.titleSuggestionConfidence,
     titleSuggestionAlternatives: deliverable.titleSuggestionAlternatives,
@@ -921,6 +922,7 @@ function mapDeliverable(item: any): Deliverable {
     declaredTitle: item.declaredTitle ?? undefined,
     docTitle: item.docTitle ?? undefined,
     docText: item.docText ?? undefined,
+    extractionComplete: item.extractionComplete ?? false,
     suggestedTitle: item.suggestedTitle ?? undefined,
     titleSuggestionConfidence: item.titleSuggestionConfidence ?? undefined,
     titleSuggestionAlternatives: item.titleSuggestionAlternatives ?? undefined,
@@ -960,6 +962,7 @@ function mapDocument(item: any): DocumentMetadata {
     declaredTitle: item.declaredTitle ?? undefined,
     suggestedTitle: item.suggestedTitle ?? undefined,
     docText: item.docText ?? undefined,
+    extractionComplete: item.extractionComplete ?? false,
     firstPageText: item.firstPageText ?? undefined,
     titleSuggestionConfidence: item.titleSuggestionConfidence ?? undefined,
     titleSuggestionAlternatives: item.titleSuggestionAlternatives ?? undefined,
@@ -1151,6 +1154,7 @@ async function createDocumentMetadataForDeliverable(
     declaredTitle: deliverable.declaredTitle,
     suggestedTitle: deliverable.suggestedTitle,
     docText: trimPersistedDocumentText(deliverable.docText),
+    extractionComplete: (deliverable.extractionComplete === true || deliverable.textExtractionScope === 'full_document') && Boolean(deliverable.docText) && (deliverable.docText?.length || 0) <= MAX_PERSISTED_DOCUMENT_TEXT_CHARS,
     firstPageText: trimPersistedDocumentText(deliverable.firstPageText, MAX_PERSISTED_FIRST_PAGE_TEXT_CHARS),
     extractedTitle: deliverable.docTitle,
     extractedTitleNormalized: normalizeTitleForMatch(getDocumentAuditTitle(deliverable)),

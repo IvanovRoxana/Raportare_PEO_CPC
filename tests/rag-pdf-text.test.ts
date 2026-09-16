@@ -30,7 +30,10 @@ test('PDF extraction runs in Node without browser DOM globals', async () => {
   }
   const xref = pdf.length;
   pdf += `xref\n0 6\n0000000000 65535 f \n${offsets.slice(1).map((offset) => `${String(offset).padStart(10, '0')} 00000 n \n`).join('')}trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
-  const result = await extractPdfTextFromBuffer(new TextEncoder().encode(pdf).buffer);
+  const encoded = new TextEncoder().encode(pdf);
+  const buffer = new ArrayBuffer(encoded.byteLength);
+  new Uint8Array(buffer).set(encoded);
+  const result = await extractPdfTextFromBuffer(buffer);
   assert.equal(result.pageCount, 1);
   assert.match(result.text, /Reference document test/);
 });

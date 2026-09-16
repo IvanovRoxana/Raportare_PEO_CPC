@@ -3,11 +3,7 @@ import outputs from '@/amplify_outputs.json';
 import { EXPERT_PM_EXTENDED_ACCESS_EMAILS } from '@/lib/access-control';
 import { normalizePeoCategory } from '@/lib/peo-category';
 import { getActiveAiEligibilityRuleset } from '@/lib/ai-eligibility-ruleset-runtime';
-import {
-  listKnowledgeChunksByCategoryAndSourceType,
-  listKnowledgeChunks,
-  listKnowledgeChunksByExpertId,
-} from '@/lib/rag/store';
+import { selectHealthChunks, type HealthChunk } from '@/lib/rag/health-chunks';
 import type { ActivityAutofillAudit, Expert } from '@/lib/types';
 
 export const runtime = 'nodejs';
@@ -118,12 +114,14 @@ async function appSyncList<T>({
   resultKey,
   variables = {},
   maxItems = 500,
+  signal,
 }: {
   token: string;
   query: string;
   resultKey: string;
   variables?: Record<string, unknown>;
   maxItems?: number;
+  signal?: AbortSignal;
 }) {
   if (!appSyncEndpoint) throw new Error('Endpointul AppSync nu este configurat.');
 
@@ -132,6 +130,7 @@ async function appSyncList<T>({
 
   do {
     const response = await fetch(appSyncEndpoint, {
+      signal: signal ?? AbortSignal.timeout(10000),
       method: 'POST',
       headers: {
         authorization: token,
@@ -152,7 +151,8 @@ async function appSyncList<T>({
     }
 
     const result = body?.data?.[resultKey];
-    items.push(...(result?.items || []));
+    if (!result || !Array.isArray(result.items)) throw new Error('AppSync nu a returnat lista solicitata.');
+    items.push(...result.items.filter((item): item is NonNullable<T> => item != null));
     nextToken = result?.nextToken;
   } while (nextToken && items.length < maxItems);
 
@@ -218,62 +218,39 @@ export async function GET(request: Request) {
     const projectCode = requestedProjectCode || expert?.projectCode || undefined;
     const availableSaCodes = Array.from(new Set(experts.flatMap((item) => item.saCodes || []))).sort();
 
-    const [
-      expertFisaPostChunks,
-      approvedReportsByExpert,
-      categoryFisaPostChunks,
-      categoryReferenceChunks,
-      categoryApprovedReports,
-      projectSourceChunks,
-      subactivitySourceChunks,
-      activeRuleset,
-      catalogRows,
-      recentAudits,
-    ] = await Promise.all([
-      expert?.id
-        ? listKnowledgeChunksByExpertId(expert.id, { sourceType: { eq: 'fisa_post' } }, { authToken: auth.token, limit: 20, maxItems: 80 })
-        : Promise.resolve([]),
-      expert?.id
-        ? listKnowledgeChunksByExpertId(expert.id, { or: [
-            { sourceType: { eq: 'raportare_aprobata_oir' } },
-            { sourceType: { eq: 'raport_activitate_aprobat' } },
-            { sourceType: { eq: 'livrabil_aprobat' } },
-          ] }, { authToken: auth.token, limit: 20, maxItems: 120 })
-        : Promise.resolve([]),
-      category
-        ? listKnowledgeChunksByCategoryAndSourceType(category, 'fisa_post', undefined, { authToken: auth.token, limit: 20, maxItems: 80 })
-        : Promise.resolve([]),
-      category
-        ? Promise.all(['cerere_finantare', 'manual_beneficiar', 'descriere_activitati'].map((sourceType) => (
-            listKnowledgeChunksByCategoryAndSourceType(category, sourceType, undefined, { authToken: auth.token, limit: 20, maxItems: 80 })
-          ))).then((groups) => groups.flat())
-        : Promise.resolve([]),
-      category
-        ? Promise.all(['raportare_aprobata_oir', 'raport_activitate_aprobat', 'livrabil_aprobat'].map((sourceType) => (
-            listKnowledgeChunksByCategoryAndSourceType(category, sourceType, undefined, { authToken: auth.token, limit: 20, maxItems: 120 })
-          ))).then((groups) => groups.flat())
-        : Promise.resolve([]),
-      projectCode
-        ? listKnowledgeChunks({ status: { eq: 'active' }, projectCode: { eq: projectCode }, or: [{ sourceType: { eq: 'cerere_finantare' } }, { sourceType: { eq: 'manual_beneficiar' } }] }, { authToken: auth.token, limit: 20, maxItems: 120 })
-        : Promise.resolve([]),
-      projectCode && saCode
-        ? listKnowledgeChunks({ status: { eq: 'active' }, projectCode: { eq: projectCode }, saCode: { eq: saCode }, or: [{ sourceType: { eq: 'scop_sa' } }, { sourceType: { eq: 'descriere_activitati' } }] }, { authToken: auth.token, limit: 20, maxItems: 120 })
-        : Promise.resolve([]),
-      getActiveAiEligibilityRuleset({ authToken: auth.token, timeoutMs: 2500 }).catch(() => null),
+    const [candidateChunks, activeRuleset, catalogRows, recentAudits, generationDocuments] = await Promise.all([
+      appSyncList<HealthChunk>({
+        token: auth.token,
+        resultKey: 'listKnowledgeChunks',
+        query: `query AdminHealthChunkMetadata($nextToken: String) {
+          listKnowledgeChunks(limit: 1000, nextToken: $nextToken, filter: { status: { eq: "active" } }) {
+            items { id documentId sourceType category expertId expertName roleId projectCode saCode status indexGenerationId metadataJson }
+            nextToken
+          }
+        }`,
+        maxItems: Infinity,
+        signal: AbortSignal.timeout(20000),
+      }),
+      getActiveAiEligibilityRuleset({ projectCode: projectCode || '302141' }).catch(() => null),
       appSyncList<{ id: string }>({ token: auth.token, resultKey: 'listActivityCatalogs', query: `query AdminAiContextListCatalog($nextToken: String) { listActivityCatalogs(limit: 200, nextToken: $nextToken) { items { id } nextToken } }`, maxItems: 500 }).catch(() => []),
       listActivityAutofillAudits(auth.token, month, year).catch(() => []),
+      appSyncList<{ id: string; status?: string; publishedGeneration?: string }>({ token: auth.token, resultKey: 'listKnowledgeDocuments',
+        query: `query HealthGenerationDocuments($nextToken: String) { listKnowledgeDocuments(limit: 200, nextToken: $nextToken) { items { id status publishedGeneration } nextToken } }`, maxItems: Infinity }),
     ]);
+    const allChunks = candidateChunks.filter((chunk) => {
+      const parent = generationDocuments.find((doc) => doc.id === chunk.documentId);
+      return parent?.status === 'active' && (parent.publishedGeneration ? parent.publishedGeneration === chunk.indexGenerationId : !chunk.indexGenerationId);
+    });
+    const {
+      expertFisaPostChunks, approvedReportsByExpert, categoryFisaPostChunks,
+      categoryReferenceChunks, categoryApprovedReports, projectSourceChunks, subactivitySourceChunks,
+    } = selectHealthChunks(allChunks, { expertId: expert?.id, expertName: expert?.name, positionInProject: expert?.positionInProject, category, projectCode, saCode });
 
-    const subactivities: SubactivityHealth[] = await Promise.all(availableSaCodes.map(async (code) => {
+    const subactivities: SubactivityHealth[] = availableSaCodes.map((code) => {
       if (!projectCode) return { saCode: code, count: 0, status: 'not_applicable' };
-      const chunks = await listKnowledgeChunks({
-        status: { eq: 'active' },
-        projectCode: { eq: projectCode },
-        saCode: { eq: code },
-        or: [{ sourceType: { eq: 'scop_sa' } }, { sourceType: { eq: 'descriere_activitati' } }],
-      }, { authToken: auth.token, limit: 20, maxItems: 120 }).catch(() => []);
-      return { saCode: code, count: chunks.length, status: statusFromCount(chunks.length) };
-    }));
+      const count = selectHealthChunks(allChunks, { projectCode, saCode: code }).subactivitySourceChunks.length;
+      return { saCode: code, count, status: statusFromCount(count) };
+    });
 
     const visibleAudits = recentAudits
       .filter((audit) => !expert?.id || audit.expertId === expert.id)

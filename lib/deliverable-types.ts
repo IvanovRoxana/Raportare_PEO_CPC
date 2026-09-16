@@ -127,6 +127,7 @@ export type DeliverableSlotType =
 
 export interface DeliverableEligibilityCheck extends Pick<SharedEligibilityCheck,
   'assessmentVersion' | 'executionStatus' | 'classification' | 'documentSummaries'
+  | 'runId' | 'evaluationKey' | 'authoritative' | 'criterionFindings' | 'evaluationLimitations' | 'reused'
   | 'sourceEvidence' | 'referenceCoverage' | 'referenceSources'> {
   status: 'eligibil' | 'eligibil_cu_observatii' | 'neeligibil' | 'neconcludent' | string;
   score: number;

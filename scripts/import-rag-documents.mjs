@@ -191,30 +191,13 @@ async function listDocumentFolders(rootDir) {
   return folders;
 }
 
-async function extractPdfText(filePath) {
-  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
-  const data = new Uint8Array(await readFile(filePath));
-  const document = await pdfjs.getDocument({ data, useWorkerFetch: false, isEvalSupported: false }).promise;
-  const pages = [];
-  for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
-    const page = await document.getPage(pageNumber);
-    const content = await page.getTextContent();
-    pages.push(content.items.map((item) => ('str' in item ? item.str : '')).join(' '));
-  }
-  return pages.join('\n\n');
-}
-
-async function extractDocxText(filePath) {
-  const mammothModule = await import('mammoth');
-  const mammoth = mammothModule.default ?? mammothModule;
-  const result = await mammoth.extractRawText({ buffer: await readFile(filePath) });
-  return result.value || '';
-}
-
 async function readDocumentText(filePath, extension) {
-  if (extension === '.pdf') return extractPdfText(filePath);
-  if (extension === '.docx') return extractDocxText(filePath);
-  return readFile(filePath, 'utf8');
+  if (extension === '.pdf' || extension === '.docx') {
+    const { extractReferenceDocumentText } = await import('../lib/rag/reference-document-text.ts');
+    const bytes = new Uint8Array(await readFile(filePath));
+    return extractReferenceDocumentText(filePath, bytes.buffer);
+  }
+  return { text: await readFile(filePath, 'utf8'), complete: true, processedSections: ['document'], failedSections: [] };
 }
 
 function inferSourceMetadata(fileName, folderName, args) {
@@ -237,7 +220,7 @@ function inferSourceMetadata(fileName, folderName, args) {
   return {
     sourceType: isJobDescription ? 'fisa_post' : isActivityDescription ? 'scop_sa' : SOURCE_TYPES_BY_FOLDER.get(folderName) || 'other',
     saCode: saMatch ? `SA${saMatch[1]}.${saMatch[2]}` : undefined,
-    projectCode: args.projectCode || projectMatch?.[1],
+    projectCode: args.projectCode || projectMatch?.[1] || '302141',
     positionInProject,
   };
 }
@@ -271,8 +254,10 @@ async function collectDocuments(rootDir, args) {
 
       const fileStat = await stat(filePath);
       let text;
+      let extraction;
       try {
-        text = await readDocumentText(filePath, extension);
+        extraction = await readDocumentText(filePath, extension);
+        text = extraction.text;
       } catch (error) {
         skipped.push({ fileName, reason: 'text_extraction_failed', detail: error instanceof Error ? error.message : String(error) });
         continue;
@@ -294,6 +279,8 @@ async function collectDocuments(rootDir, args) {
         title: activityName || path.basename(fileName, extension),
         sourceType: metadataValue(row.sourceType) || inferred.sourceType || sourceType,
         text: normalizedText,
+        extractionComplete: extraction.complete, extractionSource: 'native',
+        originalFileBase64: (await readFile(filePath)).toString('base64'),
         category,
         expertId: metadataValue(row.expertId),
         expertName: metadataValue(row.expertName),
@@ -307,7 +294,8 @@ async function collectDocuments(rootDir, args) {
         originalFileName: fileName,
         createdBy: 'script-import-rag-documents',
         metadata: {
-          folder: folderName,
+          folder: folderName, sourceIdentity: filePath,
+          processedSections: extraction.processedSections, failedSections: extraction.failedSections,
           category,
           positionInProject,
           expertRole,

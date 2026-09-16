@@ -2,12 +2,14 @@ import { createHash, randomUUID } from 'node:crypto';
 import { appendFile, mkdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { generateText } from 'ai';
+import { aiModelId, runMeteredAiCall } from './ai-usage.ts';
 import { NextResponse } from 'next/server';
 import { isOpenAIConfigurationError } from '@/lib/openai';
 
 type GenerateTextOptions = Parameters<typeof generateText>[0];
 
 type AiGovernanceMetadata = {
+  runId?: string;
   endpoint: string;
   operation: string;
   request?: unknown;
@@ -148,25 +150,6 @@ function redactSecrets(value: unknown): unknown {
   );
 }
 
-function trimForAudit(value: unknown): unknown {
-  const maxChars = readNumberEnv('AI_AUDIT_MAX_FIELD_CHARS', 50000);
-  if (typeof value === 'string' && value.length > maxChars) {
-    return `${value.slice(0, maxChars)}\n[truncated ${value.length - maxChars} chars]`;
-  }
-
-  if (Array.isArray(value)) {
-    return value.map(trimForAudit);
-  }
-
-  if (!value || typeof value !== 'object') {
-    return value;
-  }
-
-  return Object.fromEntries(
-    Object.entries(value as Record<string, unknown>).map(([key, item]) => [key, trimForAudit(item)])
-  );
-}
-
 function textFromMessages(messages: unknown) {
   if (!Array.isArray(messages)) return '';
 
@@ -200,7 +183,7 @@ function getExpectedOutputTokens(options: GenerateTextOptions) {
 }
 
 function getModelPricing(model: unknown) {
-  const modelName = String(model ?? '');
+  const modelName = aiModelId(model);
   const normalized = modelName.toLowerCase();
   const defaultInput = normalized.includes('gpt-4o-mini') ? OPENAI_GPT_4O_MINI_INPUT_PER_1M : 1;
   const defaultOutput = normalized.includes('gpt-4o-mini') ? OPENAI_GPT_4O_MINI_OUTPUT_PER_1M : 3;
@@ -319,8 +302,11 @@ async function appendAuditRecord(record: Record<string, unknown>) {
   const path = getAuditLogPath();
 
   if (path === 'console' || process.env.AI_AUDIT_LOG_TO_CONSOLE === 'true') {
-    const { input: _input, output: _output, error, ...metadata } = record;
-    console.info(`[AI_AUDIT] ${stableStringify({ ...metadata, error: redactSecrets(error) })}`);
+    const { input, output, error, ...metadata } = record;
+    console.info(`[AI_AUDIT] ${stableStringify({ ...metadata,
+      inputHash: (input as { sha256?: string } | undefined)?.sha256,
+      outputHash: (output as { sha256?: string } | undefined)?.sha256,
+      error: redactSecrets(error) })}`);
   }
 
   if (path === 'console') {
@@ -348,7 +334,6 @@ function buildAuditInput(options: GenerateTextOptions, request: unknown) {
   };
 
   return {
-    payload: trimForAudit(input),
     sha256: sha256(input),
   };
 }
@@ -361,109 +346,71 @@ function buildAuditOutput(result: unknown) {
   };
 
   return {
-    payload: trimForAudit(output),
     sha256: sha256(output),
   };
 }
 
 export async function governedGenerateText(optionsWithMetadata: GovernedGenerateTextOptions): Promise<any> {
-  const {
-    endpoint,
-    operation,
-    request,
-    actorId,
-    actorName,
-    projectCode,
-    month,
-    year,
-    ...options
-  } = optionsWithMetadata;
+  const { runId, endpoint, operation, request, actorId, actorName, projectCode, month, year, ...options } = optionsWithMetadata;
   const id = `ai_${randomUUID()}`;
-  const startedAt = Date.now();
   const limits = getLimits();
+  const model = aiModelId(options.model);
   const inputTokensEstimate = getInputTokenEstimate(options);
-  const estimatedUsage = {
-    inputTokens: inputTokensEstimate,
-    outputTokens: getExpectedOutputTokens(options),
-    totalTokens: inputTokensEstimate + getExpectedOutputTokens(options),
-  };
-  const estimatedCostUsd = estimateCostUsd((options as Record<string, unknown>).model, estimatedUsage);
+  const estimatedUsage = { inputTokens: inputTokensEstimate, outputTokens: getExpectedOutputTokens(options),
+    totalTokens: inputTokensEstimate + getExpectedOutputTokens(options) };
+  const estimatedCostUsd = estimateCostUsd(model, estimatedUsage);
+  const retryLimit = Math.min(Math.max(options.maxRetries ?? 2, 0), 3);
+  let retries = 0;
+  let totalCostUsd = 0;
+  const totalUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
+  const result = await runMeteredAiCall({
+    call: () => generateText({ ...options, maxRetries: 0 }), maxRetries: retryLimit,
+    preflight: () => enforcePreflightLimits(estimatedCostUsd, limits),
+    record: async (attempt) => {
+      retries = attempt.retry;
+      const usage = attempt.result ? normalizeUsage(attempt.result, inputTokensEstimate) : estimatedUsage;
+      const costUsd = estimateCostUsd(model, usage);
+      totalCostUsd += costUsd;
+      totalUsage.inputTokens += usage.inputTokens;
+      totalUsage.outputTokens += usage.outputTokens;
+      totalUsage.totalTokens += usage.totalTokens;
+      recordRequestAndSpend(costUsd);
+      await appendAuditRecord({ id, runId, endpoint, operation, actorId, actorName, projectCode, month, year,
+        createdAt: new Date().toISOString(), status: attempt.error ? 'error' : 'success', model,
+        configuration: { maxOutputTokens: options.maxOutputTokens, temperature: options.temperature, retryLimit },
+        retry: attempt.retry, durationMs: attempt.durationMs, usage, embeddingTokens: 0, costUsd,
+        usageEstimated: !attempt.result, estimatedCostUsd, limits,
+        input: buildAuditInput(options, request), output: attempt.result ? buildAuditOutput(attempt.result) : undefined,
+        error: attempt.error instanceof Error ? { name: attempt.error.name } : undefined,
+      });
+    },
+  });
+  return Object.assign(result, { auditId: id, runId, retries, costUsd: totalCostUsd, usageAudit: {
+    ...totalUsage, embeddingTokens: 0, retries, costUsd: totalCostUsd, model,
+  } });
+}
 
-  try {
-    enforcePreflightLimits(estimatedCostUsd, limits);
-  } catch (error) {
-    await appendAuditRecord({
-      id,
-      createdAt: new Date().toISOString(),
-      endpoint,
-      operation,
-      actorId,
-      actorName,
-      projectCode,
-      month,
-      year,
-      status: 'blocked',
-      model: String((options as Record<string, unknown>).model ?? ''),
-      estimatedUsage,
-      estimatedCostUsd,
-      limits,
-      input: buildAuditInput(options, request),
-      error: error instanceof Error ? { name: error.name, message: error.message } : error,
-    });
-    throw error;
-  }
-
-  try {
-    const result = await generateText(options);
-    const usage = normalizeUsage(result, inputTokensEstimate);
-    const costUsd = estimateCostUsd((options as Record<string, unknown>).model, usage);
-
-    recordRequestAndSpend(costUsd);
-    await appendAuditRecord({
-      id,
-      createdAt: new Date().toISOString(),
-      endpoint,
-      operation,
-      actorId,
-      actorName,
-      projectCode,
-      month,
-      year,
-      status: 'success',
-      model: String((options as Record<string, unknown>).model ?? ''),
-      durationMs: Date.now() - startedAt,
-      usage,
-      costUsd,
-      estimatedUsage,
-      estimatedCostUsd,
-      limits,
-      input: buildAuditInput(options, request),
-      output: buildAuditOutput(result),
-    });
-
-    return Object.assign(result, { auditId: id });
-  } catch (error) {
-    await appendAuditRecord({
-      id,
-      createdAt: new Date().toISOString(),
-      endpoint,
-      operation,
-      actorId,
-      actorName,
-      projectCode,
-      month,
-      year,
-      status: 'error',
-      model: String((options as Record<string, unknown>).model ?? ''),
-      durationMs: Date.now() - startedAt,
-      estimatedUsage,
-      estimatedCostUsd,
-      limits,
-      input: buildAuditInput(options, request),
-      error: error instanceof Error ? { name: error.name, message: error.message, stack: error.stack } : error,
-    });
-    throw error;
-  }
+export async function governedEmbeddingCall<T extends { usage?: { tokens?: number } }>(options: {
+  model: string; values: string[]; operation: string; runId?: string; actorId?: string; projectCode?: string; call: () => Promise<T>;
+}) {
+  const id = `embedding_${randomUUID()}`;
+  const limits = getLimits();
+  const estimatedTokens = options.values.reduce((sum, text) => sum + estimateTokens(text), 0);
+  const price = readNumberEnv('AI_EMBEDDING_COST_PER_1M_USD', 0.02);
+  return runMeteredAiCall({ call: options.call, maxRetries: 2,
+    preflight: () => enforcePreflightLimits(estimatedTokens * price / 1_000_000, limits),
+    record: async (attempt) => {
+      const tokens = attempt.result?.usage?.tokens ?? estimatedTokens;
+      const costUsd = tokens * price / 1_000_000;
+      recordRequestAndSpend(costUsd);
+      await appendAuditRecord({ id, runId: options.runId, operation: options.operation, model: options.model,
+        actorId: options.actorId, projectCode: options.projectCode, createdAt: new Date().toISOString(),
+        inputTokens: 0, outputTokens: 0, embeddingTokens: tokens, retry: attempt.retry,
+        durationMs: attempt.durationMs, costUsd, usageEstimated: !attempt.result,
+        status: attempt.error ? 'error' : 'success', documentHashes: options.values.map(sha256),
+        error: attempt.error instanceof Error ? { name: attempt.error.name } : undefined });
+    },
+  });
 }
 
 export function aiErrorResponse(error: unknown, fallbackMessage: string) {

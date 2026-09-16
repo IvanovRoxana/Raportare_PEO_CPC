@@ -1,3 +1,12 @@
+const pdfRuntimeFiles = [
+  './node_modules/pdfjs-dist/package.json',
+  './node_modules/pdfjs-dist/legacy/build/pdf.mjs',
+  './node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs',
+  './node_modules/pdfjs-dist/standard_fonts/**/*',
+  './node_modules/@napi-rs/canvas/**/*',
+  './node_modules/@napi-rs/canvas-linux-*/**/*',
+];
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // PDF.js loads its Node canvas polyfills and worker relative to import.meta.url.
@@ -15,6 +24,9 @@ const nextConfig = {
     return config;
   },
   outputFileTracingIncludes: {
+    '/api/ai/check-deliverable-eligibility': pdfRuntimeFiles,
+    '/api/eligibility/**': pdfRuntimeFiles,
+    '/api/admin/rag/index-document': pdfRuntimeFiles,
     '/api/admin/rag/index-reference-pdfs': [
       './node_modules/pdfjs-dist/package.json',
       './node_modules/pdfjs-dist/legacy/build/pdf.mjs',

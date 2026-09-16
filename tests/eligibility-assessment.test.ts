@@ -51,6 +51,19 @@ function output() {
   };
 }
 
+function structuredAssessment(overrides: Record<string, unknown> = {}) {
+  const finding = (status: 'pass' | 'warning' | 'fail' | 'unknown' = 'pass') => ({
+    status, explanation: `Constatare ${status}.`, deliverableEvidence: ['Dovada din livrabil.'],
+    contextEvidence: ['Dovada din context.'], limitations: [],
+  });
+  return {
+    documentIdentity: { documentType: 'analiza', topic: 'Consultare regionala', action: 'Analiza si informare', beneficiary: 'Membrii', result: 'Informare structurata', context: 'Dialog social' },
+    expertRoleAssessment: finding(), serviceAssessment: finding(), projectRelevanceAssessment: finding(), evidenceAssessment: finding(),
+    consistencyChecks: [], missingEvidence: [], recommendedSa: { saCode: 'SA3.4', activityName: 'Consultare regionala', reason: 'Continutul corespunde serviciului.' },
+    selectedSaMatch: finding(), justification: 'Livrabilul sustine activitatea.', observations: [], ...overrides,
+  };
+}
+
 test('positive verdicts without explained criteria or with failed criteria cannot approve', () => {
   const empty = output();
   empty.checks = [];
@@ -60,6 +73,26 @@ test('positive verdicts without explained criteria or with failed criteria canno
   assert.equal(result.status, 'neconcludent');
   assert.equal(result.classification.autoApply, true);
   assert.equal(result.score, failed.score);
+});
+
+test('structured assessment maps a demonstrated failure to an ineligible verdict', () => {
+  const result = finalizeEligibilityAssessment(input(), context, { ...output(), structuredAssessment: structuredAssessment({
+    projectRelevanceAssessment: { ...structuredAssessment().projectRelevanceAssessment, status: 'fail' },
+  }) });
+  assert.equal(result.status, 'neeligibil');
+  assert.equal(result.verdict, 'neeligibil');
+  assert.equal(result.documentIdentity?.documentType, 'analiza');
+});
+
+test('structured assessment exposes secondary evidence gaps as observations', () => {
+  const result = finalizeEligibilityAssessment(input(), context, { ...output(), structuredAssessment: structuredAssessment({
+    missingEvidence: ['Consultarea membrilor nu este demonstrata.'],
+    observations: ['Solicita dovada consultarii.'],
+    evidenceAssessment: { ...structuredAssessment().evidenceAssessment, status: 'warning' },
+  }) });
+  assert.equal(result.status, 'eligibil_cu_observatii');
+  assert.deepEqual(result.missingEvidence, ['Consultarea membrilor nu este demonstrata.']);
+  assert.match(result.summary, /Dovada lipsa/);
 });
 
 test('a clearly classified ineligible deliverable is assigned without approving eligibility', () => {
@@ -119,6 +152,8 @@ test('assessment prompt retains the exact full document including content after 
   assert.equal(prompt.documents[0].extractedText, fullText);
   assert.match(built.prompt, /FINAL_UNIC_18342/);
   assert.match(built.system, /nu din potrivirea de cuvinte sau titluri/);
+  assert.match(built.system, /structuredAssessment/);
+  assert.deepEqual(prompt.evaluationSequence, ['document_identity', 'expert_role', 'service_and_sa', 'project_relevance', 'evidence_and_result', 'consistency_and_risks', 'verdict_and_justification']);
 });
 
 test('oversized document text is explicitly limited before evaluation while full prompt limits remain enforced', () => {

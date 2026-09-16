@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { assertRagAdminRequest, guardRagAdminRequest, ragAdminAuthErrorResponse } from '@/lib/rag/admin-auth';
 import { getCognitoAccessTokenFromRequest } from '@/lib/rag/cognito-auth';
+import { archiveRagOriginal } from '@/lib/eligibility-originals';
+import { authenticateEligibilityRequest } from '@/lib/eligibility-resolver';
 import { indexKnowledgeDocument } from '@/lib/rag/store';
 import { extractReferenceDocumentText } from '@/lib/rag/reference-document-text';
 import {
@@ -73,7 +75,7 @@ export async function POST(req: Request) {
     const url = new URL(req.url);
     const formData = await req.formData();
     const dryRun = getString(formData.get('dryRun')) === 'true' || url.searchParams.get('dryRun') === 'true';
-    const createdBy = getString(formData.get('createdBy')) || 'admin-rag-reference-pdf-import';
+    let createdBy = 'dry-run';
     const projectCode = getString(formData.get('projectCode')) || '302141';
     const globalOverride = buildFormOverride(formData);
     const overrides = parseOverrides(formData.get('overrides'));
@@ -85,6 +87,11 @@ export async function POST(req: Request) {
 
     if (!dryRun && !authToken) {
       return NextResponse.json({ error: 'Importul RAG real necesita x-cognito-access-token pentru scrierea in AppSync.' }, { status: 401 });
+    }
+    if (!dryRun) {
+      const actor = await authenticateEligibilityRequest(req);
+      if (!actor.roles.some((role) => ['pm', 'admin'].includes(role))) return NextResponse.json({ error: 'Importul necesita PM/Admin.' }, { status: 403 });
+      createdBy = actor.id;
     }
 
     const results = [];
@@ -130,9 +137,10 @@ export async function POST(req: Request) {
         continue;
       }
 
+      const originalBytes = new Uint8Array(await file.arrayBuffer());
       let extracted;
       try {
-        extracted = await extractReferenceDocumentText(fileName, await file.arrayBuffer());
+        extracted = await extractReferenceDocumentText(fileName, originalBytes.buffer);
       } catch (error) {
         results.push({
           fileName,
@@ -157,15 +165,18 @@ export async function POST(req: Request) {
       }
 
       try {
+        const original = dryRun ? undefined : await archiveRagOriginal(fileName, originalBytes);
         const result = await indexKnowledgeDocument({
           ...inference.input,
           text: extracted.text,
+          s3Key: original?.s3Key, extractionComplete: extracted.complete, extractionSource: 'native',
           metadata: {
             ...(inference.input.metadata ?? {}),
             importEndpoint: 'index-reference-pdfs',
             fileSize: file.size,
             contentType,
             pageCount: extracted.pageCount,
+            originalFileHash: original?.originalFileHash, processedSections: extracted.processedSections, failedSections: extracted.failedSections,
           },
         }, { dryRun, authToken });
 

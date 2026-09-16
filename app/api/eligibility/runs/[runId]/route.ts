@@ -1,0 +1,17 @@
+import { NextResponse } from 'next/server';
+import { readAuthorizedEligibilityRun } from '@/lib/eligibility-run-read';
+import { EligibilityAccessError } from '@/lib/eligibility-authorization';
+import { eligibilityStore } from '@/lib/eligibility-server-store';
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+export async function GET(req: Request, context: { params: Promise<{ runId: string }> }) {
+  try {
+    const { runId } = await context.params;
+    const { run, current } = await readAuthorizedEligibilityRun(req, runId);
+    const decisions = await eligibilityStore.list('PmEligibilityDecision', { field: 'runId', value: runId });
+    return NextResponse.json({ result: run.resultJson, current, decisions }, { headers: { 'Cache-Control': 'no-store' } });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof EligibilityAccessError ? error.message : 'Evaluarea nu poate fi verificata acum.' }, { status: error instanceof EligibilityAccessError ? error.status : 503 });
+  }
+}

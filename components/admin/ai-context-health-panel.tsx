@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { fetchAuthSession } from 'aws-amplify/auth';
+import { readHealthResponse } from '@/lib/rag/health-response';
 import { AlertTriangle, CheckCircle2, Database, FileText, Loader2, Plus, RefreshCw, Save, Settings, Trash2, Upload } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -143,7 +144,7 @@ export function AiContextHealthPanel() {
   const [expertId, setExpertId] = useState('');
   const [category, setCategory] = useState('');
   const [saCode, setSaCode] = useState('');
-  const [projectCode, setProjectCode] = useState('');
+  const [projectCode, setProjectCode] = useState('302141');
   const [month, setMonth] = useState(String(currentDate.getMonth() + 1));
   const [year, setYear] = useState(String(currentDate.getFullYear()));
   const [health, setHealth] = useState<HealthResponse | null>(null);
@@ -172,6 +173,9 @@ export function AiContextHealthPanel() {
   const [ragTextIsExtracted, setRagTextIsExtracted] = useState(false);
   const [libraryDocuments, setLibraryDocuments] = useState<RagLibraryDocument[]>([]);
   const [loadingLibrary, setLoadingLibrary] = useState(false);
+  const [repairingProject, setRepairingProject] = useState(false);
+  const [projectRepairMessage, setProjectRepairMessage] = useState('');
+  const projectRepairLock = useRef(false);
   const [showAiInstructionsEditor, setShowAiInstructionsEditor] = useState(false);
   const [deletingDocumentId, setDeletingDocumentId] = useState<string | null>(null);
   const [ragDialogOpen, setRagDialogOpen] = useState(false);
@@ -220,15 +224,17 @@ export function AiContextHealthPanel() {
       if (year) params.set('year', year);
       const response = await fetch(`/api/admin/ai-context-health?${params.toString()}`, {
         cache: 'no-store',
+        signal: AbortSignal.timeout(30000),
         headers: { authorization: `Bearer ${token}` },
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data?.error || 'Nu am putut citi sanatatea contextului AI.');
+      const data = await readHealthResponse(response);
       if (requestId !== healthRequestId.current) return;
       setHealth(data as HealthResponse);
     } catch (caughtError) {
       if (requestId !== healthRequestId.current) return;
-      setError(caughtError instanceof Error ? caughtError.message : 'Nu am putut citi sanatatea contextului AI.');
+      setError(caughtError instanceof Error && caughtError.name === 'TimeoutError'
+        ? 'Incarcarea statusului surselor AI dureaza prea mult. Apasa Reincarca. Verifica biblioteca RAG inainte sa repeti salvarea.'
+        : caughtError instanceof Error ? caughtError.message : 'Nu am putut citi sanatatea contextului AI.');
       setHealth(null);
     } finally {
       if (requestId === healthRequestId.current) setLoadingHealth(false);
@@ -250,6 +256,45 @@ export function AiContextHealthPanel() {
       setError(caughtError instanceof Error ? caughtError.message : 'Biblioteca RAG nu a putut fi incarcata.');
     } finally {
       setLoadingLibrary(false);
+    }
+  }
+
+  async function completeMissingProjects() {
+    if (projectRepairLock.current) return;
+    projectRepairLock.current = true;
+    setRepairingProject(true);
+    let documents = 0;
+    let chunks = 0;
+    let failures = 0;
+    try {
+      for (const model of ['KnowledgeDocument', 'KnowledgeChunk']) {
+        let nextToken: string | null = null;
+        do {
+          const token = await getAccessToken();
+          const response: Response = await fetch('/api/admin/rag/library', {
+            method: 'PATCH',
+            headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+            body: JSON.stringify({ action: 'complete-project', model, nextToken }),
+            signal: AbortSignal.timeout(60000),
+          });
+          const data: { updated: number; failed: string[]; nextToken: string | null; error?: string } | null = await response.json().catch(() => null);
+          if (!response.ok || !data || !Number.isInteger(data.updated) || !Array.isArray(data.failed)) {
+            throw new Error(data?.error || 'Serverul nu a confirmat completarea proiectului. Poti relua operatia.');
+          }
+          if (model === 'KnowledgeDocument') documents += data.updated;
+          else chunks += data.updated;
+          failures += data.failed.length;
+          nextToken = data.nextToken;
+          setProjectRepairMessage(`Proiect 302141: ${documents} documente si ${chunks} fragmente completate. Procesare in curs...`);
+        } while (nextToken);
+      }
+      setProjectRepairMessage(`Finalizat: ${documents} documente si ${chunks} fragmente completate cu 302141.${failures ? ` ${failures} actualizari neconfirmate; reia operatia.` : ''} Codurile existente au fost pastrate.`);
+    } catch (error) {
+      setProjectRepairMessage(`Operatie oprita dupa ${documents} documente si ${chunks} fragmente confirmate. ${error instanceof Error ? error.message : 'Reia completarea.'}`);
+    } finally {
+      projectRepairLock.current = false;
+      setRepairingProject(false);
+      await loadLibrary();
     }
   }
 
@@ -522,9 +567,9 @@ export function AiContextHealthPanel() {
           {message && <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{message}</div>}
 
           <div className="grid gap-3 sm:grid-cols-3">
-            <SummaryPill label="Surse OK" value={String(okCount)} tone="ok" />
-            <SummaryPill label="De completat" value={String(issueCount)} tone={issueCount > 0 ? 'warning' : 'ok'} />
-            <SummaryPill label="Audituri recente" value={String(health?.recentAudits.length ?? 0)} tone="neutral" />
+            <SummaryPill label="Surse OK" value={health ? String(okCount) : '—'} tone={health ? 'ok' : 'neutral'} />
+            <SummaryPill label="De completat" value={health ? String(issueCount) : '—'} tone={!health ? 'neutral' : issueCount > 0 ? 'warning' : 'ok'} />
+            <SummaryPill label="Audituri recente" value={health ? String(health.recentAudits.length) : '—'} tone="neutral" />
           </div>
 
           <section className="rounded-xl border bg-slate-50 p-4">
@@ -787,6 +832,11 @@ export function AiContextHealthPanel() {
         <CardHeader className="flex flex-row items-center justify-between gap-3">
           <div>
             <CardTitle className="text-base">Biblioteca RAG</CardTitle>
+            <Button type="button" variant="outline" size="sm" className="mt-2" disabled={repairingProject} onClick={() => void completeMissingProjects()}>
+              {repairingProject && <Loader2 className="h-4 w-4 animate-spin" />} Completeaza proiectul 302141
+            </Button>
+            <p className="mt-1 text-xs text-muted-foreground">Completeaza doar proiectele lipsa din documente si fragmentele RAG.</p>
+            {projectRepairMessage && <p role="status" className="mt-2 text-sm">{projectRepairMessage}</p>}
             <p className="mt-1 text-sm text-muted-foreground">Surse comune de proiect, SA, categorie și expert. Proiectul nu înlocuiește sursele expertului.</p>
           </div>
           <Button type="button" variant="outline" size="sm" onClick={() => void loadLibrary()} disabled={loadingLibrary}>
@@ -800,6 +850,7 @@ export function AiContextHealthPanel() {
                 <div key={document.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-white px-3 py-2 text-sm">
                   <div>
                     <div className="font-medium text-slate-900">{document.title}</div>
+                    {document.projectCode && document.projectCode !== '302141' && <div className="text-xs text-amber-700">Proiect diferit de 302141 — necesita verificare.</div>}
                     <div className="text-xs text-muted-foreground">{document.sourceType} · {document.projectCode || 'fără proiect'}{document.saCode ? ` · ${document.saCode}` : ''}{document.category ? ` · ${document.category}` : ''}</div>
                   </div>
                   <Button type="button" variant="ghost" size="sm" className="text-red-700" onClick={() => void removeFromLibrary(document.id)} disabled={deletingDocumentId === document.id}>

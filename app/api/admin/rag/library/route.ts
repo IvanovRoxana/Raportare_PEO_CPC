@@ -1,12 +1,30 @@
 import { NextResponse } from 'next/server';
 import { assertRagAdminRequest, ragAdminAuthErrorResponse } from '@/lib/rag/admin-auth';
-import { deleteKnowledgeDocument, listKnowledgeDocuments } from '@/lib/rag/store';
+import { backfillMissingRagProject, deleteKnowledgeDocument, listKnowledgeDocuments } from '@/lib/rag/store';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: Request) {
   return handleLibraryRequest(req);
+}
+
+export async function PATCH(req: Request) {
+  try {
+    const authToken = await assertRagAdminRequest(req);
+    const body = await req.json();
+    if (body?.action !== 'complete-project' || !['KnowledgeDocument', 'KnowledgeChunk'].includes(body?.model)
+      || (body.nextToken != null && typeof body.nextToken !== 'string')) {
+      return NextResponse.json({ error: 'Cerere de completare proiect invalida.' }, { status: 400 });
+    }
+    const result = await backfillMissingRagProject(body.model, body.nextToken || null, { authToken, timeoutMs: 5000 });
+    return NextResponse.json(result);
+  } catch (error) {
+    const authError = ragAdminAuthErrorResponse(error);
+    if (authError) return authError;
+    console.error('[admin-rag-library] Project backfill failed.', error);
+    return NextResponse.json({ error: 'Completarea proiectului s-a oprit. Operatia poate fi reluata; codurile deja completate sunt pastrate.' }, { status: 500 });
+  }
 }
 
 export async function DELETE(req: Request) {

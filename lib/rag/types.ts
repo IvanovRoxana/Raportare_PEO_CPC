@@ -76,6 +76,7 @@ export interface CompactRagContext {
 }
 
 export interface RagIndexDocumentInput {
+  roleId?: string;
   title: string;
   sourceType: RagSourceType;
   text: string;

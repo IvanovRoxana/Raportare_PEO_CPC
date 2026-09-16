@@ -5,6 +5,7 @@ import {
   isActivityAutofillRagPaOnly,
 } from '../feature-flags.ts';
 import { normalizePeoCategory } from '../peo-category.ts';
+import { appliesToEligibilityScope } from '../eligibility-scope.ts';
 import { getActivityAutofillDeliverableEvidenceText } from '../activity-autofill.ts';
 import type { KnowledgeChunk } from '../types.ts';
 import { normalizeRagText } from './chunking.ts';
@@ -477,7 +478,7 @@ export async function retrieveActivityAutofillContext(
 
     const deadline = Date.now() + (options.timeoutMs ?? DEFAULT_RETRIEVAL_TIMEOUT_MS);
     const { candidates, warnings } = await collectRagCandidates(request, options, deadline, dependencies);
-    const recentCandidates = candidates.filter(({ chunk }) => isWithinLastTwelveMonths(chunk, request));
+    const recentCandidates = candidates.filter(({ chunk }) => isWithinLastTwelveMonths(chunk, request) && appliesToEligibilityScope(chunk, request));
     const scored = selectDiverseTopChunks(recentCandidates, queryEmbedding, options.topK ?? DEFAULT_TOP_K);
 
     return {

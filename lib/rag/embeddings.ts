@@ -8,30 +8,30 @@ export function getRagEmbeddingModelName() {
 }
 
 function toNumericEmbedding(value: Iterable<unknown>): number[] {
-  return Array.from(value)
-    .map((item) => Number(item))
-    .filter((item) => Number.isFinite(item));
+  const values = Array.from(value);
+  if (!values.length || values.some((item) => typeof item !== 'number' || !Number.isFinite(item))) throw new Error('Invalid embedding values.');
+  return values as number[];
 }
 
 export async function generateEmbedding(text: string): Promise<number[]> {
   const value = normalizeRagText(text);
   if (!value) return [];
 
-  const result = await embed({
-    model: getOpenAIClient().embeddingModel(getRagEmbeddingModelName()),
-    value,
+  const { governedEmbeddingCall } = await import('../ai-governance.ts');
+  const result = await governedEmbeddingCall({ model: getRagEmbeddingModelName(), values: [value], operation: 'rag-query-embedding',
+    call: () => embed({ model: getOpenAIClient().embeddingModel(getRagEmbeddingModelName()), value, maxRetries: 0 }),
   });
 
   return toNumericEmbedding(result.embedding);
 }
 
-export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
+export async function generateEmbeddings(texts: string[], metadata: { runId?: string; actorId?: string; projectCode?: string } = {}): Promise<number[][]> {
   const values = texts.map(normalizeRagText).filter(Boolean);
   if (values.length === 0) return [];
 
-  const result = await embedMany({
-    model: getOpenAIClient().embeddingModel(getRagEmbeddingModelName()),
-    values,
+  const { governedEmbeddingCall } = await import('../ai-governance.ts');
+  const result = await governedEmbeddingCall({ ...metadata, model: getRagEmbeddingModelName(), values, operation: 'rag-index-embeddings',
+    call: () => embedMany({ model: getOpenAIClient().embeddingModel(getRagEmbeddingModelName()), values, maxRetries: 0 }),
   });
 
   return result.embeddings.map(toNumericEmbedding);

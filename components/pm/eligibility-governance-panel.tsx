@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { EligibilityDecisionControls } from './eligibility-decision-controls';
+import { parseExecutableRuleset } from '@/lib/eligibility-rules';
 import { History, Loader2, RotateCcw, Save, ShieldCheck } from 'lucide-react';
 import { AiReportingInstructionsPanel } from '@/components/pm/ai-reporting-instructions-panel';
 import { PeoEligibilityAgentPanel } from '@/components/pm/peo-eligibility-agent-panel';
@@ -31,7 +33,7 @@ interface EligibilityGovernancePanelProps {
 }
 
 function stringifyRules(value: unknown) {
-  if (!value) return '{\n  "thresholds": {},\n  "rubric": {}\n}';
+  if (!value) return JSON.stringify({ schemaVersion: 'eligibility-rules-v2', projectCode: '302141', validFrom: new Date().toISOString(), criteria: [] }, null, 2);
   try {
     return JSON.stringify(value, null, 2);
   } catch {
@@ -76,6 +78,11 @@ export function EligibilityGovernancePanel({
         || isActivePmUnlockRequest(check);
     });
   }, [documents]);
+
+  const validationError = useMemo(() => {
+    try { parseExecutableRuleset(JSON.parse(rulesJsonText)); return ''; }
+    catch (error) { return error instanceof Error ? error.message : 'Reguli neexecutabile.'; }
+  }, [rulesJsonText]);
 
   const saveDraft = async () => {
     setIsSaving(true);
@@ -180,6 +187,14 @@ export function EligibilityGovernancePanel({
         onAudit={onAudit}
       />
 
+      <section className="space-y-3" aria-label="Decizii eligibilitate">
+        {documents.filter((document) => document.eligibilityCheck?.runId).map((document) => (
+          <details key={document.id} className="rounded-md border p-3">
+            <summary className="cursor-pointer text-sm font-medium">Decizie pentru {document.originalFileName}</summary>
+            <EligibilityDecisionControls runId={document.eligibilityCheck!.runId!} />
+          </details>
+        ))}
+      </section>
       <section className="rounded-md border bg-white p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -232,6 +247,7 @@ export function EligibilityGovernancePanel({
               placeholder="Motiv schimbare"
             />
             {message && <p className="text-sm text-muted-foreground">{message}</p>}
+            {validationError && <p className="max-h-36 overflow-auto whitespace-pre-wrap text-xs text-amber-800">Publicarea este blocata: {validationError}</p>}
             {rulesetsError && <p className="text-sm text-red-600">Ruleset-urile nu au putut fi incarcate: {getErrorMessage(rulesetsError)}</p>}
             {!isBackendAvailable() && <p className="text-sm text-amber-700">Backend-ul AWS nu este configurat; publicarea necesita conexiune la backend.</p>}
             <div className="flex flex-wrap justify-end gap-2">
@@ -239,7 +255,7 @@ export function EligibilityGovernancePanel({
                 {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                 Salveaza draft
               </Button>
-              <Button type="button" onClick={publishRuleset} disabled={isSaving || !title.trim() || !isBackendAvailable() || Boolean(rulesetsError)}>
+              <Button type="button" onClick={publishRuleset} disabled={isSaving || !title.trim() || !isBackendAvailable() || Boolean(rulesetsError) || Boolean(validationError)}>
                 <ShieldCheck className="h-4 w-4" />
                 Publica
               </Button>

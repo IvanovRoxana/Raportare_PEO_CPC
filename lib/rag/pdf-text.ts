@@ -1,6 +1,9 @@
 export interface ExtractPdfTextResult {
   text: string;
   pageCount: number;
+  complete: boolean;
+  processedSections: string[];
+  failedSections: string[];
 }
 
 export function joinPdfTextItems(items: unknown[]) {
@@ -22,13 +25,16 @@ export async function extractPdfTextFromBuffer(buffer: ArrayBuffer): Promise<Ext
   const pdf = await loadingTask.promise;
   const pageCount = pdf.numPages;
   const pages: string[] = [];
+  const processedSections: string[] = [];
+  const failedSections: string[] = [];
 
   try {
     for (let pageNumber = 1; pageNumber <= pageCount; pageNumber += 1) {
       const page = await pdf.getPage(pageNumber);
       const content = await page.getTextContent();
       const pageText = joinPdfTextItems(content.items);
-      if (pageText) pages.push(pageText);
+      if (pageText) { pages.push(pageText); processedSections.push(`page:${pageNumber}`); }
+      else failedSections.push(`page:${pageNumber}`);
       page.cleanup();
     }
   } finally {
@@ -38,5 +44,8 @@ export async function extractPdfTextFromBuffer(buffer: ArrayBuffer): Promise<Ext
   return {
     text: pages.join('\n\n').trim(),
     pageCount,
+    complete: failedSections.length === 0,
+    processedSections,
+    failedSections,
   };
 }

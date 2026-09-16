@@ -1,10 +1,13 @@
 import outputs from '../../amplify_outputs.json';
+import { publishIndexGeneration, onlyPublishedChunks } from './index-generation.ts';
+import { backfillRagMetadataPage } from './metadata-backfill.ts';
+import { backfillProjectPage, type ProjectBackfillModel } from './project-backfill.ts';
 import type {
   ActivityAutofillAudit,
   KnowledgeChunk,
   KnowledgeDocument,
 } from '../types.ts';
-import { getRagEmbeddingModelName, generateEmbeddings, serializeEmbedding } from './embeddings.ts';
+import { getRagEmbeddingModelName, generateEmbeddings } from './embeddings.ts';
 import { hashRagText, normalizeRagText, splitTextIntoRagChunks } from './chunking.ts';
 import type {
   ActivityAutofillAuditInput,
@@ -103,6 +106,8 @@ async function listModel<T>(args: {
 }
 
 const KNOWLEDGE_DOCUMENT_FIELDS = `
+  roleId documentVersionId extractionVersion extractionComplete processedSections failedSections
+  indexGenerationId expectedChunkCount manifestHash publishedGeneration supersededAt
   id
   title
   sourceType
@@ -129,6 +134,8 @@ const KNOWLEDGE_DOCUMENT_FIELDS = `
 `;
 
 const KNOWLEDGE_CHUNK_FIELDS = `
+  roleId documentVersionId extractionVersion extractionComplete processedSections failedSections
+  indexGenerationId expectedChunkCount manifestHash publishedGeneration supersededAt
   id
   documentId
   chunkIndex
@@ -290,6 +297,16 @@ const UPDATE_ACTIVITY_AUTOFILL_AUDIT_MUTATION = `
 
 function mapKnowledgeDocument(item: any): KnowledgeDocument {
   return {
+    roleId: item.roleId ?? undefined,
+    documentVersionId: item.documentVersionId ?? undefined,
+    extractionVersion: item.extractionVersion ?? undefined,
+    extractionComplete: item.extractionComplete ?? undefined,
+    processedSections: item.processedSections ?? [], failedSections: item.failedSections ?? [],
+    indexGenerationId: item.indexGenerationId ?? undefined,
+    expectedChunkCount: item.expectedChunkCount ?? undefined,
+    manifestHash: item.manifestHash ?? undefined,
+    publishedGeneration: item.publishedGeneration ?? undefined,
+    supersededAt: item.supersededAt ?? undefined,
     id: item.id,
     title: item.title,
     sourceType: item.sourceType,
@@ -318,6 +335,16 @@ function mapKnowledgeDocument(item: any): KnowledgeDocument {
 
 function mapKnowledgeChunk(item: any): KnowledgeChunk {
   return {
+    roleId: item.roleId ?? undefined,
+    documentVersionId: item.documentVersionId ?? undefined,
+    extractionVersion: item.extractionVersion ?? undefined,
+    extractionComplete: item.extractionComplete ?? undefined,
+    processedSections: item.processedSections ?? [], failedSections: item.failedSections ?? [],
+    indexGenerationId: item.indexGenerationId ?? undefined,
+    expectedChunkCount: item.expectedChunkCount ?? undefined,
+    manifestHash: item.manifestHash ?? undefined,
+    publishedGeneration: item.publishedGeneration ?? undefined,
+    supersededAt: item.supersededAt ?? undefined,
     id: item.id,
     documentId: item.documentId,
     chunkIndex: item.chunkIndex,
@@ -372,6 +399,16 @@ function mapActivityAutofillAudit(item: any): ActivityAutofillAudit {
   };
 }
 
+async function filterPublishedKnowledgeChunks(chunks: KnowledgeChunk[], options: RagAuthContext) {
+  if (!chunks.length) return [];
+  const parents: KnowledgeDocument[] = [];
+  const ids = [...new Set(chunks.map((chunk) => chunk.documentId))];
+  for (let start = 0; start < ids.length; start += 30) {
+    parents.push(...await listKnowledgeDocuments({ or: ids.slice(start, start + 30).map((id) => ({ id: { eq: id } })) }, options));
+  }
+  return onlyPublishedChunks(chunks, parents);
+}
+
 export async function listKnowledgeChunks(
   filter?: Record<string, unknown>,
   options: ({ limit?: number; maxItems?: number } & RagAuthContext) = {},
@@ -385,7 +422,7 @@ export async function listKnowledgeChunks(
     maxItems: options.maxItems,
     options,
   });
-  return data.map(mapKnowledgeChunk);
+  return filterPublishedKnowledgeChunks(data.map(mapKnowledgeChunk), options);
 }
 
 export async function listKnowledgeDocuments(
@@ -419,7 +456,7 @@ export async function listKnowledgeChunksByExpertId(
     maxItems: options.maxItems,
     options,
   });
-  return data.map(mapKnowledgeChunk);
+  return filterPublishedKnowledgeChunks(data.map(mapKnowledgeChunk), options);
 }
 
 export async function listKnowledgeChunksByCategoryAndSourceType(
@@ -438,7 +475,7 @@ export async function listKnowledgeChunksByCategoryAndSourceType(
     maxItems: options.maxItems,
     options,
   });
-  return data.map(mapKnowledgeChunk);
+  return filterPublishedKnowledgeChunks(data.map(mapKnowledgeChunk), options);
 }
 
 export async function listKnowledgeChunksBySaCode(
@@ -456,7 +493,7 @@ export async function listKnowledgeChunksBySaCode(
     maxItems: options.maxItems,
     options,
   });
-  return data.map(mapKnowledgeChunk);
+  return filterPublishedKnowledgeChunks(data.map(mapKnowledgeChunk), options);
 }
 
 export async function indexKnowledgeDocument(
@@ -501,48 +538,38 @@ export async function indexKnowledgeDocument(
     };
   }
 
-  const existing = await listKnowledgeDocuments(
-    { textHash: { eq: textHash }, status: { eq: 'active' } },
-    { ...options, limit: 10, maxItems: 10 },
-  );
-  if (existing[0]) {
-    return { dryRun: false, document: existing[0], chunks: [] };
-  }
-
-  const document = await createKnowledgeDocument({
-    ...input,
-    metadata,
-    textHash,
-    extractedTextPreview,
-  }, options);
-
-  if (!document) {
-    throw new Error('AWS create KnowledgeDocument returned no data.');
-  }
-
-  const embeddings = await generateEmbeddings(chunks.map((chunk) => chunk.text));
-  const savedChunks = await createKnowledgeChunks(chunks.map((chunk, index) => ({
-    documentId: document.id,
-    chunkIndex: chunk.chunkIndex,
-    text: chunk.text,
-    textHash: chunk.textHash,
-    embeddingJson: embeddings[index] ? serializeEmbedding(embeddings[index]) : undefined,
-    embeddingModel,
-    tokenEstimate: chunk.tokenEstimate,
-    sourceType: input.sourceType,
-    category: input.category,
-    expertId: input.expertId,
-    expertName: input.expertName,
-    projectCode: input.projectCode,
-    month: input.month,
-    year: input.year,
-    saCode: input.saCode,
-    activityName: input.activityName,
-    status: 'active',
-    metadataJson: Object.keys(metadata).length ? JSON.stringify(metadata) : undefined,
-  })), options);
-
-  return { dryRun: false, document, chunks: savedChunks };
+  return publishIndexGeneration(input, embeddingModel, {
+    getDocument: async (id) => {
+      const data = await graphqlRequest<{ getKnowledgeDocument: KnowledgeDocument | null }>('Read index generation',
+        `query GetIndexDocument($id: ID!) { getKnowledgeDocument(id: $id) { ${KNOWLEDGE_DOCUMENT_FIELDS} } }`, { id }, options);
+      return data.getKnowledgeDocument;
+    },
+    createDocument: async (document) => {
+      await graphqlRequest('Stage index document', CREATE_KNOWLEDGE_DOCUMENT_MUTATION, { input: document }, options);
+    },
+    listChunks: async (documentId, generationId) => {
+      const data = await listModel<any>({ modelName: 'KnowledgeChunk', query: LIST_KNOWLEDGE_CHUNKS_QUERY,
+        resultKey: 'listKnowledgeChunks', filter: { documentId: { eq: documentId }, indexGenerationId: { eq: generationId } }, options });
+      return data.map(mapKnowledgeChunk);
+    },
+    putChunk: async (chunk) => {
+      try { await createKnowledgeChunk(chunk, options); }
+      catch (error) {
+        const data = await graphqlRequest<{ getKnowledgeChunk: KnowledgeChunk | null }>('Verify idempotent chunk',
+          `query GetIndexChunk($id: ID!) { getKnowledgeChunk(id: $id) { ${KNOWLEDGE_CHUNK_FIELDS} } }`, { id: chunk.id }, options);
+        if (!data.getKnowledgeChunk || data.getKnowledgeChunk.textHash !== chunk.textHash) throw error;
+      }
+    },
+    publish: async (document, previousGeneration) => {
+      await graphqlRequest('Publish verified index generation',
+        `mutation PublishIndex($input: UpdateKnowledgeDocumentInput!, $condition: ModelKnowledgeDocumentConditionInput) {
+          updateKnowledgeDocument(input: $input, condition: $condition) { id publishedGeneration }
+        }`, { input: document, condition: { and: [{ id: { attributeExists: true } }, previousGeneration
+          ? { publishedGeneration: { eq: previousGeneration } }
+          : { or: [{ publishedGeneration: { attributeExists: false } }, { publishedGeneration: { attributeType: '_null' } }] }] } }, options);
+    },
+    embed: (texts) => generateEmbeddings(texts, { runId: `index_${hashRagText(JSON.stringify([textHash, input.projectCode, input.sourceType, input.expertId, input.roleId, input.saCode]))}`, actorId: input.createdBy, projectCode: input.projectCode }),
+  });
 }
 
 export async function createKnowledgeDocument(input: RagIndexDocumentInput & {
@@ -631,6 +658,17 @@ export async function deleteKnowledgeDocument(documentId: string, options: RagAu
     options,
   );
   return Boolean(data.deleteKnowledgeDocument?.id);
+}
+
+export async function backfillMissingRagProject(model: ProjectBackfillModel, nextToken: string | null, options: RagAuthContext) {
+  assertCanAccessRagModel(model, options);
+  return backfillProjectPage(model, nextToken, (query, variables) =>
+    graphqlRequest<Record<string, unknown>>('RAG project backfill', query, variables, options));
+}
+
+export async function backfillKnowledgeMetadata(nextToken: string | null, options: RagAuthContext) {
+  assertCanAccessRagModel('KnowledgeDocument', options);
+  return backfillRagMetadataPage(nextToken, (query, variables) => graphqlRequest<Record<string, unknown>>('RAG metadata migration', query, variables, options));
 }
 
 export async function createActivityAutofillAudit(

@@ -4,7 +4,8 @@ export async function extractReferenceDocumentText(fileName: string, buffer: Arr
   if (/\.docx$/i.test(fileName)) {
     const { extractRawText } = await import('mammoth');
     const result = await extractRawText({ buffer: Buffer.from(buffer) });
-    return { text: result.value.trim(), pageCount: undefined, warnings: result.messages.map((message) => message.message) };
+    return { text: result.value.trim(), pageCount: undefined, warnings: result.messages.map((message) => message.message),
+      complete: result.messages.length === 0, processedSections: ['document'], failedSections: result.messages.length ? ['document:extraction-warnings'] : [] };
   }
   if (!/\.pdf$/i.test(fileName)) throw new Error('Sunt acceptate doar PDF si DOCX.');
   const result = await extractPdfTextFromBuffer(buffer);

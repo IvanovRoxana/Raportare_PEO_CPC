@@ -383,7 +383,7 @@ export async function POST(req: Request) {
       month: request.candidate.reportingMonth,
       year: request.candidate.reportingYear,
       model: openaiModel(),
-      system: `Esti un agent de raportare PEO. Analizezi livrabile incarcate bulk, verifici eligibilitatea si propui un draft de activitate. Nu inventa fapte. Daca nu poti demonstra incadrarea, foloseste necesita_revizie sau neeligibil.`,
+      system: `Esti un agent de raportare PEO. Analizezi livrabile incarcate bulk si propui clasificarea si un draft de activitate. Nu emiti o aprobare sau o evaluare finala de eligibilitate. Nu inventa fapte. Daca nu poti demonstra incadrarea, foloseste necesita_revizie sau neeligibil.`,
       prompt: `Analizeaza livrabilul pentru luna ${request.candidate.reportingMonth}/${request.candidate.reportingYear}.
 
 Expert:
@@ -409,7 +409,7 @@ Reguli:
 - Alege cea mai buna subactivitate numai din catalogul primit.
 - Daca livrabilul pare din alta luna, marcheaza necesita_revizie sau neeligibil.
 - Daca nu exista text suficient dar numele/metadatele sunt promitatoare, marcheaza necesita_revizie.
-- eligibil inseamna ca poate genera draft pentru expert, dar expertul valideaza final.
+- eligibil in acest raspuns inseamna doar ca poate genera un draft; numai evaluatorul comun produce evaluarea finala persistata.
 - suggestedDescription trebuie sa fie o descriere de activitate gata de revizuit de expert.
 - Explica scurt motivul si listeaza alternative cand exista potriviri apropiate.`,
       output: Output.object({ schema: indexedDeliverableAnalysisSchema }),
@@ -425,6 +425,7 @@ Reguli:
       });
       return NextResponse.json({
         ...deterministic,
+        authoritative: false, resultKind: 'classification_proposal',
         ragUsed: retrieval.enabled && retrieval.chunks.length > 0,
         ragSummary: retrieval.enabled
           ? `${retrieval.chunks.length} fragmente RAG analizate`
@@ -439,6 +440,7 @@ Reguli:
 
     return NextResponse.json({
       ...output,
+      authoritative: false, resultKind: 'classification_proposal',
       warnings: uniqueMessages([...output.warnings, ...retrieval.warnings]),
       ragUsed: retrieval.enabled && retrieval.chunks.length > 0,
       ragSummary: retrieval.enabled
