@@ -12,6 +12,7 @@ import {
   useAiEligibilityRulesetMutations,
   useAiEligibilityRulesets,
 } from '@/hooks/use-backend-data';
+import { isBackendAvailable } from '@/lib/backend-store';
 import { isActivePmUnlockRequest } from '@/lib/pm-unlock-status';
 import type { DocumentMetadata, Expert } from '@/lib/types';
 
@@ -38,6 +39,11 @@ function stringifyRules(value: unknown) {
   }
 }
 
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message) return error.message;
+  return 'Eroare necunoscuta la comunicarea cu backend-ul.';
+}
+
 export function EligibilityGovernancePanel({
   documents,
   experts,
@@ -45,7 +51,7 @@ export function EligibilityGovernancePanel({
   onExpertsChanged,
   onAudit,
 }: EligibilityGovernancePanelProps) {
-  const { rulesets, activeRuleset, isLoading } = useAiEligibilityRulesets();
+  const { rulesets, activeRuleset, isLoading, error: rulesetsError } = useAiEligibilityRulesets();
   const { createDraft, updateDraft, publish, rollbackToVersion } = useAiEligibilityRulesetMutations();
   const selectedRuleset = rulesets.find((ruleset) => ruleset.status === 'draft') ?? activeRuleset ?? rulesets[0] ?? null;
   const { versions } = useAiEligibilityRuleVersions(selectedRuleset?.id ?? null);
@@ -76,7 +82,7 @@ export function EligibilityGovernancePanel({
     setMessage(null);
     try {
       const parsedRules = JSON.parse(rulesJsonText);
-      const saved = selectedRuleset
+      const saved = selectedRuleset && selectedRuleset.status === 'draft'
         ? await updateDraft(selectedRuleset.id, {
             title,
             rulesJson: parsedRules,
@@ -86,6 +92,7 @@ export function EligibilityGovernancePanel({
         : await createDraft({
             title,
             rulesJson: parsedRules,
+            version: (activeRuleset?.version ?? 0) + 1,
             actorName,
             changeReason,
           });
@@ -98,7 +105,7 @@ export function EligibilityGovernancePanel({
       });
       setMessage('Draft salvat.');
     } catch (error) {
-      setMessage(error instanceof SyntaxError ? 'JSON-ul regulilor nu este valid.' : 'Regulile nu au putut fi salvate.');
+      setMessage(error instanceof SyntaxError ? 'JSON-ul regulilor nu este valid.' : `Regulile nu au putut fi salvate: ${getErrorMessage(error)}`);
     } finally {
       setIsSaving(false);
     }
@@ -109,7 +116,7 @@ export function EligibilityGovernancePanel({
     setMessage(null);
     try {
       const parsedRules = JSON.parse(rulesJsonText);
-      const saved = selectedRuleset
+      const saved = selectedRuleset && selectedRuleset.status === 'draft'
         ? await updateDraft(selectedRuleset.id, {
             title,
             rulesJson: parsedRules,
@@ -119,6 +126,7 @@ export function EligibilityGovernancePanel({
         : await createDraft({
             title,
             rulesJson: parsedRules,
+            version: (activeRuleset?.version ?? 0) + 1,
             actorName,
             changeReason,
           });
@@ -132,7 +140,7 @@ export function EligibilityGovernancePanel({
       });
       setMessage('Reguli publicate. Verificarile noi vor primi versiunea activa.');
     } catch (error) {
-      setMessage(error instanceof SyntaxError ? 'JSON-ul regulilor nu este valid.' : 'Regulile nu au putut fi publicate.');
+      setMessage(error instanceof SyntaxError ? 'JSON-ul regulilor nu este valid.' : `Regulile nu au putut fi publicate: ${getErrorMessage(error)}`);
     } finally {
       setIsSaving(false);
     }
@@ -224,12 +232,14 @@ export function EligibilityGovernancePanel({
               placeholder="Motiv schimbare"
             />
             {message && <p className="text-sm text-muted-foreground">{message}</p>}
+            {rulesetsError && <p className="text-sm text-red-600">Ruleset-urile nu au putut fi incarcate: {getErrorMessage(rulesetsError)}</p>}
+            {!isBackendAvailable() && <p className="text-sm text-amber-700">Backend-ul AWS nu este configurat; publicarea necesita conexiune la backend.</p>}
             <div className="flex flex-wrap justify-end gap-2">
-              <Button type="button" variant="outline" onClick={saveDraft} disabled={isSaving}>
+              <Button type="button" variant="outline" onClick={saveDraft} disabled={isSaving || !isBackendAvailable()}>
                 {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                 Salveaza draft
               </Button>
-              <Button type="button" onClick={publishRuleset} disabled={isSaving || !title.trim()}>
+              <Button type="button" onClick={publishRuleset} disabled={isSaving || !title.trim() || !isBackendAvailable() || Boolean(rulesetsError)}>
                 <ShieldCheck className="h-4 w-4" />
                 Publica
               </Button>
