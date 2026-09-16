@@ -2,7 +2,8 @@ import 'server-only';
 import { CognitoJwtVerifier } from 'aws-jwt-verify';
 import outputs from '../amplify_outputs.json';
 import { getCognitoAccessTokenFromRequest } from './rag/cognito-auth.ts';
-import { EligibilityAccessError, authorizeEligibilityExpert, authorizeEligibilityDocument, type EligibilityActor } from './eligibility-authorization.ts';
+import { EligibilityAccessError, authorizeEligibilityExpert, authorizeEligibilityDocument, normalizeEligibilityExperts, type EligibilityActor } from './eligibility-authorization.ts';
+import { peoUsersAsExperts } from './peo-users.ts';
 import { eligibilityStore } from './eligibility-server-store.ts';
 import { appliesToEligibilityScope } from './eligibility-scope.ts';
 import { onlyPublishedChunks } from './rag/index-generation.ts';
@@ -28,7 +29,7 @@ export async function authenticateEligibilityRequest(request: Request): Promise<
 
 export async function resolveEligibilityContext(request: Request, input: { expertId: string; projectCode?: string; saCode: string; documentIds: string[]; historical?: boolean }, authenticatedActor?: EligibilityActor) {
   const actor = authenticatedActor || await authenticateEligibilityRequest(request);
-  const experts = await eligibilityStore.list<Expert>('Expert');
+  const experts = normalizeEligibilityExperts(await eligibilityStore.list<Expert>('Expert'), peoUsersAsExperts());
   const { expert, roleId, scope } = authorizeEligibilityExpert(actor, experts, input.expertId, input.projectCode);
   if (!input.historical && !expert.saCodes?.includes(input.saCode)) throw new EligibilityAccessError('Subactivitatea nu este atribuita expertului.');
   if (new Set(input.documentIds).size !== input.documentIds.length) throw new EligibilityAccessError('Documente duplicate in cerere.', 422);

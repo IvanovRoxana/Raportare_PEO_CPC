@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { authorizeEligibilityExpert, authorizeEligibilityDocument } from '../lib/eligibility-authorization.ts';
+import { readFileSync } from 'node:fs';
+import { peoUsersAsExperts } from '../lib/peo-users.ts';
+import { mergeExpertLists } from '../lib/expert-merge.ts';
+import { authorizeEligibilityExpert, authorizeEligibilityDocument, normalizeEligibilityExperts } from '../lib/eligibility-authorization.ts';
 import { appliesToEligibilityScope, canonicalRoleId } from '../lib/eligibility-scope.ts';
 import { buildEvaluationKey, finalizeAuthoritativeCriteria, validatePmDecision, applicableCriteriaSnapshot } from '../lib/eligibility-evaluation.ts';
 import { parseExecutableRuleset, executeEligibilityRules, selectTemporalRuleset, type RuleEvidence } from '../lib/eligibility-rules.ts';
@@ -30,6 +33,51 @@ test('verified Expert is self scoped and cannot select another expert/project or
   assert.throws(() => authorizeEligibilityExpert({ id: 'other', roles: ['expert'] }, [expert], 'e1'));
   assert.throws(() => authorizeEligibilityDocument({ expertId: 'e1', projectCode: 'foreign' }, expert));
   assert.throws(() => authorizeEligibilityDocument({ expertId: 'e2', projectCode: '302141' }, expert));
+});
+test('imported backend experts use the same canonical identity as the dashboard', () => {
+  const imported = { ...expert, id: 'expert_imported', email: ' EXPERT@example.test ', projectCode: undefined };
+  const profiles = normalizeEligibilityExperts([imported], [expert]);
+  assert.equal(authorizeEligibilityExpert(actor, profiles, expert.id, '302141').expert.id, expert.id);
+  assert.equal(profiles[0].projectCode, '302141');
+  assert.throws(() => authorizeEligibilityExpert({ id: 'another-user', email: 'other@test', roles: ['expert'] }, profiles, expert.id));
+  assert.throws(() => authorizeEligibilityExpert(actor, profiles, expert.id, 'other-project'));
+});
+test('all imported profiles authorize their own dashboard ID and deny other expert accounts', () => {
+  const imported = JSON.parse(readFileSync(new URL('../data/import/experts.json', import.meta.url), 'utf8')) as Expert[];
+  const references = peoUsersAsExperts();
+  const profiles = normalizeEligibilityExperts(imported, references);
+  const dashboardProfiles = mergeExpertLists(imported, references).filter((profile) => profile.isActive !== false);
+  assert.ok(dashboardProfiles.length > 1);
+  for (const profile of dashboardProfiles) {
+    assert.ok(profile.email, `Missing identity for ${profile.id}`);
+    const session = { id: `session-${profile.id}`, email: profile.email, roles: ['expert'] };
+    const resolved = authorizeEligibilityExpert(session, profiles, profile.id, profile.projectCode);
+    assert.equal(resolved.expert.id, profile.id);
+    assert.equal(resolved.expert.projectCode, profile.projectCode);
+    assert.ok(resolved.roleId);
+    for (const other of dashboardProfiles.filter((candidate) => candidate.id !== profile.id)) {
+      assert.throws(() => authorizeEligibilityExpert(session, profiles, other.id, other.projectCode),
+        `${profile.id} must not access ${other.id}`);
+    }
+  }
+});
+test('reference normalization preserves backend restrictions and requires a backend record', () => {
+  const inactive = normalizeEligibilityExperts([{ ...expert, id: 'imported', isActive: false }], [expert]);
+  assert.throws(() => authorizeEligibilityExpert(actor, inactive, expert.id));
+  assert.deepEqual(normalizeEligibilityExperts([], [expert]), []);
+  const changed = normalizeEligibilityExperts([{ ...expert, id: 'imported', projectCode: 'other-project', saCodes: ['SA1.1'], positionInProject: 'Updated role' }], [expert]);
+  assert.equal(changed[0].projectCode, 'other-project');
+  assert.deepEqual(changed[0].saCodes, ['SA1.1']);
+  assert.equal(changed[0].positionInProject, 'Updated role');
+  assert.throws(() => authorizeEligibilityExpert(actor, changed, expert.id, '302141'));
+  const unrelated = { ...expert, id: 'unrelated', email: 'other@test' };
+  assert.equal(normalizeEligibilityExperts([unrelated], [expert])[0].id, 'unrelated');
+});
+test('reference timestamps do not change the normalized expert snapshot between requests', () => {
+  const imported = { ...expert, id: 'imported' };
+  const first = normalizeEligibilityExperts([imported], [{ ...expert, createdAt: '2026-09-16T10:00:00Z', updatedAt: '2026-09-16T10:00:00Z' }]);
+  const second = normalizeEligibilityExperts([imported], [{ ...expert, createdAt: '2026-09-16T10:01:00Z', updatedAt: '2026-09-16T10:01:00Z' }]);
+  assert.equal(buildEvaluationKey({ experts: first }), buildEvaluationKey({ experts: second }));
 });
 test('role templates without expertId require canonical role and project', () => {
   assert.equal(canonicalRoleId({ positionInProject: 'Coordonator centru regional' }), scope.roleId);
