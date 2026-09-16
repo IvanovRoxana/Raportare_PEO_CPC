@@ -67,6 +67,15 @@ export type GenerationStore = {
   embed(texts: string[]): Promise<number[][]>;
 };
 
+/** AppSync condition inputs omit the model identifier. Project equality also
+ * fails for a deleted record, while the generation comparison prevents races. */
+export function buildIndexPublicationCondition(projectCode: string, previousGeneration?: string) {
+  if (!projectCode.trim()) throw new Error('Publicarea necesita proiectul explicit.');
+  return { and: [{ projectCode: { eq: projectCode } }, previousGeneration
+    ? { publishedGeneration: { eq: previousGeneration } }
+    : { or: [{ publishedGeneration: { attributeExists: false } }, { publishedGeneration: { attributeType: '_null' } }] }] };
+}
+
 /** Readers never see staged chunks. A compare-and-swap protects the publication pointer. */
 export async function publishIndexGeneration(input: RagIndexDocumentInput, embeddingModel: string, store: GenerationStore) {
   const prepared = prepareIndexGeneration(input, embeddingModel);

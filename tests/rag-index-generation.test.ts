@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { prepareIndexGeneration, publishIndexGeneration, onlyPublishedChunks, type GenerationStore } from '../lib/rag/index-generation.ts';
+import { prepareIndexGeneration, publishIndexGeneration, onlyPublishedChunks, buildIndexPublicationCondition, type GenerationStore } from '../lib/rag/index-generation.ts';
+import { buildSchema, graphqlSync } from 'graphql';
 import type { KnowledgeChunk, KnowledgeDocument } from '../lib/types.ts';
 const input = { title: 'Norme', originalFileName: 'norme.txt', sourceType: 'cerere_finantare', projectCode: '302141', text: 'Text pentru o regula de proiect. '.repeat(100), extractionComplete: true };
 function memoryStore() {
@@ -66,4 +67,34 @@ test('a vector produced by a different model cannot satisfy a generation manifes
     putChunk: (chunk) => store.putChunk({ ...chunk, embeddingModel: 'wrong-model' }),
   }), /Embedding invalid/);
   assert.equal([...docs.values()].some((document) => document.publishedGeneration), false);
+});
+
+test('publication conditions satisfy the deployed AppSync input and reject deleted, foreign and concurrently published records', () => {
+  // Minimal extract of the actual staging SDL: ModelKnowledgeDocumentConditionInput has no id field.
+  const schema = buildSchema(`enum ModelAttributeTypes { _null string }
+    input ModelStringInput { eq: String attributeExists: Boolean attributeType: ModelAttributeTypes }
+    input ModelKnowledgeDocumentConditionInput { projectCode: ModelStringInput publishedGeneration: ModelStringInput and: [ModelKnowledgeDocumentConditionInput] or: [ModelKnowledgeDocumentConditionInput] }
+    type Query { accepts(condition: ModelKnowledgeDocumentConditionInput): Boolean! }`);
+  const source = 'query Test($condition: ModelKnowledgeDocumentConditionInput) { accepts(condition: $condition) }';
+  type Condition = { and?: Condition[]; or?: Condition[]; projectCode?: { eq: string }; publishedGeneration?: { eq?: string; attributeExists?: boolean; attributeType?: string } };
+  const matches = (condition: Condition, record: { projectCode?: string; publishedGeneration?: string | null }): boolean => {
+    if (condition.and) return condition.and.every(child => matches(child, record));
+    if (condition.or) return condition.or.some(child => matches(child, record));
+    if (condition.projectCode) return record.projectCode === condition.projectCode.eq;
+    const generation = condition.publishedGeneration!;
+    if (generation.eq !== undefined) return record.publishedGeneration === generation.eq;
+    return generation.attributeExists === false ? record.publishedGeneration === undefined : record.publishedGeneration === null;
+  };
+  for (const previous of [undefined, 'previous']) {
+    const condition = buildIndexPublicationCondition('302141', previous);
+    for (const [record, expected] of [
+      [{ projectCode: '302141', publishedGeneration: previous }, true],
+      [{}, false], [{ projectCode: 'other', publishedGeneration: previous }, false],
+      [{ projectCode: '302141', publishedGeneration: 'another-worker' }, false],
+    ] as const) {
+      const result = graphqlSync({ schema, source, variableValues: { condition }, rootValue: { accepts: () => matches(condition, record) } });
+      assert.equal(result.errors, undefined); assert.equal(result.data?.accepts, expected);
+    }
+  }
+  assert.ok(graphqlSync({ schema, source, variableValues: { condition: { id: { attributeExists: true } } } }).errors?.length);
 });

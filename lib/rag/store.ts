@@ -1,5 +1,5 @@
 import outputs from '../../amplify_outputs.json';
-import { publishIndexGeneration, onlyPublishedChunks } from './index-generation.ts';
+import { publishIndexGeneration, onlyPublishedChunks, buildIndexPublicationCondition } from './index-generation.ts';
 import { backfillRagMetadataPage } from './metadata-backfill.ts';
 import { backfillProjectPage, type ProjectBackfillModel } from './project-backfill.ts';
 import type {
@@ -564,9 +564,7 @@ export async function indexKnowledgeDocument(
       await graphqlRequest('Publish verified index generation',
         `mutation PublishIndex($input: UpdateKnowledgeDocumentInput!, $condition: ModelKnowledgeDocumentConditionInput) {
           updateKnowledgeDocument(input: $input, condition: $condition) { id publishedGeneration }
-        }`, { input: document, condition: { and: [{ id: { attributeExists: true } }, previousGeneration
-          ? { publishedGeneration: { eq: previousGeneration } }
-          : { or: [{ publishedGeneration: { attributeExists: false } }, { publishedGeneration: { attributeType: '_null' } }] }] } }, options);
+        }`, { input: document, condition: buildIndexPublicationCondition(input.projectCode!, previousGeneration) }, options);
     },
     embed: (texts) => generateEmbeddings(texts, { runId: `index_${hashRagText(JSON.stringify([textHash, input.projectCode, input.sourceType, input.expertId, input.roleId, input.saCode]))}`, actorId: input.createdBy, projectCode: input.projectCode }),
   });
