@@ -2,7 +2,7 @@
 
 import { useRef, useState } from 'react';
 import { fetchAuthSession } from 'aws-amplify/auth';
-import { FileCheck2, Loader2, Trash2, Upload } from 'lucide-react';
+import { ClipboardCheck, Loader2, Trash2, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -151,7 +151,7 @@ export function RagReferenceImportDialog({ roles, onIndexed }: { roles: string[]
           })}
         </div>
         <div className="flex flex-wrap justify-end gap-2 border-t pt-4">
-          <Button type="button" variant="outline" disabled={busy || !rows.some((row) => !isSaved(row)) || !projectCode.trim()} onClick={() => void run(true)}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileCheck2 className="h-4 w-4" />}Verifica fisierele</Button>
+          <Button type="button" variant="outline" disabled={busy || !rows.some((row) => !isSaved(row)) || !projectCode.trim()} onClick={() => void run(true)}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ClipboardCheck className="h-4 w-4" />}Verifica fisierele</Button>
           <Button type="button" className="h-auto min-h-9 max-w-full whitespace-normal" disabled={busy || !ready.length} onClick={() => void run(false)}><Upload className="h-4 w-4" />Indexeaza fisierele verificate ({ready.length})</Button>
         </div>
       </DialogContent>
