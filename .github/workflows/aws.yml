@@ -25,7 +25,8 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        # Match the lockfile installation mode used by amplify.yml.
+        run: npm ci --legacy-peer-deps
 
       - name: Typecheck
         run: npm run typecheck
