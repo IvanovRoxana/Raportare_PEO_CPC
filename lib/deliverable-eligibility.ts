@@ -30,6 +30,22 @@ const structuredEligibilitySchema = z.object({
   observations: z.array(z.string()),
 });
 
+// The provider requires every object property, including evidence arrays.
+// Keep the permissive schema above for older persisted assessments.
+const eligibilityFindingResponseSchema = eligibilityFindingSchema.extend({
+  deliverableEvidence: z.array(z.string()),
+  contextEvidence: z.array(z.string()),
+  limitations: z.array(z.string()),
+});
+export const structuredEligibilityResponseSchema = structuredEligibilitySchema.extend({
+  expertRoleAssessment: eligibilityFindingResponseSchema,
+  serviceAssessment: eligibilityFindingResponseSchema,
+  projectRelevanceAssessment: eligibilityFindingResponseSchema,
+  evidenceAssessment: eligibilityFindingResponseSchema,
+  consistencyChecks: z.array(eligibilityFindingResponseSchema),
+  selectedSaMatch: eligibilityFindingResponseSchema,
+});
+
 export const deliverableEligibilitySchema = z.object({
   status: z.enum(['eligibil', 'eligibil_cu_observatii', 'neeligibil', 'neconcludent']),
   score: z.number().min(0).max(100),

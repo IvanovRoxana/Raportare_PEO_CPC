@@ -23,7 +23,7 @@ import { loadEligibilityCatalog } from '@/lib/eligibility-catalog-runtime';
 import {
   buildEligibilityAssessmentPrompt,
   finalizeEligibilityAssessment,
-  eligibilityAssessmentAiSchema,
+  eligibilityAssessmentResponseSchema,
   EligibilityAssessmentInputError,
   ELIGIBILITY_ASSESSMENT_VERSION,
   validateEligibilityAssessmentInput,
@@ -190,7 +190,7 @@ export async function POST(req: Request) {
       ...prompt,
       abortSignal: AbortSignal.timeout(55_000),
       ...ELIGIBILITY_MODEL_CONFIGURATION,
-      output: Output.object({ schema: eligibilityAssessmentAiSchema }),
+      output: Output.object({ schema: eligibilityAssessmentResponseSchema }),
     });
     const assessment = finalizeEligibilityAssessment(input, context, result.output);
     evidence.aiFindings = result.output?.criterionFindings || [];

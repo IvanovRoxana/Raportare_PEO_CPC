@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { criterionAiFindingSchema } from './eligibility-rules.ts';
 import {
   deliverableEligibilityAiSchema,
+  structuredEligibilityResponseSchema,
   normalizeDeliverableEligibilityAiOutput,
   CONCORDIA_PUBLICATION_ELIGIBILITY_PROMPT_RULES,
   isConcordiaPublishedDeliverableType,
@@ -35,6 +36,11 @@ export const eligibilityAssessmentAiSchema = deliverableEligibilityAiSchema.exte
     quote: z.string(),
     criterion: z.string(),
   })),
+});
+
+export const eligibilityAssessmentResponseSchema = eligibilityAssessmentAiSchema.extend({
+  structuredAssessment: structuredEligibilityResponseSchema,
+  criterionFindings: z.array(criterionAiFindingSchema),
 });
 
 export type EligibilityAssessmentCandidate = {
