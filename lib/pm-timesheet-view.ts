@@ -1,5 +1,6 @@
 import { isActivePmUnlockRequest } from './pm-unlock-status.ts';
-import type { Activity, DashboardComplianceRow, DocumentMetadata, Expert } from './types.ts';
+import { calculateLeaveAllocationForDay } from './financial-leave-allocation.ts';
+import type { Activity, DashboardComplianceRow, DocumentMetadata, Expert, LeaveEntry } from './types.ts';
 
 export type PmTimesheetExpertChip = {
   expert: Expert;
@@ -9,12 +10,13 @@ export type PmTimesheetExpertChip = {
   isActive: boolean;
 };
 
-export type PmTimesheetCalendarDayStatus = 'worked' | 'blocked' | 'missing_timesheet' | 'non_working';
+export type PmTimesheetCalendarDayStatus = 'worked' | 'blocked' | 'leave' | 'missing_timesheet' | 'non_working';
 
 export type PmTimesheetCalendarDay = {
   date: string;
   day: number;
   activities: Activity[];
+  leaveEntries: LeaveEntry[];
   totalHours: number;
   expectedHours: number;
   status: PmTimesheetCalendarDayStatus;
@@ -33,7 +35,24 @@ export type PmTimesheetViewModel = {
   daysInMonth: number;
   leadingEmptyDays: number;
   dailyNormHours: number;
+  totalHours: number;
+  leaveHours: number;
 };
+
+function buildExpertCalendarData(expertId: string | undefined, activities: Activity[], leaves: LeaveEntry[]) {
+  const leaveEntries = leaves.filter((leave) => leave.expertId === expertId);
+  const leaveDates = new Set(leaveEntries.map((leave) => leave.date));
+  const financialLeaveDates = new Set(leaveEntries
+    .filter((leave) => leave.source === 'FINANCIAL' || leave.lockedForExpert || leave.status === 'VALIDATED')
+    .map((leave) => leave.date));
+  const calendarActivities = activities.filter((activity) => activity.expertId === expertId
+    && !financialLeaveDates.has(activity.date)
+    && !(leaveDates.has(activity.date)
+      && (activity.dayType === 'CO' || activity.dayType === 'CM' || activity.id.startsWith('leave-entry:'))));
+  const leaveHours = leaveEntries.reduce((sum, leave) => sum + leave.peoHours, 0);
+  const totalHours = calendarActivities.reduce((sum, activity) => sum + (activity.hours || 0), 0) + leaveHours;
+  return { calendarActivities, leaveEntries, leaveHours, totalHours };
+}
 
 function isDocumentLinkedToMonth(args: {
   document: DocumentMetadata;
@@ -67,9 +86,11 @@ function getCalendarDayStatus(args: {
   month: number;
   day: number;
   activities: Activity[];
+  hasLeave: boolean;
   blockedActivityIds: Set<string>;
 }): PmTimesheetCalendarDayStatus {
   if (args.activities.some((activity) => args.blockedActivityIds.has(activity.id))) return 'blocked';
+  if (args.hasLeave) return 'leave';
   if (args.activities.length > 0) return 'worked';
   if (isBusinessDay(args.year, args.month, args.day)) return 'missing_timesheet';
   return 'non_working';
@@ -79,6 +100,7 @@ export function buildPmTimesheetViewModel(args: {
   experts: Expert[];
   dashboardRows: DashboardComplianceRow[];
   activities: Activity[];
+  leaveEntries?: LeaveEntry[];
   activeBlockedDocuments: DocumentMetadata[];
   autoResolvedDocuments: DocumentMetadata[];
   selectedExpertId?: string;
@@ -89,7 +111,16 @@ export function buildPmTimesheetViewModel(args: {
     args.experts.find((expert) => expert.id === args.selectedExpertId) ||
     args.experts[0];
   const selectedRow = args.dashboardRows.find((row) => row.expertId === selectedExpert?.id);
-  const selectedActivities = args.activities.filter((activity) => activity.expertId === selectedExpert?.id);
+  const monthPrefix = `${args.selectedYear}-${String(args.selectedMonth + 1).padStart(2, '0')}-`;
+  const monthActivities = args.activities.filter((activity) => activity.date.startsWith(monthPrefix));
+  const monthLeaves = (args.leaveEntries || []).flatMap((leave) => {
+    const allocation = calculateLeaveAllocationForDay(leave, { month: args.selectedMonth, year: args.selectedYear });
+    return allocation && leave.date.startsWith(monthPrefix)
+      ? [{ ...leave, peoHours: allocation.peoHours, cpcHours: allocation.cpcHours }]
+      : [];
+  });
+  const selectedCalendar = buildExpertCalendarData(selectedExpert?.id, monthActivities, monthLeaves);
+  const selectedActivities = monthActivities.filter((activity) => activity.expertId === selectedExpert?.id);
   const selectedActivityIds = new Set(selectedActivities.map((activity) => activity.id));
   const isDocumentInSelectedMonth = (document: DocumentMetadata) =>
     isDocumentLinkedToMonth({
@@ -114,17 +145,18 @@ export function buildPmTimesheetViewModel(args: {
   });
 
   const activitiesByDay = new Map<string, Activity[]>();
-  selectedActivities.forEach((activity) => {
+  selectedCalendar.calendarActivities.forEach((activity) => {
     activitiesByDay.set(activity.date, [...(activitiesByDay.get(activity.date) || []), activity]);
   });
 
   const expertChips = args.experts.map((expert) => {
     const row = args.dashboardRows.find((item) => item.expertId === expert.id);
+    const { totalHours } = buildExpertCalendarData(expert.id, monthActivities, monthLeaves);
     return {
       expert,
       row,
-      totalHours: row?.totalHours || 0,
-      utilizationPercent: row?.utilizationPercent || 0,
+      totalHours,
+      utilizationPercent: row?.monthlyNorm ? (totalHours / row.monthlyNorm) * 100 : 0,
       isActive: expert.id === selectedExpert?.id,
     };
   });
@@ -136,11 +168,14 @@ export function buildPmTimesheetViewModel(args: {
     const day = index + 1;
     const date = isoDate(args.selectedYear, args.selectedMonth, day);
     const activities = activitiesByDay.get(date) || [];
-    const totalHours = activities.reduce((sum, activity) => sum + (activity.hours || 0), 0);
+    const leaveEntries = selectedCalendar.leaveEntries.filter((leave) => leave.date === date);
+    const totalHours = activities.reduce((sum, activity) => sum + (activity.hours || 0), 0)
+      + leaveEntries.reduce((sum, leave) => sum + leave.peoHours, 0);
     return {
       date,
       day,
       activities,
+      leaveEntries,
       totalHours,
       expectedHours: dailyNormHours,
       status: getCalendarDayStatus({
@@ -148,6 +183,7 @@ export function buildPmTimesheetViewModel(args: {
         month: args.selectedMonth,
         day,
         activities,
+        hasLeave: leaveEntries.length > 0,
         blockedActivityIds,
       }),
     };
@@ -166,5 +202,7 @@ export function buildPmTimesheetViewModel(args: {
     daysInMonth,
     leadingEmptyDays,
     dailyNormHours,
+    totalHours: selectedCalendar.totalHours,
+    leaveHours: selectedCalendar.leaveHours,
   };
 }

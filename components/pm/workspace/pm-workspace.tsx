@@ -49,6 +49,7 @@ import type {
   ActivityCatalog,
   DocumentMetadata,
   Expert,
+  LeaveEntry,
   MonthAccessRequest,
   Neconformitate,
   PmClarificationThread,
@@ -100,6 +101,7 @@ export type PmWorkspaceProps = {
     issues: number;
   };
   activities: Activity[];
+  leaveEntries: LeaveEntry[];
   documents: DocumentMetadata[];
   submittedReportRows: PmSubmittedReportRow[];
   clarificationThreads: PmClarificationThread[];

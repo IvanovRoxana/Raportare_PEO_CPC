@@ -28,6 +28,7 @@ export function TimesheetView(props: TimesheetViewProps) {
     experts: props.experts,
     dashboardRows: props.dashboardRows,
     activities: props.activities,
+    leaveEntries: props.leaveEntries,
     activeBlockedDocuments: props.pmUnlockRequests,
     autoResolvedDocuments: props.resolvedPmUnlockRequests,
     selectedExpertId,
@@ -65,7 +66,14 @@ export function TimesheetView(props: TimesheetViewProps) {
               const dayActivities = calendarDay.activities;
               return (
                 <div key={calendarDay.date} className="min-h-[5.5rem] border-b border-r p-2 text-xs">
-                  <div className="flex justify-between"><span className="font-medium">{calendarDay.day}</span><span className={calendarDay.totalHours > 0 ? 'font-semibold text-blue-700' : 'text-slate-300'}>{calendarDay.totalHours || '-'}/{calendarDay.expectedHours}h</span></div>
+                  <div className="flex justify-between"><span className="font-medium">{calendarDay.day}</span><span className={calendarDay.totalHours > 0 || calendarDay.leaveEntries.length > 0 ? 'font-semibold text-blue-700' : 'text-slate-300'}>{calendarDay.totalHours || (calendarDay.leaveEntries.length > 0 ? 0 : '-')}/{calendarDay.expectedHours}h</span></div>
+                  {calendarDay.leaveEntries.map((leave) => (
+                    <div key={leave.id} className="mt-1 rounded border border-violet-200 bg-violet-50 px-1.5 py-1 text-[10px] text-violet-900">
+                      <div className="font-semibold">{leave.type} · {leave.source === 'FINANCIAL' ? 'Financiar' : leave.source === 'EXPERT' ? 'Expert' : 'Import'}</div>
+                      <div>{leave.peoHours}h PEO + {leave.cpcHours}h CPC</div>
+                      <div>{leave.status === 'VALIDATED' ? 'Validat financiar' : 'Nevalidat financiar'}</div>
+                    </div>
+                  ))}
                   {dayActivities.slice(0, 2).map((activity) => {
                     const blocked = timesheet.blockedActivityIds.has(activity.id);
                     return (
@@ -87,7 +95,10 @@ export function TimesheetView(props: TimesheetViewProps) {
             })}
           </div>
           <div className="flex items-center justify-between p-4">
-            <div><span className="text-2xl font-bold text-[#1f3f75]">{selectedRow?.totalHours || 0}h</span><span className="ml-2 text-sm text-slate-500">/ {selectedRow?.monthlyNorm || 0}h normă</span></div>
+            <div>
+              <span className="text-2xl font-bold text-[#1f3f75]">{timesheet.totalHours}h</span><span className="ml-2 text-sm text-slate-500">/ {selectedRow?.monthlyNorm || 0}h normă</span>
+              {timesheet.calendarDays.some((day) => day.leaveEntries.length > 0) && <p className="text-xs text-violet-700">Include {timesheet.leaveHours}h CO/CM PEO, inclusiv cele nevalidate.</p>}
+            </div>
             <Button
               className="bg-[#1f3f75]"
               disabled={!selectedExpert || props.exportingPontajExpertId === selectedExpert.id}

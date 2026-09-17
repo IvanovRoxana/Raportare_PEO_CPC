@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { buildPmTimesheetViewModel } from '../lib/pm-timesheet-view.ts';
-import type { Activity, DashboardComplianceRow, DocumentMetadata, Expert } from '../lib/types.ts';
+import type { Activity, DashboardComplianceRow, DocumentMetadata, Expert, LeaveEntry } from '../lib/types.ts';
 
 const experts: Expert[] = [
   { id: 'e1', name: 'Andreea Cojocaru', role: 'Expert', norma: 5 },
@@ -57,7 +57,91 @@ function document(id: string, overrides: Partial<DocumentMetadata> = {}): Docume
   };
 }
 
+function leave(id: string, overrides: Partial<LeaveEntry> = {}): LeaveEntry {
+  return {
+    id, expertId: 'e1', date: '2026-08-03', month: 7, year: 2026,
+    type: 'CO', totalHours: 8, peoHours: 6, cpcHours: 2,
+    source: 'FINANCIAL', status: 'VALIDATED', lockedForExpert: true,
+    ...overrides,
+  };
+}
+
+function leaveModel(activities: Activity[], leaveEntries: LeaveEntry[], selectedExpertId = 'e1') {
+  return buildPmTimesheetViewModel({
+    experts, dashboardRows: [row('e1'), row('e2')], activities, leaveEntries,
+    activeBlockedDocuments: [], autoResolvedDocuments: [],
+    selectedExpertId, selectedMonth: 7, selectedYear: 2026,
+  });
+}
+
 describe('buildPmTimesheetViewModel', () => {
+  it('afișează CO financiar fără activități și include numai orele PEO în totalul calendarului', () => {
+    const model = leaveModel([], [leave('financial')]);
+    const day = model.calendarDays.find((item) => item.date === '2026-08-03')!;
+    assert.equal(day.status, 'leave');
+    assert.equal(day.leaveEntries[0].source, 'FINANCIAL');
+    assert.equal(day.leaveEntries[0].cpcHours, 2);
+    assert.equal(day.totalHours, 6);
+    assert.equal(model.totalHours, 6);
+    assert.equal(model.leaveHours, 6);
+    assert.equal(model.expertChips[0].totalHours, 6);
+    assert.equal(model.expertChips[0].utilizationPercent, 6 / 126 * 100);
+    assert.equal(model.calendarDays.reduce((sum, item) => sum + item.totalHours, 0), model.totalHours);
+  });
+
+  it('înlocuiește orele din zilele validate financiar fără să dubleze CO existent', () => {
+    const model = leaveModel([
+      activity('work'),
+      activity('legacy-co', { dayType: 'CO' }),
+      activity('leave-entry:financial', { dayType: 'CO' }),
+      activity('next-day', { date: '2026-08-04', hours: 4 }),
+    ], [leave('financial')]);
+    assert.equal(model.calendarDays[2].activities.length, 0);
+    assert.equal(model.calendarDays[2].totalHours, 6);
+    assert.equal(model.totalHours, 10);
+    // Keep the original activities available for the document review panel.
+    assert.equal(model.selectedActivities.length, 4);
+  });
+
+  it('arată CO expert nevalidat și CM cu zero ore PEO, fără concedii respinse sau din alte luni', () => {
+    const model = leaveModel([
+      activity('legacy-co', { dayType: 'CO' }),
+      activity('outside-month', { date: '2026-09-03' }),
+    ], [
+      leave('expert', { source: 'EXPERT', status: 'DRAFT', lockedForExpert: false }),
+      leave('cpc-only', { date: '2026-08-04', type: 'CM', peoHours: 0, cpcHours: 8 }),
+      leave('rejected', { date: '2026-08-05', status: 'REJECTED' }),
+      leave('outside-month', { date: '2026-09-03', month: 8 }),
+      leave('outside-year', { date: '2025-08-03', year: 2025 }),
+      leave('other-expert', { expertId: 'e2', peoHours: 4, cpcHours: 4 }),
+    ]);
+    assert.equal(model.calendarDays[2].leaveEntries[0].source, 'EXPERT');
+    assert.equal(model.calendarDays[2].leaveEntries[0].status, 'DRAFT');
+    assert.equal(model.calendarDays[2].activities.length, 0);
+    assert.equal(model.calendarDays[3].status, 'leave');
+    assert.equal(model.calendarDays[3].totalHours, 0);
+    assert.equal(model.calendarDays[3].leaveEntries[0].cpcHours, 8);
+    assert.equal(model.calendarDays[4].status, 'missing_timesheet');
+    assert.equal(model.totalHours, 6);
+    assert.equal(model.expertChips[1].totalHours, 4);
+  });
+
+  it('separă experții și păstrează activitățile în zilele cu CO încă nevalidat', () => {
+    const leaves = [
+      leave('expert', { source: 'EXPERT', status: 'SUBMITTED', lockedForExpert: false }),
+      leave('other', { expertId: 'e2', peoHours: 4, cpcHours: 4 }),
+    ];
+    const model = leaveModel([activity('work', { hours: 2 })], leaves);
+    assert.equal(model.calendarDays[2].activities[0].id, 'work');
+    assert.equal(model.totalHours, 8);
+    const other = leaveModel([activity('work')], leaves, 'e2');
+    assert.equal(other.calendarDays[2].leaveEntries[0].id, 'other');
+    assert.equal(other.totalHours, 4);
+    const validated = leaveModel([activity('work')], [{ ...leaves[0], status: 'VALIDATED' }]);
+    assert.equal(validated.totalHours, 6);
+    assert.equal(validated.calendarDays[2].activities.length, 0);
+  });
+
   it('selectează expertul, marchează activitățile blocate și separă cazurile auto-rezolvate', () => {
     const model = buildPmTimesheetViewModel({
       experts,

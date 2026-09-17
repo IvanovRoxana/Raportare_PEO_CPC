@@ -1833,6 +1833,7 @@ export default function PMDashboard() {
         pmSummary={pmSummary}
         dashboardTotals={dashboardTotals}
         activities={monthActivities}
+        leaveEntries={allLeaveEntries}
         documents={documents}
         submittedReportRows={submittedReportRows}
         clarificationThreads={clarificationThreads}
