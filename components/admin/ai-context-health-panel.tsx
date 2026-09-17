@@ -12,9 +12,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { AiReportingInstructionsPanel } from '@/components/pm/ai-reporting-instructions-panel';
 import { RagReferenceImportDialog } from '@/components/admin/rag-reference-import-dialog';
-import { useExperts } from '@/hooks/use-backend-data';
+import { useExpertMutations, useExperts } from '@/hooks/use-backend-data';
+import { expertIdentityKey } from '@/lib/expert-merge';
 import { extractDocxTextWithSource, extractPdfTextWithSource } from '@/lib/document-utils';
 
 type HealthStatus = 'ok' | 'warning' | 'missing' | 'not_applicable';
@@ -128,6 +128,8 @@ function statusLabel(status: HealthStatus) {
 
 export function AiContextHealthPanel() {
   const { experts, isLoading: expertsLoading, mutate: refreshExperts } = useExperts();
+  const { experts: persistedExperts } = useExperts({ includeInactive: true, includeFallback: false });
+  const { create, update } = useExpertMutations();
   const activeExperts = useMemo(
     () => experts.filter((expert) => expert.isActive !== false),
     [experts],
@@ -173,10 +175,6 @@ export function AiContextHealthPanel() {
   const [ragTextIsExtracted, setRagTextIsExtracted] = useState(false);
   const [libraryDocuments, setLibraryDocuments] = useState<RagLibraryDocument[]>([]);
   const [loadingLibrary, setLoadingLibrary] = useState(false);
-  const [repairingProject, setRepairingProject] = useState(false);
-  const [projectRepairMessage, setProjectRepairMessage] = useState('');
-  const projectRepairLock = useRef(false);
-  const [showAiInstructionsEditor, setShowAiInstructionsEditor] = useState(false);
   const [deletingDocumentId, setDeletingDocumentId] = useState<string | null>(null);
   const [ragDialogOpen, setRagDialogOpen] = useState(false);
   const ragFormRef = useRef<HTMLDivElement>(null);
@@ -259,45 +257,6 @@ export function AiContextHealthPanel() {
     }
   }
 
-  async function completeMissingProjects() {
-    if (projectRepairLock.current) return;
-    projectRepairLock.current = true;
-    setRepairingProject(true);
-    let documents = 0;
-    let chunks = 0;
-    let failures = 0;
-    try {
-      for (const model of ['KnowledgeDocument', 'KnowledgeChunk']) {
-        let nextToken: string | null = null;
-        do {
-          const token = await getAccessToken();
-          const response: Response = await fetch('/api/admin/rag/library', {
-            method: 'PATCH',
-            headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-            body: JSON.stringify({ action: 'complete-project', model, nextToken }),
-            signal: AbortSignal.timeout(60000),
-          });
-          const data: { updated: number; failed: string[]; nextToken: string | null; error?: string } | null = await response.json().catch(() => null);
-          if (!response.ok || !data || !Number.isInteger(data.updated) || !Array.isArray(data.failed)) {
-            throw new Error(data?.error || 'Serverul nu a confirmat completarea proiectului. Poti relua operatia.');
-          }
-          if (model === 'KnowledgeDocument') documents += data.updated;
-          else chunks += data.updated;
-          failures += data.failed.length;
-          nextToken = data.nextToken;
-          setProjectRepairMessage(`Proiect 302141: ${documents} documente si ${chunks} fragmente completate. Procesare in curs...`);
-        } while (nextToken);
-      }
-      setProjectRepairMessage(`Finalizat: ${documents} documente si ${chunks} fragmente completate cu 302141.${failures ? ` ${failures} actualizari neconfirmate; reia operatia.` : ''} Codurile existente au fost pastrate.`);
-    } catch (error) {
-      setProjectRepairMessage(`Operatie oprita dupa ${documents} documente si ${chunks} fragmente confirmate. ${error instanceof Error ? error.message : 'Reia completarea.'}`);
-    } finally {
-      projectRepairLock.current = false;
-      setRepairingProject(false);
-      await loadLibrary();
-    }
-  }
-
   async function removeFromLibrary(id: string) {
     if (!window.confirm('Scoti documentul din biblioteca RAG?')) return;
     setDeletingDocumentId(id);
@@ -349,21 +308,13 @@ export function AiContextHealthPanel() {
     setError(null);
     setMessage(null);
     try {
-      const token = await getAccessToken();
-      const response = await fetch('/api/admin/experts', {
-        method: 'POST',
-        headers: {
-          authorization: `Bearer ${token}`,
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify({
-          action: 'update',
-          id: selectedExpert.id,
-          input: { jobDescriptionText: jobDescriptionDraft.trim() },
-        }),
-      });
-      const data = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(data?.error || 'Nu am putut salva fisa postului.');
+      const persisted = persistedExperts.find((expert) => expertIdentityKey(expert) === expertIdentityKey(selectedExpert));
+      if (persisted) {
+        await update(persisted.id, { jobDescriptionText: jobDescriptionDraft.trim() });
+      } else {
+        const { id: _fallbackId, ...input } = selectedExpert;
+        await create({ ...input, jobDescriptionText: jobDescriptionDraft.trim() });
+      }
       setMessage('Fisa postului a fost salvata.');
       await refreshExperts();
       await loadHealth();
@@ -578,7 +529,7 @@ export function AiContextHealthPanel() {
                 <h3 className="font-semibold text-slate-950">Subactivități</h3>
                 <p className="mt-1 text-xs text-muted-foreground">Fiecare SA are sursă și status separat; încărcarea unei surse nu modifică celelalte SA-uri.</p>
               </div>
-              <Button type="button" variant="outline" size="sm" onClick={() => { window.location.href = '/admin?tab=subactivitati'; }}>
+              <Button type="button" variant="outline" size="sm" onClick={() => { window.location.href = '/pm?tab=knowledge&section=catalog'; }}>
                 Catalog activități
               </Button>
             </div>
@@ -611,13 +562,13 @@ export function AiContextHealthPanel() {
                   </Badge>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  {card.id === 'project-sources' && <Button type="button" variant="outline" size="sm" onClick={() => configureSource('project', 'cerere_finantare')}><Plus className="h-3 w-3" />Adauga proiect</Button>}
-                  {card.id === 'sa-purpose' && <Button type="button" variant="outline" size="sm" onClick={() => configureSource('subactivity', 'scop_sa')}><Plus className="h-3 w-3" />Adauga SA</Button>}
-                  {card.id === 'job-description' && <Button type="button" variant="outline" size="sm" onClick={() => configureSource('expert', 'fisa_post')}><Plus className="h-3 w-3" />Adauga expert</Button>}
-                  {card.id === 'category-rag' && <Button type="button" variant="outline" size="sm" onClick={() => configureSource('project', 'manual_beneficiar')}><Plus className="h-3 w-3" />Adauga categorie</Button>}
+                  {card.id === 'project-sources' && <Button type="button" variant="outline" size="sm" onClick={() => configureSource('project', 'cerere_finantare')}><Plus className="h-3 w-3" />Adaugă sursă proiect</Button>}
+                  {card.id === 'sa-purpose' && <Button type="button" variant="outline" size="sm" onClick={() => configureSource('subactivity', 'scop_sa')}><Plus className="h-3 w-3" />Adaugă sursă SA</Button>}
+                  {card.id === 'job-description' && <Button type="button" variant="outline" size="sm" onClick={() => configureSource('expert', 'fisa_post')}><Plus className="h-3 w-3" />Adaugă fișă de post</Button>}
+                  {card.id === 'category-rag' && <Button type="button" variant="outline" size="sm" onClick={() => configureSource('project', 'manual_beneficiar')}><Plus className="h-3 w-3" />Adaugă referință</Button>}
                   {card.id === 'approved-reports' && <Button type="button" variant="outline" size="sm" onClick={() => configureSource('expert', 'raport_activitate_aprobat')}><Plus className="h-3 w-3" />Adauga raport</Button>}
-                  {card.id === 'ai-instructions' && <Button type="button" variant="outline" size="sm" onClick={() => setShowAiInstructionsEditor(true)}><Settings className="h-3 w-3" />Configureaza instructiuni</Button>}
-                  {card.id === 'eligibility-rules' && <Button type="button" variant="outline" size="sm" onClick={() => { window.location.href = '/pm?tab=eligibility-governance'; }}><Settings className="h-3 w-3" />Deschide ruleset</Button>}
+                  {card.id === 'ai-instructions' && <Button type="button" variant="outline" size="sm" onClick={() => { window.location.href = '/pm?tab=knowledge&section=reguli'; }}><Settings className="h-3 w-3" />Configureaza instructiuni</Button>}
+                  {card.id === 'eligibility-rules' && <Button type="button" variant="outline" size="sm" onClick={() => { window.location.href = '/pm?tab=knowledge&section=reguli'; }}><Settings className="h-3 w-3" />Deschide ruleset</Button>}
                 </div>
                 {card.recommendedAction && (
                   <p className="mt-3 rounded-lg bg-slate-50 p-2 text-xs text-slate-700">{card.recommendedAction}</p>
@@ -625,26 +576,6 @@ export function AiContextHealthPanel() {
               </div>
             ))}
           </div>
-
-          {showAiInstructionsEditor && (
-            <section className="rounded-xl border border-blue-200 bg-blue-50/40 p-4">
-              <div className="mb-4 flex items-start justify-between gap-3">
-                <div>
-                  <h3 className="font-semibold text-slate-950">Instrucțiuni AI pentru expert</h3>
-                  <p className="mt-1 text-sm text-muted-foreground">Configurează stilul și responsabilitățile specifice pentru expertul selectat.</p>
-                </div>
-                <Button type="button" variant="ghost" size="sm" onClick={() => setShowAiInstructionsEditor(false)}>Închide</Button>
-              </div>
-              <AiReportingInstructionsPanel
-                experts={activeExperts}
-                initialExpertId={expertId}
-                onSaved={async () => {
-                  await refreshExperts();
-                  await loadHealth();
-                }}
-              />
-            </section>
-          )}
 
           {health?.warnings.length ? (
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
@@ -832,11 +763,6 @@ export function AiContextHealthPanel() {
         <CardHeader className="flex flex-row items-center justify-between gap-3">
           <div>
             <CardTitle className="text-base">Biblioteca RAG</CardTitle>
-            <Button type="button" variant="outline" size="sm" className="mt-2" disabled={repairingProject} onClick={() => void completeMissingProjects()}>
-              {repairingProject && <Loader2 className="h-4 w-4 animate-spin" />} Completeaza proiectul 302141
-            </Button>
-            <p className="mt-1 text-xs text-muted-foreground">Completeaza doar proiectele lipsa din documente si fragmentele RAG.</p>
-            {projectRepairMessage && <p role="status" className="mt-2 text-sm">{projectRepairMessage}</p>}
             <p className="mt-1 text-sm text-muted-foreground">Surse comune de proiect, SA, categorie și expert. Proiectul nu înlocuiește sursele expertului.</p>
           </div>
           <Button type="button" variant="outline" size="sm" onClick={() => void loadLibrary()} disabled={loadingLibrary}>

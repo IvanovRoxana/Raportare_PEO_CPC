@@ -19,13 +19,15 @@ test('PM eligibility area includes the PEO Eligibility Agent panel', () => {
   assert.match(pmEligibilityGovernanceSource, /<PeoEligibilityAgentPanel experts=\{experts\} \/>/);
 });
 
-test('PM exposes eligibility categories as a separate menu item', () => {
-  assert.match(pmPageSource, /value="eligibility-categories"/);
-  assert.match(pmPageSource, /Categorii eligibilitate/);
-  assert.match(pmPageSource, /value="eligibility-governance"/);
-  assert.match(pmPageSource, /Catalog eligibilitate/);
-  assert.match(pmWorkspaceSource, /eligibilityCategories/);
-  assert.match(pmWorkspaceSource, /eligibilityCatalog/);
+test('PM centralizes knowledge panels in one visible workspace', () => {
+  assert.doesNotMatch(pmPageSource, /value="eligibility-categories"|value="eligibility-governance"|value="ai-rag"/);
+  assert.match(pmWorkspaceSource, /label: 'AI \+ RAG \/ Knowledge'/);
+  assert.match(pmWorkspaceSource, /<KnowledgeWorkspace/);
+  assert.match(pmWorkspaceSource, /props.canManageKnowledge/);
+  const knowledge = fs.readFileSync(path.join(repoRoot, 'components/pm/knowledge-workspace.tsx'), 'utf8');
+  for (const component of ['AiContextHealthPanel', 'ActivityCatalogGovernancePanel', 'EligibilityGovernancePanel', 'AiRagAuditTab']) {
+    assert.ok(knowledge.includes('<' + component));
+  }
 });
 
 test('AI reporting instructions are managed from PM, not Admin users', () => {

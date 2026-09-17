@@ -1,5 +1,6 @@
+import { assertKnowledgeRequest, knowledgeAuthErrorResponse } from '@/lib/rag/knowledge-auth';
 import { NextResponse } from 'next/server';
-import { assertRagAdminRequest, guardRagAdminRequest, ragAdminAuthErrorResponse } from '@/lib/rag/admin-auth';
+import { guardRagAdminRequest, ragAdminAuthErrorResponse } from '@/lib/rag/admin-auth';
 import { getCognitoAccessTokenFromRequest } from '@/lib/rag/cognito-auth';
 import { archiveRagOriginal } from '@/lib/eligibility-originals';
 import { authenticateEligibilityRequest } from '@/lib/eligibility-resolver';
@@ -65,7 +66,7 @@ export async function POST(req: Request) {
   try {
     let authToken = '';
     if (req.headers.get('authorization')) {
-      authToken = await assertRagAdminRequest(req);
+      authToken = await assertKnowledgeRequest(req);
     } else {
       const denied = guardRagAdminRequest(req);
       if (denied) return denied;
@@ -217,7 +218,7 @@ export async function POST(req: Request) {
       results,
     });
   } catch (error) {
-    const authError = ragAdminAuthErrorResponse(error);
+    const authError = knowledgeAuthErrorResponse(error) || ragAdminAuthErrorResponse(error);
     if (authError) return authError;
     console.error('[admin-rag-index-reference-pdfs] Failed to import reference PDFs.', error);
     return NextResponse.json({ error: 'Importul PDF-urilor RAG a esuat.' }, { status: 500 });

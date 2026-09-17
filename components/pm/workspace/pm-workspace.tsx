@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   AlertTriangle,
   CalendarDays,
@@ -17,8 +17,8 @@ import {
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ActivityCatalogGovernancePanel } from '@/components/pm/activity-catalog-governance-panel';
-import { EligibilityGovernancePanel } from '@/components/pm/eligibility-governance-panel';
+import { KnowledgeWorkspace } from '@/components/pm/knowledge-workspace';
+import { isKnowledgeTab, resolveKnowledgeSection } from '@/lib/workspace-navigation';
 import { ExpertAvatar } from '@/components/expert/expert-avatar';
 import {
   Dialog,
@@ -74,6 +74,7 @@ type PendingSharedDeliverable = {
 };
 
 export type PmWorkspaceProps = {
+  canManageKnowledge: boolean;
   experts: Expert[];
   dashboardRows: DashboardComplianceRow[];
   reportStatusByExpertId: Map<string, ReportStatus>;
@@ -145,8 +146,7 @@ type WorkspaceView =
   | 'reports'
   | 'deliverables'
   | 'nonconformities'
-  | 'eligibilityCategories'
-  | 'eligibilityCatalog'
+  | 'knowledge'
   | 'actions';
 
 type NonconformityIssueFilter =
@@ -164,8 +164,7 @@ const views: Array<{ id: WorkspaceView; label: string; badge?: (props: PmWorkspa
   { id: 'reports', label: 'Raportare' },
   { id: 'deliverables', label: 'Livrabile' },
   { id: 'nonconformities', label: 'Neconformități', badge: (props) => props.pmSummary.problemCount },
-  { id: 'eligibilityCategories', label: 'Categorii eligibilitate' },
-  { id: 'eligibilityCatalog', label: 'Catalog eligibilitate' },
+  { id: 'knowledge', label: 'AI + RAG / Knowledge' },
   { id: 'actions', label: 'Acțiuni PM' },
 ];
 
@@ -204,7 +203,7 @@ function PmTopBar({
   return (
     <header className="sticky top-16 z-20 -mx-4 mt-4 border-b border-[#17396c] bg-[#1f3f75] px-4 text-white shadow-md sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
       <nav className="mx-auto flex min-h-12 max-w-screen-2xl items-end gap-2 overflow-x-auto pt-2">
-        {views.map((view) => {
+        {views.filter((view) => view.id !== 'knowledge' || props.canManageKnowledge).map((view) => {
           const count = view.badge?.(props) || 0;
           const active = view.id === activeView;
           return (
@@ -212,6 +211,7 @@ function PmTopBar({
               key={view.id}
               type="button"
               onClick={() => onViewChange(view.id)}
+              aria-current={active ? 'page' : undefined}
               className={`relative shrink-0 border-b-2 px-3 py-3 text-xs font-semibold transition ${
                 active ? 'border-white text-white' : 'border-transparent text-blue-100 hover:text-white'
               }`}
@@ -852,13 +852,9 @@ function EligibilityRulesActionPanel({
 
   return (
     <div className="space-y-4">
-      <ActivityCatalogGovernancePanel
-        fallbackCatalog={props.fallbackCatalog}
-        mode="pm"
-        activities={props.activities}
-        documents={props.documents}
-        onAudit={props.onEligibilityGovernanceAudit}
-      />
+      {props.canManageKnowledge && <Button asChild variant="outline">
+        <a href="/pm?tab=knowledge&section=catalog">Deschide catalogul în AI + RAG / Knowledge</a>
+      </Button>}
 
       <section className="overflow-hidden rounded-lg border bg-white shadow-sm">
         <div className="border-b px-4 py-3">
@@ -905,62 +901,6 @@ function EligibilityRulesActionPanel({
           ))}
         </div>
       </section>
-    </div>
-  );
-}
-
-function EligibilityCategoriesView(props: PmWorkspaceProps) {
-  return (
-    <div className="space-y-4 p-4 sm:p-6 lg:p-8">
-      <section className="rounded-lg border bg-white p-4 shadow-sm">
-        <div className="flex items-center gap-3">
-          <span className="rounded-lg border bg-blue-50 p-3 text-blue-700">
-            <ShieldCheck className="h-5 w-5" />
-          </span>
-          <div>
-            <h2 className="font-semibold">Categorii eligibilitate</h2>
-            <p className="text-xs text-slate-500">
-              Catalog activități, livrabile așteptate, import/export și reguli operaționale pentru încadrare.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      <ActivityCatalogGovernancePanel
-        fallbackCatalog={props.fallbackCatalog}
-        mode="pm"
-        activities={props.activities}
-        documents={props.documents}
-        onAudit={props.onEligibilityGovernanceAudit}
-      />
-    </div>
-  );
-}
-
-function EligibilityCatalogView(props: PmWorkspaceProps) {
-  return (
-    <div className="space-y-4 p-4 sm:p-6 lg:p-8">
-      <section className="rounded-lg border bg-white p-4 shadow-sm">
-        <div className="flex items-center gap-3">
-          <span className="rounded-lg border bg-blue-50 p-3 text-blue-700">
-            <ShieldCheck className="h-5 w-5" />
-          </span>
-          <div>
-            <h2 className="font-semibold">Catalog eligibilitate</h2>
-            <p className="text-xs text-slate-500">
-              Agent eligibilitate, prompturi AI per expert, cazuri PM și reguli versionate într-un singur loc.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      <EligibilityGovernancePanel
-        documents={props.documents}
-        experts={props.experts}
-        actorName={props.actorName}
-        onExpertsChanged={props.onExpertsChanged}
-        onAudit={props.onEligibilityGovernanceAudit}
-      />
     </div>
   );
 }
@@ -1023,10 +963,40 @@ function EmptyState({ text }: { text: string }) {
 
 export function PmWorkspace(props: PmWorkspaceProps) {
   const [activeView, setActiveView] = useState<WorkspaceView>('kpi');
+  const [knowledgeSection, setKnowledgeSection] = useState('surse');
+  useEffect(() => {
+    const restore = () => {
+      const params = new URLSearchParams(window.location.search);
+      const tab = params.get('tab');
+      if (isKnowledgeTab(tab) && props.canManageKnowledge) {
+        setKnowledgeSection(resolveKnowledgeSection(tab, params.get('section')));
+        setActiveView('knowledge');
+      } else {
+        setActiveView(views.find((view) => view.id === tab && view.id !== 'knowledge')?.id || 'kpi');
+      }
+    };
+    restore();
+    window.addEventListener('popstate', restore);
+    return () => window.removeEventListener('popstate', restore);
+  }, [props.canManageKnowledge]);
+  const changeView = (view: WorkspaceView) => {
+    if (view === activeView) return;
+    setActiveView(view);
+    const url = new URL(window.location.href);
+    if (activeView === 'knowledge') setKnowledgeSection(resolveKnowledgeSection('knowledge', url.searchParams.get('section')));
+    url.searchParams.set('tab', view);
+    if (view === 'knowledge') url.searchParams.set('section', knowledgeSection);
+    else url.searchParams.delete('section');
+    window.history.replaceState(null, '', url);
+  };
   const [eligibilityRulesFocusDocument, setEligibilityRulesFocusDocument] = useState<DocumentMetadata | null>(null);
   const openEligibilityRules = (document: DocumentMetadata) => {
     setEligibilityRulesFocusDocument(document);
-    setActiveView('eligibilityCatalog');
+    setKnowledgeSection('reguli');
+    changeView('knowledge');
+    const url = new URL(window.location.href);
+    url.searchParams.set('section', 'reguli');
+    window.history.replaceState(null, '', url);
   };
   const content = useMemo(() => {
     if (activeView === 'access') return <MonthAccessView {...props} />;
@@ -1034,15 +1004,14 @@ export function PmWorkspace(props: PmWorkspaceProps) {
     if (activeView === 'reports') return <ReportsView {...props} />;
     if (activeView === 'deliverables') return <DeliverablesView {...props} />;
     if (activeView === 'nonconformities') return <NonconformitiesView {...props} />;
-    if (activeView === 'eligibilityCategories') return <EligibilityCategoriesView {...props} />;
-    if (activeView === 'eligibilityCatalog') return <EligibilityCatalogView {...props} />;
+    if (activeView === 'knowledge' && props.canManageKnowledge) return <KnowledgeWorkspace key={knowledgeSection} {...props} initialSection={knowledgeSection} />;
     if (activeView === 'actions') return <ActionsView {...props} eligibilityRulesFocusDocument={eligibilityRulesFocusDocument} />;
     return <KpiView {...props} />;
-  }, [activeView, eligibilityRulesFocusDocument, props]);
+  }, [activeView, knowledgeSection, eligibilityRulesFocusDocument, props]);
 
   return (
     <div className="min-h-screen bg-[#eef3f8]">
-      <PmTopBar activeView={activeView} onViewChange={setActiveView} props={props} />
+      <PmTopBar activeView={activeView} onViewChange={changeView} props={props} />
       <main className="mx-auto max-w-screen-2xl px-2 py-4 sm:px-4 lg:px-0">{content}</main>
     </div>
   );

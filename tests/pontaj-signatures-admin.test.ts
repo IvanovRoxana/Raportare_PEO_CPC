@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
-const adminPage = readFileSync(new URL('../app/admin/page.tsx', import.meta.url), 'utf8');
+const adminPage = readFileSync(new URL('../components/admin/data-sources-workspace.tsx', import.meta.url), 'utf8');
 const panel = readFileSync(new URL('../components/admin/pontaj-signatures-panel.tsx', import.meta.url), 'utf8');
 const schema = readFileSync(new URL('../amplify/data/resource.ts', import.meta.url), 'utf8');
 const adminRoute = readFileSync(new URL('../app/api/admin/experts/route.ts', import.meta.url), 'utf8');

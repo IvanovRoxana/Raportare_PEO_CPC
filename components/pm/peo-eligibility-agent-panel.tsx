@@ -24,6 +24,7 @@ export function PeoEligibilityAgentPanel({ experts = [] }: { experts?: Expert[] 
   return <section className="space-y-3 rounded-md border bg-white p-5" aria-label="Pregatire agent eligibilitate">
     <h2 className="text-lg font-bold">Agentul de eligibilitate: surse și diagnostic</h2>
     <p className="text-sm text-muted-foreground">Verifică sursele și cerințele disponibile înaintea evaluării. Diagnosticul nu apelează modelul AI. Decizia PM rămâne separată de evaluarea documentelor.</p>
+    <p className="text-sm text-muted-foreground">Modelul și instrucțiunile de sistem sunt configurate pe server. Aici verifici modelul folosit, sursele și versiunea regulilor; mai jos gestionezi cerințele și instrucțiunile per expert. Scorul 0–100 exprimă evaluarea pe criterii documentate, nu probabilitatea aprobării.</p>
     <div className="flex flex-wrap gap-2">
       <select aria-label="Expert pentru diagnostic" className="rounded-md border p-2" value={expertId} onChange={(event) => { setExpertId(event.target.value); setSaCode(''); setResult(null); }}>
         <option value="">Alege expertul</option>{experts.filter((item) => item.isActive !== false).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
@@ -36,6 +37,7 @@ export function PeoEligibilityAgentPanel({ experts = [] }: { experts?: Expert[] 
     {error ? <p role="alert" className="text-sm text-red-700">{error}</p> : null}
     {result ? <div className="space-y-2 text-sm" role="status">
       <p className="font-semibold">{result.ready ? 'Context pregătit pentru cerințele generale.' : 'Configurarea necesită completare.'}</p>
+      <p>Model de eligibilitate: <strong>{result.model || 'Nedisponibil'}</strong></p>
       <p>{result.enabled ? 'Evaluarea este activată pe server.' : 'Evaluarea este dezactivată pe server.'} {!result.runtimeReady ? 'Infrastructura agentului necesită publicare.' : ''}</p>
       {!result.ruleset ? <p>Publică un registru de cerințe aprobat pentru proiect.</p> : <p>Versiunea cerințelor: {result.ruleset.version}.</p>}
       {result.missingCriteriaSources.length ? <p>Surse lipsă pentru: {result.missingCriteriaSources.join(', ')}.</p> : null}

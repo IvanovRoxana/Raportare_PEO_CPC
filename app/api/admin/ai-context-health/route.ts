@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import outputs from '@/amplify_outputs.json';
-import { EXPERT_PM_EXTENDED_ACCESS_EMAILS } from '@/lib/access-control';
+import { assertKnowledgeRequest, knowledgeAuthErrorResponse } from '@/lib/rag/knowledge-auth';
 import { normalizePeoCategory } from '@/lib/peo-category';
 import { getActiveAiEligibilityRuleset } from '@/lib/ai-eligibility-ruleset-runtime';
 import { selectHealthChunks, type HealthChunk } from '@/lib/rag/health-chunks';
@@ -41,60 +41,6 @@ const ACTIVITY_AUTOFILL_AUDIT_FIELDS = `
   applied
   createdAt
 `;
-
-function hasAllowedOrigin(request: Request) {
-  const origin = request.headers.get('origin');
-  const host = request.headers.get('host');
-  if (!origin || !host) return true;
-  try {
-    return new URL(origin).host === host;
-  } catch {
-    return false;
-  }
-}
-
-function getBearerToken(value?: string | null) {
-  const match = String(value || '').match(/^Bearer\s+(.+)$/i);
-  return match?.[1]?.trim() || '';
-}
-
-function decodeJwtPayload(token: string) {
-  const payload = token.split('.')[1];
-  if (!payload) throw new Error('Token Cognito invalid.');
-  const base64 = payload.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(payload.length / 4) * 4, '=');
-  return JSON.parse(Buffer.from(base64, 'base64').toString('utf8')) as Record<string, unknown>;
-}
-
-function normalizeGroups(value: unknown) {
-  const groups = Array.isArray(value) ? value.map(String) : value ? [String(value)] : [];
-  return groups.map((group) => group.trim().toLowerCase()).filter(Boolean);
-}
-
-function assertAdminContextRequest(request: Request) {
-  if (!hasAllowedOrigin(request)) {
-    return { error: 'Cerere respinsa.', status: 403 as const };
-  }
-
-  const token = getBearerToken(request.headers.get('authorization'));
-  if (!token) {
-    return { error: 'Lipseste tokenul Cognito pentru citirea contextului AI.', status: 401 as const };
-  }
-
-  const payload = decodeJwtPayload(token);
-  const expiresAt = Number(payload.exp || 0) * 1000;
-  if (!expiresAt || expiresAt <= Date.now()) {
-    return { error: 'Sesiunea Cognito a expirat.', status: 401 as const };
-  }
-
-  const email = String(payload.email || '').trim().toLowerCase();
-  const groups = normalizeGroups(payload['cognito:groups']);
-  const allowed = groups.includes('admin') || (groups.includes('pm') && EXPERT_PM_EXTENDED_ACCESS_EMAILS.includes(email));
-  if (!allowed) {
-    return { error: 'Doar Admin/PM extins poate vedea sanatatea contextului AI.', status: 403 as const };
-  }
-
-  return { token };
-}
 
 function statusFromCount(count: number, warningThreshold = 1): HealthStatus {
   if (count <= 0) return 'missing';
@@ -193,10 +139,7 @@ async function listActivityAutofillAudits(token: string, month?: number, year?: 
 
 export async function GET(request: Request) {
   try {
-    const auth = assertAdminContextRequest(request);
-    if ('error' in auth) {
-      return NextResponse.json({ error: auth.error }, { status: auth.status });
-    }
+    const auth = { token: await assertKnowledgeRequest(request) };
 
     const url = new URL(request.url);
     const expertId = url.searchParams.get('expertId') || undefined;
@@ -375,6 +318,8 @@ export async function GET(request: Request) {
       })),
     });
   } catch (error) {
+    const denied = knowledgeAuthErrorResponse(error);
+    if (denied) return denied;
     console.error('[admin-ai-context-health] Failed to build context health.', error);
     return NextResponse.json({ error: 'Sanatatea contextului AI nu a putut fi citita.' }, { status: 500 });
   }

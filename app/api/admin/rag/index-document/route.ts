@@ -1,8 +1,9 @@
 import { archiveRagOriginal } from '@/lib/eligibility-originals';
 import { extractReferenceDocumentText } from '@/lib/rag/reference-document-text';
 import { authenticateEligibilityRequest } from '@/lib/eligibility-resolver';
+import { assertKnowledgeRequest, knowledgeAuthErrorResponse } from '@/lib/rag/knowledge-auth';
 import { NextResponse } from 'next/server';
-import { assertRagAdminRequest, guardRagAdminRequest, ragAdminAuthErrorResponse } from '@/lib/rag/admin-auth';
+import { guardRagAdminRequest, ragAdminAuthErrorResponse } from '@/lib/rag/admin-auth';
 import { getCognitoAccessTokenFromRequest } from '@/lib/rag/cognito-auth';
 import { indexKnowledgeDocument } from '@/lib/rag/store';
 
@@ -13,7 +14,7 @@ export async function POST(req: Request) {
   try {
     let authToken = '';
     if (req.headers.get('authorization')) {
-      authToken = await assertRagAdminRequest(req);
+      authToken = await assertKnowledgeRequest(req);
     } else {
       const denied = guardRagAdminRequest(req);
       if (denied) return denied;
@@ -129,7 +130,7 @@ export async function POST(req: Request) {
       })),
     });
   } catch (error) {
-    const authError = ragAdminAuthErrorResponse(error);
+    const authError = knowledgeAuthErrorResponse(error) || ragAdminAuthErrorResponse(error);
     if (authError) return authError;
     console.error('[admin-rag-index-document] Failed to index document.', error);
     return NextResponse.json({ error: 'Indexarea documentului RAG a esuat.' }, { status: 500 });

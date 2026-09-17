@@ -164,10 +164,7 @@ import { PmDashboardKpiCards } from '@/components/pm/pm-dashboard-kpi-cards';
 import { PmAlertsPanel } from '@/components/pm/pm-alerts-panel';
 import { PmMonthlyStatusTable } from '@/components/pm/pm-monthly-status-table';
 import { PmSubmittedReportsPanel, type PmSubmittedReportRow } from '@/components/pm/pm-submitted-reports-panel';
-import { AiRagAuditTab } from '@/components/pm/ai-rag-audit-tab';
 import { PmWorkspace } from '@/components/pm/workspace/pm-workspace';
-import { EligibilityGovernancePanel } from '@/components/pm/eligibility-governance-panel';
-import { ActivityCatalogGovernancePanel } from '@/components/pm/activity-catalog-governance-panel';
 import { PmReviewCasesPanel } from '@/components/pm/pm-review-cases-panel';
 import fallbackActivityCatalog from '@/data/import/activity-catalog.json';
 
@@ -1821,6 +1818,7 @@ export default function PMDashboard() {
       contentClassName="max-w-none p-0 sm:p-0 lg:p-0"
     >
       <PmWorkspace
+        canManageKnowledge={hasExtendedExpertAccess}
         experts={visibleExperts}
         dashboardRows={dashboardRows}
         reportStatusByExpertId={reportStatusByExpertId}
@@ -2226,9 +2224,6 @@ export default function PMDashboard() {
             <TabsTrigger value="progres">Raport Progres</TabsTrigger>
             <TabsTrigger value="working-groups">Grupuri lucru</TabsTrigger>
             <TabsTrigger value="gt">Progres GT</TabsTrigger>
-            {hasExtendedExpertAccess && <TabsTrigger value="eligibility-categories">Categorii eligibilitate</TabsTrigger>}
-            {hasExtendedExpertAccess && <TabsTrigger value="eligibility-governance">Catalog eligibilitate</TabsTrigger>}
-            {hasExtendedExpertAccess && <TabsTrigger value="ai-rag">AI RAG</TabsTrigger>}
             <TabsTrigger value="neconformitati">
               Neconformitati
               {unresolvedIssues > 0 && (
@@ -2309,40 +2304,6 @@ export default function PMDashboard() {
               year={selectedYear}
             />
           </TabsContent>
-
-          {hasExtendedExpertAccess && (
-            <TabsContent value="eligibility-categories">
-              <ActivityCatalogGovernancePanel
-                fallbackCatalog={fallbackActivityCatalog as ActivityCatalog[]}
-                mode="pm"
-                activities={monthActivities}
-                documents={documents}
-                onAudit={recordEligibilityGovernanceAudit}
-              />
-            </TabsContent>
-          )}
-
-          {hasExtendedExpertAccess && (
-            <TabsContent value="eligibility-governance">
-              <EligibilityGovernancePanel
-                documents={documents}
-                experts={visibleExperts}
-                actorName={currentUser?.displayName || currentUser?.email || 'PM'}
-                onExpertsChanged={refreshExperts}
-                onAudit={recordEligibilityGovernanceAudit}
-              />
-            </TabsContent>
-          )}
-
-          {hasExtendedExpertAccess && (
-            <TabsContent value="ai-rag">
-              <AiRagAuditTab
-                month={selectedMonth}
-                year={selectedYear}
-                expertId={selectedExpertId}
-              />
-            </TabsContent>
-          )}
 
           <TabsContent value="neconformitati" className="space-y-6">
             <PmReviewCasesPanel
