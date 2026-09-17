@@ -20,6 +20,7 @@ export function createEligibilityTools(options: {
   authorize: () => Promise<void>; trace: EligibilityToolTrace[];
 }) {
   const cache = new Map<string, unknown>();
+  const deliverableIds = options.coverage.snapshot().map((item) => item.documentId);
   async function read<T>(name: string, args: unknown, action: () => T | Promise<T>, cacheable = true): Promise<T> {
     options.budget.tool();
     const start = Date.now();
@@ -59,8 +60,8 @@ export function createEligibilityTools(options: {
     return source;
   }
   return {
-    readDeliverable: tool({ description: 'Citeste un interval real dintr-un livrabil autorizat. Offseturile sunt caractere ale extragerii versionate; maximum 18000 caractere per citire.',
-      inputSchema: z.object({ documentId: z.string(), start: z.number().int().min(0), end: z.number().int().min(1) }),
+    readDeliverable: tool({ description: 'Citeste exclusiv livrabilul expertului din documents/Acoperire initiala. NU citeste documentele oficiale din officialProjectContext: pentru acestea foloseste readReferenceDocument cu chunkId si documentVersionId. Offseturile sunt caractere; maximum 18000 per citire.',
+      inputSchema: z.object({ documentId: z.enum(deliverableIds as [string, ...string[]]), start: z.number().int().min(0), end: z.number().int().min(1) }),
       execute: async (args) => read('readDeliverable', args, () => {
         const document = options.coverage.snapshot().find((item) => item.documentId === args.documentId);
         if (!document) return { status: 'unavailable', documentIds: options.coverage.snapshot().map((item) => item.documentId) };
@@ -80,17 +81,17 @@ export function createEligibilityTools(options: {
           .filter((hit) => hit.score > 0).sort((a, b) => b.score - a.score || a.chunk.id.localeCompare(b.chunk.id)).slice(0, 6);
         // Search returns locations/snippets only. Full reference reads explicitly enter the evidence ledger.
         return { status: ranked.length ? 'success' : 'not_found', results: ranked.map(({ chunk }) => ({
-          chunkId: chunk.id, documentId: chunk.documentId, version: chunk.documentVersionId,
+          chunkId: chunk.id, documentId: chunk.documentId, version: chunk.documentVersionId ?? null,
           sourceType: chunk.sourceType, preview: chunk.text.slice(0, 500),
         })) };
       }),
     }),
-    readReferenceDocument: tool({ description: 'Citeste un fragment publicat in versiunea autorizata. Foloseste chunkId din planul de dovezi sau din cautare. Un exemplu istoric nu satisface provenienta normativa.',
-      inputSchema: z.object({ chunkId: z.string(), version: z.string() }),
+    readReferenceDocument: tool({ description: 'Citeste surse oficiale: proiect, manual, fisa postului, scop SA. Foloseste chunkId (NU documentId) din officialProjectContext.sources, planul de dovezi sau searchProjectEvidence. version este documentVersionId/version primit, sau null daca sursa nu are versiune. Un exemplu istoric nu satisface provenienta normativa.',
+      inputSchema: z.object({ chunkId: z.string(), version: z.string().nullable() }),
       execute: async (args) => read('readReferenceDocument', args, () => {
         const chunk = options.chunks.find((item) => item.id === args.chunkId);
         if (!chunk) return { status: 'unavailable' };
-        if (chunk.documentVersionId !== args.version) return { status: 'version_unavailable' };
+        if ((chunk.documentVersionId ?? null) !== args.version) return { status: 'version_unavailable' };
         if (chunk.text.length > 18_000) return { status: 'extraction_requires_smaller_chunks' };
         return { status: chunk.extractionComplete ? 'success' : 'extraction_incomplete', ...reference(chunk) };
       }),

@@ -3,6 +3,7 @@ import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import { EligibilityExecutionBudget, eligibilityExecutionLimits } from '../lib/eligibility-execution.ts';
+import * as execution from '../lib/eligibility-execution.ts';
 import { EligibilityCoverage } from '../lib/eligibility-coverage.ts';
 import { EligibilityAccessError } from '../lib/eligibility-authorization.ts';
 import * as usage from '../lib/ai-usage.ts';
@@ -10,6 +11,7 @@ import * as tools from '../lib/agents/eligibility-tools.ts';
 import type { EligibilityAssessmentInput } from '../lib/eligibility-assessment.ts';
 
 type StepOptions = { prepareStep: (input: { messages: unknown[] }) => unknown;
+  onStepFinish: (input: { usage: { inputTokens: number; outputTokens: number; totalTokens: number } }) => void;
   tools: ReturnType<typeof tools.createEligibilityTools> };
 function agent(generate: (options: StepOptions) => Promise<{ output: unknown }>) {
   const source = readFileSync(new URL('../lib/agents/eligibility-agent.ts', import.meta.url), 'utf8');
@@ -21,6 +23,7 @@ function agent(generate: (options: StepOptions) => Promise<{ output: unknown }>)
     '../eligibility-assessment.ts': { buildEligibilityAssessmentPrompt: () => ({ system: 'Reguli', prompt: 'Date' }),
       eligibilityAssessmentResponseSchema: { parse: (value: unknown) => value } },
     './eligibility-tools.ts': tools,
+    '../eligibility-execution.ts': execution,
   };
   const exports = {};
   new Function('require', 'exports', js)((id: string) => {
@@ -86,4 +89,35 @@ test('budget messages identify call limits, missing usage and cost independently
   const costs = new EligibilityExecutionBudget(eligibilityExecutionLimits({}));
   costs.record(10, 0.95);
   assert.throws(() => costs.model(1, 0.1), /Limita de cost.*plafon 1 USD/);
+});
+
+test('the model deadline returns promptly even when the provider ignores cancellation, without accepting late output or usage', async () => {
+  const budget = new EligibilityExecutionBudget(eligibilityExecutionLimits({}));
+  const controller = new AbortController();
+  let finishProvider!: (value: { output: unknown }) => void;
+  let providerStep!: StepOptions;
+  let markStarted!: () => void;
+  const started = new Promise<void>((resolve) => { markStarted = resolve; });
+  const api = agent(async (step) => {
+    providerStep = step;
+    step.prepareStep({ messages: [] });
+    markStarted();
+    return new Promise((resolve) => { finishProvider = resolve; });
+  });
+  const runOptions = { ...options(budget), signal: controller.signal };
+  const pending = api.runEligibilityAgent(runOptions);
+  await started;
+  const timeout = new DOMException('Deadline reached', 'TimeoutError');
+  controller.abort(timeout);
+  await assert.rejects(pending, (error) => error === timeout);
+  assert.equal(budget.usageComplete, false);
+  providerStep.onStepFinish({ usage: { inputTokens: 100, outputTokens: 20, totalTokens: 120 } });
+  finishProvider({ output: { complete: true } });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(budget.totalTokens, 0);
+  assert.equal(budget.usageComplete, false);
+  assert.throws(() => providerStep.prepareStep({ messages: [] }), (error) => error === timeout);
+  await assert.rejects(async () => providerStep.tools.readDeliverable.execute!({ documentId: 'doc', start: 0, end: 3 },
+    { toolCallId: 'late', messages: [] }), (error) => error === timeout);
+  assert.equal(runOptions.coverage.snapshot()[0].consultedChars, 0);
 });

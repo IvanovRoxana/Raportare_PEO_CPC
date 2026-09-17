@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { z } from 'zod';
 import { EligibilityCoverage, mergeEvidenceIntervals } from '../lib/eligibility-coverage.ts';
 import { EligibilityExecutionBudget, resolveEligibilityPeriod, eligibilityExecutionLimits, abortableEligibilityRead } from '../lib/eligibility-execution.ts';
 import { createEligibilityTools } from '../lib/agents/eligibility-tools.ts';
@@ -93,6 +94,30 @@ test('invalid model read arguments return authorized bounds without inventing co
   }
   assert.equal(coverage.snapshot()[0].consultedChars, 0);
   assert.equal(authCalls, 5);
+});
+
+test('tool schemas separate deliverable IDs from reference documents and published references remain readable', async () => {
+  const coverage = new EligibilityCoverage([{ id: 'livrabil', text: 'Raport', version: 'hash', extractionComplete: true }]);
+  const context: EligibilityContextResult = { promptContext: '', sources: [], missingRequiredSources: [], warnings: [], coverage: { project: false, subactivity: false, job_description: false } };
+  const chunks = [
+    { id: 'fragment', documentId: 'proiect', text: 'Regula oficiala', sourceType: 'cerere_finantare', documentVersionId: 'v1', extractionComplete: true },
+    { id: 'legacy', documentId: 'manual', text: 'Sursa anterioara', sourceType: 'manual_beneficiar', extractionComplete: true },
+  ] as KnowledgeChunk[];
+  const tools = createEligibilityTools({ coverage, budget: new EligibilityExecutionBudget(eligibilityExecutionLimits()), context,
+    chunks, candidates: [], trace: [], authorize: async () => {} });
+  const schema = tools.readDeliverable.inputSchema as z.ZodType;
+  assert.equal(schema.safeParse({ documentId: 'livrabil', start: 0, end: 18000 }).success, true);
+  for (const documentId of ['proiect', 'manual', 'inventat']) {
+    assert.equal(schema.safeParse({ documentId, start: 0, end: 18000 }).success, false);
+  }
+  const call = { toolCallId: 'test', messages: [] };
+  assert.deepEqual(await tools.readReferenceDocument.execute!({ chunkId: 'fragment', version: null }, call), { status: 'version_unavailable' });
+  const read = await tools.readReferenceDocument.execute!({ chunkId: 'fragment', version: 'v1' }, call);
+  assert.ok('status' in read && read.status === 'success');
+  assert.equal(context.sources[0].chunkId, 'fragment');
+  const legacy = await tools.readReferenceDocument.execute!({ chunkId: 'legacy', version: null }, call);
+  assert.ok('status' in legacy && legacy.status === 'success');
+  assert.equal(coverage.snapshot()[0].consultedChars, 0);
 });
 
 test('time policy preserves deployed default and explicitly validates historical activity dates', () => {
