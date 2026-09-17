@@ -4,6 +4,7 @@ import { eligibilityStore, eligibilityTable, immutablePut } from './eligibility-
 import type { DeliverableEligibilityCheck } from './types.ts';
 import { reserveEvaluation, releaseEvaluation } from './eligibility-runtime-store.ts';
 import type { EligibilityActivityBinding } from './eligibility-binding.ts';
+import type { EvaluationFailure } from './eligibility-evaluation-diagnostics.ts';
 
 export class EligibilityInProgress extends Error {
   runId: string;
@@ -15,6 +16,7 @@ export type EligibilityRun = {
   actorId: string; status: string; authoritative: boolean; createdAt: string;
   inputSnapshot: Record<string, unknown>; resultJson?: DeliverableEligibilityCheck; completedAt?: string;
   errorCode?: string;
+  executionJson?: Record<string, unknown> & { failure?: EvaluationFailure };
   activityBinding?: EligibilityActivityBinding;
   activityBindings?: EligibilityActivityBinding[];
 };

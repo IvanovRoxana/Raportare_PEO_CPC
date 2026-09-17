@@ -11,8 +11,9 @@ import { resolveEligibilityContext } from '@/lib/eligibility-resolver';
 import { EligibilityAccessError } from '@/lib/eligibility-authorization';
 import { buildEvaluationKey, evaluationHash, buildEvidencePlan, finalizeAuthoritativeCriteria, eligibilityResultPresentation, applicableCriteriaSnapshot, ELIGIBILITY_MODEL_CONFIGURATION } from '@/lib/eligibility-evaluation';
 import { parseExecutableRuleset, type RuleEvidence } from '@/lib/eligibility-rules';
-import { startEligibilityRun, completeEligibilityRun, findReusableEligibilityRun, failEligibilityRun, type EligibilityRun } from '@/lib/eligibility-run-store';
+import { startEligibilityRun, completeEligibilityRun, findReusableEligibilityRun, failEligibilityRun, EligibilityInProgress, type EligibilityRun } from '@/lib/eligibility-run-store';
 import type { DeliverableEligibilityCheck } from '@/lib/types';
+import { diagnoseEvaluationError, safeEvaluationErrorMetadata, type EvaluationDiagnosticContext } from './eligibility-evaluation-diagnostics';
 
 import { assertAllowedAiRequest } from '@/lib/ai-governance';
 import { getEligibilityModelName } from '@/lib/openai';
@@ -39,7 +40,7 @@ import {
 
 
 
-export async function evaluateEligibility(req: Request) {
+export async function evaluateEligibility(req: Request, diagnostic: EvaluationDiagnosticContext = { stage: 'request' }) {
   const budget = new EligibilityExecutionBudget(eligibilityExecutionLimits());
   let activeRun: EligibilityRun | undefined;
   let settleBudget: ((actualUsd?: number) => Promise<void>) | undefined;
@@ -67,6 +68,7 @@ export async function evaluateEligibility(req: Request) {
     if (!parsedDocuments.success) {
       throw new EligibilityAssessmentInputError('Trimite intre 1 si 8 livrabile valide. Niciun document nu a fost omis sau evaluat partial.');
     }
+    diagnostic.stage = 'context';
     const resolved = await resolveEligibilityContext(req, {
       expertId: String(expertId || ''), projectCode: typeof body.projectCode === 'string' ? body.projectCode : undefined,
       saCode: String(currentSaCode || ''), documentIds: parsedDocuments.data.map((doc) => doc.serverDocumentId || doc.id || ''),
@@ -74,6 +76,7 @@ export async function evaluateEligibility(req: Request) {
     const documentsById = new Map(parsedDocuments.data.map((doc, i) => [doc.id || '', resolved.documents[i]!]));
     const authoritative = resolved.documents.every((doc) => Boolean(doc?.docText));
     if (!authoritative) throw new EligibilityExecutionError('ELIGIBILITY_EXTRACTION_INCOMPLETE', 'Originalele nu au text verificabil. Verifica extragerea.');
+    diagnostic.stage = 'catalog';
     const catalog = await loadEligibilityCatalog({
       expertId: String(expertId || ''),
       expertCategory: resolved.expert.category || '',
@@ -110,6 +113,7 @@ export async function evaluateEligibility(req: Request) {
       catalogSource: catalog.source,
       catalogWarnings: catalog.warnings,
     };
+    diagnostic.stage = 'validation';
     const coverage = new EligibilityCoverage(input.documents.map((document) => ({ id: document.id,
       text: document.extractedText, version: document.fileHash || evaluationHash(document.extractedText),
       extractionComplete: documentsById.get(document.id)?.extractionComplete === true })));
@@ -123,9 +127,11 @@ export async function evaluateEligibility(req: Request) {
     validateEligibilityAssessmentInput(input);
     const evaluationAt = new Date().toISOString();
     const period = resolveEligibilityPeriod(body, evaluationAt, process.env.ELIGIBILITY_RULES_TIME_POLICY || 'evaluation_time');
+    diagnostic.stage = 'rules';
     const activeRuleset = await getActiveAiEligibilityRuleset({ projectCode: resolved.expert.projectCode!, at: period.rulesEffectiveAt, knownAt: evaluationAt });
     const rules = activeRuleset ? parseExecutableRuleset(activeRuleset.rulesJson) : null;
     input.rulesContext = activeRuleset?.rulesJson ? JSON.stringify(activeRuleset.rulesJson) : '';
+    diagnostic.stage = 'references';
     const retrievedContext = await retrieveEligibilityContext({
       projectCode: input.projectCode, category: input.category, saCode: input.saCode,
       expertId: input.expertId, expertName: input.expertName,
@@ -158,6 +164,7 @@ export async function evaluateEligibility(req: Request) {
     };
     input.evidencePlan = buildEvidencePlan(rules, evidence);
     // A multi-date group must not silently use the first date's rules for every date.
+    diagnostic.stage = 'rules';
     if (period.policy === 'activity_date') for (const date of period.activityDates.slice(1)) {
       const at = date + 'T12:00:00.000Z';
       const datedRuleset = await getActiveAiEligibilityRuleset({ projectCode: resolved.expert.projectCode!, at, knownAt: evaluationAt });
@@ -166,6 +173,7 @@ export async function evaluateEligibility(req: Request) {
         throw new EligibilityExecutionError('ELIGIBILITY_PERIOD_SPLIT_REQUIRED', 'Perioada traverseaza versiuni de reguli. Verifica separat grupurile de date cu aceleasi cerinte.');
       }
     }
+    diagnostic.stage = 'snapshot';
     const snapshot = {
       documents: input.documents.map((doc) => ({ id: documentsById.get(doc.id)!.id, clientId: doc.id, hash: evaluationHash(documentsById.get(doc.id)?.docText || doc.extractedText),
         fileHash: documentsById.get(doc.id)?.fileHash || doc.fileHash, analysisHash: evaluationHash(doc.extractedText), textScope: doc.textScope,
@@ -183,11 +191,15 @@ export async function evaluateEligibility(req: Request) {
       executionLimits: eligibilityExecutionLimits(),
     };
     const evaluationKey = buildEvaluationKey(snapshot);
+    diagnostic.stage = 'reuse';
     const reused = authoritative ? await findReusableEligibilityRun(evaluationKey) : null;
     if (reused?.resultJson && (await verifyEligibilityRunSnapshot(req, reused)).current) return { ...reused.resultJson, reused: true };
+    diagnostic.stage = 'registration';
     const run = await startEligibilityRun({ evaluationKey, expertId: resolved.expert.id, projectCode: resolved.expert.projectCode!,
       saCode: input.saCode, actorId: resolved.actor.id, authoritative, inputSnapshot: snapshot });
     activeRun = run;
+    diagnostic.runId = run.runId;
+    diagnostic.stage = 'budget';
     budget.checkTime();
     settleBudget = await reserveEligibilityBudget(resolved.expert.projectCode!, budget.limits.costUsd);
     const signal = AbortSignal.any([req.signal, AbortSignal.timeout(Math.max(1, budget.limits.timeoutMs - (Date.now() - budget.startedAt)))]);
@@ -202,7 +214,9 @@ export async function evaluateEligibility(req: Request) {
       }
     };
     const agentOptions = { runId: run.runId, actorId: resolved.actor.id, input, context, coverage, budget, chunks: resolved.chunks, authorize, signal, trace };
+    diagnostic.stage = 'model';
     let result = await runEligibilityAgent(agentOptions);
+    diagnostic.stage = 'result_validation';
     const updateReadEvidence = () => {
       const states = coverage.snapshot();
       input.documents = input.documents.map((doc) => {
@@ -223,7 +237,9 @@ export async function evaluateEligibility(req: Request) {
     evidence.activityId = finalActivity;
     if (evaluationHash(previousPlan) !== evaluationHash(applicableCriteriaSnapshot(rules, evidence))) {
       input.evidencePlan = buildEvidencePlan(rules, evidence);
+      diagnostic.stage = 'model';
       result = await runEligibilityAgent({ ...agentOptions, input: { ...input, selectedActivityId: finalActivity, classificationMode: 'manual' } });
+      diagnostic.stage = 'result_validation';
       updateReadEvidence();
       assessment = finalizeEligibilityAssessment({ ...input, selectedActivityId: finalActivity, classificationMode: 'manual' }, context, result.output);
       if (assessment.classification.activityId !== finalActivity) throw new EligibilityExecutionError('ELIGIBILITY_CLASSIFICATION_CHANGED', 'Incadrarea nu a ramas stabila la verificarea cerintelor. Selecteaza activitatea si reia analiza.', 409);
@@ -271,16 +287,21 @@ export async function evaluateEligibility(req: Request) {
       usageAudit: { ...result.usageAudit, inputTokens: budget.inputTokens, outputTokens: budget.outputTokens, totalTokens: budget.totalTokens, costUsd: budget.costUsd },
       rulesSource: activeRuleset ? 'published_ruleset' : 'built_in_rules',
     };
+    diagnostic.stage = 'revalidation';
     if (authoritative && !(await verifyEligibilityRunSnapshot(req, run)).current) {
       response.authoritative = false; response.status = 'neconcludent'; response.verdict = 'neconcludent';
       response.summary = 'Contextul s-a modificat in timpul analizei. Reia evaluarea.';
       response.justification = response.summary;
       response.evaluationLimitations?.push(response.summary);
     }
+    diagnostic.stage = 'save';
     await completeEligibilityRun(run, response);
     return response;
   } catch (error) {
-    if (activeRun) await failEligibilityRun(activeRun, error, budget.snapshot()).catch(() => undefined);
+    if (error instanceof EligibilityInProgress) throw error;
+    diagnostic.failure = diagnoseEvaluationError(error, diagnostic);
+    console.error('[ELIGIBILITY_EVALUATION_ERROR]', { ...diagnostic.failure, causes: safeEvaluationErrorMetadata(error) });
+    if (activeRun) await failEligibilityRun(activeRun, { code: diagnostic.failure.code }, { ...budget.snapshot(), failure: diagnostic.failure }).catch(() => undefined);
     throw error;
   } finally {
     if (settleBudget) await settleBudget(billedCost).catch(() => undefined);

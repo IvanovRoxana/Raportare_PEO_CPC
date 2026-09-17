@@ -31,6 +31,7 @@ import { EligibilityAssessmentDetails } from './eligibility-assessment-details';
 import { limitEligibilityDocumentText } from '@/lib/eligibility-assessment';
 import { prepareEligibilityDeliverable } from '@/lib/eligibility-draft-client';
 import { eligibilityRequest } from '@/lib/eligibility-client';
+import { EligibilityEvaluationRequestError, evaluationFailureFromResponse } from '@/lib/eligibility-evaluation-diagnostics';
 
 export interface DeliverableDuplicateInfo {
   documentId: string;
@@ -69,14 +70,20 @@ async function requestDeliverableEligibility(body: string) {
     let result = await response.json().catch(() => null);
     const existingExecution = response.status === 409 && result?.code === 'ELIGIBILITY_IN_PROGRESS' && result?.runId;
     if (!response.ok && !existingExecution) {
-      throw new Error(result?.error || `Serviciul de evaluare a raspuns cu eroarea HTTP ${response.status}`);
+      const diagnostic = evaluationFailureFromResponse(result?.diagnostic);
+      if (diagnostic) throw new EligibilityEvaluationRequestError(diagnostic);
+      throw new Error(`${result?.error || 'Serviciul de evaluare a returnat o eroare.'} Cod: ${result?.code || `HTTP_${response.status}`}.`);
     }
     if (existingExecution) {
       const runId = result.runId;
       while (!controller.signal.aborted) {
         await new Promise((resolve) => setTimeout(resolve, 2000));
         const running = await eligibilityRequest(`/api/eligibility/runs/${encodeURIComponent(runId)}`, undefined, controller.signal);
-        if (running.executionStatus === 'failed') throw new Error('Evaluarea s-a oprit. Reincearca verificarea.');
+        if (running.executionStatus === 'failed') {
+          const diagnostic = evaluationFailureFromResponse(running.diagnostic);
+          if (diagnostic) throw new EligibilityEvaluationRequestError(diagnostic);
+          throw new Error(`Evaluarea s-a oprit. Cod: ${running.errorCode || 'ELIGIBILITY_EXECUTION_FAILED'}; evaluare: ${runId}. Reincearca verificarea.`);
+        }
         if (running.executionStatus === 'completed') {
           if (!running.current) throw new Error('Contextul evaluarii s-a modificat. Reia verificarea.');
           result = running.result; break;
@@ -88,6 +95,7 @@ async function requestDeliverableEligibility(body: string) {
     }
     return result;
   } catch (error) {
+    if (error instanceof EligibilityEvaluationRequestError) throw error;
     throw new EligibilityAttemptError('evaluation', controller.signal.aborted
       ? 'Serviciul nu a raspuns in 90 de secunde'
       : error instanceof Error ? error.message : 'Serviciul de evaluare nu a raspuns');

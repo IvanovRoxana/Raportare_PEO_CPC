@@ -1,5 +1,6 @@
 import type { DeliverableEligibilityCheck, DeliverableSlot } from './deliverable-types.ts';
 import { EligibilityDocumentRequestError, formatDocumentFailure } from './eligibility-document-diagnostics.ts';
+import { EligibilityEvaluationRequestError, formatEvaluationFailure } from './eligibility-evaluation-diagnostics.ts';
 import { getTitleValidationScope, getTitleValidationText, isLikelyFilenameDerivedTitle, validateDeclaredTitleInDocumentText } from './title-suggestion.ts';
 
 export type EligibilityAttemptState = 'pending' | 'technical_error' | 'blocked' | 'result';
@@ -98,6 +99,7 @@ export class EligibilityAttemptError extends Error {
 }
 
 export function getEligibilityFailureSummary(error: unknown, fallbackPhase: EligibilityFailurePhase) {
+  if (error instanceof EligibilityEvaluationRequestError) return formatEvaluationFailure(error);
   if (error instanceof EligibilityDocumentRequestError) return formatDocumentFailure(error);
   const phase = error instanceof EligibilityAttemptError ? error.phase : fallbackPhase;
   const label = phase === 'download'
