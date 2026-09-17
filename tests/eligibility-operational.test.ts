@@ -80,10 +80,46 @@ test('cumulative budgets stop additional tools/model calls including finalizatio
 test('time policy preserves deployed default and explicitly validates historical activity dates', () => {
   const now = '2026-09-17T12:00:00.000Z';
   assert.equal(resolveEligibilityPeriod({ activityDates: ['2025-02-01'] }, now).rulesEffectiveAt, now);
-  assert.equal(resolveEligibilityPeriod({ activityDates: ['2025-02-01'], month: 2, year: 2025 }, now, 'activity_date').rulesEffectiveAt, '2025-02-01T12:00:00.000Z');
+  assert.equal(resolveEligibilityPeriod({ activityDates: ['2025-02-01'], month: 1, year: 2025 }, now, 'activity_date').rulesEffectiveAt, '2025-02-01T12:00:00.000Z');
   assert.throws(() => resolveEligibilityPeriod({}, now, 'activity_date'), /Selecteaza/);
   assert.throws(() => resolveEligibilityPeriod({ activityDates: ['2025-02-30'] }, now), /valide/);
   assert.throws(() => resolveEligibilityPeriod({ activityDates: ['2025-02-01'], month: 3 }, now), /perioadei/);
+});
+
+test('eligibility accepts the zero-based reporting calendar month for every month, including April', () => {
+  const now = '2026-09-17T12:00:00.000Z';
+  for (let month = 0; month < 12; month++) {
+    const date = `2026-${String(month + 1).padStart(2, '0')}-15`;
+    for (const policy of ['evaluation_time', 'activity_date']) {
+      const period = resolveEligibilityPeriod({ activityDates: [date, date], month, year: 2026 }, now, policy);
+      assert.deepEqual(period.activityDates, [date]);
+      assert.equal(period.rulesEffectiveAt, policy === 'activity_date' ? `${date}T12:00:00.000Z` : now);
+    }
+  }
+  assert.deepEqual(resolveEligibilityPeriod({ activityDates: ['2026-04-01', '2026-04-30'], month: '3', year: '2026' }, now).activityDates,
+    ['2026-04-01', '2026-04-30']);
+});
+
+test('eligibility rejects actual period mismatches, including January, and identifies conflicting dates', () => {
+  const now = '2026-09-17T12:00:00.000Z';
+  for (const input of [
+    { activityDates: ['2026-02-01'], month: 0, year: 2026 },
+    { activityDates: ['2026-04-30', '2026-05-01'], month: 3, year: 2026 },
+    { activityDates: ['2025-12-31'], month: 11, year: 2026 },
+  ]) {
+    assert.throws(() => resolveEligibilityPeriod(input, now), (error: Error & { code?: string }) => {
+      assert.equal(error.code, 'ELIGIBILITY_PERIOD_INVALID');
+      assert.ok(error.message.includes(input.activityDates.at(-1)!));
+      assert.match(error.message, /Corecteaza zilele selectate/);
+      return true;
+    });
+  }
+  for (const month of [-1, 12, 3.5, '', 'aprilie', false, []]) {
+    assert.throws(() => resolveEligibilityPeriod({ month, year: 2026 }, now), /Luna sau anul/);
+  }
+  for (const year of [0, -1, 2026.5, '', 'invalid', false]) {
+    assert.throws(() => resolveEligibilityPeriod({ month: 0, year }, now), /Luna sau anul/);
+  }
 });
 
 test('SDK aggregate usage is used once, including all calls rather than the last call only', () => {

@@ -45,13 +45,23 @@ export class EligibilityExecutionBudget {
 }
 
 export function resolveEligibilityPeriod(input: { activityDates?: unknown; month?: unknown; year?: unknown }, evaluatedAt: string, policy = 'evaluation_time') {
+  // Reporting calendars and API callers use JavaScript month indices: January = 0.
+  const month = input.month == null ? undefined : Number(input.month);
+  const year = input.year == null ? undefined : Number(input.year);
+  const isPeriodNumber = (value: unknown) => typeof value === 'number' || typeof value === 'string' && /^\d+$/.test(value);
+  if (month !== undefined && (!isPeriodNumber(input.month) || !Number.isInteger(month) || month < 0 || month > 11)
+    || year !== undefined && (!isPeriodNumber(input.year) || !Number.isInteger(year) || year < 1 || year > 9999)) {
+    throw new EligibilityExecutionError('ELIGIBILITY_PERIOD_INVALID', 'Luna sau anul raportarii nu sunt valide. Selecteaza din nou perioada in calendar.');
+  }
   const dates = Array.isArray(input.activityDates) ? [...new Set(input.activityDates.map(String))].sort() : [];
   if (dates.length > 31 || dates.some((date) => !/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date))
     || new Date(`${date}T12:00:00.000Z`).toISOString().slice(0, 10) !== date)) {
     throw new EligibilityExecutionError('ELIGIBILITY_PERIOD_INVALID', 'Datele activitatii nu sunt valide.');
   }
-  if (dates.some((date) => input.month && Number(date.slice(5, 7)) !== Number(input.month)
-    || input.year && Number(date.slice(0, 4)) !== Number(input.year))) throw new EligibilityExecutionError('ELIGIBILITY_PERIOD_INVALID', 'Datele nu corespund perioadei raportate.');
+  const outsidePeriod = dates.filter((date) => month !== undefined && Number(date.slice(5, 7)) !== month + 1
+    || year !== undefined && Number(date.slice(0, 4)) !== year);
+  if (outsidePeriod.length) throw new EligibilityExecutionError('ELIGIBILITY_PERIOD_INVALID',
+    `Datele ${outsidePeriod.join(', ')} nu corespund perioadei raportate (luna ${month === undefined ? 'nespecificata' : month + 1}, anul ${year ?? 'nespecificat'}). Corecteaza zilele selectate sau perioada din calendar.`);
   if (!['evaluation_time', 'activity_date'].includes(policy)) throw new EligibilityExecutionError('ELIGIBILITY_TIME_POLICY_INVALID', 'Politica temporala necesita configurare.', 503);
   if (policy === 'activity_date' && !dates.length) throw new EligibilityExecutionError('ELIGIBILITY_PERIOD_REQUIRED', 'Selecteaza datele activitatii inainte de verificare.');
   return { evaluatedAt, policy, activityDates: dates, rulesEffectiveAt: policy === 'activity_date' ? `${dates[0]}T12:00:00.000Z` : evaluatedAt };
