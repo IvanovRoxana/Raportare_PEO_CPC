@@ -21,7 +21,7 @@ const numberSetting = (env: Record<string, string | undefined>, name: string, fa
   const value = Number(env[name]);
   return Number.isFinite(value) && value > 0 ? Math.min(value, max) : fallback;
 };
-export function eligibilityExecutionLimits(env = process.env): EligibilityExecutionLimits {
+export function eligibilityExecutionLimits(env: Record<string, string | undefined> = process.env): EligibilityExecutionLimits {
   return {
     modelCalls: Math.floor(numberSetting(env, 'ELIGIBILITY_MAX_MODEL_CALLS', 5, 10)),
     toolCalls: Math.floor(numberSetting(env, 'ELIGIBILITY_MAX_TOOL_CALLS', 10, 30)),
@@ -35,14 +35,19 @@ export class EligibilityExecutionBudget {
   modelCalls = 0; toolCalls = 0; totalTokens = 0; inputTokens = 0; outputTokens = 0; costUsd = 0; usageComplete = true;
   readonly startedAt = Date.now();
   readonly limits: EligibilityExecutionLimits;
+  lastModelEstimate?: { tokens: number; costUsd: number };
   constructor(limits: EligibilityExecutionLimits) { this.limits = limits; }
   checkTime() {
     if (Date.now() - this.startedAt >= this.limits.timeoutMs) throw new EligibilityExecutionError('ELIGIBILITY_TIMEOUT', 'Evaluarea a depasit timpul disponibil.', 504);
   }
   model(estimatedTokens: number, estimatedCost: number) {
     this.checkTime();
-    if (!this.usageComplete || this.modelCalls >= this.limits.modelCalls || this.totalTokens + estimatedTokens > this.limits.totalTokens
-      || this.costUsd + estimatedCost > this.limits.costUsd) throw new EligibilityExecutionError('ELIGIBILITY_BUDGET_EXHAUSTED', 'Bugetul evaluarii nu permite un nou apel AI.', 429);
+    this.lastModelEstimate = { tokens: estimatedTokens, costUsd: estimatedCost };
+    const reason = !this.usageComplete ? 'Consumul ultimului apel AI nu a fost raportat complet.'
+      : this.modelCalls >= this.limits.modelCalls ? `Limita de apeluri AI a fost atinsa: ${this.modelCalls}/${this.limits.modelCalls}.`
+        : this.totalTokens + estimatedTokens > this.limits.totalTokens ? `Limita de tokenuri ar fi depasita: ${this.totalTokens} consumate + ${estimatedTokens} estimate pentru urmatorul apel, plafon ${this.limits.totalTokens}.`
+          : this.costUsd + estimatedCost > this.limits.costUsd ? `Limita de cost ar fi depasita: ${this.costUsd.toFixed(4)} USD consumati + ${estimatedCost.toFixed(4)} USD estimati, plafon ${this.limits.costUsd} USD.` : undefined;
+    if (reason) throw new EligibilityExecutionError('ELIGIBILITY_BUDGET_EXHAUSTED', `Bugetul evaluarii nu permite un nou apel AI. ${reason}`, 429);
     this.modelCalls++;
   }
   tool() {
@@ -54,7 +59,7 @@ export class EligibilityExecutionBudget {
     this.totalTokens += tokens; this.costUsd += cost; this.inputTokens += inputTokens; this.outputTokens += outputTokens;
     if (!tokens) this.usageComplete = false;
   }
-  snapshot() { return { modelCalls: this.modelCalls, toolCalls: this.toolCalls, totalTokens: this.totalTokens, inputTokens: this.inputTokens, outputTokens: this.outputTokens, costUsd: this.costUsd, usageComplete: this.usageComplete, durationMs: Date.now() - this.startedAt }; }
+  snapshot() { return { modelCalls: this.modelCalls, toolCalls: this.toolCalls, totalTokens: this.totalTokens, inputTokens: this.inputTokens, outputTokens: this.outputTokens, costUsd: this.costUsd, usageComplete: this.usageComplete, lastModelEstimate: this.lastModelEstimate, durationMs: Date.now() - this.startedAt }; }
 }
 
 export function resolveEligibilityPeriod(input: { activityDates?: unknown; month?: unknown; year?: unknown }, evaluatedAt: string, policy = 'evaluation_time') {

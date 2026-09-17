@@ -6,7 +6,7 @@ import type { EligibilityContextResult, EligibilityContextSource } from '../rag/
 import type { KnowledgeChunk } from '../types.ts';
 import type { EligibilityAssessmentCandidate } from '../eligibility-assessment.ts';
 
-export type EligibilityToolTrace = { tool: string; status: string; durationMs: number; documentId?: string; chunkId?: string; start?: number; end?: number };
+export type EligibilityToolTrace = { tool: string; status: string; durationMs: number; documentId?: string; chunkId?: string; start?: number; end?: number; phase?: 'authorization' | 'read'; errorCode?: string };
 export function refreshEligibilitySourceCoverage(context: EligibilityContextResult) {
   for (const kind of ['project', 'subactivity', 'job_description'] as const) {
     context.coverage[kind] = context.sources.some((source) => source.coverage === kind && source.extractionComplete === true);
@@ -25,8 +25,10 @@ export function createEligibilityTools(options: {
     const start = Date.now();
     // Authorization is repeated even on an identical read from this execution's cache.
     const key = `${name}:${JSON.stringify(args)}`;
+    let phase: 'authorization' | 'read' = 'authorization';
     try {
       await options.authorize();
+      phase = 'read';
       const result = cacheable && cache.has(key) ? cache.get(key) as T : await action();
       if (cacheable) cache.set(key, result);
       const metadata = args as { documentId?: string; chunkId?: string; start?: number; end?: number };
@@ -34,7 +36,11 @@ export function createEligibilityTools(options: {
         documentId: metadata.documentId, chunkId: metadata.chunkId, start: metadata.start, end: metadata.end });
       return result;
     } catch (error) {
-      options.trace.push({ tool: name, status: 'error', durationMs: Date.now() - start });
+      const value = error as { code?: unknown; message?: unknown; name?: unknown } | null;
+      const code = typeof value?.code === 'string' ? value.code : value?.message;
+      const errorCode = typeof code === 'string' && /^ELIGIBILITY_[A-Z_]+$/.test(code) ? code
+        : value?.name === 'EligibilityAccessError' ? 'ELIGIBILITY_ACCESS_DENIED' : 'ELIGIBILITY_TOOL_FAILED';
+      options.trace.push({ tool: name, status: 'error', durationMs: Date.now() - start, phase, errorCode });
       throw error;
     }
   }
@@ -56,7 +62,12 @@ export function createEligibilityTools(options: {
     readDeliverable: tool({ description: 'Citeste un interval real dintr-un livrabil autorizat. Offseturile sunt caractere ale extragerii versionate; maximum 18000 caractere per citire.',
       inputSchema: z.object({ documentId: z.string(), start: z.number().int().min(0), end: z.number().int().min(1) }),
       execute: async (args) => read('readDeliverable', args, () => {
-        if (args.end - args.start > 18_000) return { status: 'invalid_range', maxChars: 18_000 };
+        const document = options.coverage.snapshot().find((item) => item.documentId === args.documentId);
+        if (!document) return { status: 'unavailable', documentIds: options.coverage.snapshot().map((item) => item.documentId) };
+        if (args.end - args.start > 18_000 || args.end <= args.start || args.start >= document.totalChars) {
+          return { status: 'invalid_range', maxChars: 18_000, documentId: document.documentId,
+            totalChars: document.totalChars, intervals: document.intervals, analysisComplete: document.analysisComplete };
+        }
         return { status: 'success', ...options.coverage.read(args.documentId, args.start, args.end) };
       }),
     }),

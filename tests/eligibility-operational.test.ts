@@ -77,6 +77,24 @@ test('cumulative budgets stop additional tools/model calls including finalizatio
   costs.record(10, 0.9); assert.throws(() => costs.model(10, 0.2), /Bugetul/);
 });
 
+test('invalid model read arguments return authorized bounds without inventing coverage or repeating opaque errors', async () => {
+  const coverage = new EligibilityCoverage([{ id: 'doc', text: 'Original', version: 'v1', extractionComplete: true }]);
+  let authCalls = 0;
+  const tools = createEligibilityTools({ coverage, budget: new EligibilityExecutionBudget(eligibilityExecutionLimits()),
+    context: { promptContext: '', sources: [], missingRequiredSources: [], warnings: [], coverage: { project: false, subactivity: false, job_description: false } },
+    chunks: [], candidates: [], trace: [], authorize: async () => { authCalls++; } });
+  const call = { toolCallId: 'test', messages: [] };
+  const missing = await tools.readDeliverable.execute!({ documentId: 'invented', start: 0, end: 5 }, call);
+  assert.deepEqual(missing, { status: 'unavailable', documentIds: ['doc'] });
+  for (const [start, end] of [[8, 12], [3, 3], [4, 2], [0, 18001]]) {
+    const result = await tools.readDeliverable.execute!({ documentId: 'doc', start, end }, call);
+    assert.ok('status' in result && result.status === 'invalid_range');
+    assert.ok('totalChars' in result && result.totalChars === 8);
+  }
+  assert.equal(coverage.snapshot()[0].consultedChars, 0);
+  assert.equal(authCalls, 5);
+});
+
 test('time policy preserves deployed default and explicitly validates historical activity dates', () => {
   const now = '2026-09-17T12:00:00.000Z';
   assert.equal(resolveEligibilityPeriod({ activityDates: ['2025-02-01'] }, now).rulesEffectiveAt, now);

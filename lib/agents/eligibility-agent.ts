@@ -10,6 +10,11 @@ import { createEligibilityTools, type EligibilityToolTrace } from './eligibility
 import type { EligibilityContextResult } from '../rag/eligibility-context.ts';
 import type { KnowledgeChunk } from '../types.ts';
 
+/** Approximation with headroom for Romanian text and the tool/response schemas; usage is reconciled after each step. */
+export function estimateEligibilityInputTokens(messages: unknown, system: string) {
+  return Math.ceil(new TextEncoder().encode(JSON.stringify(messages) + system).length / 3) + 6000;
+}
+
 export async function runEligibilityAgent(options: {
   runId: string; actorId: string; input: EligibilityAssessmentInput; context: EligibilityContextResult;
   coverage: EligibilityCoverage; budget: EligibilityExecutionBudget; chunks: KnowledgeChunk[];
@@ -18,7 +23,11 @@ export async function runEligibilityAgent(options: {
   const { input, context, budget, coverage } = options;
   const prompt = buildEligibilityAssessmentPrompt(input, context);
   const model = getEligibilityModelName();
-  const tools = createEligibilityTools({ ...options, candidates: input.candidates });
+  let authorizationFailure: unknown;
+  const tools = createEligibilityTools({ ...options, candidates: input.candidates, authorize: async () => {
+    try { await options.authorize(); }
+    catch (error) { authorizationFailure = error; throw error; }
+  } });
   const result = await governedGenerateText({
     runId: options.runId, endpoint: '/api/ai/check-deliverable-eligibility', operation: 'operational-eligibility',
     actorId: options.actorId, projectCode: input.projectCode, request: { expertId: input.expertId, saCode: input.saCode },
@@ -34,8 +43,9 @@ La ultimul apel finalizeaza schema ceruta folosind numai dovezile obtinute.`,
     tools, stopWhen: stepCountIs(budget.limits.modelCalls - budget.modelCalls),
     prepareStep: ({ messages }) => {
       options.signal.throwIfAborted();
-      // Conservative bound in characters; actual provider tokens are reconciled per step.
-      const estimatedInput = JSON.stringify(messages).length + prompt.system.length + 6000;
+      // SDK tool errors are otherwise returned to the model, which may repeatedly retry denied reads.
+      if (authorizationFailure) throw authorizationFailure;
+      const estimatedInput = estimateEligibilityInputTokens(messages, prompt.system);
       const cost = estimateCostUsd(model, { inputTokens: estimatedInput, outputTokens: 6000, totalTokens: estimatedInput + 6000 });
       budget.model(estimatedInput + 6000, cost);
       return budget.modelCalls >= budget.limits.modelCalls || budget.toolCalls >= budget.limits.toolCalls
@@ -47,5 +57,6 @@ La ultimul apel finalizeaza schema ceruta folosind numai dovezile obtinute.`,
     },
     output: Output.object({ schema: eligibilityAssessmentResponseSchema }),
   });
+  if (authorizationFailure) throw authorizationFailure;
   return { ...result, output: eligibilityAssessmentResponseSchema.parse(result.output) };
 }
