@@ -1,6 +1,6 @@
 import 'server-only';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, GetCommand, ScanCommand, TransactWriteCommand, type TransactWriteCommandInput } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, GetCommand, QueryCommand, ScanCommand, TransactWriteCommand, type TransactWriteCommandInput } from '@aws-sdk/lib-dynamodb';
 import outputs from '../amplify_outputs.json';
 
 export type EligibilityModel = 'Expert' | 'Deliverable' | 'Document' | 'Activity' | 'ActivityCatalog'
@@ -27,7 +27,12 @@ export const eligibilityStore = {
     const items: T[] = [];
     let key: Record<string, unknown> | undefined;
     for (let page = 0; page < 100; page++) {
-      const result = await client.send(new ScanCommand({
+      const result = await client.send(model === 'KnowledgeChunk' && filter?.field === 'documentId' ? new QueryCommand({
+        TableName: eligibilityTable(model), IndexName: 'knowledgeChunksByDocumentId', ExclusiveStartKey: key,
+        KeyConditionExpression: '#documentId = :documentId', ExpressionAttributeNames: { '#documentId': 'documentId' },
+        ExpressionAttributeValues: { ':documentId': filter.value },
+        // GSIs are eventually consistent; the caller verifies the published generation and manifest.
+      }) : new ScanCommand({
         TableName: eligibilityTable(model), ConsistentRead: true, ExclusiveStartKey: key,
         ...(filter ? { FilterExpression: '#field = :value', ExpressionAttributeNames: { '#field': filter.field }, ExpressionAttributeValues: { ':value': filter.value } } : {}),
       }));

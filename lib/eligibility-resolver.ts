@@ -6,7 +6,7 @@ import { EligibilityAccessError, authorizeEligibilityExpert, authorizeEligibilit
 import { peoUsersAsExperts } from './peo-users.ts';
 import { eligibilityStore } from './eligibility-server-store.ts';
 import { appliesToEligibilityScope } from './eligibility-scope.ts';
-import { onlyPublishedChunks } from './rag/index-generation.ts';
+import { loadEligibilityReferenceChunks } from './eligibility-reference-chunks.ts';
 import { readEligibilityOriginal } from './eligibility-originals.ts';
 import { readEligibilityDraft } from './eligibility-draft.ts';
 import type { Deliverable, Expert, KnowledgeChunk, KnowledgeDocument } from './types.ts';
@@ -52,6 +52,7 @@ export async function resolveEligibilityContext(request: Request, input: { exper
   const target = { projectCode: expert.projectCode, category: expert.category, expertId: expert.id, expertName: expert.name, roleId, saCode: input.saCode };
   const parents = (await eligibilityStore.list<KnowledgeDocument>('KnowledgeDocument', { field: 'projectCode', value: expert.projectCode! }))
     .filter((doc) => doc.status === 'active' && appliesToEligibilityScope(doc, target));
-  const chunks = await eligibilityStore.list<KnowledgeChunk>('KnowledgeChunk', { field: 'projectCode', value: expert.projectCode! });
-  return { actor, expert, roleId, scope, documents, chunks: onlyPublishedChunks(chunks, parents).filter((chunk) => appliesToEligibilityScope(chunk, target)), parents };
+  const chunks = await loadEligibilityReferenceChunks(parents, target,
+    (documentId) => eligibilityStore.list<KnowledgeChunk>('KnowledgeChunk', { field: 'documentId', value: documentId }));
+  return { actor, expert, roleId, scope, documents, chunks, parents };
 }

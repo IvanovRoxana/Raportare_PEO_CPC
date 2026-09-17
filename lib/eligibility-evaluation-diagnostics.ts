@@ -42,6 +42,9 @@ export function diagnoseEvaluationError(error: unknown, context: EvaluationDiagn
     code, error: message, action, status, stage: context.stage, requestId: context.requestId, runId: context.runId,
   });
   const investigate = 'Transmite administratorului codul si referinta de diagnostic.';
+  if (value.message === 'ELIGIBILITY_INCOMPLETE_BACKEND_READ') return result('ELIGIBILITY_INCOMPLETE_BACKEND_READ',
+    'Citirea datelor evaluarii a depasit limita de paginare; datele nu au fost preluate integral.',
+    'Administratorul trebuie sa verifice citirea indexata a documentelor si surselor proiectului.');
   if (['EligibilityExecutionError', 'AiGovernanceError', 'EligibilityAccessError', 'EligibilityAssessmentInputError'].includes(value.name || '')) {
     return result(value.code || (value.name === 'EligibilityAssessmentInputError' ? 'ELIGIBILITY_INPUT_INCOMPLETE' : 'ELIGIBILITY_ACCESS_DENIED'),
       value.message || 'Cererea de evaluare a fost respinsa.', value.status === 401 ? 'Autentifica-te din nou.' : 'Urmeaza indicatia din mesaj; daca problema persista, contacteaza administratorul.',
