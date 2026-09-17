@@ -46,7 +46,10 @@ export async function readEligibilityOriginal(document: Deliverable, context?: D
     const extraction = JSON.parse(await cached.Body!.transformToString()) as { hash: string; text: string; complete: boolean };
     if (extraction.hash === fileHash && typeof extraction.text === 'string') return { ...document, fileHash, docText: extraction.text, extractionComplete: extraction.complete === true };
   } catch (error) {
-    if (!(error instanceof Error) || !['NoSuchKey', 'NotFound'].includes(error.name)) throw error;
+    // This cache is optional: without ListBucket, S3 reports a missing key as
+    // AccessDenied rather than NoSuchKey. Rebuild from the original already read
+    // and hash-checked above. Original reads and extraction writes still fail closed.
+    if (!(error instanceof Error) || !['NoSuchKey', 'NotFound', 'AccessDenied'].includes(error.name)) throw error;
   }
   let extraction: { text: string; complete: boolean };
   if (context) context.stage = 'extraction';
