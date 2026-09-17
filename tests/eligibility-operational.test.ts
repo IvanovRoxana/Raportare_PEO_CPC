@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EligibilityCoverage, mergeEvidenceIntervals } from '../lib/eligibility-coverage.ts';
-import { EligibilityExecutionBudget, resolveEligibilityPeriod, eligibilityExecutionLimits } from '../lib/eligibility-execution.ts';
+import { EligibilityExecutionBudget, resolveEligibilityPeriod, eligibilityExecutionLimits, abortableEligibilityRead } from '../lib/eligibility-execution.ts';
 import { createEligibilityTools } from '../lib/agents/eligibility-tools.ts';
 import { aggregateGenerationUsage } from '../lib/ai-usage.ts';
 import type { EligibilityContextResult } from '../lib/rag/eligibility-context.ts';
@@ -120,6 +120,24 @@ test('eligibility rejects actual period mismatches, including January, and ident
   for (const year of [0, -1, 2026.5, '', 'invalid', false]) {
     assert.throws(() => resolveEligibilityPeriod({ month: 0, year }, now), /Luna sau anul/);
   }
+});
+
+test('an expired authorization read stops the tool before late data can be consumed', async () => {
+  const controller = new AbortController();
+  let finishRead!: (value: string) => void;
+  let consumed = false;
+  const waiting = abortableEligibilityRead(controller.signal, () => new Promise<string>((resolve) => { finishRead = resolve; }))
+    .then(() => { consumed = true; });
+  await Promise.resolve();
+  const timeout = new DOMException('Deadline reached', 'TimeoutError');
+  controller.abort(timeout);
+  await assert.rejects(waiting, (error) => error === timeout);
+  finishRead('late document');
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(consumed, false);
+  await assert.rejects(abortableEligibilityRead(controller.signal, async () => { assert.fail('Expired read must not start'); }), (error) => error === timeout);
+  assert.equal(await abortableEligibilityRead(new AbortController().signal, async () => 'ready'), 'ready');
+  await assert.rejects(abortableEligibilityRead(new AbortController().signal, async () => { throw new Error('access revoked'); }), /access revoked/);
 });
 
 test('SDK aggregate usage is used once, including all calls rather than the last call only', () => {

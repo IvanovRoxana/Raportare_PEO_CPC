@@ -28,7 +28,7 @@ export async function authenticateEligibilityRequest(request: Request): Promise<
   } catch { throw new EligibilityAccessError('Sesiunea Cognito nu este valida sau a expirat.', 401); }
 }
 
-export async function resolveEligibilityContext(request: Request, input: { expertId: string; projectCode?: string; saCode: string; documentIds: string[]; historical?: boolean }, authenticatedActor?: EligibilityActor) {
+export async function resolveEligibilityContext(request: Request, input: { expertId: string; projectCode?: string; saCode: string; documentIds: string[]; historical?: boolean; loadReferenceChunks?: boolean }, authenticatedActor?: EligibilityActor) {
   const actor = authenticatedActor || await authenticateEligibilityRequest(request);
   const experts = normalizeEligibilityExperts(await eligibilityStore.list<Expert>('Expert'), peoUsersAsExperts());
   const { expert, roleId, scope } = authorizeEligibilityExpert(actor, experts, input.expertId, input.projectCode);
@@ -52,7 +52,8 @@ export async function resolveEligibilityContext(request: Request, input: { exper
   const target = { projectCode: expert.projectCode, category: expert.category, expertId: expert.id, expertName: expert.name, roleId, saCode: input.saCode };
   const parents = (await eligibilityStore.list<KnowledgeDocument>('KnowledgeDocument', { field: 'projectCode', value: expert.projectCode! }))
     .filter((doc) => doc.status === 'active' && appliesToEligibilityScope(doc, target));
-  const chunks = await loadEligibilityReferenceChunks(parents, target,
+  // Revalidation needs current access, originals and source versions, not the corpus again.
+  const chunks = input.loadReferenceChunks === false ? [] : await loadEligibilityReferenceChunks(parents, target,
     (documentId) => eligibilityStore.list<KnowledgeChunk>('KnowledgeChunk', { field: 'documentId', value: documentId }));
   return { actor, expert, roleId, scope, documents, chunks, parents };
 }

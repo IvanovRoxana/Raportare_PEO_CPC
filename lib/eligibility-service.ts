@@ -1,6 +1,6 @@
 import 'server-only';
 import { EligibilityCoverage } from './eligibility-coverage';
-import { EligibilityExecutionBudget, eligibilityExecutionLimits, resolveEligibilityPeriod, EligibilityExecutionError } from './eligibility-execution';
+import { EligibilityExecutionBudget, eligibilityExecutionLimits, resolveEligibilityPeriod, EligibilityExecutionError, abortableEligibilityRead } from './eligibility-execution';
 import { reserveEligibilityBudget, releaseEvaluation } from './eligibility-runtime-store';
 import { runEligibilityAgent } from './agents/eligibility-agent';
 import type { EligibilityToolTrace } from './agents/eligibility-tools';
@@ -45,6 +45,8 @@ export async function evaluateEligibility(req: Request, diagnostic: EvaluationDi
   let activeRun: EligibilityRun | undefined;
   let settleBudget: ((actualUsd?: number) => Promise<void>) | undefined;
   let billedCost: number | undefined;
+  let executionSignal: AbortSignal | undefined;
+  const trace: EligibilityToolTrace[] = [];
   try {
     assertAllowedAiRequest(req);
     if (!isDeliverableEligibilityCheckEnabled()) {
@@ -203,11 +205,13 @@ export async function evaluateEligibility(req: Request, diagnostic: EvaluationDi
     budget.checkTime();
     settleBudget = await reserveEligibilityBudget(resolved.expert.projectCode!, budget.limits.costUsd);
     const signal = AbortSignal.any([req.signal, AbortSignal.timeout(Math.max(1, budget.limits.timeoutMs - (Date.now() - budget.startedAt)))]);
-    const trace: EligibilityToolTrace[] = [];
+    executionSignal = signal;
     const authorize = async () => {
       signal.throwIfAborted();
-      const current = await resolveEligibilityContext(req, { expertId: resolved.expert.id, projectCode: input.projectCode,
-        saCode: input.saCode, documentIds: parsedDocuments.data.map((doc) => doc.serverDocumentId || doc.id || '') });
+      const current = await abortableEligibilityRead(signal, () => resolveEligibilityContext(req, { expertId: resolved.expert.id, projectCode: input.projectCode,
+        saCode: input.saCode, documentIds: parsedDocuments.data.map((doc) => doc.serverDocumentId || doc.id || ''), loadReferenceChunks: false }));
+      signal.throwIfAborted();
+      budget.checkTime();
       if (evaluationHash(current.parents) !== evaluationHash(resolved.parents)
         || current.documents.some((doc, index) => doc?.fileHash !== resolved.documents[index]?.fileHash)) {
         throw new EligibilityExecutionError('ELIGIBILITY_STALE', 'Documentele sau sursele s-au modificat. Reia evaluarea.', 409);
@@ -299,10 +303,13 @@ export async function evaluateEligibility(req: Request, diagnostic: EvaluationDi
     return response;
   } catch (error) {
     if (error instanceof EligibilityInProgress) throw error;
-    diagnostic.failure = diagnoseEvaluationError(error, diagnostic);
+    const failure = executionSignal?.aborted && Date.now() - budget.startedAt >= budget.limits.timeoutMs
+      ? new EligibilityExecutionError('ELIGIBILITY_TIMEOUT', 'Evaluarea a depasit timpul disponibil. Reincearca verificarea; daca problema persista, transmite referinta administratorului.', 504)
+      : error;
+    diagnostic.failure = diagnoseEvaluationError(failure, diagnostic);
     console.error('[ELIGIBILITY_EVALUATION_ERROR]', { ...diagnostic.failure, causes: safeEvaluationErrorMetadata(error) });
-    if (activeRun) await failEligibilityRun(activeRun, { code: diagnostic.failure.code }, { ...budget.snapshot(), failure: diagnostic.failure }).catch(() => undefined);
-    throw error;
+    if (activeRun) await failEligibilityRun(activeRun, { code: diagnostic.failure.code }, { ...budget.snapshot(), trace, failure: diagnostic.failure }).catch(() => undefined);
+    throw failure;
   } finally {
     if (settleBudget) await settleBudget(billedCost).catch(() => undefined);
     if (activeRun) await releaseEvaluation(activeRun.evaluationKey, activeRun.runId).catch(() => undefined);

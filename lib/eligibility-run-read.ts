@@ -24,7 +24,7 @@ export async function readAuthorizedEligibilityRun(request: Request, runId: stri
 
 export async function verifyEligibilityRunSnapshot(request: Request, run: EligibilityRun, actor?: EligibilityActor) {
   const documents = run.inputSnapshot.documents as Array<{ id: string; hash: string; fileHash?: string; documentTitle?: string; deliverableType?: string }>;
-  const resolved = await resolveEligibilityContext(request, { expertId: run.expertId, projectCode: run.projectCode, saCode: run.saCode, documentIds: documents.map((doc) => doc.id), historical: true }, actor);
+  const resolved = await resolveEligibilityContext(request, { expertId: run.expertId, projectCode: run.projectCode, saCode: run.saCode, documentIds: documents.map((doc) => doc.id), historical: true, loadReferenceChunks: false }, actor);
   const period = run.inputSnapshot.period as { policy?: string; rulesEffectiveAt?: string; activityDates?: string[] } | undefined;
   const at = period?.policy === 'activity_date' ? period.rulesEffectiveAt : new Date().toISOString();
   const activeRules = await getActiveAiEligibilityRuleset({ projectCode: run.projectCode, at, knownAt: new Date().toISOString() });

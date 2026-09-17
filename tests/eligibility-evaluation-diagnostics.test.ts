@@ -161,6 +161,7 @@ test('real service identifies failures before the AI call and persists later fai
     const records: unknown[][] = [];
     const logs: unknown[][] = [];
     let agentCalls = 0;
+    const resolverOptions: Array<{ loadReferenceChunks?: boolean }> = [];
     const failure = failedStage === 'model' ? apiError(429, 'insufficient_quota') : new Error('private failure');
     const at = (stage: string) => { if (stage === failedStage) throw failure; };
     const referenceContext = { sources: [], promptContext: '', missingRequiredSources: [], warnings: [], coverage: { project: false, subactivity: false, job_description: false } };
@@ -168,11 +169,17 @@ test('real service identifies failures before the AI call and persists later fai
     const service = loadModule('../lib/eligibility-service.ts', {
       'server-only': {}, './eligibility-coverage': coverage, './eligibility-execution': execution,
       './eligibility-runtime-store': { reserveEligibilityBudget: async () => async () => {}, releaseEvaluation: async () => {} },
-      './agents/eligibility-agent': { runEligibilityAgent: async () => { agentCalls++; at('model'); } },
+      './agents/eligibility-agent': { runEligibilityAgent: async (options: { authorize: () => Promise<void> }) => {
+        agentCalls++;
+        await options.authorize();
+        await options.authorize();
+        at('model');
+      } },
       './agents/eligibility-tools': { refreshEligibilitySourceCoverage: () => {} },
       '@/lib/eligibility-server-store': { eligibilityStore: { list: async () => candidates } },
       '@/lib/eligibility-run-read': { verifyEligibilityRunSnapshot: async () => ({ current: true }) },
-      '@/lib/eligibility-resolver': { resolveEligibilityContext: async () => {
+      '@/lib/eligibility-resolver': { resolveEligibilityContext: async (_req: Request, options: { loadReferenceChunks?: boolean }) => {
+        resolverOptions.push(options);
         at('context');
         return { expert: { id: 'expert', projectCode: 'project', category: 'cr', saCodes: ['SA3.4'] }, actor: { id: 'actor' }, roleId: 'cr', parents: [], chunks: [],
           documents: [{ id: 'draft_test', docText: 'private document '.repeat(10), fileHash: 'hash', fileName: 'test.docx', extractionComplete: true }] };
@@ -204,6 +211,7 @@ test('real service identifies failures before the AI call and persists later fai
     assert.equal(diagnostic.stage, failedStage);
     assert.equal(diagnostic.failure?.stage, failedStage);
     assert.equal(agentCalls, failedStage === 'model' ? 1 : 0);
+    assert.deepEqual(resolverOptions.map((options) => options.loadReferenceChunks), failedStage === 'model' ? [undefined, false, false] : [undefined]);
     assert.equal(records.length, failedStage === 'model' ? 1 : 0);
     assert.doesNotMatch(JSON.stringify(logs), /private|test-token/);
     if (failedStage === 'model') {

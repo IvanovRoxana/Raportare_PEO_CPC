@@ -3,6 +3,19 @@ export class EligibilityExecutionError extends Error {
   constructor(code: string, message: string, status = 422) { super(message); this.name = 'EligibilityExecutionError'; this.code = code; this.status = status; }
 }
 
+/** Stop waiting for a read when the run expires; late reads cannot resume a tool action. */
+export function abortableEligibilityRead<T>(signal: AbortSignal, read: () => Promise<T>): Promise<T> {
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => reject(signal.reason);
+    signal.addEventListener('abort', abort, { once: true });
+    Promise.resolve().then(() => {
+      signal.throwIfAborted();
+      return read();
+    }).then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
+  });
+}
+
 export type EligibilityExecutionLimits = { modelCalls: number; toolCalls: number; totalTokens: number; timeoutMs: number; costUsd: number };
 const numberSetting = (env: Record<string, string | undefined>, name: string, fallback: number, max: number) => {
   const value = Number(env[name]);
