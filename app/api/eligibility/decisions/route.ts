@@ -5,7 +5,7 @@ import { readAuthorizedEligibilityRun } from '@/lib/eligibility-run-read';
 import { validatePmDecision } from '@/lib/eligibility-evaluation';
 import { EligibilityAccessError } from '@/lib/eligibility-authorization';
 import { eligibilityStore, immutablePut } from '@/lib/eligibility-server-store';
-import { POST as evaluate } from '@/app/api/ai/check-deliverable-eligibility/route';
+import { evaluateEligibility } from '@/lib/eligibility-service';
 
 export const runtime = 'nodejs';
 export async function POST(req: Request) {
@@ -25,13 +25,15 @@ export async function POST(req: Request) {
       replacementSaCode: body.replacementSaCode, replacementActivityId: body.replacementActivityId };
     await eligibilityStore.transact([immutablePut('PmEligibilityDecision', decision)]);
     if (body.decision === 'reclassify') {
-      const response = await evaluate(new Request(new URL('/api/ai/check-deliverable-eligibility', req.url), {
+      try {
+      const evaluation = await evaluateEligibility(new Request(new URL('/api/ai/check-deliverable-eligibility', req.url), {
         method: 'POST', headers: req.headers, body: JSON.stringify({ expertId: run.expertId, projectCode: run.projectCode,
           currentSaCode: body.replacementSaCode, selectedActivityId: body.replacementActivityId, classificationMode: 'manual',
+          activityDates: (run.inputSnapshot.period as { activityDates?: string[] } | undefined)?.activityDates,
           deliverables: resolved.documents.filter(Boolean).map((doc) => ({ id: doc!.id, extractedText: doc!.docText, fileName: doc!.fileName })) }),
       }));
-      const evaluation = await response.json();
-      return NextResponse.json({ decision, evaluation: response.ok ? evaluation : null, evaluationError: response.ok ? null : evaluation.error });
+      return NextResponse.json({ decision, evaluation });
+      } catch { return NextResponse.json({ decision, evaluation: null, evaluationError: 'Reevaluarea nu s-a finalizat. Decizia PM este pastrata.' }); }
     }
     return NextResponse.json({ decision });
   } catch (error) {

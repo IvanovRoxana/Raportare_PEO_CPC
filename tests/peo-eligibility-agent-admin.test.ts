@@ -16,7 +16,7 @@ const envExampleSource = fs.readFileSync(path.join(repoRoot, '.env.example'), 'u
 test('PM eligibility area includes the PEO Eligibility Agent panel', () => {
   assert.doesNotMatch(adminPageSource, /PeoEligibilityAgentPanel/);
   assert.match(pmEligibilityGovernanceSource, /PeoEligibilityAgentPanel/);
-  assert.match(pmEligibilityGovernanceSource, /<PeoEligibilityAgentPanel \/>/);
+  assert.match(pmEligibilityGovernanceSource, /<PeoEligibilityAgentPanel experts=\{experts\} \/>/);
 });
 
 test('PM exposes eligibility categories as a separate menu item', () => {
@@ -36,24 +36,20 @@ test('AI reporting instructions are managed from PM, not Admin users', () => {
 });
 
 test('PEO Eligibility Agent panel defines controlled knowledge and tools', () => {
+  const toolSource = fs.readFileSync(path.join(repoRoot, 'lib/agents/eligibility-tools.ts'), 'utf8');
   [
-    'getExpertProfile()',
-    'getActivityCatalog()',
-    'getProjectRules()',
-    'getTimesheet()',
-    'getDeliverableText()',
-    'findPriorValidatedReports()',
-    'checkDuplicateDeliverable()',
-    'checkHoursConsistency()',
+    'readDeliverable', 'searchProjectEvidence', 'readReferenceDocument',
+    'getAllowedActivityContext', 'listRelatedDeliverables',
   ].forEach((expected) => {
-    assert.match(panelSource, new RegExp(expected.replace(/[()]/g, '\\$&')));
+    assert.match(toolSource, new RegExp(expected));
   });
+  assert.match(panelSource, /api\/eligibility\/readiness/);
 });
 
 test('PEO Eligibility Agent remains advisory and does not expose an activation control', () => {
-  assert.match(panelSource, /Consultativ/);
-  assert.match(panelSource, /Feature flag oprit/);
-  assert.match(panelSource, /nu blocheaza salvarea activitatii/);
+  assert.match(panelSource, /Decizia PM rămâne separată/);
+  assert.match(panelSource, /result\.enabled/);
+  assert.match(panelSource, /Salvarea în ciornă rămâne disponibilă/);
   assert.doesNotMatch(panelSource, /Switch/);
   assert.doesNotMatch(panelSource, /onCheckedChange/);
   assert.match(envExampleSource, /NEXT_PUBLIC_ENABLE_DELIVERABLE_ELIGIBILITY_CHECK=false/);

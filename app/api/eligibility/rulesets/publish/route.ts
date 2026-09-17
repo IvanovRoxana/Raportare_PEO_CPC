@@ -16,7 +16,7 @@ export async function POST(req: Request) {
     const draft = await eligibilityStore.get<AiEligibilityRuleset>('AiEligibilityRuleset', String(body.rulesetId));
     if (!draft) return NextResponse.json({ error: 'Ruleset inexistent.' }, { status: 404 });
     const restored = body.restoreVersionId ? await eligibilityStore.get<AiEligibilityRuleVersion>('AiEligibilityRuleVersion', String(body.restoreVersionId)) : null;
-    if (body.restoreVersionId && (!restored || restored.rulesetId !== draft.id || restored.status !== 'published-v2')) throw new Error('Restaurarea necesita o versiune validata si publicata a acestui ruleset.');
+    if (body.restoreVersionId && (!restored || restored.rulesetId !== draft.id || !['published-v2', 'published-v3'].includes(restored.status))) throw new Error('Restaurarea necesita o versiune validata si publicata a acestui ruleset.');
     const now = new Date().toISOString();
     const rules = parseExecutableRuleset(restored ? restored.newRulesJson : draft.rulesJson);
     if (restored) {
@@ -40,9 +40,9 @@ export async function POST(req: Request) {
     const head = await eligibilityStore.get<AiEligibilityRuleVersion>('AiEligibilityRuleVersion', headId);
     const version = (head?.version || 0) + 1;
     const publication = { id: `publication:${rules.projectCode}:${version}`, rulesetId: draft.id, version,
-      status: 'published-v2', newRulesJson: rules, changedBy: actor.id, changeReason: draft.changeReason || 'Publicare validata', publishedAt: now };
+      status: rules.schemaVersion === 'eligibility-rules-v3' ? 'published-v3' : 'published-v2', newRulesJson: rules, changedBy: actor.id, changeReason: draft.changeReason || 'Publicare validata', publishedAt: now };
     const published = { ...draft, id: draft.id, status: 'active', version, rulesJson: rules,
-      schemaVersion: 'eligibility-rules-v2', activeFrom: rules.validFrom, activeTo: rules.validTo, publishedAt: now, publishedBy: actor.id };
+      schemaVersion: rules.schemaVersion, activeFrom: rules.validFrom, activeTo: rules.validTo, publishedAt: now, publishedBy: actor.id };
     await eligibilityStore.transact([
       immutablePut('AiEligibilityRuleVersion', publication),
       { Put: { TableName: eligibilityTable('AiEligibilityRuleVersion'), Item: { id: headId, rulesetId: draft.id, version, status: 'head', createdAt: now, updatedAt: now },

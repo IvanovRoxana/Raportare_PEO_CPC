@@ -178,7 +178,7 @@ export function EligibilityGovernancePanel({
 
   return (
     <div className="space-y-6">
-      <PeoEligibilityAgentPanel />
+      <PeoEligibilityAgentPanel experts={experts} />
 
       <AiReportingInstructionsPanel
         experts={experts}

@@ -28,7 +28,7 @@ export async function archiveRagOriginal(fileName: string, bytes: Uint8Array) {
 
 /** The storage key comes exclusively from an authorized backend document. */
 export async function readEligibilityOriginal(document: Deliverable): Promise<Deliverable> {
-  if (!document.s3Key || !/^(deliverables|deliverable-index|projects)\//.test(document.s3Key)) return { ...document, extractionComplete: false };
+  if (!document.s3Key || !/^(deliverables|deliverable-index|projects|eligibility-private\/originals)\//.test(document.s3Key)) return { ...document, extractionComplete: false };
   if (document.s3Bucket && document.s3Bucket !== bucket) throw new Error('ELIGIBILITY_DOCUMENT_BUCKET_MISMATCH');
   const result = await client.send(new GetObjectCommand({ Bucket: bucket, Key: document.s3Key }), { abortSignal: AbortSignal.timeout(10_000) });
   if (!result.Body || !result.ContentLength || result.ContentLength > MAX_BYTES) throw new Error('ELIGIBILITY_ORIGINAL_TOO_LARGE');
@@ -36,10 +36,25 @@ export async function readEligibilityOriginal(document: Deliverable): Promise<De
   const fileHash = hash(bytes);
   if (document.fileHash && document.fileHash !== fileHash) throw new Error('ELIGIBILITY_ORIGINAL_HASH_MISMATCH');
   const fileName = document.originalFileName || document.fileName;
-  if (/\.(pdf|docx)$/i.test(fileName)) {
-    const extracted = await extractReferenceDocumentText(fileName, Uint8Array.from(bytes).buffer);
-    return { ...document, fileHash, docText: extracted.text, extractionComplete: extracted.complete };
+  const format = fileName.match(/\.([a-z0-9]+)$/i)?.[1]?.toLowerCase() || 'unknown';
+  const extractionKey = `eligibility-private/extractions/v1/${fileHash}.${format}.json`;
+  try {
+    const cached = await client.send(new GetObjectCommand({ Bucket: bucket, Key: extractionKey }), { abortSignal: AbortSignal.timeout(5000) });
+    const extraction = JSON.parse(await cached.Body!.transformToString()) as { hash: string; text: string; complete: boolean };
+    if (extraction.hash === fileHash && typeof extraction.text === 'string') return { ...document, fileHash, docText: extraction.text, extractionComplete: extraction.complete === true };
+  } catch (error) {
+    if (!(error instanceof Error) || !['NoSuchKey', 'NotFound'].includes(error.name)) throw error;
   }
-  if (/\.(txt|md|csv)$/i.test(fileName)) return { ...document, fileHash, docText: new TextDecoder('utf-8', { fatal: true }).decode(bytes), extractionComplete: true };
-  return { ...document, fileHash, extractionComplete: false };
+  let extraction: { text: string; complete: boolean };
+  if (/\.(pdf|docx)$/i.test(fileName)) {
+    extraction = await extractReferenceDocumentText(fileName, Uint8Array.from(bytes).buffer);
+  } else if (/\.(txt|md|csv)$/i.test(fileName)) extraction = { text: new TextDecoder('utf-8', { fatal: true }).decode(bytes), complete: true };
+  else if (/\.xlsx?$/i.test(fileName)) {
+    const XLSX = await import('xlsx');
+    const workbook = XLSX.read(bytes, { type: 'array' });
+    extraction = { text: workbook.SheetNames.map((name) => `Foaie: ${name}\nInterval: ${workbook.Sheets[name]['!ref'] || 'gol'}\n${XLSX.utils.sheet_to_csv(workbook.Sheets[name])}`).join('\n\n'), complete: true };
+  } else return { ...document, fileHash, extractionComplete: false };
+  await client.send(new PutObjectCommand({ Bucket: bucket, Key: extractionKey,
+    Body: JSON.stringify({ hash: fileHash, ...extraction }), ContentType: 'application/json' }));
+  return { ...document, fileHash, docText: extraction.text, extractionComplete: extraction.complete };
 }

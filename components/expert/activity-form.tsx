@@ -53,6 +53,7 @@ import { normalizePeoCategory } from '@/lib/peo-category';
 import { filterActivityCatalogForFormTab, getActiveGdprActivityCatalog, isActivityCatalogItemAvailableForForm, isEventActivityCatalogItem, normalizeActivityCatalogSaCode, resolveActivityDeliverableOptions, resolveExpertActivityCatalog } from '@/lib/activity-catalog-merge';
 import { buildIdentityDocumentS3Key, findDuplicateCandidates, getDocumentAuditTitle, hashFirstPageText, normalizeDocumentTextForFingerprint, sha256Hex } from '@/lib/document-sharing';
 import { getSecureDocumentUrl } from '@/lib/document-retrieval';
+import { eligibilityRequest } from '@/lib/eligibility-client';
 import { extractDocxFirstPageText, extractDocxTextWithSource, extractHtmlTextWithSource, extractImageTextWithSource, extractPdfFirstPageTextWithSource, extractPdfTextWithSource, extractXlsxTextWithSource, isImageFile } from '@/lib/document-utils';
 import { applyAutomaticTitleSuggestion, formatTitleFromFilename, isTitleAcceptedForWorkflow, shouldUseAiTitleSuggestion, suggestTitleFromFirstPage, validateDeclaredTitleInDocumentText } from '@/lib/title-suggestion';
 import {
@@ -2394,6 +2395,14 @@ export function ActivityForm({
     saveInFlightRef.current = true;
     try {
       await onSave(activities);
+      // Saving the draft remains successful even if linking requires a later retry.
+      for (const activity of activities) {
+        const runIds = [...new Set((activity.deliverables || []).map((doc) => doc.eligibilityCheck?.runId).filter((id): id is string => Boolean(id)))];
+        for (const runId of runIds) {
+          try { await eligibilityRequest('/api/eligibility/bind', { runId, activityId: activity.id }); }
+          catch { setValidationError('Activitatea este salvata. Asocierea evaluarii necesita reluarea verificarii din dosarul salvat.'); }
+        }
+      }
     } finally {
       saveInFlightRef.current = false;
       setIsSubmittingActivity(false);
@@ -3820,6 +3829,7 @@ export function ActivityForm({
                             catalogIndicators={selectedCatalogItem?.indicators}
                             activityCatalogCandidates={activityTabCatalog}
                             deliverableOptions={deliverableOptions}
+                            activityDates={selectedActivityDates}
                             projectCode={expert?.projectCode}
                             month={month}
                             year={year}
@@ -3895,7 +3905,8 @@ export function ActivityForm({
                       catalogIndicators={selectedCatalogItem?.indicators}
                       activityCatalogCandidates={activityTabCatalog}
                       deliverableOptions={deliverableOptions}
-                      projectCode={expert?.projectCode}
+                      activityDates={selectedActivityDates}
+                            projectCode={expert?.projectCode}
                       month={month}
                       year={year}
                       expertId={expertId}
@@ -4502,7 +4513,8 @@ export function ActivityForm({
                         catalogIndicators={selectedCatalogItem?.indicators}
                         activityCatalogCandidates={activityTabCatalog}
                         deliverableOptions={deliverableOptions}
-                        projectCode={expert?.projectCode}
+                        activityDates={selectedActivityDates}
+                            projectCode={expert?.projectCode}
                         month={month}
                         year={year}
                         expertName={expertName}
@@ -4569,7 +4581,8 @@ export function ActivityForm({
                           catalogIndicators={selectedCatalogItem?.indicators}
                           activityCatalogCandidates={activityTabCatalog}
                           deliverableOptions={deliverableOptions}
-                          projectCode={expert?.projectCode}
+                          activityDates={selectedActivityDates}
+                            projectCode={expert?.projectCode}
                           month={month}
                           year={year}
                           expertName={expertName}

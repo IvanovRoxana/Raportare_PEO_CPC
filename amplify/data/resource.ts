@@ -1007,6 +1007,7 @@ const schema = a.schema({
     inputSnapshot: a.json().required(), resultJson: a.json(), limitations: a.string().array(),
     rulesetVersion: a.string(), catalogVersion: a.string(), evaluatorVersion: a.string(),
     model: a.string(), configurationJson: a.json(), completedAt: a.datetime(),
+    activityBinding: a.json(), activityBindings: a.json(), errorCode: a.string(), executionJson: a.json(),
   }).secondaryIndexes((index) => [index('evaluationKey'), index('expertId'), index('projectCode')])
     .authorization((allow) => [allow.groups(['pm', 'admin']).to(['read'])]),
 

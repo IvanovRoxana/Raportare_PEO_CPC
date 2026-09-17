@@ -103,6 +103,7 @@ export const deliverableEligibilityActivityCandidateSchema = z.object({
 });
 
 export const deliverableEligibilityDocumentSchema = z.object({
+  serverDocumentId: z.string().optional(),
   id: z.string().optional(),
   activityGroupId: z.string().optional(),
   workBlockId: z.string().optional(),

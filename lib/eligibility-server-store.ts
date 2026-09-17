@@ -5,7 +5,7 @@ import outputs from '../amplify_outputs.json';
 
 export type EligibilityModel = 'Expert' | 'Deliverable' | 'Document' | 'Activity' | 'ActivityCatalog'
   | 'KnowledgeDocument' | 'KnowledgeChunk' | 'AiEligibilityRuleset' | 'AiEligibilityRuleVersion'
-  | 'EligibilityEvaluationRun' | 'EligibilityEvaluationEvidence' | 'PmEligibilityDecision';
+  | 'EligibilityEvaluationRun' | 'EligibilityEvaluationEvidence' | 'PmEligibilityDecision' | 'EligibilityRuntime';
 
 const client = DynamoDBDocumentClient.from(new DynamoDBClient({ region: outputs.auth.aws_region, maxAttempts: 3 }), {
   marshallOptions: { removeUndefinedValues: true },

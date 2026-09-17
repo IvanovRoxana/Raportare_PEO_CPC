@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { appendFile, mkdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { generateText } from 'ai';
-import { aiModelId, runMeteredAiCall } from './ai-usage.ts';
+import { aiModelId, runMeteredAiCall, aggregateGenerationUsage } from './ai-usage.ts';
 import { NextResponse } from 'next/server';
 import { isOpenAIConfigurationError } from '@/lib/openai';
 
@@ -194,7 +194,7 @@ function getModelPricing(model: unknown) {
   };
 }
 
-function estimateCostUsd(model: unknown, usage: UsageSnapshot) {
+export function estimateCostUsd(model: unknown, usage: UsageSnapshot) {
   const pricing = getModelPricing(model);
   return (
     (usage.inputTokens / 1_000_000) * pricing.inputPerMillion +
@@ -203,16 +203,7 @@ function estimateCostUsd(model: unknown, usage: UsageSnapshot) {
 }
 
 function normalizeUsage(result: unknown, fallbackInputTokens: number): UsageSnapshot {
-  const usage = (result as { usage?: Record<string, unknown> })?.usage ?? {};
-  const inputTokens = Number(usage.inputTokens ?? usage.promptTokens ?? usage.input_tokens ?? fallbackInputTokens);
-  const outputTokens = Number(usage.outputTokens ?? usage.completionTokens ?? usage.output_tokens ?? 0);
-  const totalTokens = Number(usage.totalTokens ?? usage.total_tokens ?? inputTokens + outputTokens);
-
-  return {
-    inputTokens: Number.isFinite(inputTokens) ? inputTokens : fallbackInputTokens,
-    outputTokens: Number.isFinite(outputTokens) ? outputTokens : 0,
-    totalTokens: Number.isFinite(totalTokens) ? totalTokens : fallbackInputTokens,
-  };
+  return aggregateGenerationUsage(result, fallbackInputTokens);
 }
 
 function enforcePreflightLimits(estimatedCostUsd: number, limits: LimitSnapshot) {

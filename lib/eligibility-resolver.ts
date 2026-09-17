@@ -8,6 +8,7 @@ import { eligibilityStore } from './eligibility-server-store.ts';
 import { appliesToEligibilityScope } from './eligibility-scope.ts';
 import { onlyPublishedChunks } from './rag/index-generation.ts';
 import { readEligibilityOriginal } from './eligibility-originals.ts';
+import { readEligibilityDraft } from './eligibility-draft.ts';
 import type { Deliverable, Expert, KnowledgeChunk, KnowledgeDocument } from './types.ts';
 
 const verifier = CognitoJwtVerifier.create({ userPoolId: outputs.auth.user_pool_id, clientId: outputs.auth.user_pool_client_id, tokenUse: 'access' });
@@ -34,6 +35,7 @@ export async function resolveEligibilityContext(request: Request, input: { exper
   if (!input.historical && !expert.saCodes?.includes(input.saCode)) throw new EligibilityAccessError('Subactivitatea nu este atribuita expertului.');
   if (new Set(input.documentIds).size !== input.documentIds.length) throw new EligibilityAccessError('Documente duplicate in cerere.', 422);
   const documents = await Promise.all(input.documentIds.map(async (id) => {
+    if (id.startsWith('draft_')) return readEligibilityDraft(id, expert);
     const document = await eligibilityStore.get<Deliverable>('Deliverable', id)
       || await eligibilityStore.get<Deliverable>('Document', id);
     if (document) {
@@ -44,7 +46,8 @@ export async function resolveEligibilityContext(request: Request, input: { exper
         if (!activity || activity.expertId !== expert.id) throw new EligibilityAccessError('Activitatea livrabilului nu apartine expertului.');
       }
     }
-    return document ? readEligibilityOriginal(document) : null;
+    if (!document) throw new EligibilityAccessError('Livrabilul trebuie incarcat si verificat pe server inainte de evaluare.', 422);
+    return readEligibilityOriginal(document);
   }));
   const target = { projectCode: expert.projectCode, category: expert.category, expertId: expert.id, expertName: expert.name, roleId, saCode: input.saCode };
   const parents = (await eligibilityStore.list<KnowledgeDocument>('KnowledgeDocument', { field: 'projectCode', value: expert.projectCode! }))

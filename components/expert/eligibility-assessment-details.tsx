@@ -71,8 +71,16 @@ export function EligibilityAssessmentDetails({ check: cachedCheck, className = '
 
   return (
     <div className={`space-y-3 text-xs ${className}`}>
+      {check.documentCoverage?.length ? <details className="rounded-md border p-3">
+        <summary className={disclosureClass}>Ce documente a consultat verificarea?</summary>
+        <div className="mt-2 space-y-2">{check.documentCoverage.map((document) => <p key={document.documentId}>
+          {documentNames.find((item) => item.id === document.documentId)?.fileName || document.documentId}: {document.consultedChars.toLocaleString('ro-RO')} din {document.totalChars.toLocaleString('ro-RO')} caractere.
+          {' '}{document.analysisComplete ? 'Text consultat integral.' : !document.extractionComplete ? 'Extragere incompletă; este necesară verificare.' : 'Au rămas intervale necitite.'}
+        </p>)}</div>
+        {check.executionAudit ? <p className="mt-2 text-slate-500">{check.executionAudit.modelCalls} apeluri AI · {check.executionAudit.toolCalls} consultări · {Math.round(check.executionAudit.durationMs / 1000)} secunde. Reguli aplicabile la {check.executionAudit.period.rulesEffectiveAt.slice(0, 10)}.</p> : null}
+      </details> : null}
       {check.runId ? <section className="rounded-md border bg-slate-50 p-3" aria-label="Evaluare persistata">
-        <p className="font-semibold">{verified?.current ? 'Evaluare autoritară verificată' : verified ? 'Evaluare istorică / necesită reevaluare' : verificationError ? 'Evaluare neconfirmată' : 'Se verifică evaluarea salvată'}</p>
+        <p className="font-semibold">{verified?.current ? 'Evaluare verificată pe server' : verified ? 'Evaluare istorică / necesită reevaluare' : verificationError ? 'Evaluare neconfirmată' : 'Se verifică evaluarea salvată'}</p>
         <p className="mt-1 break-all">{check.runId} · {check.checkedAt}</p>
         <p>{check.status === 'neconcludent' ? 'Necesită clarificare' : check.status}</p>
         {check.ruleVersionId ? <p className="break-all">Reguli: {check.ruleVersionId}{check.rulesSource === 'published_ruleset' ? ' · versiune publicată' : ' · registru executabil indisponibil'}</p> : null}

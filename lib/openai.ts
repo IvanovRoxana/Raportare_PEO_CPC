@@ -6,6 +6,10 @@ export function getActivityAgentModelName() {
   return process.env.OPENAI_ACTIVITY_AGENT_MODEL?.trim() || DEFAULT_OPENAI_MODEL;
 }
 
+export function getEligibilityModelName() {
+  return process.env.OPENAI_ELIGIBILITY_MODEL?.trim() || DEFAULT_OPENAI_MODEL;
+}
+
 export class OpenAIConfigurationError extends Error {
   code = 'OPENAI_API_KEY_MISSING';
   status = 500;

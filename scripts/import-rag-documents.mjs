@@ -4,6 +4,7 @@
 import { createHash } from 'node:crypto';
 import { readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
+import { collectManifestDocuments } from './rag-t0-manifest.mjs';
 
 const DEFAULT_DIR = path.join(process.cwd(), 'rag-seed');
 const SUPPORTED_EXTENSIONS = new Set(['.txt', '.md', '.pdf', '.docx']);
@@ -19,6 +20,7 @@ const SOURCE_TYPES_BY_FOLDER = new Map([
 function parseArgs(argv) {
   const args = {
     dir: DEFAULT_DIR,
+    manifest: '',
     category: '',
     projectCode: '',
     positionInProject: '',
@@ -34,6 +36,7 @@ function parseArgs(argv) {
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--dir') args.dir = path.resolve(argv[++index]);
+    if (arg === '--manifest') args.manifest = path.resolve(argv[++index]);
     if (arg === '--category') args.category = argv[++index] || '';
     if (arg === '--project-code') args.projectCode = argv[++index] || '';
     if (arg === '--position-in-project') args.positionInProject = argv[++index] || '';
@@ -331,7 +334,9 @@ async function postDocument(endpoint, token, cognitoToken, document, dryRun) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const { documents, skipped } = await collectDocuments(args.dir, args);
+  const { documents, skipped, manifest } = args.manifest
+    ? await collectManifestDocuments(args.manifest, readDocumentText)
+    : await collectDocuments(args.dir, args);
   const summary = documents.map((document) => {
     const chunks = splitText(document.text);
     return {
@@ -348,12 +353,14 @@ async function main() {
       activityName: document.activityName,
       textChars: normalizeText(document.text).length,
       chunks: chunks.length,
-      firstChunk: chunks[0]?.textPreview,
+      sourceIdentity: document.metadata.sourceIdentity,
+      fileHash: document.metadata.originalFileHash,
     };
   });
 
   console.log(JSON.stringify({
     dryRun: args.dryRun,
+    manifest,
       dir: args.dir,
       projectCode: args.projectCode || undefined,
     documents: summary,

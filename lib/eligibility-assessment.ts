@@ -11,7 +11,7 @@ import {
 import { normalizePeoCategory } from './peo-category.ts';
 import type { EligibilityContextResult, EligibilityContextSource } from './rag/eligibility-context.ts';
 
-export const ELIGIBILITY_ASSESSMENT_VERSION = 'llm-eligibility-v2';
+export const ELIGIBILITY_ASSESSMENT_VERSION = 'operational-eligibility-v3';
 // Keep the evaluator responsive while making the analyzed scope explicit.
 // The complete file remains available to the application; only this prefix is
 // sent to the model for the eligibility assessment.
@@ -58,6 +58,8 @@ export type EligibilityAssessmentCandidate = {
 };
 
 export type EligibilityAssessmentDocument = {
+  analysisComplete?: boolean;
+  consultedTexts?: string[];
   id: string;
   documentTitle?: string;
   fileName?: string;
@@ -147,7 +149,7 @@ export function buildEligibilityAssessmentPrompt(input: EligibilityAssessmentInp
     officialProjectContext: context.promptContext,
     missingOfficialSources: context.missingRequiredSources,
     contextWarnings: [...context.warnings, ...(input.catalogWarnings || [])],
-    administeredRules: input.rulesContext || '',
+    administeredRules: input.evidencePlan ? undefined : input.rulesContext || '',
     evidencePlan: input.evidencePlan,
     evaluationSequence: [
       'document_identity', 'expert_role', 'service_and_sa', 'project_relevance',
@@ -198,7 +200,7 @@ export function finalizeEligibilityAssessment(input: EligibilityAssessmentInput,
     const summary = output.documentSummaries.find((item) => item.id === document.id);
     if (!summary?.summary.trim()) return [];
     const evidence = summary.evidence.filter((quote) => quote.trim().length >= 8
-      && normalizeEvidence(document.extractedText).includes(normalizeEvidence(quote))).slice(0, 8);
+      && (document.consultedTexts || [document.extractedText]).some((text) => normalizeEvidence(text).includes(normalizeEvidence(quote)))).slice(0, 8);
     if (!evidence.length) return [];
     return [{
       id: document.id, fileHash: document.fileHash, summary: summary.summary.slice(0, 2400),
@@ -217,7 +219,7 @@ export function finalizeEligibilityAssessment(input: EligibilityAssessmentInput,
   const structuredWarnings = structuredFindings.some((finding) => finding.status === 'warning');
   const structuredMissingEvidence = structured?.missingEvidence || [];
   const structuredObservations = structured?.observations || [];
-  const incompleteText = input.documents.some((document) => !document.textScope?.trim()
+  const incompleteText = input.documents.some((document) => document.analysisComplete !== undefined ? !document.analysisComplete : !document.textScope?.trim()
     || /prima pagina|inceputul documentului|partial|necunoscuta|unknown|first_page/i.test(
       document.textScope.normalize('NFD').replace(/[\u0300-\u036f]/g, ''),
     ));
@@ -273,7 +275,6 @@ export function finalizeEligibilityAssessment(input: EligibilityAssessmentInput,
     status: deterministicStatus,
     score: result.score,
     aiScore: result.score,
-    normalizedScore: result.score,
     assessmentVersion: ELIGIBILITY_ASSESSMENT_VERSION,
     executionStatus: 'completed' as const,
     summary: [result.summary, ...issues].filter(Boolean).join(' '),

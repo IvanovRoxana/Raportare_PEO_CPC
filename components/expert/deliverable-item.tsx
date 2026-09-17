@@ -29,6 +29,8 @@ import { getSecureDocumentUrl } from '@/lib/document-retrieval';
 import type { ActivityCatalog } from '@/lib/types';
 import { EligibilityAssessmentDetails } from './eligibility-assessment-details';
 import { limitEligibilityDocumentText } from '@/lib/eligibility-assessment';
+import { prepareEligibilityDeliverable } from '@/lib/eligibility-draft-client';
+import { eligibilityRequest } from '@/lib/eligibility-client';
 
 export interface DeliverableDuplicateInfo {
   documentId: string;
@@ -64,9 +66,22 @@ async function requestDeliverableEligibility(body: string) {
       body,
       signal: controller.signal,
     });
-    const result = await response.json().catch(() => null);
-    if (!response.ok) {
+    let result = await response.json().catch(() => null);
+    const existingExecution = response.status === 409 && result?.code === 'ELIGIBILITY_IN_PROGRESS' && result?.runId;
+    if (!response.ok && !existingExecution) {
       throw new Error(result?.error || `Serviciul de evaluare a raspuns cu eroarea HTTP ${response.status}`);
+    }
+    if (existingExecution) {
+      const runId = result.runId;
+      while (!controller.signal.aborted) {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        const running = await eligibilityRequest(`/api/eligibility/runs/${encodeURIComponent(runId)}`, undefined, controller.signal);
+        if (running.executionStatus === 'failed') throw new Error('Evaluarea s-a oprit. Reincearca verificarea.');
+        if (running.executionStatus === 'completed') {
+          if (!running.current) throw new Error('Contextul evaluarii s-a modificat. Reia verificarea.');
+          result = running.result; break;
+        }
+      }
     }
     if (!result || typeof result.status !== 'string' || typeof result.summary !== 'string') {
       throw new Error('Serviciul de evaluare a returnat un raspuns incomplet');
@@ -98,6 +113,11 @@ function getEligibilityDocumentContext(deliverable: DeliverableSlot) {
     deliverable.fileHash ? undefined : deliverable.fileData, deliverable.documentId,
     deliverable.declaredTitle, deliverable.type, deliverable.deliverableType, deliverable.slotType,
     deliverable.stadiu, deliverable.uploaded];
+}
+
+function eligibilityStoragePatch(document: DeliverableSlot): Partial<DeliverableSlot> {
+  return { documentId: document.documentId, fileHash: document.fileHash, s3Key: document.s3Key,
+    s3Bucket: document.s3Bucket, filePath: document.filePath };
 }
 
 function getAiStatusForEligibilityResult(status: string | undefined) {
@@ -310,6 +330,7 @@ function buildEligibilityDocumentPayload(deliverable: DeliverableSlot, activityG
   const limitedText = limitEligibilityDocumentText(extractedText);
   return {
     id: deliverable.id,
+    serverDocumentId: deliverable.documentId?.startsWith('draft_') ? deliverable.documentId : undefined,
     activityGroupId,
     isPrimary,
     documentTitle: getDocumentAuditTitle({
@@ -423,6 +444,7 @@ interface DeliverableItemProps {
   catalogDeliverables?: string;
   catalogIndicators?: string;
   projectCode?: string;
+  activityDates?: string[];
   month?: number;
   year?: number;
   expertId?: string;
@@ -486,6 +508,7 @@ export function DeliverableItem({
   catalogDeliverables,
   catalogIndicators,
   projectCode,
+  activityDates,
   month,
   year,
   expertId,
@@ -521,7 +544,7 @@ export function DeliverableItem({
   const fileRef = useRef<HTMLInputElement>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [extractingText, setExtractingText] = useState(false);
-  const startEligibilityAttempt = useEligibilityAttemptGuard([subActivity, selectedActivityId, activityTitle, classificationMode, currentDescription, expertId, expertCategory, workBlockId, getEligibilityDocumentContext(deliverable)]);
+  const startEligibilityAttempt = useEligibilityAttemptGuard([activityDates, subActivity, selectedActivityId, activityTitle, classificationMode, currentDescription, expertId, expertCategory, workBlockId, getEligibilityDocumentContext(deliverable)]);
   const [isEditingConfirmedTitle, setIsEditingConfirmedTitle] = useState(false);
   const hydratedTitleSuggestionRef = useRef<string | null>(null);
   const eligibilityCheckEnabled = isDeliverableEligibilityCheckEnabledClient();
@@ -912,10 +935,13 @@ export function DeliverableItem({
       },
     });
     let failurePhase: EligibilityFailurePhase = 'extraction';
+    let preparedForSave: DeliverableSlot | undefined;
     try {
       const extractionPatch = await extractDeliverableTextForEligibility(deliverable, expertCategory);
       if (!isCurrentAttempt()) return;
-      const eligibilityDeliverable = extractionPatch ? { ...deliverable, ...extractionPatch } : deliverable;
+      const eligibilityDeliverable = await prepareEligibilityDeliverable(extractionPatch ? { ...deliverable, ...extractionPatch } : deliverable, expertId || '', subActivity);
+      preparedForSave = eligibilityDeliverable;
+      if (!isCurrentAttempt()) return;
       if (extractionPatch) {
         onUpdate(extractionPatch);
       }
@@ -964,6 +990,7 @@ export function DeliverableItem({
           catalogDeliverables,
           catalogIndicators,
           projectCode,
+          activityDates,
           month,
           year,
           expertId,
@@ -990,6 +1017,8 @@ export function DeliverableItem({
       });
       onUpdate({
         eligibilityCheck: nextEligibilityCheck,
+        documentId: eligibilityDeliverable.documentId, fileHash: eligibilityDeliverable.fileHash,
+        s3Key: eligibilityDeliverable.s3Key, s3Bucket: eligibilityDeliverable.s3Bucket, filePath: eligibilityDeliverable.filePath,
         stadiu: inferDeliverableStadiuFromEligibility(deliverable.stadiu, nextEligibilityCheck),
         aiStatus: getAiStatusForEligibilityResult(result.status),
         aiCheck: {
@@ -1026,6 +1055,7 @@ export function DeliverableItem({
         aiCheck: { eligible: null, reason: failureSummary, issues: ['Verificare nefinalizata. Reincearca.'] },
       });
     } finally {
+      if (preparedForSave && isCurrentAttempt()) onUpdate(eligibilityStoragePatch(preparedForSave));
       setAiLoading(false);
     }
   };
@@ -1733,6 +1763,7 @@ export interface DeliverableEligibilityControlProps {
   catalogDeliverables?: string;
   catalogIndicators?: string;
   projectCode?: string;
+  activityDates?: string[];
   month?: number;
   year?: number;
   expertId?: string;
@@ -1790,6 +1821,7 @@ export function DeliverableEligibilityControl({
   catalogDeliverables,
   catalogIndicators,
   projectCode,
+  activityDates,
   month,
   year,
   expertId,
@@ -1814,7 +1846,7 @@ export function DeliverableEligibilityControl({
   className = 'space-y-2',
 }: DeliverableEligibilityControlProps) {
   const [aiLoading, setAiLoading] = useState(false);
-  const startEligibilityAttempt = useEligibilityAttemptGuard([subActivity, selectedActivityId, activityTitle, classificationMode, currentDescription, expertId, expertCategory, workBlockId, getEligibilityDocumentContext(deliverable), getEligibilityDeliverables(deliverable, relatedDeliverables).map(getEligibilityDocumentContext)]);
+  const startEligibilityAttempt = useEligibilityAttemptGuard([activityDates, subActivity, selectedActivityId, activityTitle, classificationMode, currentDescription, expertId, expertCategory, workBlockId, getEligibilityDocumentContext(deliverable), getEligibilityDeliverables(deliverable, relatedDeliverables).map(getEligibilityDocumentContext)]);
   const eligibilityCheckEnabled = isDeliverableEligibilityCheckEnabledClient();
   const typeOptions = deliverableOptions || ALL_DELIVERABLE_TYPES;
   const visibleEligibilityCheck = isEligibilityCheckObsoleteForCurrentActivity(deliverable.eligibilityCheck, {
@@ -1872,12 +1904,14 @@ export function DeliverableEligibilityControl({
       },
     });
     let failurePhase: EligibilityFailurePhase = 'extraction';
+    const preparedForSave: DeliverableSlot[] = [];
     try {
       const activityGroupId = selectedActivityId || subActivity;
       const eligibilityDeliverables = await Promise.all(
         getEligibilityDeliverables(deliverable, relatedDeliverables).map(async (item) => {
           const extractionPatch = await extractDeliverableTextForEligibility(item, expertCategory);
-          const nextItem = extractionPatch ? { ...item, ...extractionPatch } : item;
+          const nextItem = await prepareEligibilityDeliverable(extractionPatch ? { ...item, ...extractionPatch } : item, expertId || '', subActivity);
+          preparedForSave.push(nextItem);
           if (!isCurrentAttempt()) throw new Error('Contextul verificarii s-a schimbat');
           if (extractionPatch) {
             if (item.id === deliverable.id) onUpdate(extractionPatch);
@@ -1933,6 +1967,7 @@ export function DeliverableEligibilityControl({
           catalogDeliverables,
           catalogIndicators,
           projectCode,
+          activityDates,
           month,
           year,
           expertId,
@@ -1957,8 +1992,11 @@ export function DeliverableEligibilityControl({
       });
       for (const update of assessmentPatches) {
         if (!isCurrentAttempt()) return;
-        if (update.id === deliverable.id) onUpdate(update.patch);
-        else onUpdateRelatedDeliverable?.(update.id, update.patch);
+        const prepared = eligibilityDeliverables.find((item) => item.id === update.id)!;
+        const patch = { ...update.patch, documentId: prepared.documentId, fileHash: prepared.fileHash,
+          s3Key: prepared.s3Key, s3Bucket: prepared.s3Bucket, filePath: prepared.filePath };
+        if (update.id === deliverable.id) onUpdate(patch);
+        else onUpdateRelatedDeliverable?.(update.id, patch);
       }
     } catch (error) {
       if (!isCurrentAttempt()) return;
@@ -1984,6 +2022,10 @@ export function DeliverableEligibilityControl({
         aiCheck: { eligible: null, reason: failureSummary, issues: ['Verificare nefinalizata. Reincearca.'] },
       });
     } finally {
+      if (isCurrentAttempt()) for (const prepared of preparedForSave) {
+        if (prepared.id === deliverable.id) onUpdate(eligibilityStoragePatch(prepared));
+        else onUpdateRelatedDeliverable?.(prepared.id, eligibilityStoragePatch(prepared));
+      }
       setAiLoading(false);
     }
   };

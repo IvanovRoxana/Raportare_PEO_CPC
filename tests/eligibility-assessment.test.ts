@@ -182,7 +182,7 @@ test('same-SA automatic classification is applicable and preserves the exact LLM
   assert.equal(result.classification.requiresSaConfirmation, false);
   assert.equal(result.score, 87.5);
   assert.equal(result.aiScore, 87.5);
-  assert.equal(result.normalizedScore, 87.5);
+  assert.equal('normalizedScore' in result, false);
   assert.equal(result.documentSummaries[0].extractedTextLength, documentText.length);
 });
 

@@ -486,6 +486,10 @@ export interface DashboardComplianceRow {
 }
 
 export interface DeliverableEligibilityCheck {
+  documentCoverage?: import('./eligibility-coverage').DocumentCoverage[];
+  executionAudit?: { modelCalls: number; toolCalls: number; totalTokens: number; costUsd: number; durationMs: number;
+    model: string; trace: Array<{ tool: string; status: string; durationMs: number; documentId?: string; chunkId?: string; start?: number; end?: number }>;
+    period: { evaluatedAt: string; rulesEffectiveAt: string; policy: string; activityDates: string[] } };
   usageAudit?: { inputTokens: number; outputTokens: number; embeddingTokens: number; retries: number; costUsd: number; model: string };
   rulesSource?: string;
   runId?: string;
