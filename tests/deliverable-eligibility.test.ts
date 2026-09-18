@@ -663,6 +663,13 @@ test('verificarea eligibilitatii reciteste fisierul cand textul lipseste din slo
   assert.match(deliverableItemSource, /buildEligibilityDocumentPayload\(item, activityGroupId, item\.id === deliverable\.id\)/);
 });
 
+test('verificarea trimite identificatorul serverului si pentru livrabile deja salvate, nu doar pentru drafturi', () => {
+  const draftClientSource = readFileSync(new URL('../lib/eligibility-draft-client.ts', import.meta.url), 'utf8');
+  assert.match(deliverableItemSource, /serverDocumentId: deliverable\.documentId/);
+  assert.doesNotMatch(deliverableItemSource, /serverDocumentId: deliverable\.documentId\?\.startsWith\('draft_'\)/);
+  assert.match(draftClientSource, /\(document\.s3Key \|\| document\.filePath\) && document\.documentId/);
+});
+
 test('rezultatul eligibilitatii pastreaza metadatele livrabilelor analizate', () => {
   const documents = normalizeDeliverableEligibilityDocuments({
     deliverables: [{ id: 'doc-metadata', fileName: 'raport.pdf', documentTitle: 'Raport de analiza', deliverableType: 'Raport', fileHash: 'hash-original', extractedText: 'Continutul documentului', isPrimary: true }],
