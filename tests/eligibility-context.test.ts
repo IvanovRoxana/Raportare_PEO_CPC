@@ -4,6 +4,7 @@ import type { KnowledgeChunk } from '../lib/types.ts';
 import {
   retrieveEligibilityContext,
   includeExpertProfileJobDescription,
+  resolveEligibilityContextDependencies,
   type EligibilityContextDependencies,
   type EligibilityContextRequest,
 } from '../lib/rag/eligibility-context.ts';
@@ -31,15 +32,44 @@ test('server profile job description supplies an explicitly identified source wi
   const empty = await retrieveEligibilityContext(request, { dependencies: dependencies([]) });
   const jobDescriptionText = 'Coordonatorul regional organizeaza consultarile membrilor si documenteaza nevoile beneficiarilor proiectului.';
   const result = includeExpertProfileJobDescription(empty, { id: 'expert-1', jobDescriptionText });
-  assert.equal(result.coverage.job_description, true);
+  assert.equal(result.coverage.job_description, false);
   assert.equal(result.coverage.project, false);
-  assert.deepEqual(result.missingRequiredSources, ['project', 'subactivity']);
+  assert.deepEqual(result.missingRequiredSources, ['project', 'subactivity', 'job_description']);
   assert.equal(result.sources[0].documentId, 'expert-profile:expert-1');
   assert.equal(result.sources[0].sourceType, 'fisa_post_profil_expert');
   assert.equal(result.sources[0].text, jobDescriptionText);
-  assert.match(result.promptContext, /nu este un fragment indexat RAG/);
+  assert.equal(result.sources[0].extractionComplete, false);
+  assert.equal(result.sources[0].provenance, 'expert_profile');
+  assert.match(result.promptContext, /nu este un document oficial indexat/);
   assert.equal(includeExpertProfileJobDescription(empty, { id: '', jobDescriptionText }), empty);
   assert.equal(includeExpertProfileJobDescription(result, { id: 'other', jobDescriptionText }), result);
+});
+
+test('partial dependency injection preserves semantic ranking unless it is explicitly disabled', async () => {
+  const listKnowledgeChunks = async () => [] as KnowledgeChunk[];
+  const embedQuery = async () => ({ embedding: [1, 0], model: 'test-model' });
+  const merged = resolveEligibilityContextDependencies({ listKnowledgeChunks }, { listKnowledgeChunks, embedQuery });
+  assert.equal(merged.embedQuery, embedQuery);
+  assert.equal(resolveEligibilityContextDependencies({ listKnowledgeChunks, embedQuery: null }, { listKnowledgeChunks, embedQuery }).embedQuery, null);
+});
+
+test('historical examples require confirmed parent approval, exclude official and current documents, and rank by relevance', async () => {
+  const result = await retrieveEligibilityContext({
+    ...request, includeHistoricalExamples: true,
+    approvedHistoricalDocumentIds: ['doc-relevant', 'doc-irrelevant', 'doc-official', 'doc-current'],
+    currentDocumentIds: ['doc-current'],
+  }, { dependencies: dependencies([
+    chunk('official', 'cerere_finantare', { documentId: 'doc-official' }),
+    chunk('unconfirmed', 'raport_activitate_aprobat', { documentId: 'doc-unconfirmed' }),
+    chunk('legacy-active', 'livrabil_istoric', { documentId: 'doc-legacy' }),
+    chunk('current', 'livrabil_aprobat', { documentId: 'doc-current' }),
+    chunk('irrelevant', 'raport_activitate_aprobat', { documentId: 'doc-irrelevant', text: 'Arhivare administrativa generala.' }),
+    chunk('relevant', 'livrabil_aprobat', { documentId: 'doc-relevant', text: 'Consultare regionala si participarea membrilor.' }),
+  ]) });
+  assert.deepEqual(result.historicalSources?.map((source) => source.chunkId), ['relevant', 'irrelevant']);
+  assert.ok(result.historicalSources?.every((source) => source.provenance === 'approved_historical_example'));
+  assert.equal(result.historicalSources?.some((source) => source.chunkId === 'official'), false);
+  assert.equal(result.historicalSources?.some((source) => source.chunkId === 'unconfirmed'), false);
 });
 
 test('eligibility retrieves scoped official evidence for a non-PA category with verifiable references', async () => {
