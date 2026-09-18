@@ -139,14 +139,15 @@ export async function evaluateEligibility(req: Request, diagnostic: EvaluationDi
       expertId: input.expertId, expertName: input.expertName,
       expertRole: input.expertFunction, positionInProject: input.expertFunction, roleId: resolved.roleId,
       includeHistoricalExamples: true,
+      approvedHistoricalDocumentIds: resolved.parents.filter((document) => ['approved', 'approved_oir'].includes(document.approvalStatus || ''))
+        .map((document) => document.id),
+      currentDocumentIds: resolved.documents.map((document) => document.id),
       queryText: input.documents.map((document) => [
         document.documentTitle, document.deliverableType,
         document.extractedText.slice(0, 2000), document.extractedText.slice(-2000),
       ].filter(Boolean).join('\n')).join('\n\n'),
     }, { timeoutMs: 7000, dependencies: { listKnowledgeChunks: async () => resolved.chunks } });
-    const context = catalog.source === 'backend'
-      ? includeExpertProfileJobDescription(retrievedContext, resolved.expert)
-      : retrievedContext;
+    const context = includeExpertProfileJobDescription(retrievedContext, resolved.expert);
     // Every applicable normative anchor is included, even when lexical top-k would omit it.
     for (const rule of rules?.criteria || []) {
       const chunk = resolved.chunks.find((item) => item.id === rule.provenance.anchor);

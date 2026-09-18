@@ -9,7 +9,8 @@ import type { EligibilityAssessmentCandidate } from '../eligibility-assessment.t
 export type EligibilityToolTrace = { tool: string; status: string; durationMs: number; documentId?: string; chunkId?: string; start?: number; end?: number; phase?: 'authorization' | 'read'; errorCode?: string };
 export function refreshEligibilitySourceCoverage(context: EligibilityContextResult) {
   for (const kind of ['project', 'subactivity', 'job_description'] as const) {
-    context.coverage[kind] = context.sources.some((source) => source.coverage === kind && source.extractionComplete === true);
+    context.coverage[kind] = context.sources.some((source) => source.coverage === kind
+      && source.provenance !== 'expert_profile' && source.extractionComplete === true);
   }
   context.missingRequiredSources = (['project', 'subactivity', 'job_description'] as const).filter((kind) => !context.coverage[kind]);
   context.promptContext = JSON.stringify({ sources: context.sources, historicalExamples: context.historicalSources || [] });
