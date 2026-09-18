@@ -23,7 +23,10 @@ async function prepareDocument(document: DeliverableSlot, expertId: string, saCo
       declaredTitle: document.declaredTitle || document.docTitle || '', deliverableType: document.type || document.deliverableType || document.slotType });
     return { ...document, documentId: revision.documentId };
   }
-  if (document.s3Key || document.filePath) return document;
+  // A storage key alone is not enough for the evaluator: it resolves and
+  // authorizes records by documentId. Only skip draft creation when both the
+  // stored original and its server record are known.
+  if ((document.s3Key || document.filePath) && document.documentId) return document;
   context.stage = 'original';
   if (!document.fileData) throw new EligibilityDocumentRequestError('Originalul livrabilului nu este disponibil in browser.',
     { stage: 'original', code: 'LOCAL_ORIGINAL_MISSING', action: 'Reincarca fisierul.' });

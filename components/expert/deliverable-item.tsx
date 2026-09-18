@@ -338,7 +338,9 @@ function buildEligibilityDocumentPayload(deliverable: DeliverableSlot, activityG
   const limitedText = limitEligibilityDocumentText(extractedText);
   return {
     id: deliverable.id,
-    serverDocumentId: deliverable.documentId?.startsWith('draft_') ? deliverable.documentId : undefined,
+    // Saved Deliverable/Document records are just as authoritative as temporary
+    // eligibility drafts. The server resolver performs the access check for both.
+    serverDocumentId: deliverable.documentId,
     activityGroupId,
     isPrimary,
     documentTitle: getDocumentAuditTitle({
