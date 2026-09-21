@@ -18,6 +18,12 @@ export async function readAuthorizedEligibilityRun(request: Request, runId: stri
   const actor = await authenticateEligibilityRequest(request);
   const run = await eligibilityStore.get<EligibilityRun>('EligibilityEvaluationRun', runId);
   if (!run) throw new EligibilityAccessError('Evaluarea nu exista.', 404);
+  if (run.asyncJob && run.status !== 'completed') {
+    const documents = run.inputSnapshot.documents as Array<{ id: string }>;
+    const resolved = await resolveEligibilityContext(request, { expertId: run.expertId, projectCode: run.projectCode, saCode: run.saCode,
+      documentIds: documents.map((d) => d.id), historical: true, metadataOnly: true, loadReferenceChunks: false }, actor);
+    return { run, resolved, current: false };
+  }
   const verified = await verifyEligibilityRunSnapshot(request, run, actor);
   return { run, resolved: verified.resolved, current: run.authoritative && run.status === 'completed' && verified.current };
 }
@@ -68,7 +74,7 @@ export async function verifyEligibilityRunSnapshot(request: Request, run: Eligib
     && evaluationHash(run.inputSnapshot.sources) === evaluationHash(sources)
     && run.inputSnapshot.model === getEligibilityModelName() && run.inputSnapshot.evaluatorVersion === ELIGIBILITY_ASSESSMENT_VERSION
     && (!period || period.policy === (process.env.ELIGIBILITY_RULES_TIME_POLICY || 'evaluation_time'))
-    && (!run.inputSnapshot.executionLimits || evaluationHash(run.inputSnapshot.executionLimits) === evaluationHash(eligibilityExecutionLimits()))
+    && (!run.inputSnapshot.executionLimits || evaluationHash(run.inputSnapshot.executionLimits) === evaluationHash({ ...eligibilityExecutionLimits(), ...(run.asyncJob ? { timeoutMs: 240_000 } : {}) }))
     && documents.every((expected, i) => {
       const actual = resolved.documents[i];
       return actual && expected.hash === evaluationHash(actual.docText) && expected.fileHash === actual.fileHash

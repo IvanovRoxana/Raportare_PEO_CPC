@@ -13,6 +13,7 @@ import * as execution from '../lib/eligibility-execution.ts';
 import * as evaluation from '../lib/eligibility-evaluation.ts';
 import * as rules from '../lib/eligibility-rules.ts';
 import * as assessment from '../lib/eligibility-assessment.ts';
+import * as jobInput from '../lib/eligibility-job-input.ts';
 import * as deliverable from '../lib/deliverable-eligibility.ts';
 
 const context: EvaluationDiagnosticContext = { stage: 'model', requestId: 'request-test', runId: 'elg_test' };
@@ -91,11 +92,24 @@ class EligibilityInProgress extends Error {
 }
 class AiGovernanceError extends Error {}
 
+test('first accepted request returns 202 and a runId without waiting for AI', async () => {
+  const route = loadModule('../app/api/ai/check-deliverable-eligibility/route.ts', {
+    'next/server': { NextResponse: { json: Response.json } }, 'node:crypto': { randomUUID: () => 'request-test' },
+    '@/lib/eligibility-submission': { submitEligibility: async () => ({ runId: 'elg_test', status: 'pending', stage: 'queued' }) },
+    '@/lib/eligibility-run-store': { EligibilityInProgress }, '@/lib/ai-governance': { AiGovernanceError },
+    '@/lib/openai': { isOpenAIConfigurationError: () => false }, '@/lib/eligibility-evaluation-diagnostics': diagnostics,
+  });
+  const response = await route.POST(new Request('https://app.test')) as Response;
+  assert.equal(response.status, 202);
+  assert.equal(response.headers.get('Cache-Control'), 'no-store');
+  assert.deepEqual(await response.json(), { runId: 'elg_test', executionStatus: 'pending', stage: 'queued' });
+});
+
 test('evaluation route exposes pre-AI storage stage and correlation ID through the UI formatter', async () => {
   const route = loadModule('../app/api/ai/check-deliverable-eligibility/route.ts', {
     'next/server': { NextResponse: { json: Response.json } },
     'node:crypto': { randomUUID: () => 'request-test' },
-    '@/lib/eligibility-service': { evaluateEligibility: async (_req: Request, diagnostic: EvaluationDiagnosticContext) => {
+    '@/lib/eligibility-submission': { submitEligibility: async (_req: Request, diagnostic: EvaluationDiagnosticContext) => {
       diagnostic.stage = 'registration';
       throw Object.assign(new Error('private table ARN'), { name: 'AccessDeniedException' });
     } },
@@ -121,7 +135,7 @@ test('pending executions retain their polling contract instead of turning into e
   const route = loadModule('../app/api/ai/check-deliverable-eligibility/route.ts', {
     'next/server': { NextResponse: { json: Response.json } },
     'node:crypto': { randomUUID: () => 'request-test' },
-    '@/lib/eligibility-service': { evaluateEligibility: async () => { throw new EligibilityInProgress(); } },
+    '@/lib/eligibility-submission': { submitEligibility: async () => { throw new EligibilityInProgress(); } },
     '@/lib/eligibility-run-store': { EligibilityInProgress },
     '@/lib/ai-governance': { AiGovernanceError },
     '@/lib/openai': { isOpenAIConfigurationError: () => false },
@@ -167,7 +181,7 @@ test('real service identifies failures before the AI call and persists later fai
     const referenceContext = { sources: [], promptContext: '', missingRequiredSources: [], warnings: [], coverage: { project: false, subactivity: false, job_description: false } };
     const candidates = [{ id: 'activity', category: 'cr', saCode: 'SA3.4', activityName: 'Activitate test', isActive: true }];
     const service = loadModule('../lib/eligibility-service.ts', {
-      'server-only': {}, './eligibility-coverage': coverage, './eligibility-execution': execution,
+      'server-only': {}, './eligibility-job-input': jobInput, './eligibility-coverage': coverage, './eligibility-execution': execution,
       './eligibility-runtime-store': { reserveEligibilityBudget: async () => async () => {}, releaseEvaluation: async () => {} },
       './agents/eligibility-agent': { runEligibilityAgent: async (options: { authorize: () => Promise<void> }) => {
         agentCalls++;

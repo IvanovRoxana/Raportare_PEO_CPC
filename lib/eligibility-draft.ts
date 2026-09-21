@@ -2,15 +2,15 @@ import 'server-only';
 import { randomUUID, createHash } from 'node:crypto';
 import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import outputs from '../amplify_outputs.json';
+import { eligibilityRegion, eligibilityBucket } from './eligibility-environment.ts';
 import { eligibilityStore, eligibilityTable, immutablePut } from './eligibility-server-store.ts';
 import { authorizeEligibilityDocument, EligibilityAccessError } from './eligibility-authorization.ts';
 import type { Deliverable, Expert } from './types.ts';
 import { readEligibilityOriginal } from './eligibility-originals.ts';
 import type { DocumentDiagnosticContext } from './eligibility-document-diagnostics.ts';
 
-const client = new S3Client({ region: outputs.auth.aws_region, maxAttempts: 2 });
-const bucket = outputs.storage.bucket_name;
+const client = new S3Client({ region: eligibilityRegion, maxAttempts: 2 });
+const bucket = eligibilityBucket;
 const MAX_BYTES = 15 * 1024 * 1024;
 export type EligibilityDraft = {
   id: string; expertId: string; projectCode: string; actorId: string; saCode: string;

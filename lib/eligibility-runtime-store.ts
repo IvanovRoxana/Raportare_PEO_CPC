@@ -47,7 +47,7 @@ export async function reserveEligibilityBudget(projectCode: string, ceilingUsd: 
     const slotId = `slot:${projectCode}:${slot}`;
     try {
       await eligibilityStore.transact([
-        { Put: { TableName: eligibilityTable('EligibilityRuntime'), Item: { id: slotId, reservationId, expiresAt: Date.now() + 180_000 },
+        { Put: { TableName: eligibilityTable('EligibilityRuntime'), Item: { id: slotId, reservationId, expiresAt: Date.now() + 330_000 },
           ConditionExpression: 'attribute_not_exists(id) OR expiresAt < :now', ExpressionAttributeValues: { ':now': Date.now() } } },
         ...keys.map(({ id, limit }) => ({ Update: { TableName: eligibilityTable('EligibilityRuntime'), Key: { id },
           UpdateExpression: 'ADD reservedMicros :amount',

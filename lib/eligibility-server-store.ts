@@ -1,19 +1,18 @@
 import 'server-only';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, GetCommand, QueryCommand, ScanCommand, TransactWriteCommand, type TransactWriteCommandInput } from '@aws-sdk/lib-dynamodb';
-import outputs from '../amplify_outputs.json';
+import { eligibilityRegion, eligibilityTables } from './eligibility-environment.ts';
 
 export type EligibilityModel = 'Expert' | 'Deliverable' | 'Document' | 'Activity' | 'ActivityCatalog'
   | 'KnowledgeDocument' | 'KnowledgeChunk' | 'AiEligibilityRuleset' | 'AiEligibilityRuleVersion'
   | 'EligibilityEvaluationRun' | 'EligibilityEvaluationEvidence' | 'PmEligibilityDecision' | 'EligibilityRuntime';
 
-const client = DynamoDBDocumentClient.from(new DynamoDBClient({ region: outputs.auth.aws_region, maxAttempts: 3 }), {
+const client = DynamoDBDocumentClient.from(new DynamoDBClient({ region: eligibilityRegion, maxAttempts: 3 }), {
   marshallOptions: { removeUndefinedValues: true },
 });
 
 export function eligibilityTable(model: EligibilityModel) {
-  const custom = (outputs as unknown as { custom?: { eligibilityTables?: Record<string, string> } }).custom;
-  const table = custom?.eligibilityTables?.[model];
+  const table = eligibilityTables()[model];
   if (!table) throw new Error(`ELIGIBILITY_BACKEND_NOT_DEPLOYED:${model}`);
   return table;
 }
@@ -27,7 +26,11 @@ export const eligibilityStore = {
     const items: T[] = [];
     let key: Record<string, unknown> | undefined;
     for (let page = 0; page < 100; page++) {
-      const result = await client.send(model === 'KnowledgeChunk' && filter?.field === 'documentId' ? new QueryCommand({
+      const result = await client.send(model === 'EligibilityRuntime' && filter?.field === 'kind' && filter.value === 'eligibility-job' ? new QueryCommand({
+        TableName: eligibilityTable(model), IndexName: 'eligibilityDispatchDue', ExclusiveStartKey: key,
+        KeyConditionExpression: 'dispatchPartition = :partition AND nextDispatchAt <= :now',
+        ExpressionAttributeValues: { ':partition': 'eligibility', ':now': Date.now() },
+      }) : model === 'KnowledgeChunk' && filter?.field === 'documentId' ? new QueryCommand({
         TableName: eligibilityTable(model), IndexName: 'knowledgeChunksByDocumentId', ExclusiveStartKey: key,
         KeyConditionExpression: '#documentId = :documentId', ExpressionAttributeNames: { '#documentId': 'documentId' },
         ExpressionAttributeValues: { ':documentId': filter.value },

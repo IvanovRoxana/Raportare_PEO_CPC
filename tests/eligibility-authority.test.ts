@@ -169,3 +169,21 @@ test('PM decisions need justification and an allowed reclassification', () => {
   assert.throws(() => validatePmDecision({ decision: 'reclassify', reason: 'Corectie justificata.', replacementSaCode: 'SA3.5', replacementActivityId: 'a' }, ['SA3.4']));
   assert.doesNotThrow(() => validatePmDecision({ decision: 'approve_exception', reason: 'Exceptie aprobata si justificata.' }, ['SA3.4']));
 });
+
+
+test('invalid citations cannot turn missing-evidence fail policy into a negative verdict', () => {
+  const strict = parseExecutableRuleset({ ...json, criteria: [{ ...rule, missingEvidencePolicy: 'fail' }] });
+  const invalid = { ...evidence, aiFindings: [{ ...evidence.aiFindings[0], sourceQuotes: [{ chunkId: 'invented', quote: 'An invented quotation with no source.' }] }] };
+  const result = finalizeAuthoritativeCriteria(strict, invalid, 'eligibil');
+  assert.equal(result.status, 'neconcludent');
+  assert.equal(result.criterionFindings[0].status, 'unknown');
+});
+
+test('versioned valid evidence supports positive and negative reference scenarios', () => {
+  const rules = parseExecutableRuleset(json);
+  assert.equal(finalizeAuthoritativeCriteria(rules, evidence, 'eligibil').status, 'eligibil');
+  const negative = { ...evidence, aiFindings: [{ ...evidence.aiFindings[0], status: 'fail' as const }] };
+  assert.equal(finalizeAuthoritativeCriteria(rules, negative, 'eligibil').status, 'neeligibil');
+  const stale = { ...evidence, sources: evidence.sources.map((source) => ({ ...source, documentVersionId: 'v2' })) };
+  assert.equal(finalizeAuthoritativeCriteria(rules, stale, 'eligibil').status, 'neconcludent');
+});

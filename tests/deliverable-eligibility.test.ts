@@ -767,8 +767,8 @@ test('ruta leaga evaluarea LLM de catalogul autorizat, sursele oficiale si audit
   assert.match(eligibilityRouteSource, /retrieveEligibilityContext\(/);
   assert.match(eligibilityAgentSource, /const prompt = buildEligibilityAssessmentPrompt\(input, context\)/);
   assert.match(eligibilityRouteSource, /let assessment = finalizeEligibilityAssessment\(input, context, result\.output\)/);
-  assert.match(eligibilityRouteSource, /await completeEligibilityRun\(run, response\)/);
-  assert.match(eligibilityHttpSource, /await evaluateEligibility\(req, context\)/);
+  assert.match(eligibilityRouteSource, /await completeEligibilityRun\(run, response, worker\?\.job\)/);
+  assert.match(eligibilityHttpSource, /await submitEligibility\(req, context\)/);
   assert.match(eligibilityHttpSource, /NextResponse\.json/);
   assert.match(eligibilityRouteSource, /categoryContextUsed/);
   assert.match(eligibilityRouteSource, /modelAuditId: result\.auditId/);

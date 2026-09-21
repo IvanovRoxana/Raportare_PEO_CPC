@@ -1,7 +1,9 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { fetchAuthSession } from 'aws-amplify/auth';
+import { requestDeliverableEligibility } from '@/lib/eligibility-evaluation-client';
+import { useEligibilityRecovery } from '@/hooks/use-eligibility-recovery';
+import { EligibilityPollingStopped, type EligibilityProgress } from '@/lib/eligibility-polling';
 import { AlertTriangle, Check, FileText, Image, Loader2, Sparkles, Upload, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -31,7 +33,6 @@ import { EligibilityAssessmentDetails } from './eligibility-assessment-details';
 import { limitEligibilityDocumentText } from '@/lib/eligibility-assessment';
 import { prepareEligibilityDeliverable } from '@/lib/eligibility-draft-client';
 import { eligibilityRequest } from '@/lib/eligibility-client';
-import { EligibilityEvaluationRequestError, evaluationFailureFromResponse } from '@/lib/eligibility-evaluation-diagnostics';
 
 export interface DeliverableDuplicateInfo {
   documentId: string;
@@ -48,62 +49,6 @@ type EligibilitySuggestedSettings = NonNullable<NonNullable<DeliverableSlot['eli
 type EligibilitySuggestedSettingsChange = 'activity' | 'deliverableType';
 
 const ELIGIBILITY_CHECK_WAITING_MESSAGE = 'Verificarea eligibilitatii dureaza putin, te rugam sa astepti.';
-const ELIGIBILITY_REQUEST_TIMEOUT_MS = 90000;
-
-async function requestDeliverableEligibility(body: string) {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  try {
-    const token = (await fetchAuthSession()).tokens?.accessToken?.toString();
-    if (token) headers.Authorization = `Bearer ${token}`;
-  } catch {
-    // The server decides whether the current session permits evaluation.
-  }
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), ELIGIBILITY_REQUEST_TIMEOUT_MS);
-  try {
-    const response = await fetch('/api/ai/check-deliverable-eligibility', {
-      method: 'POST',
-      headers,
-      body,
-      signal: controller.signal,
-    });
-    let result = await response.json().catch(() => null);
-    const existingExecution = response.status === 409 && result?.code === 'ELIGIBILITY_IN_PROGRESS' && result?.runId;
-    if (!response.ok && !existingExecution) {
-      const diagnostic = evaluationFailureFromResponse(result?.diagnostic);
-      if (diagnostic) throw new EligibilityEvaluationRequestError(diagnostic);
-      throw new Error(`${result?.error || 'Serviciul de evaluare a returnat o eroare.'} Cod: ${result?.code || `HTTP_${response.status}`}.`);
-    }
-    if (existingExecution) {
-      const runId = result.runId;
-      while (!controller.signal.aborted) {
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-        const running = await eligibilityRequest(`/api/eligibility/runs/${encodeURIComponent(runId)}`, undefined, controller.signal);
-        if (running.executionStatus === 'failed') {
-          const diagnostic = evaluationFailureFromResponse(running.diagnostic);
-          if (diagnostic) throw new EligibilityEvaluationRequestError(diagnostic);
-          throw new Error(`Evaluarea s-a oprit. Cod: ${running.errorCode || 'ELIGIBILITY_EXECUTION_FAILED'}; evaluare: ${runId}. Reincearca verificarea.`);
-        }
-        if (running.executionStatus === 'completed') {
-          if (!running.current) throw new Error('Contextul evaluarii s-a modificat. Reia verificarea.');
-          result = running.result; break;
-        }
-      }
-    }
-    if (!result || typeof result.status !== 'string' || typeof result.summary !== 'string') {
-      throw new Error('Serviciul de evaluare a returnat un raspuns incomplet');
-    }
-    return result;
-  } catch (error) {
-    if (error instanceof EligibilityEvaluationRequestError) throw error;
-    throw new EligibilityAttemptError('evaluation', controller.signal.aborted
-      ? 'Serviciul nu a raspuns in 90 de secunde'
-      : error instanceof Error ? error.message : 'Serviciul de evaluare nu a raspuns');
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
-
 // Discard late responses after a document, activity, scope or expert edit.
 function useEligibilityAttemptGuard(context: unknown[]) {
   const key = JSON.stringify(context);
@@ -148,14 +93,14 @@ function HourglassIcon(props: React.SVGProps<SVGSVGElement>) {
   );
 }
 
-function EligibilityCheckingIndicator({ compact = false }: { compact?: boolean }) {
+function EligibilityCheckingIndicator({ compact = false, message }: { compact?: boolean; message?: string }) {
   return (
     <span className={`inline-flex max-w-full items-center gap-2 ${compact ? 'text-xs' : 'rounded-md border border-indigo-200 bg-indigo-50 px-3 py-2 text-[11px] text-indigo-900 shadow-sm'}`}>
       <span className="relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-indigo-700 shadow-sm ring-1 ring-indigo-200">
         <span className="absolute inset-1 rounded-full bg-indigo-100/70" />
         <HourglassIcon className="relative h-4 w-4 animate-spin" />
       </span>
-      <span className="font-medium leading-snug">{ELIGIBILITY_CHECK_WAITING_MESSAGE}</span>
+      <span className="font-medium leading-snug">{message || ELIGIBILITY_CHECK_WAITING_MESSAGE}</span>
     </span>
   );
 }
@@ -553,6 +498,7 @@ export function DeliverableItem({
   const typeOptions = deliverableOptions || ALL_DELIVERABLE_TYPES;
   const fileRef = useRef<HTMLInputElement>(null);
   const [aiLoading, setAiLoading] = useState(false);
+  const [evaluationProgress, setEvaluationProgress] = useState<EligibilityProgress | null>(null);
   const [extractingText, setExtractingText] = useState(false);
   const startEligibilityAttempt = useEligibilityAttemptGuard([activityDates, subActivity, selectedActivityId, activityTitle, classificationMode, currentDescription, expertId, expertCategory, workBlockId, getEligibilityDocumentContext(deliverable)]);
   const [isEditingConfirmedTitle, setIsEditingConfirmedTitle] = useState(false);
@@ -914,16 +860,38 @@ export function DeliverableItem({
     }
   };
 
+  const recoveryDocuments = [deliverable];
+  const recoveryInput = expertId && recoveryDocuments.every((item) => item.documentId) ? {
+    expertId, projectCode, currentSaCode: subActivity, selectedActivityId, selectedActivityName: activityTitle,
+    classificationMode, currentDescription, workingGroupActivities, deliverableOptions: typeOptions,
+    activityCatalogCandidates, primaryDeliverableId: deliverable.id, activityGroupId: selectedActivityId || subActivity,
+    workBlockId, periodGroupId, workingGroupId, activityDates, month, year,
+    deliverables: recoveryDocuments.map((item) => ({ id: item.id, serverDocumentId: item.documentId, isPrimary: item.id === deliverable.id })),
+  } : null;
+  useEligibilityRecovery(recoveryInput, { contextKey: JSON.stringify(recoveryDocuments.map(getEligibilityDocumentContext)), busy: aiLoading, enabled: !deliverable.eligibilityCheck?.runId || deliverable.eligibilityCheck.executionStatus !== 'completed',
+    loading: setAiLoading, progress: setEvaluationProgress,
+    completed: (result) => {
+      for (const update of buildDeliverableGroupAssessmentPatches({ deliverables: recoveryDocuments, result,
+        checkedAt: result.checkedAt || new Date().toISOString(), checkedBy: expertName,
+        selectedActivityId, saCode: subActivity, activityTitle })) {
+        if (update.id === deliverable.id) onUpdate(update.patch);
+      }
+    },
+    failed: (error) => setEvaluationProgress({ runId: '', executionStatus: 'failed', message: error instanceof Error ? error.message : 'Evaluarea nu poate fi consultată acum.' }),
+  });
+
   const handleAiCheck = async () => {
     if (!eligibilityCheckEnabled) return;
     const isCurrentAttempt = startEligibilityAttempt();
 
+    if (aiLoading) return;
+    setEvaluationProgress(null);
     setAiLoading(true);
     const pendingEligibilityCheck = mergeEligibilityCheckWithPmUnlockTracking(deliverable.eligibilityCheck, {
       status: 'neconcludent',
       score: 0,
       executionStatus: 'pending' as const,
-      summary: 'Verificarea eligibilitatii a fost pornita. Daca AI nu raspunde, salveaza ciorna pentru verificare PM.',
+      summary: 'Evaluarea este în curs. Rezultatul poate fi recuperat după reîncărcarea paginii pentru documentele salvate.',
       checks: [],
       missingElements: [],
       recommendations: ['Poti salva ciorna pentru verificare PM daca analiza automata nu raspunde.'],
@@ -1011,7 +979,7 @@ export function DeliverableItem({
           ruleVersionId,
           expertName,
           textScope: buildEligibilityDocumentPayload(eligibilityDeliverable, selectedActivityId || subActivity, true).textScope,
-      }));
+      }), (progress) => { if (isCurrentAttempt()) setEvaluationProgress(progress); }, isCurrentAttempt);
 
       if (!isCurrentAttempt()) return;
       const nextEligibilityCheck = mergeEligibilityCheckWithPmUnlockTracking(deliverable.eligibilityCheck, {
@@ -1042,7 +1010,7 @@ export function DeliverableItem({
         },
       });
     } catch (error) {
-      if (!isCurrentAttempt()) return;
+      if (!isCurrentAttempt() || error instanceof EligibilityPollingStopped) return;
       const failureSummary = getEligibilityFailureSummary(error, failurePhase);
       onUpdate({
         eligibilityCheck: mergeEligibilityCheckWithPmUnlockTracking(deliverable.eligibilityCheck, {
@@ -1650,7 +1618,7 @@ export function DeliverableItem({
               className="h-auto max-w-full whitespace-normal border-indigo-300 py-2 text-xs text-indigo-700 hover:bg-indigo-50"
             >
               {aiLoading ? (
-                <EligibilityCheckingIndicator compact />
+                <EligibilityCheckingIndicator message={evaluationProgress ? `${evaluationProgress.message}${evaluationProgress.runId ? ` · ${evaluationProgress.runId}` : ''}` : undefined} compact />
               ) : (
                 <>
                   <Sparkles className="h-3 w-3 mr-1" />
@@ -1685,11 +1653,15 @@ export function DeliverableItem({
             </div>
           )}
 
+          {evaluationProgress && (!visibleEligibilityCheck || evaluationProgress.executionStatus === 'failed') && (
+            <div role="status" className="text-xs text-slate-700">{evaluationProgress.message}{evaluationProgress.runId ? ` · ${evaluationProgress.runId}` : ''}</div>
+          )}
           {visibleEligibilityCheck && (
             <EligibilityResultCard
               classificationMode={classificationMode}
               check={visibleEligibilityCheck}
               isLoading={aiLoading}
+              evaluationProgress={evaluationProgress}
               onApplySuggestedSettings={handleApplyEligibilitySuggestion}
               onRequestPmUnlock={handleRequestPmUnlock}
               onRecheck={eligibilityCheckEnabled && canCheckEligibility ? handleAiCheck : undefined}
@@ -1707,7 +1679,7 @@ export function DeliverableItem({
           className="h-auto w-fit max-w-full whitespace-normal border-indigo-300 py-2 text-xs text-indigo-700 hover:bg-indigo-50"
         >
           {aiLoading ? (
-            <EligibilityCheckingIndicator compact />
+            <EligibilityCheckingIndicator message={evaluationProgress ? `${evaluationProgress.message}${evaluationProgress.runId ? ` · ${evaluationProgress.runId}` : ''}` : undefined} compact />
           ) : (
             <>
               <Sparkles className="h-3 w-3 mr-1" />
@@ -1748,6 +1720,7 @@ export function DeliverableItem({
           classificationMode={classificationMode}
           check={visibleEligibilityCheck}
           isLoading={aiLoading}
+              evaluationProgress={evaluationProgress}
           onApplySuggestedSettings={handleApplyEligibilitySuggestion}
           onRequestPmUnlock={handleRequestPmUnlock}
               onRecheck={eligibilityCheckEnabled && canCheckEligibility ? handleAiCheck : undefined}
@@ -1856,6 +1829,7 @@ export function DeliverableEligibilityControl({
   className = 'space-y-2',
 }: DeliverableEligibilityControlProps) {
   const [aiLoading, setAiLoading] = useState(false);
+  const [evaluationProgress, setEvaluationProgress] = useState<EligibilityProgress | null>(null);
   const startEligibilityAttempt = useEligibilityAttemptGuard([activityDates, subActivity, selectedActivityId, activityTitle, classificationMode, currentDescription, expertId, expertCategory, workBlockId, getEligibilityDocumentContext(deliverable), getEligibilityDeliverables(deliverable, relatedDeliverables).map(getEligibilityDocumentContext)]);
   const eligibilityCheckEnabled = isDeliverableEligibilityCheckEnabledClient();
   const typeOptions = deliverableOptions || ALL_DELIVERABLE_TYPES;
@@ -1883,16 +1857,38 @@ export function DeliverableEligibilityControl({
       : eligibilityBlockedReason);
   const canRunEligibilityCheck = canCheckEligibility && !eligibilityGateReason && !hasReusableEligibilityCheck;
 
+  const recoveryDocuments = getEligibilityDeliverables(deliverable, relatedDeliverables);
+  const recoveryInput = expertId && recoveryDocuments.every((item) => item.documentId) ? {
+    expertId, projectCode, currentSaCode: subActivity, selectedActivityId, selectedActivityName: activityTitle,
+    classificationMode, currentDescription, workingGroupActivities, deliverableOptions: typeOptions,
+    activityCatalogCandidates, primaryDeliverableId: deliverable.id, activityGroupId: selectedActivityId || subActivity,
+    workBlockId, periodGroupId, workingGroupId, activityDates, month, year,
+    deliverables: recoveryDocuments.map((item) => ({ id: item.id, serverDocumentId: item.documentId, isPrimary: item.id === deliverable.id })),
+  } : null;
+  useEligibilityRecovery(recoveryInput, { contextKey: JSON.stringify(recoveryDocuments.map(getEligibilityDocumentContext)), busy: aiLoading, enabled: !deliverable.eligibilityCheck?.runId || deliverable.eligibilityCheck.executionStatus !== 'completed',
+    loading: setAiLoading, progress: setEvaluationProgress,
+    completed: (result) => {
+      for (const update of buildDeliverableGroupAssessmentPatches({ deliverables: recoveryDocuments, result,
+        checkedAt: result.checkedAt || new Date().toISOString(), checkedBy: expertName,
+        selectedActivityId, saCode: subActivity, activityTitle })) {
+        if (update.id === deliverable.id) onUpdate(update.patch); else onUpdateRelatedDeliverable?.(update.id, update.patch);
+      }
+    },
+    failed: (error) => setEvaluationProgress({ runId: '', executionStatus: 'failed', message: error instanceof Error ? error.message : 'Evaluarea nu poate fi consultată acum.' }),
+  });
+
   const handleAiCheck = async () => {
     if (!eligibilityCheckEnabled) return;
     const isCurrentAttempt = startEligibilityAttempt();
 
+    if (aiLoading) return;
+    setEvaluationProgress(null);
     setAiLoading(true);
     const pendingEligibilityCheck = mergeEligibilityCheckWithPmUnlockTracking(deliverable.eligibilityCheck, {
       status: 'neconcludent',
       score: 0,
       executionStatus: 'pending' as const,
-      summary: 'Verificarea eligibilitatii a fost pornita. Daca AI nu raspunde, salveaza ciorna pentru verificare PM.',
+      summary: 'Evaluarea este în curs. Rezultatul poate fi recuperat după reîncărcarea paginii pentru documentele salvate.',
       checks: [],
       missingElements: [],
       recommendations: ['Poti salva ciorna pentru verificare PM daca analiza automata nu raspunde.'],
@@ -1988,7 +1984,7 @@ export function DeliverableEligibilityControl({
           ruleVersionId,
           expertName,
           textScope: buildEligibilityDocumentPayload(primaryEligibilityDeliverable, activityGroupId, true).textScope,
-      }));
+      }), (progress) => { if (isCurrentAttempt()) setEvaluationProgress(progress); }, isCurrentAttempt);
 
       if (!isCurrentAttempt()) return;
       const assessmentPatches = buildDeliverableGroupAssessmentPatches({
@@ -2009,7 +2005,7 @@ export function DeliverableEligibilityControl({
         else onUpdateRelatedDeliverable?.(update.id, patch);
       }
     } catch (error) {
-      if (!isCurrentAttempt()) return;
+      if (!isCurrentAttempt() || error instanceof EligibilityPollingStopped) return;
       const failureSummary = getEligibilityFailureSummary(error, failurePhase);
       onUpdate({
         eligibilityCheck: mergeEligibilityCheckWithPmUnlockTracking(deliverable.eligibilityCheck, {
@@ -2084,7 +2080,7 @@ export function DeliverableEligibilityControl({
             className="h-auto w-fit max-w-full whitespace-normal border-indigo-300 py-2 text-xs text-indigo-700 hover:bg-indigo-50"
           >
             {aiLoading ? (
-              <EligibilityCheckingIndicator compact />
+              <EligibilityCheckingIndicator message={evaluationProgress ? `${evaluationProgress.message}${evaluationProgress.runId ? ` · ${evaluationProgress.runId}` : ''}` : undefined} compact />
             ) : (
               <>
                 <Sparkles className="h-3 w-3 mr-1" />
@@ -2125,11 +2121,15 @@ export function DeliverableEligibilityControl({
         </div>
       )}
 
-      {visibleEligibilityCheck && (
+      {evaluationProgress && (!visibleEligibilityCheck || evaluationProgress.executionStatus === 'failed') && (
+            <div role="status" className="text-xs text-slate-700">{evaluationProgress.message}{evaluationProgress.runId ? ` · ${evaluationProgress.runId}` : ''}</div>
+          )}
+          {visibleEligibilityCheck && (
         <EligibilityResultCard
           classificationMode={classificationMode}
           check={visibleEligibilityCheck}
           isLoading={aiLoading}
+              evaluationProgress={evaluationProgress}
           onApplySuggestedSettings={handleApplyEligibilitySuggestion}
           onRequestPmUnlock={handleRequestPmUnlock}
               onRecheck={eligibilityCheckEnabled && canCheckEligibility ? handleAiCheck : undefined}
@@ -2179,6 +2179,7 @@ function EligibilityResultCard({
   check,
   classificationMode = 'manual',
   isLoading = false,
+  evaluationProgress,
   onApplySuggestedSettings,
   onRequestPmUnlock,
   onRecheck,
@@ -2186,6 +2187,7 @@ function EligibilityResultCard({
   check: NonNullable<DeliverableSlot['eligibilityCheck']>;
   classificationMode?: 'automatic' | 'manual';
   isLoading?: boolean;
+  evaluationProgress?: EligibilityProgress | null;
   onApplySuggestedSettings?: (
     settings: EligibilitySuggestedSettings,
     change: EligibilitySuggestedSettingsChange,
@@ -2241,7 +2243,7 @@ function EligibilityResultCard({
       )}
       {isCheckingInProgress ? (
         <div className="mt-2">
-          <EligibilityCheckingIndicator />
+          <EligibilityCheckingIndicator message={evaluationProgress ? `${evaluationProgress.message}${evaluationProgress.runId ? ` · ${evaluationProgress.runId}` : ''}` : undefined} />
         </div>
       ) : isNeconcludent && (
         <div className="mt-1 rounded border border-amber-200 bg-white/80 p-2 text-slate-800">

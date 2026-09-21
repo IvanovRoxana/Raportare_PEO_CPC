@@ -9,12 +9,12 @@ export async function GET(req: Request, context: { params: Promise<{ runId: stri
   try {
     const { runId } = await context.params;
     const { run, current } = await readAuthorizedEligibilityRun(req, runId);
-    const decisions = await eligibilityStore.list('PmEligibilityDecision', { field: 'runId', value: runId });
-    const expired = run.status === 'pending' && Date.now() - Date.parse(run.createdAt) > 180_000;
+    const decisions = run.status === 'completed' ? await eligibilityStore.list('PmEligibilityDecision', { field: 'runId', value: runId }) : [];
+    const expired = !run.asyncJob && run.status === 'pending' && Date.now() - Date.parse(run.createdAt) > 180_000;
     return NextResponse.json({ runId, executionStatus: expired ? 'failed' : run.status,
       errorCode: expired ? 'ELIGIBILITY_EXECUTION_INTERRUPTED' : run.errorCode,
       diagnostic: run.status === 'failed' ? run.executionJson?.failure : undefined,
-      result: run.resultJson, current, decisions }, { headers: { 'Cache-Control': 'no-store' } });
+      stage: run.stage, updatedAt: run.updatedAt || run.createdAt, result: run.resultJson, current, decisions }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
     return NextResponse.json({ error: error instanceof EligibilityAccessError ? error.message : 'Evaluarea nu poate fi verificata acum.' }, { status: error instanceof EligibilityAccessError ? error.status : 503 });
   }

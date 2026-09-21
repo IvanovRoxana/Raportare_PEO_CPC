@@ -73,7 +73,7 @@ function store(send: (command: Command) => Promise<unknown>) {
   const dependencies: Record<string, unknown> = {
     'server-only': {}, '@aws-sdk/client-dynamodb': { DynamoDBClient: class {} },
     '@aws-sdk/lib-dynamodb': { QueryCommand, ScanCommand, DynamoDBDocumentClient: { from: () => ({ send }) } },
-    '../amplify_outputs.json': { auth: { aws_region: 'test' }, custom: { eligibilityTables: { KnowledgeChunk: 'chunks', Expert: 'experts' } } },
+    './eligibility-environment.ts': { eligibilityRegion: 'test', eligibilityTables: () => ({ KnowledgeChunk: 'chunks', Expert: 'experts', EligibilityRuntime: 'runtime' }) },
   };
   new Function('require', 'exports', compiledStore)((id: string) => {
     assert.ok(Object.hasOwn(dependencies, id), `Unexpected dependency: ${id}`);

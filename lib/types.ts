@@ -502,7 +502,7 @@ export interface DeliverableEligibilityCheck {
     documentQuotes?: Array<{ documentId: string; quote: string }>; }>;
   evaluationLimitations?: string[];
   assessmentVersion?: string;
-  executionStatus?: 'pending' | 'completed' | 'failed' | 'not_started';
+  executionStatus?: 'pending' | 'running' | 'completed' | 'failed' | 'not_started';
   classification?: {
     activityId: string;
     activityName: string;

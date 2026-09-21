@@ -1,4 +1,5 @@
 import 'server-only';
+import { finishJobWrites, type EligibilityJob } from './eligibility-jobs.ts';
 import { randomUUID } from 'node:crypto';
 import { eligibilityStore, eligibilityTable, immutablePut } from './eligibility-server-store.ts';
 import type { DeliverableEligibilityCheck } from './types.ts';
@@ -15,7 +16,7 @@ export type EligibilityRun = {
   id: string; runId: string; evaluationKey: string; expertId: string; projectCode: string; saCode: string;
   actorId: string; status: string; authoritative: boolean; createdAt: string;
   inputSnapshot: Record<string, unknown>; resultJson?: DeliverableEligibilityCheck; completedAt?: string;
-  errorCode?: string;
+  errorCode?: string; asyncJob?: boolean; stage?: string; updatedAt?: string; leaseToken?: string; leaseUntil?: number;
   executionJson?: Record<string, unknown> & { failure?: EvaluationFailure };
   activityBinding?: EligibilityActivityBinding;
   activityBindings?: EligibilityActivityBinding[];
@@ -34,17 +35,18 @@ export async function startEligibilityRun(input: Omit<EligibilityRun, 'id' | 'ru
   catch (error) { await releaseEvaluation(input.evaluationKey, runId).catch(() => undefined); throw error; }
   return run;
 }
-export async function completeEligibilityRun(run: EligibilityRun, result: DeliverableEligibilityCheck) {
+export async function completeEligibilityRun(run: EligibilityRun, result: DeliverableEligibilityCheck, job?: EligibilityJob) {
   await eligibilityStore.transact([
     { Update: {
       TableName: eligibilityTable('EligibilityEvaluationRun'), Key: { id: run.id },
-      UpdateExpression: 'SET #status = :completed, resultJson = :result, inputSnapshot = :snapshot, authoritative = :authoritative, completedAt = :at, updatedAt = :at',
-      ConditionExpression: '#status = :pending AND evaluationKey = :key', ExpressionAttributeNames: { '#status': 'status' },
-      ExpressionAttributeValues: { ':completed': 'completed', ':pending': 'pending', ':key': run.evaluationKey, ':result': result, ':snapshot': run.inputSnapshot, ':authoritative': result.authoritative === true, ':at': new Date().toISOString() },
+      UpdateExpression: 'SET #status = :completed, resultJson = :result, inputSnapshot = :snapshot, authoritative = :authoritative, completedAt = :at, updatedAt = :at REMOVE leaseToken, leaseUntil, errorCode',
+      ConditionExpression: job ? '#status = :pending AND evaluationKey = :key AND leaseToken = :token AND leaseUntil > :now' : '#status = :pending AND evaluationKey = :key', ExpressionAttributeNames: { '#status': 'status' },
+      ExpressionAttributeValues: { ':completed': 'completed', ':pending': job ? 'running' : 'pending', ...(job ? { ':token': job.leaseToken, ':now': Date.now() } : {}), ':key': run.evaluationKey, ':result': result, ':snapshot': run.inputSnapshot, ':authoritative': result.authoritative === true, ':at': new Date().toISOString() },
     } },
+    ...(job ? finishJobWrites(job, 'completed') : []),
     ...(result.criterionFindings || []).map((finding) => immutablePut('EligibilityEvaluationEvidence', {
       id: `${run.runId}:${finding.criterionId}`, runId: run.runId, criterionId: finding.criterionId,
-      evidenceJson: { ...finding, sources: (result.sourceEvidence || []).filter((source) => finding.evidenceIds.includes(source.chunkId)) },
+      evidenceJson: { ...finding, documents: run.inputSnapshot.documents, sources: (result.sourceEvidence || []).filter((source) => finding.evidenceIds.includes(source.chunkId)) },
     })),
   ]);
 }

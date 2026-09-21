@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { randomUUID } from 'node:crypto';
-import { evaluateEligibility } from '@/lib/eligibility-service';
+import { submitEligibility } from '@/lib/eligibility-submission';
 import { EligibilityInProgress } from '@/lib/eligibility-run-store';
 import { AiGovernanceError, aiErrorResponse } from '@/lib/ai-governance';
 import { isOpenAIConfigurationError } from '@/lib/openai';
@@ -12,7 +12,8 @@ export const dynamic = 'force-dynamic';
 export async function POST(req: Request) {
   const context: EvaluationDiagnosticContext = { stage: 'request', requestId: randomUUID() };
   try {
-    return NextResponse.json(await evaluateEligibility(req, context), { headers: { 'Cache-Control': 'no-store' } });
+    const run = await submitEligibility(req, context);
+    return NextResponse.json({ runId: run.runId, executionStatus: run.status, stage: run.stage }, { status: 202, headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
     if (error instanceof EligibilityInProgress) return NextResponse.json({ runId: error.runId, executionStatus: 'pending', code: 'ELIGIBILITY_IN_PROGRESS' }, { status: 409 });
     const diagnostic = context.failure || diagnoseEvaluationError(error, context);

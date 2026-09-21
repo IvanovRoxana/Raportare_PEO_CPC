@@ -47,7 +47,7 @@ function fixture() {
   };
   const resolver = load<typeof import('../lib/eligibility-resolver.ts')>('../lib/eligibility-resolver.ts', {
     'server-only': {}, 'aws-jwt-verify': { CognitoJwtVerifier: { create: () => ({}) } },
-    '../amplify_outputs.json': { auth: {} }, './rag/cognito-auth.ts': {},
+    './eligibility-environment.ts': {}, './rag/cognito-auth.ts': {},
     './eligibility-authorization.ts': authorization, './peo-users.ts': { peoUsersAsExperts: () => [] },
     './eligibility-server-store.ts': { eligibilityStore: backend }, './eligibility-scope.ts': scope,
     './eligibility-reference-chunks.ts': references,
@@ -106,4 +106,15 @@ test('snapshot verification detects changed sources and originals without readin
   f.document.docText = 'Original modificat';
   assert.equal((await reader.verifyEligibilityRunSnapshot(f.request, run, f.actor)).current, false);
   assert.ok(!f.calls.includes('KnowledgeChunk'));
+});
+
+
+test('metadata reauthorization checks ownership and versions without downloading originals', async () => {
+  const f = fixture();
+  const current = await f.resolver.resolveEligibilityContext(f.request, { ...f.input, metadataOnly: true, loadReferenceChunks: false }, f.actor);
+  assert.equal(current.documents[0].fileHash, f.document.fileHash);
+  assert.ok(!f.calls.includes('original'));
+  assert.ok(!f.calls.includes('KnowledgeChunk'));
+  f.document.expertId = 'someone-else';
+  await assert.rejects(f.resolver.resolveEligibilityContext(f.request, { ...f.input, metadataOnly: true, loadReferenceChunks: false }, f.actor));
 });

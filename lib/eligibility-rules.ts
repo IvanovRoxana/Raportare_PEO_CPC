@@ -121,7 +121,8 @@ export const ELIGIBILITY_OPERATOR_HANDLERS: Record<ExecutableCriterion['operator
       && normalizeEligibilityScope(validDocuments.map((item) => item.quote).join(' ')).includes(normalizeEligibilityScope(term)));
     if (!validSources.length || !validDocuments.length || validSources.length !== answer.sourceQuotes.length
       || validDocuments.length !== answer.documentQuotes.length || !relevant || answer.explanation.trim().length < 20) {
-      return finding(rule.missingEvidencePolicy, 'Dovezile nu confirma sursa, ancora, versiunea si relevanta pentru acest criteriu.');
+      // Invalid model citations are uncertainty, not proof of a missing obligation.
+      return finding('unknown', 'Dovezile nu confirma sursa, ancora, versiunea si relevanta pentru acest criteriu.');
     }
     if (answer.status === 'not_applicable') return finding('unknown', 'Aplicabilitatea este stabilita de server.');
     return { ...finding(answer.status, answer.explanation, validSources.map((item) => item.chunkId)),

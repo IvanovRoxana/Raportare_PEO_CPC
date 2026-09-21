@@ -1,4 +1,5 @@
 import 'server-only';
+import { eligibilityDocumentVersions } from './eligibility-job-input';
 import { EligibilityCoverage } from './eligibility-coverage';
 import { EligibilityExecutionBudget, eligibilityExecutionLimits, resolveEligibilityPeriod, EligibilityExecutionError, abortableEligibilityRead } from './eligibility-execution';
 import { reserveEligibilityBudget, releaseEvaluation } from './eligibility-runtime-store';
@@ -25,7 +26,7 @@ import {
 import { getActiveAiEligibilityRuleset } from '@/lib/ai-eligibility-ruleset-runtime';
 import { getCognitoAccessTokenFromRequest } from '@/lib/rag/cognito-auth';
 import { retrieveEligibilityContext, includeExpertProfileJobDescription } from '@/lib/rag/eligibility-context';
-import { loadEligibilityCatalog } from '@/lib/eligibility-catalog-runtime';
+import { loadEligibilityCatalog, loadEligibilityWorkerCatalog } from '@/lib/eligibility-catalog-runtime';
 import { scopeEligibilityCatalog } from '@/lib/eligibility-catalog';
 import type { ActivityCatalog } from '@/lib/types';
 import {
@@ -40,20 +41,30 @@ import {
 
 
 
-export async function evaluateEligibility(req: Request, diagnostic: EvaluationDiagnosticContext = { stage: 'request' }) {
-  const budget = new EligibilityExecutionBudget(eligibilityExecutionLimits());
+export type EligibilityWorkerExecution = {
+  run: EligibilityRun; job: import('./eligibility-jobs').EligibilityJob;
+  actor: import('./eligibility-authorization').EligibilityActor;
+  authorizeActor: () => Promise<import('./eligibility-authorization').EligibilityActor>;
+  progress: (stage: EvaluationDiagnosticContext['stage']) => Promise<void>;
+  failureAudit?: (audit: Record<string, unknown>) => void;
+};
+
+export async function evaluateEligibility(req: Request, diagnostic: EvaluationDiagnosticContext = { stage: 'request' }, worker?: EligibilityWorkerExecution) {
+  const limits = { ...eligibilityExecutionLimits(), ...(worker ? { timeoutMs: 240_000 } : {}) };
+  const budget = new EligibilityExecutionBudget(limits);
+  const stage = async (value: EvaluationDiagnosticContext['stage']) => { diagnostic.stage = value; if (worker) await worker.progress(value); };
   let activeRun: EligibilityRun | undefined;
   let settleBudget: ((actualUsd?: number) => Promise<void>) | undefined;
   let billedCost: number | undefined;
   let executionSignal: AbortSignal | undefined;
   const trace: EligibilityToolTrace[] = [];
   try {
-    assertAllowedAiRequest(req);
-    if (!isDeliverableEligibilityCheckEnabled()) {
+    if (!worker) assertAllowedAiRequest(req);
+    if (!worker && !isDeliverableEligibilityCheckEnabled()) {
       throw new EligibilityExecutionError('ELIGIBILITY_DISABLED', DELIVERABLE_ELIGIBILITY_DISABLED_MESSAGE, 503);
     }
     const authToken = getCognitoAccessTokenFromRequest(req, { allowAuthorizationHeader: true });
-    if (!authToken) throw new EligibilityAccessError('Sesiunea a expirat. Autentifica-te din nou pentru verificare.', 401);
+    if (!worker && !authToken) throw new EligibilityAccessError('Sesiunea a expirat. Autentifica-te din nou pentru verificare.', 401);
     const rawBody = await req.text();
     if (rawBody.length > 2_000_000) {
       throw new EligibilityAssessmentInputError('Cererea este prea mare pentru o verificare completa. Redu numarul de livrabile din grup.');
@@ -70,23 +81,24 @@ export async function evaluateEligibility(req: Request, diagnostic: EvaluationDi
     if (!parsedDocuments.success) {
       throw new EligibilityAssessmentInputError('Trimite intre 1 si 8 livrabile valide. Niciun document nu a fost omis sau evaluat partial.');
     }
-    diagnostic.stage = 'context';
+    await stage('context');
     const resolved = await resolveEligibilityContext(req, {
       expertId: String(expertId || ''), projectCode: typeof body.projectCode === 'string' ? body.projectCode : undefined,
       saCode: String(currentSaCode || ''), documentIds: parsedDocuments.data.map((doc) => doc.serverDocumentId || doc.id || ''),
-    });
+    }, worker?.actor);
     const documentsById = new Map(parsedDocuments.data.map((doc, i) => [doc.id || '', resolved.documents[i]!]));
     const authoritative = resolved.documents.every((doc) => Boolean(doc?.docText));
     if (!authoritative) throw new EligibilityExecutionError('ELIGIBILITY_EXTRACTION_INCOMPLETE', 'Originalele nu au text verificabil. Verifica extragerea.');
-    diagnostic.stage = 'catalog';
-    const catalog = await loadEligibilityCatalog({
+    await stage('catalog');
+    const candidateIds = Array.isArray(body.activityCatalogCandidates) ? body.activityCatalogCandidates.map((item: { id?: string }) => item?.id).filter((id: unknown): id is string => typeof id === 'string') : undefined;
+    const catalog = worker ? await loadEligibilityWorkerCatalog(resolved.expert, candidateIds) : await loadEligibilityCatalog({
       expertId: String(expertId || ''),
       expertCategory: resolved.expert.category || '',
       currentSaCode: String(currentSaCode || ''),
       allowedCandidateIds: Array.isArray(body.activityCatalogCandidates)
         ? body.activityCatalogCandidates.map((item: { id?: string }) => item?.id).filter((id: unknown): id is string => typeof id === 'string')
         : undefined,
-    }, { authToken });
+    }, { authToken: authToken || undefined });
     const eligibilityDocuments = parsedDocuments.data.map((document) => {
       const stored = documentsById.get(document.id || '')!;
       return { id: document.id || stored.id, extractedText: stored.docText!, fileHash: stored.fileHash,
@@ -115,7 +127,7 @@ export async function evaluateEligibility(req: Request, diagnostic: EvaluationDi
       catalogSource: catalog.source,
       catalogWarnings: catalog.warnings,
     };
-    diagnostic.stage = 'validation';
+    await stage('validation');
     const coverage = new EligibilityCoverage(input.documents.map((document) => ({ id: document.id,
       text: document.extractedText, version: document.fileHash || evaluationHash(document.extractedText),
       extractionComplete: documentsById.get(document.id)?.extractionComplete === true })));
@@ -127,13 +139,13 @@ export async function evaluateEligibility(req: Request, diagnostic: EvaluationDi
         : document;
     });
     validateEligibilityAssessmentInput(input);
-    const evaluationAt = new Date().toISOString();
+    const evaluationAt = worker?.run.createdAt || new Date().toISOString();
     const period = resolveEligibilityPeriod(body, evaluationAt, process.env.ELIGIBILITY_RULES_TIME_POLICY || 'evaluation_time');
-    diagnostic.stage = 'rules';
+    await stage('rules');
     const activeRuleset = await getActiveAiEligibilityRuleset({ projectCode: resolved.expert.projectCode!, at: period.rulesEffectiveAt, knownAt: evaluationAt });
     const rules = activeRuleset ? parseExecutableRuleset(activeRuleset.rulesJson) : null;
     input.rulesContext = activeRuleset?.rulesJson ? JSON.stringify(activeRuleset.rulesJson) : '';
-    diagnostic.stage = 'references';
+    await stage('references');
     const retrievedContext = await retrieveEligibilityContext({
       projectCode: input.projectCode, category: input.category, saCode: input.saCode,
       expertId: input.expertId, expertName: input.expertName,
@@ -167,7 +179,7 @@ export async function evaluateEligibility(req: Request, diagnostic: EvaluationDi
     };
     input.evidencePlan = buildEvidencePlan(rules, evidence);
     // A multi-date group must not silently use the first date's rules for every date.
-    diagnostic.stage = 'rules';
+    await stage('rules');
     if (period.policy === 'activity_date') for (const date of period.activityDates.slice(1)) {
       const at = date + 'T12:00:00.000Z';
       const datedRuleset = await getActiveAiEligibilityRuleset({ projectCode: resolved.expert.projectCode!, at, knownAt: evaluationAt });
@@ -176,7 +188,7 @@ export async function evaluateEligibility(req: Request, diagnostic: EvaluationDi
         throw new EligibilityExecutionError('ELIGIBILITY_PERIOD_SPLIT_REQUIRED', 'Perioada traverseaza versiuni de reguli. Verifica separat grupurile de date cu aceleasi cerinte.');
       }
     }
-    diagnostic.stage = 'snapshot';
+    await stage('snapshot');
     const snapshot = {
       documents: input.documents.map((doc) => ({ id: documentsById.get(doc.id)!.id, clientId: doc.id, hash: evaluationHash(documentsById.get(doc.id)?.docText || doc.extractedText),
         fileHash: documentsById.get(doc.id)?.fileHash || doc.fileHash, analysisHash: evaluationHash(doc.extractedText), textScope: doc.textScope,
@@ -191,37 +203,40 @@ export async function evaluateEligibility(req: Request, diagnostic: EvaluationDi
       deliverableOptions: input.deliverableOptions, evaluatorVersion: ELIGIBILITY_ASSESSMENT_VERSION,
       model: getEligibilityModelName(), configuration: ELIGIBILITY_MODEL_CONFIGURATION, authoritative,
       period: { policy: period.policy, activityDates: period.activityDates, rulesEffectiveAt: period.policy === 'activity_date' ? period.rulesEffectiveAt : undefined },
-      executionLimits: eligibilityExecutionLimits(),
+      executionLimits: limits,
     };
-    const evaluationKey = buildEvaluationKey(snapshot);
-    diagnostic.stage = 'reuse';
-    const reused = authoritative ? await findReusableEligibilityRun(evaluationKey) : null;
+    const evaluationKey = worker?.run.evaluationKey || buildEvaluationKey(snapshot);
+    await stage('reuse');
+    const reused = !worker && authoritative ? await findReusableEligibilityRun(evaluationKey) : null;
     if (reused?.resultJson && (await verifyEligibilityRunSnapshot(req, reused)).current) return { ...reused.resultJson, reused: true };
-    diagnostic.stage = 'registration';
-    const run = await startEligibilityRun({ evaluationKey, expertId: resolved.expert.id, projectCode: resolved.expert.projectCode!,
+    await stage('registration');
+    const run = worker?.run || await startEligibilityRun({ evaluationKey, expertId: resolved.expert.id, projectCode: resolved.expert.projectCode!,
       saCode: input.saCode, actorId: resolved.actor.id, authoritative, inputSnapshot: snapshot });
+    run.inputSnapshot = snapshot;
     activeRun = run;
     diagnostic.runId = run.runId;
-    diagnostic.stage = 'budget';
+    await stage('budget');
     budget.checkTime();
     settleBudget = await reserveEligibilityBudget(resolved.expert.projectCode!, budget.limits.costUsd);
     const signal = AbortSignal.any([req.signal, AbortSignal.timeout(Math.max(1, budget.limits.timeoutMs - (Date.now() - budget.startedAt)))]);
     executionSignal = signal;
     const authorize = async () => {
       signal.throwIfAborted();
+      const actor = worker ? await worker.authorizeActor() : undefined;
       const current = await abortableEligibilityRead(signal, () => resolveEligibilityContext(req, { expertId: resolved.expert.id, projectCode: input.projectCode,
-        saCode: input.saCode, documentIds: parsedDocuments.data.map((doc) => doc.serverDocumentId || doc.id || ''), loadReferenceChunks: false }));
+        saCode: input.saCode, documentIds: parsedDocuments.data.map((doc) => doc.serverDocumentId || doc.id || ''), loadReferenceChunks: false, metadataOnly: true }, actor));
       signal.throwIfAborted();
       budget.checkTime();
       if (evaluationHash(current.parents) !== evaluationHash(resolved.parents)
-        || current.documents.some((doc, index) => doc?.fileHash !== resolved.documents[index]?.fileHash)) {
+        || evaluationHash(current.expert) !== evaluationHash(resolved.expert)
+        || evaluationHash(eligibilityDocumentVersions(current.documents)) !== evaluationHash(eligibilityDocumentVersions(resolved.documents))) {
         throw new EligibilityExecutionError('ELIGIBILITY_STALE', 'Documentele sau sursele s-au modificat. Reia evaluarea.', 409);
       }
     };
     const agentOptions = { runId: run.runId, actorId: resolved.actor.id, input, context, coverage, budget, chunks: resolved.chunks, authorize, signal, trace };
-    diagnostic.stage = 'model';
+    await stage('model');
     let result = await runEligibilityAgent(agentOptions);
-    diagnostic.stage = 'result_validation';
+    await stage('result_validation');
     const updateReadEvidence = () => {
       const states = coverage.snapshot();
       input.documents = input.documents.map((doc) => {
@@ -242,9 +257,9 @@ export async function evaluateEligibility(req: Request, diagnostic: EvaluationDi
     evidence.activityId = finalActivity;
     if (evaluationHash(previousPlan) !== evaluationHash(applicableCriteriaSnapshot(rules, evidence))) {
       input.evidencePlan = buildEvidencePlan(rules, evidence);
-      diagnostic.stage = 'model';
+      await stage('model');
       result = await runEligibilityAgent({ ...agentOptions, input: { ...input, selectedActivityId: finalActivity, classificationMode: 'manual' } });
-      diagnostic.stage = 'result_validation';
+      await stage('result_validation');
       updateReadEvidence();
       assessment = finalizeEligibilityAssessment({ ...input, selectedActivityId: finalActivity, classificationMode: 'manual' }, context, result.output);
       if (assessment.classification.activityId !== finalActivity) throw new EligibilityExecutionError('ELIGIBILITY_CLASSIFICATION_CHANGED', 'Incadrarea nu a ramas stabila la verificarea cerintelor. Selecteaza activitatea si reia analiza.', 409);
@@ -264,7 +279,7 @@ export async function evaluateEligibility(req: Request, diagnostic: EvaluationDi
     billedCost = budget.usageComplete ? budget.costUsd : undefined;
     const classification = assessment.classification;
     const response: DeliverableEligibilityCheck = {
-      ...assessment, ...criteriaResult, ...presentation, verdict: criteriaResult.status,
+      ...assessment, ...criteriaResult, ...presentation, executionStatus: 'completed', verdict: criteriaResult.status,
       documentCoverage: coverage.snapshot(), executionAudit: { ...budget.snapshot(), trace, model: getEligibilityModelName(), period },
       suggestedSettings: assessment.suggestedSettings ? {
         ...assessment.suggestedSettings, saCode: assessment.suggestedSettings.saCode || undefined,
@@ -292,15 +307,16 @@ export async function evaluateEligibility(req: Request, diagnostic: EvaluationDi
       usageAudit: { ...result.usageAudit, inputTokens: budget.inputTokens, outputTokens: budget.outputTokens, totalTokens: budget.totalTokens, costUsd: budget.costUsd },
       rulesSource: activeRuleset ? 'published_ruleset' : 'built_in_rules',
     };
-    diagnostic.stage = 'revalidation';
-    if (authoritative && !(await verifyEligibilityRunSnapshot(req, run)).current) {
+    await stage('revalidation');
+    if (authoritative && !(await verifyEligibilityRunSnapshot(req, run, worker ? await worker.authorizeActor() : undefined)).current) {
+      if (worker) throw new EligibilityExecutionError('ELIGIBILITY_STALE', 'Contextul s-a modificat in timpul analizei. Reia evaluarea.', 409);
       response.authoritative = false; response.status = 'neconcludent'; response.verdict = 'neconcludent';
       response.summary = 'Contextul s-a modificat in timpul analizei. Reia evaluarea.';
       response.justification = response.summary;
       response.evaluationLimitations?.push(response.summary);
     }
-    diagnostic.stage = 'save';
-    await completeEligibilityRun(run, response);
+    await stage('save');
+    await completeEligibilityRun(run, response, worker?.job);
     return response;
   } catch (error) {
     if (error instanceof EligibilityInProgress) throw error;
@@ -308,11 +324,12 @@ export async function evaluateEligibility(req: Request, diagnostic: EvaluationDi
       ? new EligibilityExecutionError('ELIGIBILITY_TIMEOUT', 'Evaluarea a depasit timpul disponibil. Reincearca verificarea; daca problema persista, transmite referinta administratorului.', 504)
       : error;
     diagnostic.failure = diagnoseEvaluationError(failure, diagnostic);
+    worker?.failureAudit?.({ ...budget.snapshot(), trace, failure: diagnostic.failure });
     console.error('[ELIGIBILITY_EVALUATION_ERROR]', { ...diagnostic.failure, causes: safeEvaluationErrorMetadata(error) });
-    if (activeRun) await failEligibilityRun(activeRun, { code: diagnostic.failure.code }, { ...budget.snapshot(), trace, failure: diagnostic.failure }).catch(() => undefined);
+    if (activeRun && !worker) await failEligibilityRun(activeRun, { code: diagnostic.failure.code }, { ...budget.snapshot(), trace, failure: diagnostic.failure }).catch(() => undefined);
     throw failure;
   } finally {
     if (settleBudget) await settleBudget(billedCost).catch(() => undefined);
-    if (activeRun) await releaseEvaluation(activeRun.evaluationKey, activeRun.runId).catch(() => undefined);
+    if (activeRun && !worker) await releaseEvaluation(activeRun.evaluationKey, activeRun.runId).catch(() => undefined);
   }
 }

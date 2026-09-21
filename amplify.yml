@@ -40,6 +40,17 @@ frontend:
         - if [ -n "$OUTLOOK_TENANT_ID" ]; then printf "OUTLOOK_TENANT_ID=%s\n" "$OUTLOOK_TENANT_ID" >> .env.production; fi
         - if [ -n "$OUTLOOK_REDIRECT_URI" ]; then printf "OUTLOOK_REDIRECT_URI=%s\n" "$OUTLOOK_REDIRECT_URI" >> .env.production; fi
         - if [ -n "$OUTLOOK_TOKEN_ENCRYPTION_KEY" ]; then printf "OUTLOOK_TOKEN_ENCRYPTION_KEY=%s\n" "$OUTLOOK_TOKEN_ENCRYPTION_KEY" >> .env.production; fi
+        - if [ -n "$ELIGIBILITY_ASYNC_ENABLED" ]; then printf "ELIGIBILITY_ASYNC_ENABLED=%s\n" "$ELIGIBILITY_ASYNC_ENABLED" >> .env.production; fi
+        - if [ -n "$OPENAI_ELIGIBILITY_MODEL" ]; then printf "OPENAI_ELIGIBILITY_MODEL=%s\n" "$OPENAI_ELIGIBILITY_MODEL" >> .env.production; fi
+        - if [ -n "$ELIGIBILITY_RULES_TIME_POLICY" ]; then printf "ELIGIBILITY_RULES_TIME_POLICY=%s\n" "$ELIGIBILITY_RULES_TIME_POLICY" >> .env.production; fi
+        - if [ -n "$ELIGIBILITY_MAX_MODEL_CALLS" ]; then printf "ELIGIBILITY_MAX_MODEL_CALLS=%s\n" "$ELIGIBILITY_MAX_MODEL_CALLS" >> .env.production; fi
+        - if [ -n "$ELIGIBILITY_MAX_TOOL_CALLS" ]; then printf "ELIGIBILITY_MAX_TOOL_CALLS=%s\n" "$ELIGIBILITY_MAX_TOOL_CALLS" >> .env.production; fi
+        - if [ -n "$ELIGIBILITY_MAX_TOKENS" ]; then printf "ELIGIBILITY_MAX_TOKENS=%s\n" "$ELIGIBILITY_MAX_TOKENS" >> .env.production; fi
+        - if [ -n "$ELIGIBILITY_MAX_COST_USD" ]; then printf "ELIGIBILITY_MAX_COST_USD=%s\n" "$ELIGIBILITY_MAX_COST_USD" >> .env.production; fi
+        - if [ -n "$ELIGIBILITY_TIMEOUT_MS" ]; then printf "ELIGIBILITY_TIMEOUT_MS=%s\n" "$ELIGIBILITY_TIMEOUT_MS" >> .env.production; fi
+        - if [ -n "$ELIGIBILITY_MAX_CONCURRENT" ]; then printf "ELIGIBILITY_MAX_CONCURRENT=%s\n" "$ELIGIBILITY_MAX_CONCURRENT" >> .env.production; fi
+        - if [ -n "$AI_DAILY_COST_LIMIT_USD" ]; then printf "AI_DAILY_COST_LIMIT_USD=%s\n" "$AI_DAILY_COST_LIMIT_USD" >> .env.production; fi
+        - if [ -n "$AI_MONTHLY_COST_LIMIT_USD" ]; then printf "AI_MONTHLY_COST_LIMIT_USD=%s\n" "$AI_MONTHLY_COST_LIMIT_USD" >> .env.production; fi
         - npm run build
   artifacts:
     baseDirectory: .next

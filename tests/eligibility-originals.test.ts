@@ -39,7 +39,7 @@ function reader(options: { originalError?: Error; cacheError?: Error; writeError
         return { Body: { transformToString: async () => JSON.stringify(options.cache) } };
       }
     } },
-    '../amplify_outputs.json': { auth: { aws_region: 'test-region' }, storage: { bucket_name: 'test-bucket' } },
+    './eligibility-environment.ts': { eligibilityRegion: 'test-region', eligibilityBucket: 'test-bucket' },
     './rag/reference-document-text.ts': { extractReferenceDocumentText: async (_name: string, buffer: ArrayBuffer) => {
       extractions++;
       assert.deepEqual(new Uint8Array(buffer), original);

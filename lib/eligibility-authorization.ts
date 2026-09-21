@@ -7,7 +7,7 @@ export class EligibilityAccessError extends Error {
   status: number;
   constructor(message: string, status = 403) { super(message); this.name = 'EligibilityAccessError'; this.status = status; }
 }
-export type EligibilityActor = { id: string; email?: string; roles: string[] };
+export type EligibilityActor = { id: string; username?: string; email?: string; roles: string[] };
 
 export function normalizeEligibilityExperts(backendExperts: Expert[], referenceExperts: Expert[]): Expert[] {
   // Use the same trusted server-side reference fallback as the dashboard. Existing

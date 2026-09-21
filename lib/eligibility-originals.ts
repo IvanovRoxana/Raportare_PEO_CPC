@@ -1,13 +1,13 @@
 import 'server-only';
 import { createHash } from 'node:crypto';
 import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
-import outputs from '../amplify_outputs.json';
+import { eligibilityRegion, eligibilityBucket } from './eligibility-environment.ts';
 import { extractReferenceDocumentText } from './rag/reference-document-text.ts';
 import type { Deliverable } from './types.ts';
 import type { DocumentDiagnosticContext } from './eligibility-document-diagnostics.ts';
 
-const client = new S3Client({ region: outputs.auth.aws_region, maxAttempts: 2 });
-const bucket = outputs.storage.bucket_name;
+const client = new S3Client({ region: eligibilityRegion, maxAttempts: 2 });
+const bucket = eligibilityBucket;
 const MAX_BYTES = 15 * 1024 * 1024;
 const hash = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 
