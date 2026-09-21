@@ -182,9 +182,16 @@ function getExpectedOutputTokens(options: GenerateTextOptions) {
   return readNumberEnv('AI_DEFAULT_EXPECTED_OUTPUT_TOKENS', 1000);
 }
 
-function getModelPricing(model: unknown) {
+function getModelPricing(model: unknown, inputTokens = 0) {
   const modelName = aiModelId(model);
   const normalized = modelName.toLowerCase();
+  // Sol must not inherit legacy global mini-model pricing overrides.
+  // Standard pricing: https://developers.openai.com/api/docs/models/gpt-5.6-sol
+  if (normalized === 'gpt-5.6-sol' || normalized === 'gpt-5.6') {
+    return inputTokens > 272_000
+      ? { inputPerMillion: 8, outputPerMillion: 30 }
+      : { inputPerMillion: 4, outputPerMillion: 20 };
+  }
   const defaultInput = normalized.includes('gpt-4o-mini') ? OPENAI_GPT_4O_MINI_INPUT_PER_1M : 1;
   const defaultOutput = normalized.includes('gpt-4o-mini') ? OPENAI_GPT_4O_MINI_OUTPUT_PER_1M : 3;
 
@@ -195,7 +202,7 @@ function getModelPricing(model: unknown) {
 }
 
 export function estimateCostUsd(model: unknown, usage: UsageSnapshot) {
-  const pricing = getModelPricing(model);
+  const pricing = getModelPricing(model, usage.inputTokens);
   return (
     (usage.inputTokens / 1_000_000) * pricing.inputPerMillion +
     (usage.outputTokens / 1_000_000) * pricing.outputPerMillion

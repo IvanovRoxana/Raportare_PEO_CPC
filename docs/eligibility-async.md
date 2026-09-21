@@ -45,3 +45,13 @@ Testele locale folosesc limite AWS simulate și modele fără apeluri reale. Ver
 Logurile `[ELIGIBILITY_STAGE]`, `[ELIGIBILITY_COMPLETED]`, `[ELIGIBILITY_JOB_ATTEMPT_FAILED]` și `[ELIGIBILITY_DISPATCH_FAILED]` folosesc runId, etapă, durată și coduri. Nu includ documentele sau cheia API.
 
 Referințe: [SQS/Lambda](https://docs.aws.amazon.com/lambda/latest/dg/services-sqs-configure.html), [transactional outbox](https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/transactional-outbox.html).
+
+## Model de eligibilitate: GPT-5.6 Sol
+
+Modelul implicit este acum `gpt-5.6-sol`; setați și `OPENAI_ELIGIBILITY_MODEL=gpt-5.6-sol` în configurația build/hosting dacă există deja un override pentru modelul vechi. `OPENAI_MODEL` și cheia existentă rămân neschimbate. Workerul primește override-ul prin CDK. Deploy-ul nu a fost executat local.
+
+Responses API, instrumentele și schema rezultatului se păstrează. Pentru Sol activăm explicit suportul de raționament al SDK-ului și efortul `medium`. Limita de ieșire rămâne 6.000 de tokenuri (inclusiv raționamentul); verificați în staging finalizarea răspunsurilor pe documentele de referință.
+
+Estimarea standard Sol folosește 4 USD/M intrare și 20 USD/M ieșire; peste 272.000 tokenuri de intrare folosește 8/30 USD. Override-urile globale vechi pentru prețul mini nu se aplică Sol. Cache-ul nu este scăzut din estimare. Plafoanele existente de cost nu sunt majorate. Tarife verificate la 21 septembrie 2026: https://developers.openai.com/api/docs/models/gpt-5.6-sol .
+
+Accesul contului la model și calitatea verdictelor necesită verificare în staging; testele locale nu apelează OpenAI.

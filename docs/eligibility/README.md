@@ -18,7 +18,7 @@ Snapshotul include documentele, contextul expertului, catalogul autorizat, surse
 
 ## Execuție și configurare
 
-`OPENAI_ELIGIBILITY_MODEL` este opțional; în absența lui se utilizează modelul existent al aplicației, prin aceeași configurare OpenAI. Nu este necesară o cheie nouă.
+`OPENAI_ELIGIBILITY_MODEL` este opțional; în absența lui se utilizează `gpt-5.6-sol`, independent de `OPENAI_MODEL`, prin aceeași cheie OpenAI. Nu este necesară o cheie nouă.
 
 | Variabilă opțională | Implicit | Limită maximă |
 | --- | ---: | ---: |

@@ -32,6 +32,9 @@ export async function runEligibilityAgent(options: {
     runId: options.runId, endpoint: '/api/ai/check-deliverable-eligibility', operation: 'operational-eligibility',
     actorId: options.actorId, projectCode: input.projectCode, request: { expertId: input.expertId, saCode: input.saCode },
     model: openaiModel(model), maxRetries: 0, maxOutputTokens: 6000, abortSignal: options.signal,
+    // The installed provider predates Sol; explicitly enable reasoning support.
+    providerOptions: model === 'gpt-5.6-sol' || model === 'gpt-5.6'
+      ? { openai: { forceReasoning: true, reasoningEffort: 'medium' } } : undefined,
     system: `${prompt.system}\nEsti agentul operational de evaluare documentara. Contextul initial este un buget de lectura, nu intregul original.
 Instrumentele sunt numai de citire. readDeliverable accepta NUMAI ID-urile livrabilelor din documents si Acoperire initiala. Daca analysisComplete este true, textul acelui livrabil este deja integral in context; nu cere intervale suplimentare.
 Sursele oficiale din officialProjectContext.sources NU sunt livrabile. Textele primite sunt deja consultate; pentru extindere foloseste readReferenceDocument cu chunkId si documentVersionId (null daca lipseste), niciodata readDeliverable cu documentId-ul sursei. Pentru alte fragmente foloseste searchProjectEvidence, apoi readReferenceDocument.

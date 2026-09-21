@@ -7,7 +7,7 @@ export function getActivityAgentModelName() {
 }
 
 export function getEligibilityModelName() {
-  return process.env.OPENAI_ELIGIBILITY_MODEL?.trim() || DEFAULT_OPENAI_MODEL;
+  return process.env.OPENAI_ELIGIBILITY_MODEL?.trim() || 'gpt-5.6-sol';
 }
 
 export class OpenAIConfigurationError extends Error {
