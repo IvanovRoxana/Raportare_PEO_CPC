@@ -2615,7 +2615,8 @@ export function ActivityForm({
       id: 'type',
       label: automaticClassificationAllowed ? 'Subactivitate' : 'Tip activitate',
       description: isBusinessHubExpert ? 'Business Hub, standard sau eveniment' : 'Standard sau eveniment',
-      blocked: !effectiveActivityTitle.trim() && !isLeave && !canClassifyWithoutActivity,
+      blocked: (!effectiveActivityTitle.trim() && !isLeave && !canClassifyWithoutActivity)
+        || (isException && (description || '').length < 15) || needsCommonDesc,
       disabled: isLeave,
     },
     {
@@ -2635,7 +2636,7 @@ export function ActivityForm({
       id: 'description',
       label: 'Descriere',
       description: isGdprExpert ? 'Asistent GDPR si text' : 'Text si asistare AI',
-      blocked: (isException && (description || '').length < 15) || needsCommonDesc || needsExtendedDesc,
+      blocked: needsExtendedDesc,
       disabled: isLeave,
     },
     {
@@ -3930,8 +3931,8 @@ export function ActivityForm({
               </div>
             )}
 
-            {/* Description */}
-            {showStandardActivityWorkflow && currentWizardStep === 'description' && (
+            {/* Activity description entered before deliverable analysis */}
+            {showStandardActivityWorkflow && currentWizardStep === 'type' && (
             <Field>
               <FieldLabel htmlFor="description">
                 {isException 
@@ -3962,6 +3963,12 @@ export function ActivityForm({
                   Specifica contributia ta individuala.
                 </div>
               )}
+            </Field>
+            )}
+
+            {/* AI description assistance */}
+            {showStandardActivityWorkflow && currentWizardStep === 'description' && (
+            <Field>
               <div className="mt-3 rounded-md border border-slate-200 bg-white p-3">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
