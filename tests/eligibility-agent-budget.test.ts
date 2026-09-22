@@ -121,3 +121,42 @@ test('the model deadline returns promptly even when the provider ignores cancell
     { toolCallId: 'late', messages: [] }), (error) => error === timeout);
   assert.equal(runOptions.coverage.snapshot()[0].consultedChars, 0);
 });
+
+test('the last affordable token-budget step finalizes instead of requesting more tools', async () => {
+  const budget = new EligibilityExecutionBudget(eligibilityExecutionLimits({}));
+  budget.modelCalls = 2;
+  budget.record(50000, 0.2);
+  const messages = [{ role: 'user', content: 'a'.repeat(100000) }];
+  const api = agent(async (step) => {
+    assert.deepEqual(step.prepareStep({ messages }), { toolChoice: 'none', activeTools: [] });
+    step.onStepFinish({ usage: { inputTokens: 34000, outputTokens: 1000, totalTokens: 35000 } });
+    return { output: { complete: true } };
+  });
+  const result = await api.runEligibilityAgent(options(budget));
+  assert.deepEqual(result.output, { complete: true });
+  assert.equal(budget.modelCalls, 3);
+  assert.equal(budget.totalTokens, 85000);
+  assert.equal(budget.limits.totalTokens, 120000);
+});
+
+test('the last affordable cost-budget step finalizes without raising the cost ceiling', async () => {
+  const budget = new EligibilityExecutionBudget(eligibilityExecutionLimits({}));
+  budget.record(1000, 0.98);
+  const api = agent(async (step) => {
+    assert.deepEqual(step.prepareStep({ messages: [] }), { toolChoice: 'none', activeTools: [] });
+    return { output: { complete: true } };
+  });
+  await api.runEligibilityAgent(options(budget));
+  assert.equal(budget.modelCalls, 1);
+  assert.equal(budget.limits.costUsd, 1);
+});
+
+test('tools stay available when another tool round and a final answer fit the budget', async () => {
+  const budget = new EligibilityExecutionBudget(eligibilityExecutionLimits({}));
+  const api = agent(async (step) => {
+    assert.deepEqual(step.prepareStep({ messages: [] }), {});
+    return { output: { complete: true } };
+  });
+  await api.runEligibilityAgent(options(budget));
+  assert.equal(budget.modelCalls, 1);
+});

@@ -51,8 +51,13 @@ La ultimul apel finalizeaza schema ceruta folosind numai dovezile obtinute.`,
       if (authorizationFailure) throw authorizationFailure;
       const estimatedInput = estimateEligibilityInputTokens(messages, prompt.system);
       const cost = estimateCostUsd(model, { inputTokens: estimatedInput, outputTokens: 6000, totalTokens: estimatedInput + 6000 });
-      budget.model(estimatedInput + 6000, cost);
-      return budget.modelCalls >= budget.limits.modelCalls || budget.toolCalls >= budget.limits.toolCalls
+      const estimatedTokens = estimatedInput + 6000;
+      budget.model(estimatedTokens, cost);
+      // Keep room for the final assessment instead of spending the last affordable call on more tools.
+      // A follow-up repeats the accumulated context, so reserve at least one comparable model call.
+      const lastAffordableCall = budget.totalTokens + 2 * estimatedTokens > budget.limits.totalTokens
+        || budget.costUsd + 2 * cost > budget.limits.costUsd;
+      return budget.modelCalls >= budget.limits.modelCalls || budget.toolCalls >= budget.limits.toolCalls || lastAffordableCall
         ? { toolChoice: 'none' as const, activeTools: [] } : {};
     },
     onStepFinish: (step) => {
