@@ -61,6 +61,25 @@ test('content identity is distinct from project, role and SA associations', () =
     assert.notEqual(base.documentId, variant.documentId);
   }
 });
+
+test('a project reference keeps one document identity when it is re-indexed', () => {
+  const sourceIdentity = 'project:302141:cerere_finantare';
+  const first = prepareIndexGeneration({
+    ...input,
+    title: 'Cererea de finantare v1',
+    originalFileName: 'cerere-v1.pdf',
+    metadata: { sourceIdentity },
+  }, 'embedding-model');
+  const refreshed = prepareIndexGeneration({
+    ...input,
+    title: 'Cererea de finantare revizuita',
+    originalFileName: 'cerere-v2.pdf',
+    text: `${input.text} Versiune actualizata.`,
+    metadata: { sourceIdentity },
+  }, 'embedding-model');
+  assert.equal(first.documentId, refreshed.documentId);
+  assert.notEqual(first.manifest.indexGenerationId, refreshed.manifest.indexGenerationId);
+});
 test('a vector produced by a different model cannot satisfy a generation manifest', async () => {
   const { store, docs } = memoryStore();
   await assert.rejects(publishIndexGeneration(input, 'embedding-model', { ...store,

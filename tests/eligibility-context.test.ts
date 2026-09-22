@@ -4,6 +4,7 @@ import type { KnowledgeChunk } from '../lib/types.ts';
 import {
   retrieveEligibilityContext,
   includeExpertProfileJobDescription,
+  invalidateProjectReferenceCache,
   resolveEligibilityContextDependencies,
   type EligibilityContextDependencies,
   type EligibilityContextRequest,
@@ -156,6 +157,29 @@ test('retrieval uses authenticated project/source/SA filters and bounded datasto
     assert.equal(call.options.maxItems, 200);
   }
   assert.deepEqual(calls[1].filter.saCode, { eq: 'SA3.4' });
+});
+
+test('official project references are read once per authenticated project and invalidated after an update', async () => {
+  invalidateProjectReferenceCache();
+  let projectReads = 0;
+  const listKnowledgeChunks: EligibilityContextDependencies['listKnowledgeChunks'] = async (filter) => {
+    if (JSON.stringify(filter).includes('cerere_finantare')) {
+      projectReads += 1;
+      return [chunk('project', 'cerere_finantare'), chunk('manual', 'manual_beneficiar')];
+    }
+    return [];
+  };
+  const options = { authToken: 'same-session', dependencies: { listKnowledgeChunks } };
+
+  const first = await retrieveEligibilityContext(request, options);
+  const second = await retrieveEligibilityContext({ ...request, activityName: 'Alt caz' }, options);
+  assert.equal(projectReads, 1);
+  assert.deepEqual(first.sources.filter((source) => source.coverage === 'project').map((source) => source.chunkId), ['project', 'manual']);
+  assert.deepEqual(second.sources.filter((source) => source.coverage === 'project').map((source) => source.chunkId), ['project', 'manual']);
+
+  invalidateProjectReferenceCache();
+  await retrieveEligibilityContext(request, options);
+  assert.equal(projectReads, 2);
 });
 
 test('failed source retrieval preserves available evidence and reports missing sources without exposing errors', async () => {

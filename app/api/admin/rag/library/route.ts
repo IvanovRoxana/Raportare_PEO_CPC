@@ -2,6 +2,7 @@ import { assertKnowledgeRequest, knowledgeAuthErrorResponse } from '@/lib/rag/kn
 import { NextResponse } from 'next/server';
 import { assertRagAdminRequest, ragAdminAuthErrorResponse } from '@/lib/rag/admin-auth';
 import { backfillMissingRagProject, deleteKnowledgeDocument, listKnowledgeDocuments } from '@/lib/rag/store';
+import { invalidateProjectReferenceCache } from '@/lib/rag/eligibility-context';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -35,6 +36,7 @@ export async function DELETE(req: Request) {
     const id = typeof body?.id === 'string' ? body.id.trim() : '';
     if (!id) return NextResponse.json({ error: 'Lipseste id-ul documentului.' }, { status: 400 });
     const deleted = await deleteKnowledgeDocument(id, { authToken });
+    if (deleted) invalidateProjectReferenceCache();
     return NextResponse.json({ ok: deleted });
   } catch (error) {
     const authError = knowledgeAuthErrorResponse(error) || ragAdminAuthErrorResponse(error);

@@ -17,3 +17,14 @@ test('health counts isolate projects and SAs, ignore inactive sources and includ
   assert.deepEqual(result.expertFisaPostChunks.map((item) => item.id), ['job']);
   assert.equal(selectHealthChunks(chunks, {}).subactivitySourceChunks.length, 0);
 });
+
+test('category health does not turn a global project document into a category-specific source', () => {
+  const chunks: HealthChunk[] = [
+    { id: 'funding', sourceType: 'cerere_finantare', projectCode: '302141', status: 'active' },
+    { id: 'manual', sourceType: 'manual_beneficiar', projectCode: '302141', status: 'active' },
+    { id: 'category', sourceType: 'descriere_activitati', projectCode: '302141', category: 'com', saCode: 'SA3.2', status: 'active' },
+  ];
+  const result = selectHealthChunks(chunks, { projectCode: '302141', category: 'com', saCode: 'SA3.2' });
+  assert.deepEqual(result.projectSourceChunks.map((item) => item.id), ['funding', 'manual']);
+  assert.deepEqual(result.categoryReferenceChunks.map((item) => item.id), ['category']);
+});

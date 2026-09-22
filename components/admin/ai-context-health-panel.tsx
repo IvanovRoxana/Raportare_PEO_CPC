@@ -48,6 +48,7 @@ type HealthResponse = {
     hasAiReportingInstructions: boolean;
   } | null;
   cards: HealthCard[];
+  projectSources: Array<{ sourceType: 'cerere_finantare' | 'manual_beneficiar'; count: number; status: HealthStatus }>;
   subactivities: Array<{ saCode: string; count: number; status: HealthStatus }>;
   warnings: string[];
   recentAudits: Array<{
@@ -95,7 +96,7 @@ const INDEX_SCOPE_OPTIONS: Array<{ value: RagIndexScope; label: string }> = [
 
 const SOURCE_TYPES_BY_SCOPE: Record<RagIndexScope, string[]> = {
   project: ['cerere_finantare', 'manual_beneficiar'],
-  subactivity: ['scop_sa', 'descriere_activitati', 'cerere_finantare'],
+  subactivity: ['scop_sa', 'descriere_activitati'],
   expert: ['fisa_post', 'raport_activitate_aprobat', 'livrabil_aprobat', 'raportare_aprobata_oir'],
   other: ['other', 'raport_activitate_aprobat', 'livrabil_aprobat', 'raportare_aprobata_oir'],
 };
@@ -146,7 +147,9 @@ export function AiContextHealthPanel() {
   const [expertId, setExpertId] = useState('');
   const [category, setCategory] = useState('');
   const [saCode, setSaCode] = useState('');
-  const [projectCode, setProjectCode] = useState('302141');
+  // Acest spațiu de lucru deservește un singur proiect. Sursele oficiale de
+  // proiect nu se aleg și nu se dublează pe expert, categorie sau caz.
+  const [projectCode] = useState('302141');
   const [month, setMonth] = useState(String(currentDate.getMonth() + 1));
   const [year, setYear] = useState(String(currentDate.getFullYear()));
   const [health, setHealth] = useState<HealthResponse | null>(null);
@@ -200,7 +203,6 @@ export function AiContextHealthPanel() {
 
   useEffect(() => {
     setJobDescriptionDraft(selectedExpert?.jobDescriptionText || '');
-    if (selectedExpert?.projectCode) setProjectCode(selectedExpert.projectCode);
     if (selectedExpert?.category) setCategory(selectedExpert.category);
     if (!saCode && selectedExpert?.saCodes?.[0]) setSaCode(selectedExpert.saCodes[0]);
   }, [saCode, selectedExpert]);
@@ -368,9 +370,9 @@ export function AiContextHealthPanel() {
           title: titleToIndex.trim(),
           sourceType: ragSourceType,
           text: textToIndex.trim(),
-          // Project sources remain separate from the expert because they have no expertId,
-          // but keep the selected category so they remain visible in the RAG library.
-          category: category || selectedExpert?.category,
+          // Cererea de finanțare și Manualul beneficiarului sunt comune întregului
+          // proiect; nu le restrânge accidental la categoria expertului selectat.
+          category: indexScope === 'project' ? undefined : category || selectedExpert?.category,
           expertId: indexScope === 'expert' ? selectedExpert?.id : undefined,
           expertName: indexScope === 'expert' ? selectedExpert?.name : undefined,
           expertRole: indexScope === 'expert' ? selectedExpert?.positionInProject || selectedExpert?.role : undefined,
@@ -523,6 +525,38 @@ export function AiContextHealthPanel() {
             <SummaryPill label="Audituri recente" value={health ? String(health.recentAudits.length) : '—'} tone="neutral" />
           </div>
 
+          <section className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h3 className="font-semibold text-slate-950">Documente comune proiectului</h3>
+                <p className="mt-1 text-xs text-muted-foreground">O singură copie pentru toate cazurile: Cererea de finanțare și Manualul beneficiarului sunt surse globale pentru proiectul {projectCode}.</p>
+              </div>
+              <Badge variant="outline" className="border-blue-300 bg-white text-blue-900">Proiect {projectCode}</Badge>
+            </div>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              {health?.projectSources.map((source) => {
+                const isFundingRequest = source.sourceType === 'cerere_finantare';
+                return (
+                  <div key={source.sourceType} className="flex items-center justify-between gap-3 rounded-lg border bg-white px-3 py-3 text-sm">
+                    <div>
+                      <div className="font-semibold text-slate-900">{isFundingRequest ? 'Cererea de finanțare' : 'Manualul beneficiarului'}</div>
+                      <div className="text-xs text-muted-foreground">{source.count} fragmente indexate</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className={statusBadgeClass(source.status)}>{statusLabel(source.status)}</Badge>
+                      <Button type="button" variant="outline" size="sm" onClick={() => configureSource('project', source.sourceType)}>Actualizează</Button>
+                    </div>
+                  </div>
+                );
+              }) ?? ['cerere_finantare', 'manual_beneficiar'].map((sourceType) => (
+                <Button key={sourceType} type="button" variant="outline" className="h-auto justify-between bg-white py-3" onClick={() => configureSource('project', sourceType)}>
+                  {sourceType === 'cerere_finantare' ? 'Adaugă Cererea de finanțare' : 'Adaugă Manualul beneficiarului'}
+                  <Plus className="h-4 w-4" />
+                </Button>
+              ))}
+            </div>
+          </section>
+
           <section className="rounded-xl border bg-slate-50 p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
@@ -562,10 +596,8 @@ export function AiContextHealthPanel() {
                   </Badge>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  {card.id === 'project-sources' && <Button type="button" variant="outline" size="sm" onClick={() => configureSource('project', 'cerere_finantare')}><Plus className="h-3 w-3" />Adaugă sursă proiect</Button>}
                   {card.id === 'sa-purpose' && <Button type="button" variant="outline" size="sm" onClick={() => configureSource('subactivity', 'scop_sa')}><Plus className="h-3 w-3" />Adaugă sursă SA</Button>}
                   {card.id === 'job-description' && <Button type="button" variant="outline" size="sm" onClick={() => configureSource('expert', 'fisa_post')}><Plus className="h-3 w-3" />Adaugă fișă de post</Button>}
-                  {card.id === 'category-rag' && <Button type="button" variant="outline" size="sm" onClick={() => configureSource('project', 'manual_beneficiar')}><Plus className="h-3 w-3" />Adaugă referință</Button>}
                   {card.id === 'approved-reports' && <Button type="button" variant="outline" size="sm" onClick={() => configureSource('expert', 'raport_activitate_aprobat')}><Plus className="h-3 w-3" />Adauga raport</Button>}
                   {card.id === 'ai-instructions' && <Button type="button" variant="outline" size="sm" onClick={() => { window.location.href = '/pm?tab=knowledge&section=reguli'; }}><Settings className="h-3 w-3" />Configureaza instructiuni</Button>}
                   {card.id === 'eligibility-rules' && <Button type="button" variant="outline" size="sm" onClick={() => { window.location.href = '/pm?tab=knowledge&section=reguli'; }}><Settings className="h-3 w-3" />Deschide ruleset</Button>}
@@ -680,10 +712,10 @@ export function AiContextHealthPanel() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Cod proiect *</Label>
-                <Input value={projectCode} onChange={(event) => setProjectCode(event.target.value)} placeholder="302141" />
+                <Label>Proiect</Label>
+                <div className="flex h-10 items-center rounded-md border bg-slate-50 px-3 text-sm text-slate-700">{projectCode} · comun tuturor cazurilor</div>
               </div>
-              <div className="space-y-2">
+              {indexScope !== 'project' && <div className="space-y-2">
                 <Label>Categorie *</Label>
                 <Select value={category || 'none'} onValueChange={(value) => setCategory(value === 'none' ? '' : value)}>
                   <SelectTrigger><SelectValue placeholder="Alege categoria" /></SelectTrigger>
@@ -694,7 +726,7 @@ export function AiContextHealthPanel() {
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
+              </div>}
               <div className="space-y-2">
                 <Label>Titlu document</Label>
                 <Input value={ragTitle} onChange={(event) => setRagTitle(event.target.value)} placeholder="Ex: Raportare aprobata iunie AP" />

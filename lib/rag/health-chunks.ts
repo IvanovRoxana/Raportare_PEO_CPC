@@ -12,7 +12,7 @@ export function selectHealthChunks(chunks: HealthChunk[], filters: EligibilitySc
     expertFisaPostChunks: sources(byExpert, ['fisa_post']),
     approvedReportsByExpert: sources(byExpert, history),
     categoryFisaPostChunks: sources(byCategory, ['fisa_post']),
-    categoryReferenceChunks: sources(byCategory, ['cerere_finantare', 'manual_beneficiar', 'descriere_activitati']),
+    categoryReferenceChunks: sources(byCategory, ['descriere_activitati']),
     categoryApprovedReports: sources(byCategory, history),
     projectSourceChunks: sources(byProject, ['cerere_finantare', 'manual_beneficiar']),
     subactivitySourceChunks: sources(byProject.filter((item) => filters.saCode && item.saCode === filters.saCode), ['scop_sa', 'descriere_activitati']),

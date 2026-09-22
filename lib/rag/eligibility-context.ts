@@ -86,6 +86,64 @@ const REQUIRED_COVERAGE = Object.keys(SOURCE_TYPES) as EligibilityContextCoverag
 const MAX_CANDIDATES_PER_GROUP = 200;
 const MAX_SOURCE_TEXT_CHARS = 1600;
 const MAX_SERIALIZED_SOURCE_CHARS = 17000;
+const PROJECT_REFERENCE_CACHE_TTL_MS = 5 * 60 * 1000;
+
+type ProjectReferenceCacheEntry = {
+  generation: number;
+  expiresAt: number;
+  chunks?: KnowledgeChunk[];
+  inFlight?: Promise<KnowledgeChunk[]>;
+};
+
+// The two official project documents do not vary by case. Keep them separate
+// from case-specific SA/job retrieval, but reuse their indexed chunks while a
+// server instance is warm. Cache entries are partitioned by the authenticated
+// reader and invalidated whenever the RAG library changes.
+let projectReferenceCacheGeneration = 0;
+const projectReferenceCache = new WeakMap<EligibilityContextDependencies['listKnowledgeChunks'], Map<string, ProjectReferenceCacheEntry>>();
+
+export function invalidateProjectReferenceCache() {
+  projectReferenceCacheGeneration += 1;
+}
+
+async function getProjectReferenceChunks(
+  projectCode: string,
+  dependencies: EligibilityContextDependencies,
+  options: RagAuthContext & { limit: number; maxItems: number },
+): Promise<KnowledgeChunk[]> {
+  const reader = dependencies.listKnowledgeChunks;
+  const cacheKey = `${projectCode}\u0000${options.authToken || ''}`;
+  let entries = projectReferenceCache.get(reader);
+  if (!entries) {
+    entries = new Map();
+    projectReferenceCache.set(reader, entries);
+  }
+  const cached = entries.get(cacheKey);
+  if (cached?.generation === projectReferenceCacheGeneration) {
+    if (cached.chunks && cached.expiresAt > Date.now()) return cached.chunks;
+    if (cached.inFlight) return cached.inFlight;
+  }
+
+  const entry: ProjectReferenceCacheEntry = {
+    generation: projectReferenceCacheGeneration,
+    expiresAt: 0,
+  };
+  entry.inFlight = reader({
+    status: { eq: 'active' },
+    projectCode: { eq: projectCode },
+    or: SOURCE_TYPES.project.map((sourceType) => ({ sourceType: { eq: sourceType } })),
+  }, options).then((chunks) => {
+    entry.chunks = chunks;
+    entry.inFlight = undefined;
+    entry.expiresAt = Date.now() + PROJECT_REFERENCE_CACHE_TTL_MS;
+    return chunks;
+  }).catch((error) => {
+    if (entries?.get(cacheKey) === entry) entries.delete(cacheKey);
+    throw error;
+  });
+  entries.set(cacheKey, entry);
+  return entry.inFlight;
+}
 
 function normalizeScope(value?: string) {
   return normalizeRagText(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
@@ -172,17 +230,20 @@ export async function retrieveEligibilityContext(
   const candidatesByGroup = await Promise.all(REQUIRED_COVERAGE.map(async (group) => {
     if (group === 'subactivity' && !request.saCode?.trim()) return { group, chunks: [] as KnowledgeChunk[] };
     try {
-      const chunks = await beforeDeadline(() => dependencies.listKnowledgeChunks({
-        status: { eq: 'active' },
-        projectCode: { eq: request.projectCode!.trim() },
-        or: SOURCE_TYPES[group].map((sourceType) => ({ sourceType: { eq: sourceType } })),
-        ...(group === 'subactivity' ? { saCode: { eq: request.saCode!.trim() } } : {}),
-      }, {
+      const readOptions = {
         authToken: options.authToken,
         timeoutMs: Math.max(1, Math.min(2000, deadline - Date.now())),
         limit: 100,
         maxItems: MAX_CANDIDATES_PER_GROUP,
-      }), deadline);
+      };
+      const chunks = await beforeDeadline(() => group === 'project'
+        ? getProjectReferenceChunks(request.projectCode!.trim(), dependencies, readOptions)
+        : dependencies.listKnowledgeChunks({
+          status: { eq: 'active' },
+          projectCode: { eq: request.projectCode!.trim() },
+          or: SOURCE_TYPES[group].map((sourceType) => ({ sourceType: { eq: sourceType } })),
+          ...(group === 'subactivity' ? { saCode: { eq: request.saCode!.trim() } } : {}),
+        }, readOptions), deadline);
       if (chunks.length >= MAX_CANDIDATES_PER_GROUP) warnings.push(`Selectia surselor ${group} a atins limita de cautare; acoperirea poate fi incompleta.`);
       return { group, chunks: chunks.filter((chunk) => matchesScope(chunk, request, group)) };
     } catch {

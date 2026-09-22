@@ -214,6 +214,10 @@ export async function GET(request: Request) {
     const approvedCount = approvedReportsByExpert.length + categoryApprovedReports.length;
     const referenceCount = categoryReferenceChunks.length;
     const fisaPostCount = expertFisaPostChunks.length + categoryFisaPostChunks.length + (expert?.jobDescriptionText?.trim() ? 1 : 0);
+    const projectSources = (['cerere_finantare', 'manual_beneficiar'] as const).map((sourceType) => {
+      const count = projectSourceChunks.filter((chunk) => chunk.sourceType === sourceType).length;
+      return { sourceType, count, status: statusFromCount(count) };
+    });
 
     return NextResponse.json({
       filters: { expertId, category, saCode, projectCode, month, year },
@@ -305,6 +309,7 @@ export async function GET(request: Request) {
           recommendedAction: uniqueWarnings.length > 0 ? 'Revizuieste warning-urile si completeaza sursele lipsa.' : null,
         },
       ],
+      projectSources,
       warnings: uniqueWarnings,
       rules: { activeRuleset: Boolean(activeRuleset), catalogCount: catalogRows.length },
       subactivities,

@@ -6,6 +6,12 @@ import { NextResponse } from 'next/server';
 import { guardRagAdminRequest, ragAdminAuthErrorResponse } from '@/lib/rag/admin-auth';
 import { getCognitoAccessTokenFromRequest } from '@/lib/rag/cognito-auth';
 import { indexKnowledgeDocument } from '@/lib/rag/store';
+import { REPORTING_EXAMPLE_SOURCE_TYPE, validateReportingExampleInput } from '@/lib/rag/reporting-examples';
+import { prepareIndexGeneration } from '@/lib/rag/index-generation';
+import { getRagEmbeddingModelName } from '@/lib/rag/embeddings';
+import { hashRagText } from '@/lib/rag/chunking';
+import { invalidateProjectReferenceCache } from '@/lib/rag/eligibility-context';
+import outputs from '@/amplify_outputs.json';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -33,6 +39,13 @@ export async function POST(req: Request) {
     const expertRole = typeof body?.expertRole === 'string' ? body.expertRole.trim() : '';
     const roleId = typeof body?.roleId === 'string' ? body.roleId.trim() : '';
     const dryRun = body?.dryRun === true || url.searchParams.get('dryRun') === 'true';
+    const isProjectReference = ['cerere_finantare', 'manual_beneficiar'].includes(sourceType);
+    const metadata = {
+      ...(body?.metadata && typeof body.metadata === 'object' ? body.metadata : {}),
+      // One current document of each official type serves the entire project.
+      // Re-indexing publishes a new generation instead of creating a copy per case.
+      ...(isProjectReference ? { sourceIdentity: `project:${projectCode}:${sourceType}` } : {}),
+    };
 
     if (!text.trim() || !title) {
       return NextResponse.json({ error: 'Documentul RAG are nevoie de title si text.' }, { status: 400 });
@@ -52,6 +65,12 @@ export async function POST(req: Request) {
     }
 
     const isApprovedHistorical = ['raport_activitate_aprobat', 'livrabil_aprobat'].includes(sourceType);
+    try {
+      validateReportingExampleInput({ sourceType, projectCode, saCode, category: body.category,
+        activityName: body.activityName, approvalStatus: body.approvalStatus, metadata: body.metadata });
+    } catch (error) {
+      return NextResponse.json({ error: error instanceof Error ? error.message : 'Exemplu RAG invalid.' }, { status: 400 });
+    }
     if (isApprovedHistorical) {
       const month = Number(body?.month);
       const year = Number(body?.year);
@@ -73,6 +92,17 @@ export async function POST(req: Request) {
 
     if (!dryRun && !authToken) {
       return NextResponse.json({ error: 'Importul RAG real necesita x-cognito-access-token pentru scrierea in AppSync.' }, { status: 401 });
+    }
+
+    let generation;
+    if (sourceType === REPORTING_EXAMPLE_SOURCE_TYPE) {
+      if (body.expectedApiUrl && body.expectedApiUrl !== outputs.data.url) return NextResponse.json({ error: 'Backend diferit de lotul aprobat.' }, { status: 409 });
+      if (!body.originalFileName?.endsWith('.md') || body.originalFileBase64) return NextResponse.json({ error: 'Exemplele pregatite se importa ca text Markdown, separat de originalele DOCX.' }, { status: 400 });
+      generation = prepareIndexGeneration({ title, sourceType, text, projectCode, saCode, category: body.category,
+        activityName: body.activityName, expertId: expertId || undefined, expertRole: expertRole || undefined, roleId: roleId || undefined,
+        originalFileName: body.originalFileName, extractionComplete: true,
+        metadata: { ...body.metadata, originalFileHash: hashRagText(text) } }, getRagEmbeddingModelName()).manifest;
+      if (body.expectedGenerationId && body.expectedGenerationId !== generation.indexGenerationId) return NextResponse.json({ error: 'Generatia/modelul de embeddings difera de simulare.' }, { status: 409 });
     }
 
     let original: { s3Key: string; originalFileHash: string } | undefined;
@@ -104,21 +134,26 @@ export async function POST(req: Request) {
       expertRole: expertRole || undefined,
       roleId: roleId || undefined,
       projectCode: projectCode || undefined,
-      month: Number.isFinite(Number(body?.month)) ? Number(body.month) : undefined,
-      year: Number.isFinite(Number(body?.year)) ? Number(body.year) : undefined,
+      month: body?.month != null && Number.isFinite(Number(body.month)) ? Number(body.month) : undefined,
+      year: body?.year != null && Number.isFinite(Number(body.year)) ? Number(body.year) : undefined,
       saCode: saCode || undefined,
       activityName: typeof body?.activityName === 'string' ? body.activityName : undefined,
       approvalStatus: typeof body?.approvalStatus === 'string' ? body.approvalStatus : undefined,
       originalFileName: typeof body?.originalFileName === 'string' ? body.originalFileName : undefined,
       s3Key: original?.s3Key || (typeof body?.s3Key === 'string' ? body.s3Key : undefined),
       createdBy: actorId,
-      metadata: { ...(body?.metadata && typeof body.metadata === 'object' ? body.metadata : {}), originalFileHash: original?.originalFileHash },
+      metadata: { ...metadata, originalFileHash: original?.originalFileHash },
       extractionSource: body?.extractionSource === 'ocr' ? 'ocr' : body?.extractionSource === 'native' ? 'native' : undefined,
       extractionComplete: typeof body?.extractionComplete === 'boolean' ? body.extractionComplete : undefined,
     }, { dryRun, authToken });
 
+    if (!dryRun && ['cerere_finantare', 'manual_beneficiar'].includes(sourceType)) {
+      invalidateProjectReferenceCache();
+    }
+
     return NextResponse.json({
       ok: true,
+      ...(generation ? { generation, backendApiUrl: outputs.data.url } : {}),
       dryRun: result.dryRun,
       documentId: result.document?.id,
       chunks: result.chunks.length,
