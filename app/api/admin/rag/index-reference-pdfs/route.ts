@@ -2,7 +2,6 @@ import { assertKnowledgeRequest, knowledgeAuthErrorResponse } from '@/lib/rag/kn
 import { NextResponse } from 'next/server';
 import { guardRagAdminRequest, ragAdminAuthErrorResponse } from '@/lib/rag/admin-auth';
 import { getCognitoAccessTokenFromRequest } from '@/lib/rag/cognito-auth';
-import { archiveRagOriginal } from '@/lib/eligibility-originals';
 import { authenticateEligibilityRequest } from '@/lib/eligibility-resolver';
 import { indexKnowledgeDocument } from '@/lib/rag/store';
 import { extractReferenceDocumentText } from '@/lib/rag/reference-document-text';
@@ -166,18 +165,16 @@ export async function POST(req: Request) {
       }
 
       try {
-        const original = dryRun ? undefined : await archiveRagOriginal(fileName, originalBytes);
         const result = await indexKnowledgeDocument({
           ...inference.input,
           text: extracted.text,
-          s3Key: original?.s3Key, extractionComplete: extracted.complete, extractionSource: 'native',
+          extractionComplete: extracted.complete, extractionSource: 'native',
           metadata: {
             ...(inference.input.metadata ?? {}),
             importEndpoint: 'index-reference-pdfs',
             fileSize: file.size,
             contentType,
-            pageCount: extracted.pageCount,
-            originalFileHash: original?.originalFileHash, processedSections: extracted.processedSections, failedSections: extracted.failedSections,
+            pageCount: extracted.pageCount, processedSections: extracted.processedSections, failedSections: extracted.failedSections,
           },
         }, { dryRun, authToken });
 
