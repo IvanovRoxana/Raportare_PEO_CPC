@@ -32,7 +32,7 @@ export function createEligibilityWorkers(stack: Stack, options: {
       // server-only's react-server export is empty in this trusted server bundle.
       esbuildArgs: { '--conditions': 'react-server' }, externalModules: [] as string[],
       // Bundled CommonJS dependencies also need path globals during ESM cold starts.
-      banner: "import { createRequire } from 'node:module'; import { fileURLToPath } from 'node:url'; import { dirname } from 'node:path'; const require = createRequire(import.meta.url); const __filename = fileURLToPath(import.meta.url); const __dirname = dirname(__filename);",
+      banner: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url); const __filename = require('node:url').fileURLToPath(import.meta.url); const __dirname = require('node:path').dirname(__filename);",
     } };
   const keyParameter = process.env.ELIGIBILITY_OPENAI_KEY_PARAMETER || '/peo/eligibility/openai-api-key';
   const aiEnvironment = Object.fromEntries([

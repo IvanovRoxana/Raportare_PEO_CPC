@@ -56,7 +56,7 @@ test('synthesized infrastructure bounds concurrency, encrypts queues and separat
   // Run it in a fresh ESM process so a previous failed import cannot hide the error.
   for (const banner of new Set(banners)) {
     const bundled = await build({
-      stdin: { contents: "require('next/dist/compiled/ua-parser-js/ua-parser.js'); require('node:assert/strict').equal(require('node:path').dirname(__filename), __dirname);", resolveDir: process.cwd() },
+      stdin: { contents: "import { dirname } from 'node:path'; import { fileURLToPath } from 'node:url'; require('next/dist/compiled/ua-parser-js/ua-parser.js'); require('node:assert/strict').equal(dirname(fileURLToPath(import.meta.url)), __dirname); require('node:assert/strict').equal(fileURLToPath(import.meta.url), __filename);", resolveDir: process.cwd() },
       bundle: true, write: false, platform: 'node', format: 'esm', banner: { js: banner },
     });
     const directory = mkdtempSync(join(tmpdir(), 'eligibility-esm-'));
