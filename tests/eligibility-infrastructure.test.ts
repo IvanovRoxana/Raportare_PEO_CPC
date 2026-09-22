@@ -33,8 +33,11 @@ test('synthesized infrastructure bounds concurrency, encrypts queues and separat
   const app = new App(), stack = new Stack(app, 'EligibilityTest', { env: { account: '111111111111', region: 'eu-central-1' } });
   const table = (name: string, stream = false) => new Table(stack, name, { partitionKey: { name: 'id', type: AttributeType.STRING },
     ...(stream ? { stream: StreamViewType.KEYS_ONLY } : {}) });
+  const chunksArn = 'arn:aws:dynamodb:eu-central-1:111111111111:table/KnowledgeChunks';
+  // Amplify exposes imported tables without their secondary index definitions.
+  const chunks = Table.fromTableArn(stack, 'ImportedChunks', chunksArn);
   exported.createEligibilityWorkers(stack, {
-    tables: { Expert: table('Expert'), EligibilityEvaluationRun: table('Runs'), EligibilityEvaluationEvidence: table('Evidence') },
+    tables: { KnowledgeChunk: chunks, Expert: table('Expert'), EligibilityEvaluationRun: table('Runs'), EligibilityEvaluationEvidence: table('Evidence') },
     runtime: table('Runtime', true), bucket: new Bucket(stack, 'Files'),
     ssrRole: new Role(stack, 'Ssr', { assumedBy: new ServicePrincipal('amplify.amazonaws.com') }),
     userPoolId: 'eu-central-1_test', clientId: 'client', userPoolArn: 'arn:aws:cognito-idp:eu-central-1:111111111111:userpool/eu-central-1_test',
@@ -47,6 +50,12 @@ test('synthesized infrastructure bounds concurrency, encrypts queues and separat
   template.hasResourceProperties('AWS::Lambda::EventSourceMapping', { BatchSize: 1, FunctionResponseTypes: ['ReportBatchItemFailures'], ScalingConfig: { MaximumConcurrency: 3 } });
   template.hasResourceProperties('AWS::Events::Rule', { ScheduleExpression: 'rate(1 minute)' });
   template.resourceCountIs('AWS::CloudWatch::Alarm', 6);
+  template.hasResourceProperties('AWS::IAM::Policy', {
+    Roles: Match.arrayWith([{ Ref: Match.stringLikeRegexp('^EligibilityWorkerServiceRole') }]),
+    PolicyDocument: { Statement: Match.arrayWith([{
+      Effect: 'Allow', Action: 'dynamodb:Query', Resource: chunksArn + '/index/knowledgeChunksByDocumentId',
+    }]) },
+  });
   const json = JSON.stringify(template.toJSON());
   assert.doesNotMatch(json, /"OPENAI_API_KEY"\s*:/);
   assert.match(json, /cognito-idp:AdminGetUser/);

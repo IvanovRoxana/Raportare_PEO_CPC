@@ -56,6 +56,9 @@ export function createEligibilityWorkers(stack: Stack, options: {
     if (['EligibilityEvaluationRun', 'EligibilityEvaluationEvidence'].includes(name)) table.grantReadWriteData(worker);
     else table.grantReadData(worker);
   }
+  // Amplify's imported tables do not expose GSI metadata to grantReadData.
+  worker.addToRolePolicy(new PolicyStatement({ actions: ['dynamodb:Query'],
+    resources: [`${options.tables.KnowledgeChunk.tableArn}/index/knowledgeChunksByDocumentId`] }));
   options.runtime.grantReadWriteData(worker);
   for (const prefix of ['deliverables/*', 'deliverable-index/*', 'projects/*', 'rag-originals/*', 'eligibility-private/*']) options.bucket.grantRead(worker, prefix);
   options.bucket.grantPut(worker, 'eligibility-private/extractions/*');
