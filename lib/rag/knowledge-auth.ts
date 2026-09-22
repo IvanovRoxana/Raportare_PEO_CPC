@@ -4,16 +4,12 @@ import { getCognitoAccessTokenFromRequest } from './cognito-auth';
 import { canManageKnowledge } from './knowledge-access';
 import { eligibilityStore } from '../eligibility-server-store';
 import { peoUsersAsExperts } from '../peo-users';
+import { hasSamePublicRequestOrigin } from './request-origin';
 import type { Expert } from '../types';
 
 export async function assertKnowledgeRequest(request: Request) {
-  const origin = request.headers.get('origin');
-  if (origin) {
-    try {
-      if (new URL(origin).host !== new URL(request.url).host) throw new Error('Origin mismatch');
-    } catch {
-      throw new EligibilityAccessError('Cerere respinsă.');
-    }
+  if (!hasSamePublicRequestOrigin(request)) {
+    throw new EligibilityAccessError('Cerere respinsă.');
   }
   const actor = await authenticateEligibilityRequest(request);
   if (!canManageKnowledge(actor)) throw new EligibilityAccessError('Biblioteca de cunoștințe necesită acces PM extins sau Admin.');
