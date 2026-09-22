@@ -36,7 +36,7 @@ test('synthesized infrastructure bounds concurrency, encrypts queues and separat
   const template = Template.fromStack(stack);
   template.hasResourceProperties('AWS::SQS::Queue', { SqsManagedSseEnabled: true, VisibilityTimeout: 1800,
     RedrivePolicy: Match.objectLike({ maxReceiveCount: 5 }) });
-  template.hasResourceProperties('AWS::Lambda::Function', { Timeout: 300, ReservedConcurrentExecutions: 3,
+  template.hasResourceProperties('AWS::Lambda::Function', { Timeout: 300, ReservedConcurrentExecutions: Match.absent(),
     Environment: { Variables: Match.objectLike({ ELIGIBILITY_OPENAI_KEY_PARAMETER: Match.anyValue() }) } });
   template.hasResourceProperties('AWS::Lambda::EventSourceMapping', { BatchSize: 1, FunctionResponseTypes: ['ReportBatchItemFailures'], ScalingConfig: { MaximumConcurrency: 3 } });
   template.hasResourceProperties('AWS::Events::Rule', { ScheduleExpression: 'rate(1 minute)' });

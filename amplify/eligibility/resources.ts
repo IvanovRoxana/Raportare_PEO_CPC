@@ -41,7 +41,8 @@ export function createEligibilityWorkers(stack: Stack, options: {
   ].flatMap((name) => process.env[name] ? [[name, process.env[name]!]] : []));
   const worker = new NodejsFunction(stack, 'EligibilityWorker', { ...common,
     entry: join(process.cwd(), 'amplify/eligibility/worker.ts'), timeout: Duration.minutes(5), memorySize: 2048,
-    reservedConcurrentExecutions: 3, environment: { ...environment, ...aiEnvironment, ELIGIBILITY_OPENAI_KEY_PARAMETER: keyParameter },
+    // Limit SQS processing via maxConcurrency below without reserving account capacity.
+    environment: { ...environment, ...aiEnvironment, ELIGIBILITY_OPENAI_KEY_PARAMETER: keyParameter },
     // PDF.js loads worker/native assets dynamically. The Amplify Linux build installs these.
     bundling: { ...common.bundling, nodeModules: ['pdfjs-dist'] },
   });
