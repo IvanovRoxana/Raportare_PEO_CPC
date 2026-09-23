@@ -17,14 +17,13 @@ export async function authenticateEligibilityRequest(request: Request): Promise<
   if (!token) throw new EligibilityAccessError('Sesiunea Cognito lipseste.', 401);
   try {
     const payload = await verifier.verify(token);
-    const response = await fetch(`https://cognito-idp.${eligibilityRegion}.amazonaws.com/`, {
-      method: 'POST', headers: { 'Content-Type': 'application/x-amz-json-1.1', 'X-Amz-Target': 'AWSCognitoIdentityProviderService.GetUser' },
-      body: JSON.stringify({ AccessToken: token }), signal: AbortSignal.timeout(5000), cache: 'no-store',
-    });
-    if (!response.ok) throw new Error('Cognito session rejected');
-    const user = await response.json() as { UserAttributes?: Array<{ Name: string; Value: string }> };
-    const attrs = Object.fromEntries((user.UserAttributes || []).map((item) => [item.Name, item.Value]));
-    return { id: payload.sub, username: payload.username, email: attrs.email_verified === 'true' ? attrs.email : undefined, roles: payload['cognito:groups'] || [] };
+    // CognitoJwtVerifier validates the signature, issuer, client, token use and
+    // expiry. Do not turn a separate Cognito GetUser network failure into a
+    // false "expired session" after a successful login.
+    const email = typeof payload.email === 'string'
+      ? payload.email
+      : typeof payload.username === 'string' && payload.username.includes('@') ? payload.username : undefined;
+    return { id: payload.sub, username: payload.username, email, roles: payload['cognito:groups'] || [] };
   } catch { throw new EligibilityAccessError('Sesiunea Cognito nu este valida sau a expirat.', 401); }
 }
 
