@@ -1,5 +1,4 @@
 import { archiveRagOriginal } from '@/lib/eligibility-originals';
-import { extractReferenceDocumentText } from '@/lib/rag/reference-document-text';
 import { authenticateEligibilityRequest } from '@/lib/eligibility-resolver';
 import { assertKnowledgeRequest, knowledgeAuthErrorResponse } from '@/lib/rag/knowledge-auth';
 import { NextResponse } from 'next/server';
@@ -113,15 +112,12 @@ export async function POST(req: Request) {
       actorId = actor.id;
       const fileName = typeof body.originalFileName === 'string' ? body.originalFileName : `${title}.txt`;
       const binary = /\.(pdf|docx)$/i.test(fileName);
-      if (binary && !body.originalFileBase64) return NextResponse.json({ error: 'Trimite originalul PDF/DOCX pentru arhivare si verificarea extragerii.' }, { status: 422 });
-      {
+      // The SSR runtime has no binary archive capability. PDF/DOCX text is
+      // extracted in the browser and indexed directly, just like bulk imports.
+      if (!binary) {
         const bytes = body.originalFileBase64 ? new Uint8Array(Buffer.from(String(body.originalFileBase64), 'base64')) : new TextEncoder().encode(text);
         original = await archiveRagOriginal(fileName, bytes);
-        if (binary) {
-          const extracted = await extractReferenceDocumentText(fileName, Uint8Array.from(bytes).buffer);
-          text = extracted.text; body.extractionComplete = extracted.complete;
-          body.metadata = { ...body.metadata, processedSections: extracted.processedSections, failedSections: extracted.failedSections };
-        } else { body.extractionComplete = true; }
+        body.extractionComplete = true;
       }
     }
     const result = await indexKnowledgeDocument({

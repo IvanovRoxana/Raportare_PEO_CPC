@@ -127,23 +127,6 @@ function statusLabel(status: HealthStatus) {
   return 'N/A';
 }
 
-function fileToBase64(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = typeof reader.result === 'string' ? reader.result : '';
-      const base64 = dataUrl.split(',', 2)[1];
-      if (!base64) {
-        reject(new Error('Nu am putut pregati originalul documentului pentru arhivare.'));
-        return;
-      }
-      resolve(base64);
-    };
-    reader.onerror = () => reject(reader.error || new Error('Nu am putut citi documentul original.'));
-    reader.readAsDataURL(file);
-  });
-}
-
 export function AiContextHealthPanel() {
   const { experts, isLoading: expertsLoading, mutate: refreshExperts } = useExperts();
   const { experts: persistedExperts } = useExperts({ includeInactive: true, includeFallback: false });
@@ -191,7 +174,6 @@ export function AiContextHealthPanel() {
   const [indexing, setIndexing] = useState(false);
   const [extractingRagFile, setExtractingRagFile] = useState(false);
   const [ragFileName, setRagFileName] = useState('');
-  const [ragOriginalFile, setRagOriginalFile] = useState<File | null>(null);
   const [ragFileInputKey, setRagFileInputKey] = useState(0);
   const [ragTextIsExtracted, setRagTextIsExtracted] = useState(false);
   const [libraryDocuments, setLibraryDocuments] = useState<RagLibraryDocument[]>([]);
@@ -307,7 +289,6 @@ export function AiContextHealthPanel() {
     setRagActivityName('');
     setRagExtractionSource(undefined);
     setRagFileName('');
-    setRagOriginalFile(null);
     setRagTextIsExtracted(false);
     setRagFileInputKey((key) => key + 1);
     setError(null);
@@ -379,7 +360,6 @@ export function AiContextHealthPanel() {
     setMessage(null);
     try {
       const token = await getAccessToken();
-      const originalFileBase64 = ragOriginalFile ? await fileToBase64(ragOriginalFile) : undefined;
       const response = await fetch('/api/admin/rag/index-document', {
         method: 'POST',
         headers: {
@@ -404,8 +384,7 @@ export function AiContextHealthPanel() {
             : indexScope === 'subactivity' ? saCode : undefined,
           activityName: ragActivityName.trim() || undefined,
           approvalStatus: ['raportare_aprobata_oir', 'raport_activitate_aprobat', 'livrabil_aprobat'].includes(ragSourceType) ? 'approved' : undefined,
-          originalFileName: ragOriginalFile?.name || ragFileName || undefined,
-          originalFileBase64,
+          originalFileName: ragFileName || undefined,
           extractionSource: overrides.extractionSource ?? ragExtractionSource,
           extractionComplete: Boolean(textToIndex.trim()),
           createdBy: 'admin-ai-context-health',
@@ -416,7 +395,6 @@ export function AiContextHealthPanel() {
       if (!response.ok) throw new Error(data?.error || 'Indexarea documentului RAG a esuat.');
       setRagText('');
       setRagFileName('');
-      setRagOriginalFile(null);
       setRagTitle('');
       setRagExtractionSource(undefined);
       setRagTextIsExtracted(false);
@@ -438,7 +416,6 @@ export function AiContextHealthPanel() {
     setError(null);
     setMessage(null);
     setRagFileName(file.name);
-    setRagOriginalFile(file);
     try {
       const isDocx = file.name.toLowerCase().endsWith('.docx')
         || file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
