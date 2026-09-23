@@ -164,6 +164,18 @@ export async function POST(req: Request) {
         continue;
       }
 
+      if (!extracted.complete) {
+        results.push({
+          fileName,
+          title: inference.input.title,
+          status: 'failed',
+          error: 'Extragerea documentului este incompletă; acesta nu a fost indexat.',
+          pageCount: extracted.pageCount,
+          warnings: [...inference.warnings, ...extracted.warnings],
+        });
+        continue;
+      }
+
       try {
         const result = await indexKnowledgeDocument({
           ...inference.input,
