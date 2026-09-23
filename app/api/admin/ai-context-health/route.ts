@@ -11,6 +11,7 @@ export const dynamic = 'force-dynamic';
 
 type HealthStatus = 'ok' | 'warning' | 'missing' | 'not_applicable';
 type SubactivityHealth = { saCode: string; count: number; status: HealthStatus };
+type ProjectSourceIndexState = 'available' | 'staged' | 'missing';
 
 const appSyncEndpoint = outputs.data?.url;
 const EXPERT_FIELDS = `
@@ -177,8 +178,11 @@ export async function GET(request: Request) {
       getActiveAiEligibilityRuleset({ projectCode: projectCode || '302141' }).catch(() => null),
       appSyncList<{ id: string }>({ token: auth.token, resultKey: 'listActivityCatalogs', query: `query AdminAiContextListCatalog($nextToken: String) { listActivityCatalogs(limit: 200, nextToken: $nextToken) { items { id } nextToken } }`, maxItems: 500 }).catch(() => []),
       listActivityAutofillAudits(auth.token, month, year).catch(() => []),
-      appSyncList<{ id: string; status?: string; publishedGeneration?: string }>({ token: auth.token, resultKey: 'listKnowledgeDocuments',
-        query: `query HealthGenerationDocuments($nextToken: String) { listKnowledgeDocuments(limit: 200, nextToken: $nextToken) { items { id status publishedGeneration } nextToken } }`, maxItems: Infinity }),
+      appSyncList<{
+        id: string; status?: string; sourceType?: string; projectCode?: string;
+        publishedGeneration?: string; indexedAt?: string;
+      }>({ token: auth.token, resultKey: 'listKnowledgeDocuments',
+        query: `query HealthGenerationDocuments($nextToken: String) { listKnowledgeDocuments(limit: 200, nextToken: $nextToken) { items { id status sourceType projectCode publishedGeneration indexedAt } nextToken } }`, maxItems: Infinity }),
     ]);
     const allChunks = candidateChunks.filter((chunk) => {
       const parent = generationDocuments.find((doc) => doc.id === chunk.documentId);
@@ -216,7 +220,17 @@ export async function GET(request: Request) {
     const fisaPostCount = expertFisaPostChunks.length + categoryFisaPostChunks.length + (expert?.jobDescriptionText?.trim() ? 1 : 0);
     const projectSources = (['cerere_finantare', 'manual_beneficiar'] as const).map((sourceType) => {
       const count = projectSourceChunks.filter((chunk) => chunk.sourceType === sourceType).length;
-      return { sourceType, count, status: statusFromCount(count) };
+      const sourceDocuments = generationDocuments.filter((document) => document.projectCode === projectCode && document.sourceType === sourceType);
+      const sourceDocumentIds = new Set(sourceDocuments.map((document) => document.id));
+      const stagedCount = candidateChunks.filter((chunk) => chunk.documentId !== undefined && sourceDocumentIds.has(chunk.documentId) && chunk.sourceType === sourceType).length;
+      const indexState: ProjectSourceIndexState = count > 0 ? 'available' : sourceDocuments.length > 0 ? 'staged' : 'missing';
+      const latestIndexedAt = sourceDocuments.map((document) => document.indexedAt).filter((value): value is string => Boolean(value)).sort().at(-1);
+      const detail = indexState === 'available'
+        ? `${count} fragmente indexate și disponibile agentului.`
+        : indexState === 'staged'
+          ? `S-au găsit ${stagedCount} fragmente, dar generația nu a fost publicată; agentul nu o consultă.`
+          : 'Nu există o indexare disponibilă agentului.';
+      return { sourceType, count, stagedCount, status: indexState === 'available' ? 'ok' : indexState === 'staged' ? 'warning' : 'missing', indexState, detail, indexedAt: latestIndexedAt };
     });
 
     return NextResponse.json({

@@ -18,6 +18,7 @@ import { expertIdentityKey } from '@/lib/expert-merge';
 import { extractDocxTextWithSource, extractPdfTextWithSource } from '@/lib/document-utils';
 
 type HealthStatus = 'ok' | 'warning' | 'missing' | 'not_applicable';
+type ProjectSourceIndexState = 'available' | 'staged' | 'missing';
 
 type HealthCard = {
   id: string;
@@ -48,7 +49,15 @@ type HealthResponse = {
     hasAiReportingInstructions: boolean;
   } | null;
   cards: HealthCard[];
-  projectSources: Array<{ sourceType: 'cerere_finantare' | 'manual_beneficiar'; count: number; status: HealthStatus }>;
+  projectSources: Array<{
+    sourceType: 'cerere_finantare' | 'manual_beneficiar';
+    count: number;
+    stagedCount: number;
+    status: HealthStatus;
+    indexState: ProjectSourceIndexState;
+    detail: string;
+    indexedAt?: string;
+  }>;
   subactivities: Array<{ saCode: string; count: number; status: HealthStatus }>;
   warnings: string[];
   recentAudits: Array<{
@@ -125,6 +134,12 @@ function statusLabel(status: HealthStatus) {
   if (status === 'warning') return 'Atentie';
   if (status === 'missing') return 'Lipsa';
   return 'N/A';
+}
+
+function projectSourceIndexLabel(state: ProjectSourceIndexState) {
+  if (state === 'available') return 'Disponibil agentului';
+  if (state === 'staged') return 'Nepublicat';
+  return 'Neindexat';
 }
 
 export function AiContextHealthPanel() {
@@ -540,10 +555,11 @@ export function AiContextHealthPanel() {
                   <div key={source.sourceType} className="flex items-center justify-between gap-3 rounded-lg border bg-white px-3 py-3 text-sm">
                     <div>
                       <div className="font-semibold text-slate-900">{isFundingRequest ? 'Cererea de finanțare' : 'Manualul beneficiarului'}</div>
-                      <div className="text-xs text-muted-foreground">{source.count} fragmente indexate</div>
+                      <div className="text-xs text-muted-foreground">{source.detail}</div>
+                      {source.indexedAt && <div className="mt-1 text-xs text-muted-foreground">Ultima indexare: {new Date(source.indexedAt).toLocaleString('ro-RO')}</div>}
                     </div>
                     <div className="flex items-center gap-2">
-                      <Badge variant="outline" className={statusBadgeClass(source.status)}>{statusLabel(source.status)}</Badge>
+                      <Badge variant="outline" className={statusBadgeClass(source.status)}>{projectSourceIndexLabel(source.indexState)}</Badge>
                       <Button type="button" variant="outline" size="sm" onClick={() => configureSource('project', source.sourceType)}>Actualizează</Button>
                     </div>
                   </div>
