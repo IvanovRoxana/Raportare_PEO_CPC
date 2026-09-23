@@ -10,6 +10,7 @@ import { prepareIndexGeneration } from '@/lib/rag/index-generation';
 import { getRagEmbeddingModelName } from '@/lib/rag/embeddings';
 import { hashRagText } from '@/lib/rag/chunking';
 import { invalidateProjectReferenceCache } from '@/lib/rag/eligibility-context';
+import { aiErrorResponse } from '@/lib/ai-governance';
 import outputs from '@/amplify_outputs.json';
 
 export const runtime = 'nodejs';
@@ -164,6 +165,6 @@ export async function POST(req: Request) {
     const authError = knowledgeAuthErrorResponse(error) || ragAdminAuthErrorResponse(error);
     if (authError) return authError;
     console.error('[admin-rag-index-document] Failed to index document.', error);
-    return NextResponse.json({ error: 'Indexarea documentului RAG a esuat.' }, { status: 500 });
+    return aiErrorResponse(error, 'Indexarea documentului RAG a esuat.');
   }
 }
