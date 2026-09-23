@@ -161,19 +161,32 @@ export async function GET(request: Request) {
     const category = normalizePeoCategory(selectedCategory || expert?.category) || selectedCategory || expert?.category || undefined;
     const projectCode = requestedProjectCode || expert?.projectCode || undefined;
     const availableSaCodes = Array.from(new Set(experts.flatMap((item) => item.saCodes || []))).sort();
+    // The health panel needs the current scope, not every historical RAG row.
+    // Keeping this query bounded prevents a growing shared library from timing out
+    // the panel and hiding otherwise valid project sources.
+    const scopeFilters = [
+      ...(projectCode ? [{ projectCode: { eq: projectCode } }] : []),
+      ...(expert?.id ? [{ expertId: { eq: expert.id } }] : []),
+      ...(category ? [{ category: { eq: category } }] : []),
+    ];
+    const chunkFilter = scopeFilters.length
+      ? { and: [{ status: { eq: 'active' } }, { or: scopeFilters }] }
+      : { status: { eq: 'active' } };
+    const documentFilter = scopeFilters.length ? { or: scopeFilters } : undefined;
 
     const [candidateChunks, activeRuleset, catalogRows, recentAudits, generationDocuments] = await Promise.all([
       appSyncList<HealthChunk>({
         token: auth.token,
         resultKey: 'listKnowledgeChunks',
-        query: `query AdminHealthChunkMetadata($nextToken: String) {
-          listKnowledgeChunks(limit: 1000, nextToken: $nextToken, filter: { status: { eq: "active" } }) {
+        variables: { filter: chunkFilter },
+        query: `query AdminHealthChunkMetadata($filter: ModelKnowledgeChunkFilterInput, $nextToken: String) {
+          listKnowledgeChunks(limit: 300, nextToken: $nextToken, filter: $filter) {
             items { id documentId sourceType category expertId expertName roleId projectCode saCode status indexGenerationId metadataJson }
             nextToken
           }
         }`,
-        maxItems: Infinity,
-        signal: AbortSignal.timeout(20000),
+        maxItems: 600,
+        signal: AbortSignal.timeout(15000),
       }),
       getActiveAiEligibilityRuleset({ projectCode: projectCode || '302141' }).catch(() => null),
       appSyncList<{ id: string }>({ token: auth.token, resultKey: 'listActivityCatalogs', query: `query AdminAiContextListCatalog($nextToken: String) { listActivityCatalogs(limit: 200, nextToken: $nextToken) { items { id } nextToken } }`, maxItems: 500 }).catch(() => []),
@@ -182,10 +195,12 @@ export async function GET(request: Request) {
         id: string; status?: string; sourceType?: string; projectCode?: string;
         publishedGeneration?: string; indexedAt?: string;
       }>({ token: auth.token, resultKey: 'listKnowledgeDocuments',
-        query: `query HealthGenerationDocuments($nextToken: String) { listKnowledgeDocuments(limit: 200, nextToken: $nextToken) { items { id status sourceType projectCode publishedGeneration indexedAt } nextToken } }`, maxItems: Infinity }),
+        variables: { filter: documentFilter },
+        query: `query HealthGenerationDocuments($filter: ModelKnowledgeDocumentFilterInput, $nextToken: String) { listKnowledgeDocuments(filter: $filter, limit: 300, nextToken: $nextToken) { items { id status sourceType projectCode publishedGeneration indexedAt } nextToken } }`, maxItems: 600 }),
     ]);
+    const documentsById = new Map(generationDocuments.map((document) => [document.id, document]));
     const allChunks = candidateChunks.filter((chunk) => {
-      const parent = generationDocuments.find((doc) => doc.id === chunk.documentId);
+      const parent = chunk.documentId ? documentsById.get(chunk.documentId) : undefined;
       return parent?.status === 'active' && (parent.publishedGeneration ? parent.publishedGeneration === chunk.indexGenerationId : !chunk.indexGenerationId);
     });
     const {
