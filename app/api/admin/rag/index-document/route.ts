@@ -16,6 +16,21 @@ import outputs from '@/amplify_outputs.json';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+function ragIndexErrorResponse(error: unknown) {
+  const message = error instanceof Error ? error.message : '';
+  const operation = message.match(/^(Read index generation|Stage index document|AWS list KnowledgeChunk|Verify idempotent chunk|Publish verified index generation) failed:/)?.[1];
+  if (operation) {
+    return NextResponse.json({
+      error: `Biblioteca RAG a respins pasul „${operation}”. Verifica drepturile AppSync sau datele indexului.`,
+      code: 'RAG_APPSYNC_INDEX_FAILED',
+    }, { status: 502 });
+  }
+  if (/^(Documentul nu contine text indexabil|Indexarea necesita proiectul explicit|Asocierea sursei la proiect\/rol\/SA este incompleta|Extragere partiala|Embeddinguri incomplete|Embedding invalid sau lipsa|Manifest incomplet)/.test(message)) {
+    return NextResponse.json({ error: message, code: 'RAG_INDEX_VALIDATION_FAILED' }, { status: 422 });
+  }
+  return aiErrorResponse(error, 'Indexarea documentului RAG a esuat.');
+}
+
 export async function POST(req: Request) {
   try {
     let authToken = '';
@@ -165,6 +180,6 @@ export async function POST(req: Request) {
     const authError = knowledgeAuthErrorResponse(error) || ragAdminAuthErrorResponse(error);
     if (authError) return authError;
     console.error('[admin-rag-index-document] Failed to index document.', error);
-    return aiErrorResponse(error, 'Indexarea documentului RAG a esuat.');
+    return ragIndexErrorResponse(error);
   }
 }
