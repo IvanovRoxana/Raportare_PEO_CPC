@@ -47,6 +47,7 @@ export async function POST(req: Request) {
     let text = typeof body?.text === 'string' ? body.text : '';
     const title = typeof body?.title === 'string' ? body.title : body?.originalFileName;
     const sourceType = typeof body?.sourceType === 'string' ? body.sourceType : 'other';
+    const isSubactivitySource = ['scop_sa', 'descriere_activitati'].includes(sourceType);
     const projectCode = typeof body?.projectCode === 'string' ? body.projectCode.trim() : '';
     const saCode = typeof body?.saCode === 'string' ? body.saCode.trim() : '';
     const expertId = typeof body?.expertId === 'string' ? body.expertId.trim() : '';
@@ -140,7 +141,7 @@ export async function POST(req: Request) {
       title,
       sourceType,
       text,
-      category: typeof body?.category === 'string' ? body.category : undefined,
+      category: isSubactivitySource ? undefined : typeof body?.category === 'string' ? body.category : undefined,
       expertId: expertId || undefined,
       expertName: expertName || undefined,
       expertRole: expertRole || undefined,

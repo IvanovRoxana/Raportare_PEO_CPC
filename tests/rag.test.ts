@@ -362,3 +362,13 @@ test('AI context health exposes separate subactivity statuses and direct catalog
   assert.match(ui, /Catalog activități/);
   assert.match(ui, /setSaCode\(subactivity\.saCode\)/);
 });
+
+test('subactivity RAG sources are shared by SA and use the server reference importer', () => {
+  const ui = readFileSync(new URL('../components/admin/ai-context-health-panel.tsx', import.meta.url), 'utf8');
+  const route = readFileSync(new URL('../app/api/admin/rag/index-document/route.ts', import.meta.url), 'utf8');
+  assert.match(ui, /const useReferenceImporter = indexScope === 'subactivity'/);
+  assert.match(ui, /\['expert', 'other'\]\.includes\(indexScope\)/);
+  assert.match(ui, /categoria expertului nu este folosită/);
+  assert.match(route, /const isSubactivitySource = \['scop_sa', 'descriere_activitati'\]\.includes\(sourceType\)/);
+  assert.match(route, /category: isSubactivitySource \? undefined/);
+});

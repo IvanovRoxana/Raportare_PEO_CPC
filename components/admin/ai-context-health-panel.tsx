@@ -188,6 +188,7 @@ export function AiContextHealthPanel() {
   const [ragExtractionSource, setRagExtractionSource] = useState<'native' | 'ocr' | undefined>();
   const [indexing, setIndexing] = useState(false);
   const [extractingRagFile, setExtractingRagFile] = useState(false);
+  const [ragFile, setRagFile] = useState<File | null>(null);
   const [ragFileName, setRagFileName] = useState('');
   const [ragFileInputKey, setRagFileInputKey] = useState(0);
   const [ragTextIsExtracted, setRagTextIsExtracted] = useState(false);
@@ -303,6 +304,7 @@ export function AiContextHealthPanel() {
     setRagText('');
     setRagActivityName('');
     setRagExtractionSource(undefined);
+    setRagFile(null);
     setRagFileName('');
     setRagTextIsExtracted(false);
     setRagFileInputKey((key) => key + 1);
@@ -345,7 +347,8 @@ export function AiContextHealthPanel() {
   async function indexRagDocument(overrides: { text?: string; title?: string; extractionSource?: 'native' | 'ocr' } = {}) {
     const textToIndex = overrides.text ?? ragText;
     const titleToIndex = overrides.title ?? ragTitle;
-    if (!titleToIndex.trim() || !textToIndex.trim()) {
+    const useReferenceImporter = indexScope === 'subactivity' && Boolean(ragFile) && !overrides.text;
+    if (!useReferenceImporter && (!titleToIndex.trim() || !textToIndex.trim())) {
       setError('Completeaza titlul si textul documentului RAG.');
       return;
     }
@@ -375,6 +378,39 @@ export function AiContextHealthPanel() {
     setMessage(null);
     try {
       const token = await getAccessToken();
+      if (useReferenceImporter && ragFile) {
+        const formData = new FormData();
+        formData.set('files', ragFile);
+        formData.set('projectCode', projectCode.trim());
+        formData.set('dryRun', 'false');
+        formData.set('overrides', JSON.stringify({
+          [ragFile.name]: {
+            title: titleToIndex.trim() || undefined,
+            sourceType: ragSourceType,
+            saCode: saCode.trim(),
+          },
+        }));
+        const response = await fetch('/api/admin/rag/index-reference-pdfs', {
+          method: 'POST', headers: { authorization: `Bearer ${token}` }, body: formData,
+        });
+        const data = await response.json().catch(() => null);
+        const result = data?.results?.[0] as { status?: string; chunks?: number; error?: string; reason?: string } | undefined;
+        if (!response.ok || !result || !['indexed', 'duplicate'].includes(result.status || '')) {
+          throw new Error(result?.error || result?.reason || data?.error || 'Indexarea sursei SA a esuat.');
+        }
+        setRagText('');
+        setRagFile(null);
+        setRagFileName('');
+        setRagTitle('');
+        setRagExtractionSource(undefined);
+        setRagTextIsExtracted(false);
+        setRagFileInputKey((key) => key + 1);
+        await loadLibrary();
+        await loadHealth();
+        setMessage(result.status === 'duplicate' ? 'Sursa SA exista deja in baza RAG; nu a fost duplicata.' : `Sursa SA a fost indexata: ${result.chunks ?? 0} fragmente.`);
+        setRagDialogOpen(false);
+        return;
+      }
       const response = await fetch('/api/admin/rag/index-document', {
         method: 'POST',
         headers: {
@@ -385,9 +421,9 @@ export function AiContextHealthPanel() {
           title: titleToIndex.trim(),
           sourceType: ragSourceType,
           text: textToIndex.trim(),
-          // Cererea de finanțare și Manualul beneficiarului sunt comune întregului
-          // proiect; nu le restrânge accidental la categoria expertului selectat.
-          category: indexScope === 'project' ? undefined : category || selectedExpert?.category,
+          // Project and SA sources are shared; only expert/other sources may
+          // carry a category restriction.
+          category: ['expert', 'other'].includes(indexScope) ? category || selectedExpert?.category : undefined,
           expertId: indexScope === 'expert' ? selectedExpert?.id : undefined,
           expertName: indexScope === 'expert' ? selectedExpert?.name : undefined,
           expertRole: indexScope === 'expert' ? selectedExpert?.positionInProject || selectedExpert?.role : undefined,
@@ -409,6 +445,7 @@ export function AiContextHealthPanel() {
       const data = await response.json().catch(() => null);
       if (!response.ok) throw new Error(data?.error || 'Indexarea documentului RAG a esuat.');
       setRagText('');
+      setRagFile(null);
       setRagFileName('');
       setRagTitle('');
       setRagExtractionSource(undefined);
@@ -430,6 +467,7 @@ export function AiContextHealthPanel() {
     setExtractingRagFile(true);
     setError(null);
     setMessage(null);
+    setRagFile(file);
     setRagFileName(file.name);
     try {
       const isDocx = file.name.toLowerCase().endsWith('.docx')
@@ -731,7 +769,7 @@ export function AiContextHealthPanel() {
                 <Label>Proiect</Label>
                 <div className="flex h-10 items-center rounded-md border bg-slate-50 px-3 text-sm text-slate-700">{projectCode} · comun tuturor cazurilor</div>
               </div>
-              {indexScope !== 'project' && <div className="space-y-2">
+              {['expert', 'other'].includes(indexScope) && <div className="space-y-2">
                 <Label>Categorie *</Label>
                 <Select value={category || 'none'} onValueChange={(value) => setCategory(value === 'none' ? '' : value)}>
                   <SelectTrigger><SelectValue placeholder="Alege categoria" /></SelectTrigger>
@@ -743,6 +781,7 @@ export function AiContextHealthPanel() {
                   </SelectContent>
                 </Select>
               </div>}
+              {indexScope === 'subactivity' && <p className="sm:col-span-3 rounded-md bg-slate-50 px-3 py-2 text-xs text-muted-foreground">Sursa se aplică tuturor experților configurați pentru {saCode || 'SA selectată'}; categoria expertului nu este folosită.</p>}
               <div className="space-y-2">
                 <Label>Titlu document</Label>
                 <Input value={ragTitle} onChange={(event) => setRagTitle(event.target.value)} placeholder="Ex: Raportare aprobata iunie AP" />
@@ -797,7 +836,7 @@ export function AiContextHealthPanel() {
                 : ''}
               Încărcarea nu indexează automat documentul. Pentru RA și livrabile aprobate sunt acceptate doar documentele din ultimele 12 luni.
             </p>
-            <Button type="button" onClick={() => void indexRagDocument()} disabled={indexing || extractingRagFile}>
+            <Button type="button" onClick={() => void indexRagDocument()} disabled={indexing || extractingRagFile || (!ragFile && (!ragTitle.trim() || !ragText.trim()))}>
               {indexing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
               Indexeaza documentul
             </Button>
