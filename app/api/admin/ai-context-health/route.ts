@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import outputs from '@/amplify_outputs.json';
 import { assertKnowledgeRequest, knowledgeAuthErrorResponse } from '@/lib/rag/knowledge-auth';
 import { normalizePeoCategory } from '@/lib/peo-category';
-import { getActiveAiEligibilityRuleset } from '@/lib/ai-eligibility-ruleset-runtime';
+import { getActiveAiEligibilityRuleset, getScheduledAiEligibilityRuleset } from '@/lib/ai-eligibility-ruleset-runtime';
 import { selectHealthChunks, type HealthChunk } from '@/lib/rag/health-chunks';
 import type { ActivityAutofillAudit, Expert } from '@/lib/types';
 
@@ -174,7 +174,7 @@ export async function GET(request: Request) {
       : { status: { eq: 'active' } };
     const documentFilter = scopeFilters.length ? { or: scopeFilters } : undefined;
 
-    const [candidateChunks, activeRuleset, catalogRows, recentAudits, generationDocuments] = await Promise.all([
+    const [candidateChunks, activeRuleset, scheduledRuleset, catalogRows, recentAudits, generationDocuments] = await Promise.all([
       appSyncList<HealthChunk>({
         token: auth.token,
         resultKey: 'listKnowledgeChunks',
@@ -189,6 +189,7 @@ export async function GET(request: Request) {
         signal: AbortSignal.timeout(15000),
       }),
       getActiveAiEligibilityRuleset({ projectCode: projectCode || '302141' }).catch(() => null),
+      getScheduledAiEligibilityRuleset({ projectCode: projectCode || '302141' }).catch(() => null),
       appSyncList<{ id: string }>({ token: auth.token, resultKey: 'listActivityCatalogs', query: `query AdminAiContextListCatalog($nextToken: String) { listActivityCatalogs(limit: 200, nextToken: $nextToken) { items { id } nextToken } }`, maxItems: 500 }).catch(() => []),
       listActivityAutofillAudits(auth.token, month, year).catch(() => []),
       appSyncList<{
@@ -300,8 +301,12 @@ export async function GET(request: Request) {
           title: 'Ruleset eligibilitate',
           status: activeRuleset ? 'ok' : 'warning',
           count: Number(Boolean(activeRuleset)),
-          detail: activeRuleset ? 'Exista un ruleset activ publicat.' : 'Nu exista un ruleset activ publicat.',
-          recommendedAction: activeRuleset ? null : 'Publica un ruleset activ in Catalog eligibilitate din modulul PM.',
+          detail: activeRuleset
+            ? 'Exista un ruleset activ publicat.'
+            : scheduledRuleset
+              ? `Există un ruleset publicat, programat să devină activ la ${new Date(scheduledRuleset.rules.validFrom).toLocaleString('ro-RO')}.`
+              : 'Nu exista un ruleset activ publicat.',
+          recommendedAction: activeRuleset || scheduledRuleset ? null : 'Publica un ruleset activ in Catalog eligibilitate din modulul PM.',
         },
         {
           id: 'activity-catalog',

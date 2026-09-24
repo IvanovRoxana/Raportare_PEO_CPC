@@ -343,8 +343,11 @@ test('AI context health ignores stale responses after a filter change', () => {
 
 test('AI context health ruleset card opens the existing PM governance editor', () => {
   const source = readFileSync(new URL('../components/admin/ai-context-health-panel.tsx', import.meta.url), 'utf8');
+  const api = readFileSync(new URL('../app/api/admin/ai-context-health/route.ts', import.meta.url), 'utf8');
   assert.match(source, /card\.id === 'eligibility-rules'/);
   assert.match(source, /\/pm\?tab=knowledge&section=reguli/);
+  assert.match(api, /getScheduledAiEligibilityRuleset/);
+  assert.match(api, /ruleset publicat, programat să devină activ/);
 });
 
 test('ruleset publish creates the first draft when no ruleset exists', () => {
