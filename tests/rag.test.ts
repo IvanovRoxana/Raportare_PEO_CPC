@@ -372,3 +372,11 @@ test('subactivity RAG sources are shared by SA and use the server reference impo
   assert.match(route, /const isSubactivitySource = \['scop_sa', 'descriere_activitati'\]\.includes\(sourceType\)/);
   assert.match(route, /category: isSubactivitySource \? undefined/);
 });
+
+test('eligibility rulesets serialize AWSJSON fields before AppSync writes', () => {
+  const source = readFileSync(new URL('../lib/aws-store.ts', import.meta.url), 'utf8');
+  assert.match(source, /function serializeAwsJson\(value: unknown\)/);
+  assert.match(source, /rulesJson: serializeAwsJson\(input\.rulesJson\)/);
+  assert.match(source, /rulesJson: serializeAwsJson\(updates\.rulesJson\)/);
+  assert.match(source, /rulesJson: parseAwsJson\(item\.rulesJson\)/);
+});

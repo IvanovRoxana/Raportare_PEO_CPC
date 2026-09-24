@@ -4104,13 +4104,27 @@ function mapActivityCatalog(item: any): ActivityCatalog {
   };
 }
 
+function serializeAwsJson(value: unknown) {
+  if (value === undefined) return undefined;
+  if (typeof value === 'string') {
+    JSON.parse(value);
+    return value;
+  }
+  return JSON.stringify(value);
+}
+
+function parseAwsJson(value: unknown) {
+  if (typeof value !== 'string') return value;
+  try { return JSON.parse(value); } catch { return value; }
+}
+
 function mapAiEligibilityRuleset(item: any): AiEligibilityRuleset {
   return {
     id: item.id,
     title: item.title,
     status: item.status ?? 'draft',
     version: item.version ?? 1,
-    rulesJson: item.rulesJson,
+    rulesJson: parseAwsJson(item.rulesJson),
     schemaVersion: item.schemaVersion ?? 'eligibility-rules-v1',
     activeFrom: item.activeFrom ?? undefined,
     publishedAt: item.publishedAt ?? undefined,
@@ -4129,8 +4143,8 @@ function mapAiEligibilityRuleVersion(item: any): AiEligibilityRuleVersion {
     rulesetId: item.rulesetId,
     version: item.version,
     status: item.status,
-    previousRulesJson: item.previousRulesJson,
-    newRulesJson: item.newRulesJson,
+    previousRulesJson: parseAwsJson(item.previousRulesJson),
+    newRulesJson: parseAwsJson(item.newRulesJson),
     changedBy: item.changedBy ?? undefined,
     changeReason: item.changeReason ?? undefined,
     publishedAt: item.publishedAt ?? undefined,
@@ -4159,7 +4173,7 @@ export const aiEligibilityRulesetsService = {
       title: input.title,
       status: input.status ?? 'draft',
       version: input.version ?? 1,
-      rulesJson: input.rulesJson,
+      rulesJson: serializeAwsJson(input.rulesJson),
       schemaVersion: input.schemaVersion ?? 'eligibility-rules-v1',
       activeFrom: input.activeFrom,
       publishedAt: input.publishedAt,
@@ -4179,7 +4193,7 @@ export const aiEligibilityRulesetsService = {
       title: updates.title,
       status: updates.status,
       version: updates.version,
-      rulesJson: updates.rulesJson,
+      rulesJson: serializeAwsJson(updates.rulesJson),
       schemaVersion: updates.schemaVersion,
       activeFrom: updates.activeFrom,
       publishedAt: updates.publishedAt,
