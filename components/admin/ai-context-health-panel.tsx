@@ -630,7 +630,7 @@ export function AiContextHealthPanel() {
                   </div>
                   <div className="flex items-center gap-2">
                     <Badge variant="outline" className={statusBadgeClass(subactivity.status)}>{statusLabel(subactivity.status)}</Badge>
-                    <Button type="button" variant="ghost" size="sm" onClick={() => { setSaCode(subactivity.saCode); configureSource('subactivity', 'scop_sa'); }}>Upload</Button>
+                    <Button type="button" variant="ghost" size="sm" onClick={() => { setSaCode(subactivity.saCode); configureSource('subactivity', 'scop_sa'); }}>Adaugă sursă</Button>
                   </div>
                 </div>
               ))}
@@ -733,7 +733,7 @@ export function AiContextHealthPanel() {
           <DialogContent className="max-h-[calc(100vh-2rem)] max-w-3xl overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Adauga sursa in biblioteca RAG</DialogTitle>
-              <DialogDescription>Documentul este salvat pe server ca sursa separata pentru proiect, SA, categorie sau expert.</DialogDescription>
+              <DialogDescription>Documentul este salvat pe server ca sursa separata pentru proiect, SA, categorie sau expert. Alegerea fișierului nu îl indexează: după preview apasă butonul de indexare.</DialogDescription>
             </DialogHeader>
         <Card ref={ragFormRef} className="rounded-2xl border-0 shadow-none">
           <CardHeader>
@@ -743,6 +743,8 @@ export function AiContextHealthPanel() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
+            {error && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+            {message && <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{message}</div>}
             <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
               Încarcă aici documentele de referință. Alege nivelul potrivit: Proiect pentru cererea de finanțare/manual, Subactivitate pentru scopul SA, Expert / rol pentru fișa de post și RA/livrabile aprobate.
             </div>
@@ -781,7 +783,7 @@ export function AiContextHealthPanel() {
                   </SelectContent>
                 </Select>
               </div>}
-              {indexScope === 'subactivity' && <p className="sm:col-span-3 rounded-md bg-slate-50 px-3 py-2 text-xs text-muted-foreground">Sursa se aplică tuturor experților configurați pentru {saCode || 'SA selectată'}; categoria expertului nu este folosită.</p>}
+              {indexScope === 'subactivity' && <p className="sm:col-span-3 rounded-md bg-slate-50 px-3 py-2 text-xs text-muted-foreground"><strong>SA selectată: {saCode || 'nealeasă'}.</strong> Sursa se aplică tuturor experților configurați pentru această SA; categoria expertului nu este folosită.</p>}
               <div className="space-y-2">
                 <Label>Titlu document</Label>
                 <Input value={ragTitle} onChange={(event) => setRagTitle(event.target.value)} placeholder="Ex: Raportare aprobata iunie AP" />
@@ -838,7 +840,7 @@ export function AiContextHealthPanel() {
             </p>
             <Button type="button" onClick={() => void indexRagDocument()} disabled={indexing || extractingRagFile || (!ragFile && (!ragTitle.trim() || !ragText.trim()))}>
               {indexing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-              Indexeaza documentul
+              {indexScope === 'subactivity' ? `Indexează documentul pentru ${saCode || 'SA selectată'}` : 'Indexează documentul'}
             </Button>
           </CardContent>
         </Card>

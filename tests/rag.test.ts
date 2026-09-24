@@ -368,6 +368,8 @@ test('subactivity RAG sources are shared by SA and use the server reference impo
   const route = readFileSync(new URL('../app/api/admin/rag/index-document/route.ts', import.meta.url), 'utf8');
   assert.match(ui, /const useReferenceImporter = indexScope === 'subactivity'/);
   assert.match(ui, /\['expert', 'other'\]\.includes\(indexScope\)/);
+  assert.match(ui, /SA selectată:/);
+  assert.match(ui, /Indexează documentul pentru/);
   assert.match(ui, /categoria expertului nu este folosită/);
   assert.match(route, /const isSubactivitySource = \['scop_sa', 'descriere_activitati'\]\.includes\(sourceType\)/);
   assert.match(route, /category: isSubactivitySource \? undefined/);
